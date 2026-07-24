@@ -1,0 +1,87 @@
+{
+  "id": "task_17",
+  "title": "Persist session skill overlays and visible-context ledgers",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 4,
+  "owner_role": "executor",
+  "estimated_minutes": 50,
+  "parallel_group": "runtime_components",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_07"
+  ],
+  "objective": "Persist session overrides, announced catalog state, loaded body digests, and context epoch across save/resume without claiming invisible history is still loaded.",
+  "context": [
+    "Implement the accepted hybrid skill catalog design in the dirty shared worktree.",
+    "Registry state is authoritative; prompt messages are an append-only model projection and never the authorization boundary."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Bounded metadata catalog and on-demand full skill content."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Live discovery and four-state skill visibility controls."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Append-only messages preserve the prior cached prefix."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "session/session.go",
+    "session/repository.go",
+    "types/messages.go",
+    "skills/override_store.go"
+  ],
+  "owned_files": [
+    "session/session.go",
+    "session/skill_catalog_state.go",
+    "session/skill_catalog_state_task17_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Add an optional backward-compatible SessionSkillsMeta to SessionMeta.",
+      "Persist session overrides, announced revision/entry digests, loaded digests, and context_epoch.",
+      "Make SaveMeta partial merges preserve the field.",
+      "Invalidate cursors/loaded ledgers when the corresponding messages are not in visible history."
+    ],
+    "exclude": [
+      "Do not modify files owned by another task.",
+      "Do not add dependencies or perform unrelated refactors."
+    ]
+  },
+  "implementation_steps": [
+    "Add sidecar helpers and minimal SessionMeta field.",
+    "Add old-JSON, round-trip, partial-merge, resume, and epoch mismatch tests.",
+    "Keep model message reconstruction in later loop/compact tasks."
+  ],
+  "deliverables": [
+    "session/session.go",
+    "session/skill_catalog_state.go",
+    "session/skill_catalog_state_task17_test.go"
+  ],
+  "acceptance_criteria": [
+    "Old sessions load with zero skill state.",
+    "Session overlays remain isolated and resume correctly.",
+    "A cursor or loaded digest from a different context epoch cannot suppress a required snapshot/body."
+  ],
+  "verification": [
+    "go test ./session -run 'SessionSkills|SkillCatalogState|Meta.*Skill' -count=1",
+    "go test -race ./session -run 'SessionSkills|SkillCatalogState' -count=1"
+  ],
+  "risks": [],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Add backward-compatible SessionSkillsMeta persistence, including context_epoch-bound catalog and loaded-digest ledgers. Modify only session-owned files.",
+  "notes_for_assignee": "Respect owned_files. Escalate contract gaps to the integration owner rather than editing another task's production files."
+}

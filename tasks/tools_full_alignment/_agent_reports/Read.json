@@ -1,0 +1,1041 @@
+{
+  "tool": "Read",
+  "summary": "Go Read covers the core happy paths for text, range reads, notebooks, images, PDF attachments, ReadState, and several rich-result metadata probes, but it is not fully TS-exact. The highest-risk gaps are runtime and lifecycle differences: Go dedups reads from broader state than TS and stamps rich reads into state, PDF page selection/model/extraction behavior is a Go-only superset, cyber-risk reminder gating is not wired to the active model and can affect rich outputs, skill discovery and analytics/listeners fire at different times with different payloads, and the Go tool boundary lacks TS strict/output/permission metadata. Focused verification was run with `go test ./tools -run 'Test(FileReadTool|ReadFileState|CyberReminderGating|Alignment_FileRead)' -count=1` and currently fails at `TestFileReadToolRejectsOpenEndedPDFRangesOverLimit`, confirming one PDF selector parity gap.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "READ-GAP-001",
+      "category": "output_contract_schema",
+      "severity": "P1",
+      "title": "Read does not expose the TS output/tool contract as a first-class Go contract",
+      "description": "TS Read is a strict tool with an outputSchema discriminated by `type` (`text`, `image`, `notebook`, `pdf`, `parts`, `file_unchanged`) and tool metadata for max result size, read-only, concurrency, search/read classification, and auto-classifier input. Go has the public tool name and increasingly rich `ContentBlocks`/Metadata, but the shared tool interface is still Execute-only, the JSON schema cannot express strict-object rejection, and the TS result union is not the primary result contract. This leaves downstream consumers relying on string content plus metadata rather than the same structured shape TS returns.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:227-331",
+          "note": "TS declares a strict input object and discriminated `outputSchema` for all Read variants."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:337-385",
+          "note": "TS sets maxResultSizeChars=Infinity, strict=true, concurrency-safe/read-only, auto-classifier, and search/read metadata."
+        },
+        {
+          "path": "../src/Tool.ts:394-466",
+          "note": "The TS Tool interface carries input/output schemas, read-only/concurrency hooks, search/read classification, and maxResultSizeChars."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "types/tools.go:9-22",
+          "note": "Go JSONSchema has no additionalProperties/strict-object field and ToolDefinition contains only name, description, and input_schema."
+        },
+        {
+          "path": "types/tools.go:24-68",
+          "note": "Go Tool exposes Name, Description, Schema, and Execute; ToolResult is string Content, ContentBlocks, NewMessages, and string Metadata."
+        },
+        {
+          "path": "tools/file_read_variant.go:32-71",
+          "note": "Go has a FileReadResult helper and variant metadata, but production still stamps metadata onto ToolResult rather than returning the TS output union."
+        },
+        {
+          "path": "tools/file_operations.go:220-240",
+          "note": "Read schema includes the public parameters but has no strict additionalProperties=false equivalent."
+        }
+      ],
+      "impact": "Model-visible and programmatic consumers can observe different result structure, strictness, and lifecycle metadata from TS, even when the visible read content looks similar.",
+      "candidate_task_ids": [
+        "READ-TASK-001"
+      ]
+    },
+    {
+      "id": "READ-GAP-002",
+      "category": "state_lifecycle",
+      "severity": "P0",
+      "title": "file_unchanged dedup applies to broader state and richer formats than TS",
+      "description": "TS dedups only prior full Read-origin text/notebook state: it requires a non-partial entry whose `offset` is defined, and image/PDF branches never populate readFileState. Edit/Write/NotebookEdit deliberately write `offset: undefined` so the next Read cannot dedup against post-write state. Go checks only offset, limit, and mtime, ignores LastTool/source, stamps rich image/notebook/PDF reads into state, and uses a different file_unchanged stub. This can suppress content in Go where TS would re-read and can point the model at stale or unavailable prior rich content.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:523-573",
+          "note": "TS dedup is killswitch-gated and requires existingState, not partial, and `existingState.offset !== undefined`; comments state images/PDFs are not cached."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:821-848",
+          "note": "Notebook reads set readFileState with offset and limit."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:865-1016",
+          "note": "Image and PDF branches return without writing readFileState."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:1019-1038",
+          "note": "Text reads set readFileState with content, timestamp, offset, and limit."
+        },
+        {
+          "path": "../src/tools/FileReadTool/prompt.ts:7-8",
+          "note": "TS file_unchanged stub is the long message telling the model to refer to the earlier Read tool_result."
+        },
+        {
+          "path": "../src/tools/FileWriteTool/FileWriteTool.ts:331-337",
+          "note": "TS Write refreshes readFileState with offset and limit undefined to prevent Read dedup against post-write state."
+        },
+        {
+          "path": "../src/tools/FileEditTool/FileEditTool.ts:519-525",
+          "note": "TS Edit also writes offset and limit undefined."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/file_operations.go:298-320",
+          "note": "Go dedup compares Offset, Limit, and TimestampMs only; it does not check IsPartialView or LastTool/source."
+        },
+        {
+          "path": "tools/file_operations.go:367-378",
+          "note": "Go stamps state for rich image/notebook/PDF reads and then can dedup them."
+        },
+        {
+          "path": "tools/file_operations.go:474-482",
+          "note": "Go text reads set state with requestedOffset/requestedLimit and content, but without LastTool='Read'."
+        },
+        {
+          "path": "tools/file_read_state.go:41-47",
+          "note": "ReadFileEntry has Content and LastTool, so the data needed to restrict dedup by origin exists but is unused in Read dedup."
+        },
+        {
+          "path": "tools/file_read_blocks.go:17-20",
+          "note": "Go FileUnchangedStubText is `(no changes since last read)`, not the TS stub."
+        },
+        {
+          "path": "tools/file_operations.go:831-837",
+          "note": "Go Write refreshes ReadState with LastTool='Write' but dedup does not inspect it."
+        },
+        {
+          "path": "tools/file_edit.go:448-453",
+          "note": "Go Edit refreshes ReadState with LastTool='Edit' but dedup does not inspect it."
+        },
+        {
+          "path": "tools/notebook.go:259-267",
+          "note": "Go NotebookEdit refreshes ReadState with LastTool='NotebookEdit' but dedup does not inspect it."
+        }
+      ],
+      "impact": "Go can return file_unchanged for reads TS would execute, especially after rich reads or writes/edits in the same timestamp window; model-visible stub text also differs.",
+      "candidate_task_ids": [
+        "READ-TASK-002"
+      ]
+    },
+    {
+      "id": "READ-GAP-003",
+      "category": "security_output",
+      "severity": "P1",
+      "title": "Cyber-risk reminder gating is not wired like TS and can be appended to rich results",
+      "description": "TS appends the cyber-risk reminder only in the text result mapper and uses the active main-loop model to skip exempt models. Go has a compatible constant and model exemption helper, but the active model is only set through a test/config setter and is not wired in SetupRegistry. When unset, Go falls back to path/content heuristics, so benign project files on non-exempt models may omit the TS reminder. Go also calls the append helper after rich reads, modifying ContentBlocks and Content for image/PDF/notebook summaries where TS does not append the reminder.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:692-701",
+          "note": "TS appends CYBER_RISK_MITIGATION_REMINDER only in the `text` output mapping."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:729-737",
+          "note": "TS gates the reminder by getMainLoopModel canonical name and MITIGATION_EXEMPT_MODELS."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/file_read_security.go:48-80",
+          "note": "Go stores the active model in a package variable set by SetActiveModelForCyberGating; when non-empty and non-exempt it always appends."
+        },
+        {
+          "path": "tools/file_read_security.go:82-113",
+          "note": "When active model is empty, Go falls back to suspicious path/content heuristics instead of TS's non-exempt-model default."
+        },
+        {
+          "path": "registry_setup.go:188",
+          "note": "SetupRegistry constructs FileReadTool without wiring active model or token/provider state into cyber gating."
+        },
+        {
+          "path": "tools/file_operations.go:367-379",
+          "note": "Go calls maybeAppendCyberReminder after successful rich reads."
+        },
+        {
+          "path": "tools/file_read_security.go:119-134",
+          "note": "Go appends the reminder to both result.Content and result.ContentBlocks."
+        },
+        {
+          "path": "tools/file_read_security_gating_test.go:30-43",
+          "note": "Tests preserve the Go fallback heuristic where normal project files do not get the reminder when active model is unset."
+        }
+      ],
+      "impact": "Security guidance can be missing for ordinary text reads under default runtime wiring, and rich outputs can include an extra text block that TS never sends.",
+      "candidate_task_ids": [
+        "READ-TASK-003"
+      ]
+    },
+    {
+      "id": "READ-GAP-004",
+      "category": "pdf_runtime_lifecycle",
+      "severity": "P0",
+      "title": "PDF page selection, model support, page-count fallback, and extraction lifecycle diverge",
+      "description": "TS accepts a single page, bounded range, or open-ended range string syntactically, then rejects any open-ended range at validation time because it treats Infinity as over the 20-page cap. Go accepts comma-separated selectors, deduplicates pages, resolves open-ended selectors against real page count, and has tests for comma lists. TS page counting uses only `pdfinfo` and returns null on failure; Go falls back to Swift and raw byte scanning. TS rejects full PDF reads on unsupported Haiku 3 models and persists extracted page images under the tool results directory with an `outputDir` in the `parts` result. Go has no visible model support gate, uses temp extraction directories removed before returning, and returns only supplemental image NewMessages for pages.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/pdfUtils.ts:16-50",
+          "note": "TS parsePDFPageRange supports only single page, `N-M`, and `N-`; no comma lists."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:418-439",
+          "note": "TS validates pages before I/O and treats an Infinity/open-ended range as over PDF_MAX_PAGES_PER_READ."
+        },
+        {
+          "path": "../src/utils/pdfUtils.ts:52-60",
+          "note": "TS full-PDF support is gated by the current model, rejecting claude-3-haiku."
+        },
+        {
+          "path": "../src/utils/pdf.ts:115-135",
+          "note": "TS page count uses only pdfinfo and returns null if unavailable or unparsable."
+        },
+        {
+          "path": "../src/utils/pdf.ts:137-145",
+          "note": "TS `parts` result includes filePath, originalSize, count, and outputDir."
+        },
+        {
+          "path": "../src/utils/pdf.ts:217-230",
+          "note": "TS extraction writes images under getToolResultsDir()/pdf-uuid and returns that directory."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:948-985",
+          "note": "TS checks page threshold, computes shouldExtractPages, logs extraction analytics, and errors when full PDFs are unsupported by model."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/read_multiformat.go:222-339",
+          "note": "Go parsePDFPageSelector accepts comma-separated lists, deduplicates pages, and models open-ended ranges."
+        },
+        {
+          "path": "tools/file_operations.go:270-276",
+          "note": "Go invalid-pages message explicitly advertises comma-separated lists."
+        },
+        {
+          "path": "tools/read_multiformat.go:438-488",
+          "note": "Go resolves open-ended page ranges against page count and filters comma-selected extracted images."
+        },
+        {
+          "path": "tools/pdf_renderer.go:36-47",
+          "note": "Go page count falls back from pdfinfo to Swift and then raw byte scanning."
+        },
+        {
+          "path": "tools/pdf_renderer.go:165-169",
+          "note": "Go extraction uses os.MkdirTemp and defers os.RemoveAll, so no persistent outputDir is available."
+        },
+        {
+          "path": "tools/pdf_renderer.go:202-218",
+          "note": "Go returns extracted page image blocks directly after reading temp files."
+        },
+        {
+          "path": "tools/read_multiformat.go:511-522",
+          "note": "Go page reads return a text summary plus NewMessages image blocks, not a `parts` data object with outputDir."
+        },
+        {
+          "path": "tools/read_multiformat.go:525-554",
+          "note": "Go full PDF path checks only page threshold and then inlines a document block; no isPDFSupported model gate appears."
+        },
+        {
+          "path": "tools/file_read_integration_test.go:235-289",
+          "note": "Go tests lock in comma-separated page selector support."
+        },
+        {
+          "path": "tools/file_operations_test.go:633-653",
+          "note": "A Go test expects `pages: \"3-\"` to be rejected, but the current implementation resolves the actual page count and the focused run fails this test."
+        }
+      ],
+      "impact": "PDF reads can succeed, fail, paginate, emit attachments, or leave artifacts differently from TS; one focused Read test currently fails on this exact selector behavior.",
+      "candidate_task_ids": [
+        "READ-TASK-004",
+        "READ-TASK-010"
+      ]
+    },
+    {
+      "id": "READ-GAP-005",
+      "category": "permissions_lifecycle",
+      "severity": "P1",
+      "title": "Read path permission/observer lifecycle is approximated inside Execute",
+      "description": "TS Read participates in the central permission and observable-input lifecycle before the tool call: it expands observable paths, exposes getPath, prepares wildcard permission matchers, checks explicit read-deny rules without I/O, and bypasses UNC I/O before permission. Go enforces allowed directories and verifies the opened file descriptor, which is strong local safety, but the shared Tool interface has no Read-specific permission hooks or observable-input backfill. Generic parsing also ignores unknown keys, so TS strict-object rejection is not enforced at runtime.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:385-405",
+          "note": "TS Read defines getPath, backfillObservableInput, preparePermissionMatcher, and checkPermissions."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:418-494",
+          "note": "TS validateInput expands paths, checks deny rules before I/O, bypasses UNC probing, rejects binary extensions, and blocks special devices."
+        },
+        {
+          "path": "../src/utils/path.ts:32-84",
+          "note": "TS expandPath trims, expands ~, handles relative paths against getCwd, converts Windows POSIX paths, and normalizes NFC."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "types/tools.go:24-44",
+          "note": "Go Tool has no getPath/backfill/permission matcher/checkPermissions hook."
+        },
+        {
+          "path": "tools/parse.go:13-22",
+          "note": "parseInput uses json.Unmarshal into structs, which silently ignores unknown object keys."
+        },
+        {
+          "path": "tools/file_operations.go:15-45",
+          "note": "Go checkAllowedPath enforces allowed directories by resolving symlinks, but only as tool-internal Execute logic."
+        },
+        {
+          "path": "tools/file_operations.go:279-336",
+          "note": "Go performs allowed-dir, device, binary-extension, open, and fd verification inside Execute."
+        },
+        {
+          "path": "registry_setup.go:110-152",
+          "note": "UpdateSessionContext wires allowed dirs into FileReadTool but does not expose TS-style observer/permission hooks."
+        }
+      ],
+      "impact": "Policy, UI, audit, and strict-schema consumers cannot observe or decide on Read exactly where TS does, and unknown model inputs can be accepted in Go.",
+      "candidate_task_ids": [
+        "READ-TASK-005",
+        "READ-TASK-009"
+      ]
+    },
+    {
+      "id": "READ-GAP-006",
+      "category": "limits_token_budget",
+      "severity": "P1",
+      "title": "File reading limits and token counting do not follow TS precedence or exact counter path",
+      "description": "TS computes default file-reading limits from env var, GrowthBook override, and hardcoded defaults, then lets ToolUseContext override maxSizeBytes/maxTokens and logs override analytics. Token validation estimates first and then calls the API tokenizer near the limit. Go uses constants for text size/token limits, has an optional TokenBudgetProvider only for rich image/PDF budgets, and SetupRegistry does not wire that provider. Text token checks use a Go tiktoken estimate path rather than TS API counting, so boundary behavior and operational controls can differ.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/FileReadTool/limits.ts:24-92",
+          "note": "TS limit precedence is env max tokens, GrowthBook override, then defaults, with includeMaxSizeInPrompt and targetedRangeNudge flags."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:502-516",
+          "note": "TS applies ToolUseContext fileReadingLimits and logs tengu_file_read_limits_override when overrides are supplied."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:755-771",
+          "note": "TS validates tokens using roughTokenCountEstimationForFileType and countTokensWithAPI before throwing MaxFileReadTokenExceededError."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/read_multiformat.go:17-24",
+          "note": "Go hardcodes defaultReadMaxSizeBytes and defaultReadMaxTokens as constants."
+        },
+        {
+          "path": "tools/file_operations.go:73-75",
+          "note": "FileReadTool has an optional TokenBudgetProvider for remaining model tokens."
+        },
+        {
+          "path": "tools/file_operations.go:195-205",
+          "note": "Go falls back to defaultReadTokenBudget when TokenBudgetProvider is nil."
+        },
+        {
+          "path": "registry_setup.go:188",
+          "note": "SetupRegistry constructs FileReadTool without TokenBudgetProvider or fileReadingLimits wiring."
+        },
+        {
+          "path": "tools/file_operations.go:409-437",
+          "note": "Go text reads use defaultReadMaxSizeBytes and tieredEstimateReadTokens with defaultReadMaxTokens."
+        },
+        {
+          "path": "tools/file_read_tiered_tokens.go:23-32",
+          "note": "Go token validation uses local fast/precise estimation rather than TS countTokensWithAPI."
+        }
+      ],
+      "impact": "Operators cannot tune Read behavior through the same controls, prompts may show different guidance, and files near token/byte limits may be accepted or rejected differently.",
+      "candidate_task_ids": [
+        "READ-TASK-006"
+      ]
+    },
+    {
+      "id": "READ-GAP-007",
+      "category": "skill_lifecycle",
+      "severity": "P2",
+      "title": "Skill discovery timing and conditional activation do not match TS session lifecycle",
+      "description": "TS discovers nearby skill directories and activates conditional skills after dedup but before the file read, skips the whole flow in CLAUDE_CODE_SIMPLE, records dynamicSkillDirTriggers for attachment display, and starts directory loading asynchronously. Go invokes discovery only after a successful read, has no visible simple-mode guard in FileReadTool, ignores per-name trigger matches, and the skills Manager conditional activation hook is effectively a cache-warming no-op. This changes which reads can surface skills and when they become active or visible.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:575-590",
+          "note": "TS skips simple mode, discovers skill dirs before callInner, records dynamicSkillDirTriggers, asynchronously adds directories, and activates conditional skills for paths."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "registry_setup.go:318-326",
+          "note": "Go wires FileReadTool.SkillManager to the shared SkillTool manager."
+        },
+        {
+          "path": "tools/file_operations.go:494-534",
+          "note": "Go invokes analytics/listeners/skill activation only in afterSuccessfulRead after content was read."
+        },
+        {
+          "path": "tools/file_read_skill_discovery.go:56-112",
+          "note": "Go discovers nearby skill dirs with its own upward walk and repo-root heuristics."
+        },
+        {
+          "path": "tools/file_read_skill_discovery.go:179-213",
+          "note": "Go can look up dynamic skills for a path, but FileReadTool currently discards the returned names."
+        },
+        {
+          "path": "skills/loader.go:201-215",
+          "note": "Go ActivateConditionalForPath is documented as a no-op/cache warm hook for future parity."
+        },
+        {
+          "path": "tools/agent.go:518",
+          "note": "Other Go surfaces explicitly check CLAUDE_CODE_SIMPLE, but FileReadTool's skill activation path does not show that guard."
+        }
+      ],
+      "impact": "Skills can be missing when TS would attach/activate them, or loaded in simple mode/after success where TS would not; conditional activation semantics are not equivalent.",
+      "candidate_task_ids": [
+        "READ-TASK-007"
+      ]
+    },
+    {
+      "id": "READ-GAP-008",
+      "category": "analytics_listeners",
+      "severity": "P2",
+      "title": "Read analytics and listener scope/signatures differ from TS",
+      "description": "TS fileReadListeners receive `(filePath, content)` and are called only on the text read path after the content is available. TS session analytics includes total/read lines, total/read bytes, offset, optional limit, extension, optional messageID, and session-memory/session-transcript booleans. Go invokes basic and rich listeners for every successful read variant with mtime/partial/byte/line metadata but no content, emits a simplified `tengu_session_file_read`, and emits a second kind-based event for session files. The gap is not just field names; it changes listener side effects and analytics cardinality.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:161-170",
+          "note": "TS fileReadListener signature is `(filePath, content)`."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:1040-1044",
+          "note": "TS invokes listeners only on the text path, with resolvedFilePath and content."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:1067-1083",
+          "note": "TS `tengu_session_file_read` payload includes totalLines, readLines, totalBytes, readBytes, offset, optional limit/ext/messageID, and session booleans."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/file_operations.go:89-114",
+          "note": "Go basic listener receives absPath, mtimeMs, and isPartialView; rich listener receives metadata, not file content."
+        },
+        {
+          "path": "tools/file_operations.go:494-520",
+          "note": "Go afterSuccessfulRead emits simplified analytics and invokes both listener sets for every successful read variant."
+        },
+        {
+          "path": "tools/file_operations.go:521-534",
+          "note": "The same afterSuccessfulRead also triggers skill activation, tying listener timing to all variants."
+        },
+        {
+          "path": "tools/file_read_alignment_test.go:281-310",
+          "note": "Go alignment tests currently assert a lineCount/ext-oriented analytics shape rather than the richer TS payload."
+        },
+        {
+          "path": "tools/file_read_integration_test.go:132-166",
+          "note": "Go integration tests lock in listener arguments as path plus mtime, not path plus content."
+        }
+      ],
+      "impact": "Services depending on text content listeners, TS analytics fields, or per-read event counts will behave differently in Go.",
+      "candidate_task_ids": [
+        "READ-TASK-008"
+      ]
+    },
+    {
+      "id": "READ-GAP-009",
+      "category": "path_cwd_runtime",
+      "severity": "P2",
+      "title": "Path expansion and per-session cwd normalization are not TS-equivalent for base Read",
+      "description": "TS expandPath trims input, expands `~`, resolves relative paths against async-local getCwd, converts Windows POSIX-style paths, and normalizes NFC before validation, permission checks, and state keys. Go base Read trims file_path and uses filepath.Abs/Clean around the process cwd and ReadState key normalization. Agent-specific wrappers rewrite relative paths for subagents, but base FileReadTool is not injected with RuntimeScope/current cwd, so session cwd, home expansion, NFC, and Windows path conversion semantics are not the same at the core tool boundary.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/path.ts:32-84",
+          "note": "TS expandPath handles trim, empty path, ~ expansion, absolute/relative resolution, Windows POSIX path conversion, and NFC normalization."
+        },
+        {
+          "path": "../src/utils/cwd.ts:4-31",
+          "note": "TS getCwd uses AsyncLocalStorage override for concurrent agents and falls back to original cwd."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:388-394",
+          "note": "TS backfills observable file_path with expandPath before observers see it."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:518-522",
+          "note": "TS call uses expandPath for fullFilePath normalization."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/file_operations.go:248-255",
+          "note": "Go trims file_path and normalizes macOS screenshot spaces but does not perform full TS expandPath semantics."
+        },
+        {
+          "path": "tools/file_operations.go:283-286",
+          "note": "Go normalizes with filepath.Clean and filepath.Abs against the process cwd."
+        },
+        {
+          "path": "tools/file_read_state.go:60-67",
+          "note": "ReadFileState is keyed on filepath.Abs-normalized paths."
+        },
+        {
+          "path": "tools/agent_cwd.go:53-79",
+          "note": "Go subagent wrapper rewrites relative file_path/path inputs against an agent base cwd."
+        },
+        {
+          "path": "tools/agent.go:1049",
+          "note": "Agent sessions wrap the registry for cwd, but base FileReadTool has no RuntimeScope cwd field."
+        },
+        {
+          "path": "registry_setup.go:175-188",
+          "note": "SetupRegistry creates RuntimeScope but constructs FileReadTool only with AllowedDirs and ReadState."
+        }
+      ],
+      "impact": "Relative paths, `~`, Unicode normalization, and concurrent-session cwd behavior can resolve differently from TS, and observer/permission state sees a different path lifecycle.",
+      "candidate_task_ids": [
+        "READ-TASK-009"
+      ]
+    },
+    {
+      "id": "READ-GAP-010",
+      "category": "tests_verification",
+      "severity": "P1",
+      "title": "Read parity tests include stale comments, Go-only expectations, and one currently failing selector test",
+      "description": "The Go test suite has useful coverage but does not yet form a clean TS parity baseline. Some alignment-test comments still say every case should fail even though the implementation now has FileReadResult and variant metadata. Other tests explicitly lock Go-only behavior such as comma-separated PDF page selectors. A focused Read test command currently fails on open-ended PDF range handling, which is a real parity mismatch against TS validation.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:227-331",
+          "note": "TS outputSchema variants are the authoritative structured result baseline."
+        },
+        {
+          "path": "../src/utils/pdfUtils.ts:16-50",
+          "note": "TS page selector grammar is single page/range/open range only."
+        },
+        {
+          "path": "../src/tools/FileReadTool/FileReadTool.ts:418-439",
+          "note": "TS open-ended ranges are rejected by the max-pages validation before I/O."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/file_read_alignment_test.go:1-7",
+          "note": "Header says tests are intentionally RED and fail today, which is stale for implemented surfaces such as FileReadResult/variant metadata."
+        },
+        {
+          "path": "tools/file_read_alignment_test.go:90-126",
+          "note": "Tests expect FileReadResult and text variant metadata; those surfaces now exist in Go."
+        },
+        {
+          "path": "tools/file_read_integration_test.go:235-289",
+          "note": "Tests lock in comma-separated PDF selector support, a Go-only grammar relative to TS."
+        },
+        {
+          "path": "tools/file_operations_test.go:633-653",
+          "note": "The open-ended PDF range test expects TS-like rejection but currently fails because the implementation accepts the resolved range."
+        },
+        {
+          "path": "tools/read_multiformat.go:447-456",
+          "note": "Implementation resolves open-ended page ranges using actual page count, explaining the current focused test failure."
+        }
+      ],
+      "impact": "Future implementers can chase stale failures or preserve Go extensions unintentionally; verification cannot distinguish deliberate TS parity from local enhancements.",
+      "candidate_task_ids": [
+        "READ-TASK-010"
+      ]
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "READ-TASK-001",
+      "title": "Expose a TS-equivalent Read output/tool contract",
+      "priority": "P1",
+      "addresses_gaps": [
+        "READ-GAP-001"
+      ],
+      "owned_files": [
+        "types/tools.go",
+        "tools/file_operations.go",
+        "tools/file_read_blocks.go",
+        "tools/file_read_variant.go",
+        "registry/tool_visibility.go",
+        "compact/resultstore.go",
+        "tools/file_read_alignment_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/FileReadTool/FileReadTool.ts:227-385",
+        "../src/Tool.ts:394-466",
+        "types/tools.go:9-68",
+        "tools/file_read_variant.go:32-71"
+      ],
+      "implementation_steps": [
+        "Decide the Go carrier for TS Read data: either a typed Read result embedded in ToolResult metadata/structured content or a shared output-schema mechanism used by all tools.",
+        "Make Read expose all TS variants with their required per-variant fields, including file_unchanged and parts/outputDir if PDF extraction parity is implemented in READ-TASK-004.",
+        "Add strict schema support or a Read-specific strict parser that rejects unknown keys.",
+        "Expose/read through metadata for maxResultSizeChars=Infinity, strict=true, read-only, concurrency-safe, search/read classification, and auto-classifier input."
+      ],
+      "acceptance": [
+        "Read has a model/runtime-visible structured contract equivalent to TS `text|image|notebook|pdf|parts|file_unchanged`.",
+        "Unknown Read input keys are rejected or otherwise cannot reach Execute silently.",
+        "Read is discoverable as read-only and concurrency-safe, with maxResultSizeChars=Infinity or an equivalent no-persist policy.",
+        "Existing text/image/notebook/PDF happy-path behavior remains available through the model-visible result."
+      ],
+      "verification_commands": [
+        "go test ./types ./registry ./compact ./tools -run 'TestAlignment_FileRead|TestFileReadTool|TestTool.*Read|TestResultStore.*Read' -count=1"
+      ],
+      "risks": [
+        "Changing the shared ToolResult contract can affect every tool; keep Read-specific bridges isolated unless a shared contract migration is explicitly planned."
+      ],
+      "non_goals": [
+        "Do not redesign unrelated tool result schemas in the same task."
+      ]
+    },
+    {
+      "id": "READ-TASK-002",
+      "title": "Align ReadState dedup origin, rich-format state, and file_unchanged stub",
+      "priority": "P0",
+      "addresses_gaps": [
+        "READ-GAP-002"
+      ],
+      "owned_files": [
+        "tools/file_operations.go",
+        "tools/file_read_state.go",
+        "tools/file_read_blocks.go",
+        "tools/file_read_integration_test.go",
+        "tools/file_operations_test.go",
+        "tools/file_edit.go",
+        "tools/notebook.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/FileReadTool/FileReadTool.ts:523-573",
+        "../src/tools/FileReadTool/FileReadTool.ts:821-848",
+        "../src/tools/FileReadTool/FileReadTool.ts:865-1038",
+        "../src/tools/FileReadTool/prompt.ts:7-8",
+        "tools/file_operations.go:298-320",
+        "tools/file_operations.go:367-378",
+        "tools/file_read_blocks.go:17-20"
+      ],
+      "implementation_steps": [
+        "Mark Read-origin state explicitly, or make dedup require an entry shape that only Read text/notebook writes can produce.",
+        "Stop rich image/PDF reads from populating dedup-eligible ReadState entries unless TS adds the same behavior.",
+        "Ensure Edit/Write/NotebookEdit refreshed entries can satisfy stale-write checks but cannot satisfy Read dedup.",
+        "Replace Go file_unchanged model text with the exact TS FILE_UNCHANGED_STUB.",
+        "Consider a feature flag/killswitch equivalent if the runtime needs to disable dedup like TS GrowthBook can."
+      ],
+      "acceptance": [
+        "Second identical full text or notebook Read returns file_unchanged only when prior eligible Read content is still in context and mtime/range match.",
+        "Reads after Write/Edit/NotebookEdit never dedup against the post-write state entry.",
+        "Image and PDF reads do not produce file_unchanged on repeat under default TS-parity behavior.",
+        "Partial reads do not dedup as full reads.",
+        "The file_unchanged model-visible text exactly matches TS."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestFileReadTool_Dedup|TestReadFileState|TestAlignment_FileRead_Dedup|TestFile(Read|Write|Edit).*ReadState|TestNotebookEdit.*ReadState' -count=1"
+      ],
+      "risks": [
+        "FileEdit/FileWrite depend on the same state store for stale-write checks; do not remove state fields needed by write/edit guards."
+      ],
+      "non_goals": [
+        "Do not change NotebookEdit stale-read semantics beyond what is needed to keep post-edit Read dedup from firing."
+      ]
+    },
+    {
+      "id": "READ-TASK-003",
+      "title": "Wire cyber-risk reminder to active model and restrict it to text reads",
+      "priority": "P1",
+      "addresses_gaps": [
+        "READ-GAP-003"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "provider/provider.go",
+        "tools/file_operations.go",
+        "tools/file_read_security.go",
+        "tools/file_read_security_gating_test.go",
+        "tools/file_read_integration_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/FileReadTool/FileReadTool.ts:692-737",
+        "tools/file_read_security.go:48-134",
+        "tools/file_operations.go:367-379",
+        "registry_setup.go:188"
+      ],
+      "implementation_steps": [
+        "Plumb the active main-loop model into Read cyber gating during registry/provider setup.",
+        "Remove the default path/content heuristic from TS-parity execution, or gate it behind a documented non-TS compatibility mode.",
+        "Call reminder append only from the text result path.",
+        "Keep the exempt model list aligned with TS canonical model names."
+      ],
+      "acceptance": [
+        "For every non-exempt active model, text Read appends the TS reminder regardless of path/content.",
+        "For exempt models, text Read omits the reminder even for suspicious paths/content.",
+        "Image, PDF, parts, notebook, and file_unchanged results do not receive an extra reminder block under default TS-parity behavior.",
+        "Tests cover model unset, non-exempt, exempt, suspicious content, and rich read variants."
+      ],
+      "verification_commands": [
+        "go test ./tools ./provider -run 'TestCyberReminder|TestFileReadTool_Cyber|TestFileReadTool.*(Image|PDF|Notebook).*Cyber|TestSetupRegistry.*Model' -count=1"
+      ],
+      "risks": [
+        "Provider/model state may be mutable at runtime; avoid a one-time stale model capture if the provider can swap models mid-session."
+      ],
+      "non_goals": [
+        "Do not alter the reminder text unless the TS constant changes."
+      ]
+    },
+    {
+      "id": "READ-TASK-004",
+      "title": "Align PDF selector grammar, model gate, page counting, and extraction artifact lifecycle",
+      "priority": "P0",
+      "addresses_gaps": [
+        "READ-GAP-004"
+      ],
+      "owned_files": [
+        "tools/read_multiformat.go",
+        "tools/pdf_renderer.go",
+        "tools/file_operations.go",
+        "tools/file_read_blocks.go",
+        "tools/file_read_alignment_test.go",
+        "tools/file_read_integration_test.go",
+        "tools/file_operations_test.go"
+      ],
+      "dependencies": [
+        "READ-TASK-001 if `parts` outputDir must be represented as typed Read output."
+      ],
+      "read_first": [
+        "../src/utils/pdfUtils.ts:16-60",
+        "../src/utils/pdf.ts:115-230",
+        "../src/tools/FileReadTool/FileReadTool.ts:418-439",
+        "../src/tools/FileReadTool/FileReadTool.ts:893-1016",
+        "tools/read_multiformat.go:222-339",
+        "tools/read_multiformat.go:438-554",
+        "tools/pdf_renderer.go:36-47",
+        "tools/pdf_renderer.go:165-218"
+      ],
+      "implementation_steps": [
+        "Change default PDF page parser to TS grammar: single page, bounded range, and open-ended range only; remove comma lists from TS-parity mode.",
+        "Reject open-ended ranges during pre-I/O validation the way TS does, because Infinity exceeds the 20-page cap.",
+        "Make page count behavior match TS pdfinfo-only semantics unless a documented compatibility mode is explicitly enabled.",
+        "Add an isPDFSupported-equivalent active-model gate for full PDF reads.",
+        "Persist extracted page images under the Go equivalent of tool results and return a typed `parts` result with outputDir, then build supplemental image messages from that directory."
+      ],
+      "acceptance": [
+        "`pages: \"1,3\"` and other comma selectors are rejected by default with the TS invalid-pages message.",
+        "`pages: \"3-\"` is rejected before file I/O with the TS max-pages message.",
+        "Full PDF reads on unsupported models return the TS unsupported-model message and do not inline a document block.",
+        "When extraction succeeds, the result includes count/originalSize/outputDir and the page images remain available for consumers for the expected lifecycle.",
+        "Large PDF, small PDF, explicit pages, missing poppler, empty/corrupt/password-protected PDFs are covered by tests."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestFileReadTool.*PDF|TestParsePDFPage|TestAlignment_FileRead_.*PDF|TestPDF' -count=1"
+      ],
+      "risks": [
+        "Removing comma-list support may break Go users relying on the extension; hide it behind an opt-in if compatibility is required."
+      ],
+      "non_goals": [
+        "Do not implement text extraction from PDFs; TS Read sends document/page image content, not extracted text."
+      ]
+    },
+    {
+      "id": "READ-TASK-005",
+      "title": "Bridge Read into TS-style permission, observable path, and strict validation lifecycle",
+      "priority": "P1",
+      "addresses_gaps": [
+        "READ-GAP-005",
+        "READ-GAP-009"
+      ],
+      "owned_files": [
+        "types/tools.go",
+        "registry/registry.go",
+        "registry_setup.go",
+        "tools/parse.go",
+        "tools/file_operations.go",
+        "tools/file_read_security.go",
+        "tools/file_operations_test.go",
+        "tools/file_read_alignment_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/FileReadTool/FileReadTool.ts:385-494",
+        "../src/utils/path.ts:32-84",
+        "types/tools.go:24-44",
+        "tools/parse.go:13-22",
+        "tools/file_operations.go:15-45",
+        "tools/file_operations.go:279-336"
+      ],
+      "implementation_steps": [
+        "Add optional tool metadata/hooks for getPath, observable input backfill, permission matcher, and read permission checks, or implement a focused Read adapter consumed by the runtime.",
+        "Make Read parse strict input and reject unknown keys before I/O.",
+        "Preserve current fd verification while adding a no-I/O deny/UNC path stage before opening/statting.",
+        "Route permission-denied and invalid-input errors through TS-equivalent message/error semantics where the Go runtime supports them."
+      ],
+      "acceptance": [
+        "Unknown Read input keys are rejected before filesystem access.",
+        "Observable/tool-use consumers see expanded Read file_path values equivalent to TS.",
+        "Explicit denied read paths are rejected before I/O.",
+        "UNC-style paths are not probed before the permission lifecycle can decide.",
+        "AllowedDirs/fd verification still protects symlink and TOCTOU escapes."
+      ],
+      "verification_commands": [
+        "go test ./types ./registry ./tools -run 'TestFileReadTool.*(Permission|Allowed|Unknown|UNC|Binary|Device)|TestAlignment_FileRead.*Schema|Test.*Observable|Test.*Strict' -count=1"
+      ],
+      "risks": [
+        "Permission lifecycle changes are cross-cutting; keep the first task limited to Read hooks and strict parsing unless a shared framework migration is already approved."
+      ],
+      "non_goals": [
+        "Do not weaken existing fd verification to match TS; it is compatible as an additional post-permission safety check."
+      ]
+    },
+    {
+      "id": "READ-TASK-006",
+      "title": "Implement TS file-reading limits, context overrides, and token-count behavior",
+      "priority": "P1",
+      "addresses_gaps": [
+        "READ-GAP-006"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "tools/read_multiformat.go",
+        "tools/file_operations.go",
+        "tools/file_read_tiered_tokens.go",
+        "tools/file_read_limits_test.go",
+        "tools/file_operations_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/FileReadTool/limits.ts:24-92",
+        "../src/tools/FileReadTool/FileReadTool.ts:502-516",
+        "../src/tools/FileReadTool/FileReadTool.ts:755-771",
+        "tools/read_multiformat.go:17-24",
+        "tools/file_operations.go:195-205",
+        "tools/file_operations.go:409-437",
+        "tools/file_read_tiered_tokens.go:23-32"
+      ],
+      "implementation_steps": [
+        "Introduce a FileReadingLimits provider with TS precedence: env override, experiment/config override, defaults, and per-call/session context override.",
+        "Wire limits into FileReadTool from SetupRegistry/runtime context.",
+        "Log the override analytics event when per-context overrides are supplied.",
+        "Decide and implement a TS-equivalent precise token counter path, or isolate current local estimation behind a documented non-TS fallback."
+      ],
+      "acceptance": [
+        "CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS controls text read token limits like TS.",
+        "Runtime context can override maxTokens and maxSizeBytes per Read call/session.",
+        "Read prompt guidance can reflect includeMaxSizeInPrompt and targetedRangeNudge flags if those prompts are surfaced in Go.",
+        "Token-limit boundary tests match TS fixtures for below, near, and above maxTokens.",
+        "Override analytics is emitted only when an override is present."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestFileRead.*(Limit|Token|Max|Prompt|Override)|TestReadLimits|TestFileReadToolAllowsTargetedReadsForLargeFiles' -count=1"
+      ],
+      "risks": [
+        "An API-backed token counter may require provider access; if unavailable, tests should clearly mark the remaining difference rather than silently treating estimates as parity."
+      ],
+      "non_goals": [
+        "Do not change image compression/token budgeting except where it depends on the same active token budget provider."
+      ]
+    },
+    {
+      "id": "READ-TASK-007",
+      "title": "Align Read-driven skill discovery and conditional activation lifecycle",
+      "priority": "P2",
+      "addresses_gaps": [
+        "READ-GAP-007"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "tools/file_operations.go",
+        "tools/file_read_skill_discovery.go",
+        "skills/loader.go",
+        "tools/file_read_integration_test.go",
+        "tools/skill_alignment_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/FileReadTool/FileReadTool.ts:575-590",
+        "registry_setup.go:318-326",
+        "tools/file_operations.go:494-534",
+        "tools/file_read_skill_discovery.go:56-213",
+        "skills/loader.go:201-215"
+      ],
+      "implementation_steps": [
+        "Move Read skill discovery to the TS timing point: after dedup miss and before the inner read work.",
+        "Add a CLAUDE_CODE_SIMPLE guard to skip Read-driven discovery/activation.",
+        "Represent dynamicSkillDirTriggers or the Go equivalent so attachment/listing consumers can see why directories were surfaced.",
+        "Implement per-name conditional activation rather than discarding LookupDynamicSkillsForPath results.",
+        "Keep directory loading best-effort/non-blocking if the Go runtime supports asynchronous loading safely."
+      ],
+      "acceptance": [
+        "A read near a skill directory surfaces/activates the skill before content handling completes, matching TS lifecycle expectations.",
+        "Dedup hits do not run the discovery path if TS does not run it for that branch.",
+        "CLAUDE_CODE_SIMPLE disables Read-driven skill discovery.",
+        "Dynamic path/basename skill triggers activate the matching skill name, not only a broad cache warm.",
+        "Tests cover success, dedup hit, simple mode, nearby skill dir, SKILL.md, and registered dynamic triggers."
+      ],
+      "verification_commands": [
+        "go test ./tools ./skills -run 'TestDiscoverSkillDirs|TestFileReadTool.*Skill|TestSkill.*Conditional|Test.*CLAUDE_CODE_SIMPLE' -count=1"
+      ],
+      "risks": [
+        "Changing activation timing can affect prompt/tool listing order; verify against the query loop that injects skills."
+      ],
+      "non_goals": [
+        "Do not rewrite the whole Skill tool; focus on Read-triggered discovery and activation."
+      ]
+    },
+    {
+      "id": "READ-TASK-008",
+      "title": "Align Read analytics payloads and listener signatures/scope",
+      "priority": "P2",
+      "addresses_gaps": [
+        "READ-GAP-008"
+      ],
+      "owned_files": [
+        "tools/file_operations.go",
+        "tools/file_read_alignment_test.go",
+        "tools/file_read_integration_test.go",
+        "tools/file_read_analytics_test.go"
+      ],
+      "dependencies": [
+        "READ-TASK-002 if listener/dedup behavior depends on eligible state entries."
+      ],
+      "read_first": [
+        "../src/tools/FileReadTool/FileReadTool.ts:161-170",
+        "../src/tools/FileReadTool/FileReadTool.ts:1040-1044",
+        "../src/tools/FileReadTool/FileReadTool.ts:1067-1083",
+        "tools/file_operations.go:89-114",
+        "tools/file_operations.go:494-520"
+      ],
+      "implementation_steps": [
+        "Add a TS-compatible listener path that receives resolved file path and textual content for text reads only.",
+        "Keep any Go rich listener as an explicitly separate non-TS extension if still needed.",
+        "Change `tengu_session_file_read` payload to TS field names and values.",
+        "Avoid duplicate session-file analytics events unless TS emits the same event count.",
+        "Thread messageID or the Go equivalent where parent message context is available."
+      ],
+      "acceptance": [
+        "Text reads invoke TS-compatible listeners with `(filePath, content)` and a snapshot-safe unsubscribe behavior.",
+        "Notebook/image/PDF reads do not invoke the TS-compatible text listener unless TS changes.",
+        "`tengu_session_file_read` payload includes totalLines, readLines, totalBytes, readBytes, offset, optional limit/ext/messageID, and session booleans.",
+        "Dedup analytics payload contains only the TS extension metadata.",
+        "Existing Go rich listeners, if retained, are documented/tested as separate from TS parity."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestFileReadTool.*Analytics|TestFileReadTool.*Listener|TestAlignment_FileRead_(DedupAnalytics|SessionAnalytics)|TestRead.*SessionFile' -count=1"
+      ],
+      "risks": [
+        "Listener signature changes can break internal Go consumers; add a new TS-compatible listener rather than mutating existing public callbacks if necessary."
+      ],
+      "non_goals": [
+        "Do not redesign global analytics infrastructure in this task."
+      ]
+    },
+    {
+      "id": "READ-TASK-009",
+      "title": "Normalize Read paths and cwd handling to TS expandPath semantics",
+      "priority": "P2",
+      "addresses_gaps": [
+        "READ-GAP-009",
+        "READ-GAP-005"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "tools/file_operations.go",
+        "tools/file_read_state.go",
+        "tools/agent_cwd.go",
+        "tools/runtime_scope.go",
+        "tools/file_read_path_test.go",
+        "tools/agent_test.go"
+      ],
+      "dependencies": [
+        "READ-TASK-005 if observable-input backfill and permission hooks are implemented first."
+      ],
+      "read_first": [
+        "../src/utils/path.ts:32-84",
+        "../src/utils/cwd.ts:4-31",
+        "../src/tools/FileReadTool/FileReadTool.ts:388-394",
+        "../src/tools/FileReadTool/FileReadTool.ts:518-522",
+        "tools/file_operations.go:248-286",
+        "tools/agent_cwd.go:53-79",
+        "registry_setup.go:175-188"
+      ],
+      "implementation_steps": [
+        "Introduce a Go expandReadPath helper matching TS trim, empty path, ~, relative cwd, Windows POSIX conversion where applicable, and Unicode normalization behavior.",
+        "Inject RuntimeScope/current cwd into FileReadTool so base session Read does not depend on process cwd.",
+        "Use the expanded path consistently for permission checks, fd verification, state keys, analytics, and displayed file paths where TS does.",
+        "Keep agent cwd wrapping compatible or remove duplicated rewriting once FileReadTool itself is scoped."
+      ],
+      "acceptance": [
+        "`~`, `~/x`, whitespace-padded paths, relative paths, and empty/whitespace paths resolve like TS.",
+        "Concurrent agent/worktree reads use their own cwd without process-global os.Chdir behavior.",
+        "ReadState keys are stable across relative and absolute inputs that resolve to the same path.",
+        "macOS screenshot thin-space fallback still works after the broader expansion change.",
+        "Tests cover POSIX and Windows path cases where the Go runtime can simulate them."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestFileRead.*Path|TestNormalizeReadFilePath|TestReadFileState_NormalizesKeys|TestAgent.*CWD|Test.*RuntimeScope' -count=1"
+      ],
+      "risks": [
+        "Path normalization changes can affect allowed-dir checks; run permission/path tests together."
+      ],
+      "non_goals": [
+        "Do not change path semantics for unrelated tools except where shared helpers are intentionally adopted."
+      ]
+    },
+    {
+      "id": "READ-TASK-010",
+      "title": "Clean and extend the Read parity test baseline",
+      "priority": "P1",
+      "addresses_gaps": [
+        "READ-GAP-010",
+        "READ-GAP-004"
+      ],
+      "owned_files": [
+        "tools/file_read_alignment_test.go",
+        "tools/file_read_integration_test.go",
+        "tools/file_operations_test.go",
+        "tools/file_read_security_gating_test.go",
+        "tools/file_read_state_test.go",
+        "tools/file_read_path_test.go",
+        "tools/file_read_limits_test.go",
+        "tools/file_read_analytics_test.go"
+      ],
+      "dependencies": [
+        "READ-TASK-001 through READ-TASK-009 for final green assertions; can start earlier by marking current divergences as expected red parity tests."
+      ],
+      "read_first": [
+        "../src/tools/FileReadTool/FileReadTool.ts",
+        "../src/tools/FileReadTool/prompt.ts",
+        "../src/tools/FileReadTool/limits.ts",
+        "../src/utils/pdfUtils.ts",
+        "tools/file_read_alignment_test.go",
+        "tools/file_read_integration_test.go",
+        "tools/file_operations_test.go"
+      ],
+      "implementation_steps": [
+        "Remove or rewrite stale comments that say all alignment tests must fail today.",
+        "Split tests into current conformance tests and explicit TS-parity red tests so Go-only extensions are not mislabeled as parity.",
+        "Replace comma-separated PDF selector expectations with TS rejection tests under default parity mode.",
+        "Add focused tests for dedup after Write/Edit/NotebookEdit, rich-read no-dedup, exact file_unchanged stub, active-model cyber gating, listener payloads, strict unknown input, and path expansion.",
+        "Record the focused verification commands in the test file headers."
+      ],
+      "acceptance": [
+        "Focused Read tests fail only for real remaining parity gaps, not stale comments or Go-only assumptions.",
+        "`go test ./tools -run 'Test(FileReadTool|ReadFileState|CyberReminderGating|Alignment_FileRead)' -count=1` passes after the implementation tasks are complete.",
+        "PDF selector tests prove TS grammar and open-ended rejection behavior.",
+        "Coverage exists for every gap in this report or an explicit reason is documented in test comments.",
+        "Tests do not require external PDF tools unless they skip with a clear runtime availability message."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'Test(FileReadTool|ReadFileState|CyberReminderGating|Alignment_FileRead)' -count=1",
+        "go test ./tools -run 'TestFileRead|TestReadFile|TestPDF|TestCyberReminder|TestDiscoverSkillDirs' -count=1",
+        "go test ./tools -count=1"
+      ],
+      "risks": [
+        "Updating tests before behavior is aligned can hide real gaps; keep red tests explicit and trace each to a TS evidence path."
+      ],
+      "non_goals": [
+        "Do not change production behavior in this test-cleanup task unless it is paired with one of the implementation tasks above."
+      ]
+    }
+  ]
+}

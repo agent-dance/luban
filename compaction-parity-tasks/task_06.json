@@ -1,0 +1,56 @@
+{
+  "id": "task_06",
+  "title": "Implement stateful aggregate tool-result budget in main query path",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "owner_role": "executor",
+  "parallel_group": "tool_results",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_05"
+  ],
+  "objective": "Move aggregate per-message tool-result budget enforcement into the Go query loop with stable, persistent replacement decisions.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/query.ts:369",
+    "/Users/blurooo/project/go-claude/src/utils/toolResultStorage.ts:367",
+    "/Users/blurooo/project/go-claude/src/utils/toolResultStorage.ts:769",
+    "/Users/blurooo/project/go-claude/src/utils/toolResultStorage.ts:924",
+    "/Users/blurooo/project/go-claude/gosrc/compact/strip.go:79"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/compact/strip.go",
+    "/Users/blurooo/project/go-claude/gosrc/compact/resultstore.go",
+    "/Users/blurooo/project/go-claude/gosrc/session",
+    "/Users/blurooo/project/go-claude/gosrc/types"
+  ],
+  "implementation_scope": [
+    "Add ContentReplacementState with seenIds and replacements maps scoped per conversation thread.",
+    "Apply aggregate budget before microcompact and before provider request construction.",
+    "Group candidate tool results by API-wire user message boundaries, not only by local message objects.",
+    "Persist newly replaced records to transcript/session storage where resume can reconstruct them.",
+    "Reapply previous replacements byte-identically with no file I/O.",
+    "Skip image content and tools whose result-size contract should not be persisted.",
+    "Remove or narrow the current compact-path-only stateless EnforcePerMessageBudget so it does not diverge from the main path."
+  ],
+  "out_of_scope": [
+    "Do not implement cached microcompact cache_edits in this task.",
+    "Do not redesign session storage beyond adding the minimum replacement records needed for resume."
+  ],
+  "acceptance_criteria": [
+    "Repeated query-loop calls do not change already-seen tool-result replacement decisions.",
+    "Resume reconstruction freezes previously visible content and reapplies recorded replacements.",
+    "Parallel tool results in adjacent user messages are treated as one API-wire user message when appropriate.",
+    "Tests cover over-budget fresh results, frozen unreplaced results, reapplication, persistence failure, image skip, and resume."
+  ],
+  "verification": [
+    "go test ./compact",
+    "go test ./loop",
+    "go test ./session"
+  ],
+  "risks": [
+    "Prompt cache stability depends on exact replacement strings.",
+    "Session storage schemas may need migration-safe extension."
+  ],
+  "dispatch_prompt": "Implement TS-like stateful per-message aggregate tool-result budget enforcement in the Go main query path, including resume-safe replacement records."
+}

@@ -1,0 +1,1 @@
+我补跑这个简化版 click option 解析时，发现 env/default/prompt/flag 这些组合的覆盖还是太薄。麻烦只在 tests 下面补一组回归测试，重点把空字符串、env 优先级、prompt 兜底、flag 字符串和 callback 异常这些边界固定住，主逻辑先别动。项目现在是用 unittest discover 跑测试的，所以测试按现有 unittest 写法来，别额外引 pytest，数量大概十五到二十个就行。

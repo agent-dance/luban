@@ -1,0 +1,75 @@
+#!/bin/bash
+set -euo pipefail
+workspace_dir="${WORKSPACE_DIR:-/workspace}"
+if [ -d "$workspace_dir" ]; then cd "$workspace_dir"; fi
+tmp_patch="$(mktemp)"
+cleanup() { rm -f "$tmp_patch"; }
+trap cleanup EXIT
+cat > "$tmp_patch" <<'CODEBUDDY_PATCH'
+diff --git a/tests/test_regression.py b/tests/test_regression.py
+new file mode 100644
+index 0000000..ccc7520
+--- /dev/null
++++ b/tests/test_regression.py
+@@ -0,0 +1,59 @@
++import unittest
++from httpx_like.request_model import RequestBuilder
++
++
++class RequestBuilderRegressionTests(unittest.TestCase):
++    def test_base_headers_are_lowercased(self):
++        self.assertEqual(RequestBuilder(base_headers={"User-Agent":"base"}).build("GET", "u")["headers"], {"user-agent":"base"})
++
++    def test_request_headers_are_lowercased(self):
++        self.assertEqual(RequestBuilder().build("GET", "u", headers={"X-Token":"abc"})["headers"], {"x-token":"abc"})
++
++    def test_headers_override_case_insensitively(self):
++        self.assertEqual(RequestBuilder(base_headers={"Accept":"json"}).build("GET", "u", headers={"ACCEPT":"text"})["headers"]["accept"], "text")
++
++    def test_method_is_uppercased(self):
++        self.assertEqual(RequestBuilder().build("post", "u")["method"], "POST")
++
++    def test_json_sets_default_content_type(self):
++        self.assertEqual(RequestBuilder().build("POST", "u", json={})["headers"]["content-type"], "application/json")
++
++    def test_explicit_content_type_is_preserved_for_json(self):
++        self.assertEqual(RequestBuilder().build("POST", "u", headers={"Content-Type":"custom"}, json={})["headers"]["content-type"], "custom")
++
++    def test_cookies_are_merged_with_override(self):
++        self.assertEqual(RequestBuilder(cookies={"session":"old", "theme":"dark"}).build("GET", "u", cookies={"session":"new"})["cookies"], {"session":"new", "theme":"dark"})
++
++    def test_no_body_records_none(self):
++        req = RequestBuilder().build("GET", "u")
++        self.assertEqual((req["body_type"], req["body"]), (None, None))
++
++    def test_body_type_and_body_are_recorded(self):
++        req = RequestBuilder().build("POST", "u", content=b"abc")
++        self.assertEqual((req["body_type"], req["body"]), ("content", b"abc"))
++
++    def test_base_params_stay_before_request_params(self):
++        self.assertEqual(RequestBuilder(params=[("a", "1")]).build("GET", "u", params=[("b", "2")])["params"], [("a", "1"), ("b", "2")])
++
++    def test_dict_params_are_accepted(self):
++        self.assertEqual(RequestBuilder().build("GET", "u", params={"q":"cat"})["params"], [("q", "cat")])
++
++    def test_list_values_are_expanded(self):
++        self.assertEqual(RequestBuilder().build("GET", "u", params={"tag":["a", "b"]})["params"], [("tag", "a"), ("tag", "b")])
++
++    def test_tuple_values_are_expanded(self):
++        self.assertEqual(RequestBuilder().build("GET", "u", params={"tag":("a", "b")})["params"], [("tag", "a"), ("tag", "b")])
++
++    def test_none_param_values_are_skipped(self):
++        self.assertEqual(RequestBuilder().build("GET", "u", params={"skip":None, "keep":"1"})["params"], [("keep", "1")])
++
++    def test_none_inside_list_is_skipped(self):
++        self.assertEqual(RequestBuilder().build("GET", "u", params={"tag":["a", None, "b"]})["params"], [("tag", "a"), ("tag", "b")])
++
++    def test_json_and_data_are_mutually_exclusive(self):
++        with self.assertRaises(ValueError):
++            RequestBuilder().build("POST", "u", json={}, data=b"x")
++
++    def test_data_and_content_are_mutually_exclusive(self):
++        with self.assertRaises(ValueError):
++            RequestBuilder().build("POST", "u", data=b"x", content=b"y")
+CODEBUDDY_PATCH
+git apply "$tmp_patch"

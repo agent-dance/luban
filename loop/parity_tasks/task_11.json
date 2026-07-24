@@ -1,0 +1,79 @@
+{
+  "id": "task_11",
+  "title": "补齐 Post-Compact 恢复内容与清理",
+  "priority": "P1",
+  "can_dispatch_independently": true,
+  "depends_on": [
+    "task_10"
+  ],
+  "objective": "在 compaction 成功后恢复原版会重新注入或清理的关键上下文，避免 Go 压缩后丢失计划、技能、异步任务、MCP 指令、session hooks 和 transcript 线索。",
+  "improvement_points": [
+    "补齐 post-compact attachments：plan、skills、async agents、deferred tools delta、agent listing delta、MCP instructions delta。",
+    "执行 SessionStart hooks 或 Go 等价 hook，以恢复 compact 后会话环境。",
+    "实现 stripReinjectedAttachments，避免把自动注入内容再次摘要进 compact summary。",
+    "实现 postCompactCleanup，清理或协调 pending operations 和 tool state。",
+    "支持 transcriptPath 写入或等价引用，让模型可按需读取完整历史细节。",
+    "支持 partial compaction 和 session memory compaction 的最小接口。"
+  ],
+  "evidence": [
+    {
+      "source": "go_current",
+      "file": "compact/compact.go",
+      "lines": "14-41",
+      "note": "Go TODO 明确缺少 session memory compaction、partial compaction、post-compact attachments、stripReinjectedAttachments、postCompactCleanup。"
+    },
+    {
+      "source": "go_current",
+      "file": "compact/compact.go",
+      "lines": "57-59",
+      "note": "Go TODO 明确缺少 transcriptPath。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/services/compact/compact.ts",
+      "lines": "326-384",
+      "note": "TS buildPostCompactMessages 和 compact boundary metadata 保持 compact 后消息结构。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/services/compact/compact.ts",
+      "lines": "591-608",
+      "note": "TS compact 后执行 SessionStart hooks 并生成 boundary/summary/messages。"
+    }
+  ],
+  "scope": {
+    "include": [
+      "compact/compact.go",
+      "compact/post_compact.go",
+      "loop/query.go",
+      "session",
+      "skills",
+      "mcp",
+      "compact/post_compact_test.go"
+    ],
+    "exclude": [
+      "完整 attachment 队列，交给 task_12",
+      "新的 UI 组件"
+    ]
+  },
+  "implementation_steps": [
+    "定义 PostCompactAttachmentProvider 接口，分别由 plan、skills、mcp、async tasks 等模块实现或先 fake。",
+    "在 CompactionResult 中携带 attachments 与 hookResults。",
+    "实现 stripReinjectedAttachments 规则，先覆盖 Go 已有 system-reminder/skill listing。",
+    "实现 transcript writer 或引用现有 session transcript 存储。",
+    "为恢复顺序建立 golden test：boundary -> summary -> hook results -> restored attachments -> preserved tail。"
+  ],
+  "acceptance_criteria": [
+    "compact 后技能列表不会重复注入全量内容，只注入必要 delta。",
+    "compact 后最近访问文件之外，plan/MCP instructions/deferred tools 等可按 provider 返回恢复。",
+    "自动注入附件不会被下一次 compact 重复摘要。",
+    "summary message 包含 transcript reference 或明确占位，便于模型恢复细节。"
+  ],
+  "tests": [
+    "go test ./compact ./loop -run 'TestPostCompact|TestStripReinjected|TestTranscriptPath' -count=1"
+  ],
+  "risks": [
+    "该任务跨模块多，建议先做 provider 接口和 fake tests，再逐个接真实模块。",
+    "恢复太多附件会伤害 prompt cache，需要预算和去重。"
+  ]
+}

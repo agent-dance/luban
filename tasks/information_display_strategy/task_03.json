@@ -1,0 +1,48 @@
+{
+  "id": "task_03",
+  "title": "Unified disclosure policy and command display contract",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Derive a product-independent policy that decides when output is hidden, folded to one line, summarized, or fully displayed, then apply it to every command family in this project.",
+  "scope": {
+    "include": [
+      "Decision inputs such as user intent, risk, outcome, novelty, duration, volume, repetition, interactivity, and accessibility",
+      "Information contracts for file, search, shell, web, MCP, task/team, plan/worktree, permission, and messaging commands",
+      "Default, running, success, warning, error, and user-expanded views",
+      "Data retention independent from visual disclosure"
+    ],
+    "exclude": [
+      "Pixel-perfect visual design",
+      "Changes to command semantics",
+      "A single line-count threshold used as the entire policy"
+    ]
+  },
+  "deliverables": [
+    "A deterministic disclosure decision table with precedence rules",
+    "A command-family display matrix naming required and optional fields",
+    "Edge cases and anti-patterns that invalidate naive truncation"
+  ],
+  "acceptance_criteria": [
+    "Errors, approvals, destructive actions, and user-requested detail cannot be silently collapsed",
+    "Repeated low-value success events can be grouped without losing exact evidence",
+    "Screen-reader and narrow-terminal behavior are explicitly addressed"
+  ],
+  "owned_output": "tasks/information_display_strategy/_agent_reports/task_03.md",
+  "dependencies": [],
+  "parallelization": {
+    "independent": true,
+    "max_concurrency_group": 6,
+    "write_scope": [
+      "tasks/information_display_strategy/_agent_reports/task_03.md"
+    ]
+  },
+  "verification": [
+    "Run the policy against representative success, failure, approval, long-output, and repeated-event examples",
+    "No edits outside owned_output"
+  ],
+  "result": {
+    "report": "tasks/information_display_strategy/_agent_reports/task_03.md",
+    "completed_at": "2026-07-15",
+    "summary": "Unified D0-D3 disclosure policy, priority rules, command-family contracts, accessibility constraints, and acceptance tests."
+  }
+}

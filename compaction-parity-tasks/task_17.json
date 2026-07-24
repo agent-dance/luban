@@ -1,0 +1,52 @@
+{
+  "id": "task_17",
+  "title": "Integrate context-collapse and snipping parity where supported",
+  "priority": "P2",
+  "status": "ready_for_dispatch",
+  "owner_role": "architect",
+  "parallel_group": "advanced_recovery",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_08",
+    "task_09"
+  ],
+  "objective": "Decide and implement the Go equivalent for TS context-collapse and history snip ordering, or explicitly document unsupported behavior.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/query.ts:396",
+    "/Users/blurooo/project/go-claude/src/query.ts:428",
+    "/Users/blurooo/project/go-claude/src/query.ts:1085",
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go:330",
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go:533"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/prompt/context-compaction-analysis.md",
+    "/Users/blurooo/project/go-claude/src/services/contextCollapse"
+  ],
+  "implementation_scope": [
+    "Map which TS context-collapse capabilities have Go equivalents.",
+    "Ensure any history snip projection runs before microcompact/autocompact in the correct order if kept.",
+    "If context-collapse exists in Go, project collapsed view before auto-compact and drain staged collapses before reactive compact.",
+    "If context-collapse is not supported, remove misleading parity docs and ensure HistorySnip is labeled as fallback, not equivalent.",
+    "Thread snipTokensFreed or equivalent into auto-compact threshold checks if snip survives."
+  ],
+  "out_of_scope": [
+    "Do not implement a full context-collapse subsystem from scratch unless explicitly approved later.",
+    "Do not block P0 reactive compact on context-collapse parity."
+  ],
+  "acceptance_criteria": [
+    "The Go pipeline order for snip/collapse/microcompact/autocompact is explicit and tested.",
+    "If collapse is unsupported, code and docs do not claim parity.",
+    "Reactive overflow recovery uses collapse drain first only when a real collapse subsystem exists."
+  ],
+  "verification": [
+    "go test ./compact",
+    "go test ./loop"
+  ],
+  "risks": [
+    "Context-collapse is feature-flagged and may be absent from open builds; avoid importing unavailable TS-only assumptions.",
+    "Snip token accounting can falsely trigger or suppress auto-compact if not plumbed carefully."
+  ],
+  "dispatch_prompt": "Audit and align Go's snip/context-collapse position relative to TS, implementing supported equivalents and clearly documenting unsupported context-collapse behavior."
+}

@@ -1,0 +1,29 @@
+{
+  "name": "websearch-allowed-blocked-conflict",
+  "input": {
+    "query": "golang",
+    "allowedDomains": ["go.dev"],
+    "blockedDomains": ["example.com"],
+    "results": [],
+    "cacheHit": false,
+    "fallbackReason": "validation_conflict",
+    "error": "allowed_domains and blocked_domains cannot both be set"
+  },
+  "expected": {
+    "input": {
+      "query": "golang",
+      "allowedDomains": ["go.dev"],
+      "blockedDomains": ["example.com"]
+    },
+    "execution": {
+      "method": "local_fallback",
+      "fallbackReason": "validation_conflict",
+      "cacheHit": false
+    },
+    "progress": [
+      {"type": "started"},
+      {"type": "query_issued", "query": "golang"}
+    ],
+    "error": "allowed_domains and blocked_domains cannot both be set"
+  }
+}

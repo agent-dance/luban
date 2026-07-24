@@ -1,0 +1,816 @@
+{
+  "tool": "ToolSearch",
+  "summary": "Go ToolSearch has a working deferred-tool discovery loop, structured ToolReferenceBlock results, registry visibility filtering, dynamic MCP tool support, cache/index helpers, and several local tests. It is still not fully aligned with the TypeScript reference. The most important differences are that Go exposes a different input schema (`limit` instead of TS `max_results`), routes keyword searches through BM25/embedding behavior instead of the TS fixed keyword scorer and fast paths, lacks TS's per-request enablement gates and provider-specific defer_loading/beta handling, does not announce deferred-tool deltas during normal turns, and does not reliably preserve loaded deferred tools across compaction/resume. Some existing Go alignment tests encode non-TS expectations, so they currently protect divergences rather than parity.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "TSRCH-GAP-001",
+      "category": "schema",
+      "severity": "P0",
+      "title": "Go exposes `limit` while TS exposes `max_results`",
+      "description": "The TS input schema is `{ query: string, max_results?: number }` with a default of 5. Go's public schema advertises `limit`, min/max bounds, and no `max_results`; it only accepts `max_results` as a hidden legacy struct field. This changes the model-facing API and can make TS-compatible callers invisible to schema-driven prompting while making Go-generated `limit` calls invalid against the TS tool.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:21-33",
+          "note": "TS declares `query` and optional `max_results` with default 5."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/tool_search.go:201-217",
+          "note": "Go Schema() declares `query` and `limit`, with minimum/maximum bounds."
+        },
+        {
+          "path": "tools/tool_search.go:294-309",
+          "note": "Execute reads `Limit`, falls back to `MaxResults`, defaults to 5, and clamps to [1, 50]."
+        },
+        {
+          "path": "tools/tool_search.go:377-382",
+          "note": "ToolSearchInput marks `Limit` as canonical and `MaxResults` as backwards compatibility."
+        }
+      ],
+      "impact": "Schema-driven model/tool clients diverge from TS. Existing Go parity tests assert the opposite of the current TS reference.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-001",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-002",
+      "category": "runtime_logic",
+      "severity": "P0",
+      "title": "Go Execute uses BM25/embedding ranking instead of TS keyword scorer and fast paths",
+      "description": "TS keyword search has explicit behavior: bare exact tool name returns directly, `mcp__server` prefix returns prefix matches directly, `+term` filters candidates by name/description/searchHint, and scores with fixed weights over parsed name parts, searchHint, and prompt description. Go's Execute path builds a ToolIndex and BM25Ranker, optionally reranks embeddings, and never calls the preserved TS-like `searchToolsWithKeywords` helper. This loses TS fast paths; for example a bare CamelCase tool name can tokenize differently from the indexed expanded identifier.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:194-216",
+          "note": "TS exact-name and `mcp__` prefix fast paths run before scoring."
+        },
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:218-302",
+          "note": "TS partitions required terms and applies fixed score weights for name parts, hints, and descriptions."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/tool_search.go:323-373",
+          "note": "Go keyword Execute path refreshes BM25 index/ranker, caches ScoredMatch results, and optionally embedding-reranks."
+        },
+        {
+          "path": "tools/tool_search_ranker.go:158-220",
+          "note": "BM25 Rank() tokenizes/scales documents and sorts by BM25 score, not TS fixed weights."
+        },
+        {
+          "path": "tools/tool_search.go:617-746",
+          "note": "A TS-like searchToolsWithKeywords helper still exists but is marked legacy and is not used by Execute."
+        }
+      ],
+      "impact": "Search result ordering and even match/no-match behavior can differ for exact names, MCP prefixes, required terms, stopwords, and CamelCase names.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-002",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-003",
+      "category": "output_contract",
+      "severity": "P0",
+      "title": "Go result shape and model-facing prompt differ from TS",
+      "description": "TS declares a typed output object with `matches`, `query`, `total_deferred_tools`, and optional `pending_mcp_servers`, then maps successful results to pure `tool_reference` content blocks. Go returns a ToolResult with prose summaries, optional metadata (`scores`, `rerank`, MCP state strings), and ToolReferenceBlocks; its prompt describes BM25 scores/snippets rather than the TS deferred-tool-location and result-format contract. On empty results, TS emits the fixed text `No matching deferred tools found` plus a pending-server sentence only when applicable; Go includes query text, deferred pool count, missing names, and richer MCP-state prose/metadata.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:37-44",
+          "note": "TS outputSchema is the typed matches/query/total_deferred_tools/pending_mcp_servers object."
+        },
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:444-469",
+          "note": "TS maps success to tool_reference blocks and empty results to a short fixed text response."
+        },
+        {
+          "path": "../src/tools/ToolSearchTool/prompt.ts:27-51",
+          "note": "TS prompt explains deferred-tool locations, complete schema availability, result format, and query forms."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/tool_search.go:189-197",
+          "note": "Go description advertises BM25 ranking, snippets, and numeric rank scores."
+        },
+        {
+          "path": "tools/tool_search.go:427-501",
+          "note": "Go buildToolSearchResult renders prose summaries, ToolReferenceBlocks, scores metadata, rerank metadata, and MCP-state metadata."
+        },
+        {
+          "path": "types/tools.go:58-68",
+          "note": "Go's generic ToolResult has string Content, ContentBlocks, and string metadata rather than the TS output schema object."
+        }
+      ],
+      "impact": "Downstream consumers and model-visible instructions do not see the same contract as TS; existing Go-only metadata and wording are not TS-compatible.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-003",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-004",
+      "category": "runtime_logic",
+      "severity": "P0",
+      "title": "ToolSearch enablement is static in Go instead of TS per-request gating",
+      "description": "TS has an optimistic base-tool inclusion check, then a definitive per-request `isToolSearchEnabled` check that considers environment mode, experimental beta kill switch, provider/proxy support, model support, ToolSearch availability after permissions/disallowed filtering, and auto-threshold sizing. It also disables ToolSearch for a request when there are no deferred tools and no pending MCP servers. Go registers ToolSearch once during SetupRegistry from a simplified env check and Registry.VisibleTools hides deferred tools whenever ToolSearch is registered, with no model, provider, permission/disallowed, auto-threshold, or no-deferred/pending request gate.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/toolSearch.ts:172-198",
+          "note": "TS getToolSearchMode implements true/false/auto modes and the experimental beta kill switch."
+        },
+        {
+          "path": "../src/utils/toolSearch.ts:270-311",
+          "note": "TS optimistic check disables default tool search for unsupported first-party proxy base URLs unless explicitly configured."
+        },
+        {
+          "path": "../src/utils/toolSearch.ts:385-473",
+          "note": "TS definitive check gates by model support, ToolSearch availability, mode, and auto threshold."
+        },
+        {
+          "path": "../src/services/api/claude.ts:1118-1172",
+          "note": "TS performs request-time filtering and disables ToolSearch when there are no deferred tools and no pending MCP servers."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "registry_setup.go:79-97",
+          "note": "Go optimistic check only evaluates env values and beta kill switch."
+        },
+        {
+          "path": "registry_setup.go:351-352",
+          "note": "ToolSearch is registered once during registry setup."
+        },
+        {
+          "path": "registry/tool_visibility.go:101-117",
+          "note": "VisibleTools hides deferred tools whenever ToolSearch is registered and loaded map lacks the tool."
+        },
+        {
+          "path": "loop/query.go:728-733",
+          "note": "Provider params use q.visibleToolDefinitions without a model/provider-specific ToolSearch enablement decision."
+        }
+      ],
+      "impact": "Go can hide tools or emit tool_reference flows in sessions where TS would disable ToolSearch, and can keep ToolSearch visible when TS would filter it out.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-004",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-005",
+      "category": "provider_lifecycle",
+      "severity": "P0",
+      "title": "Provider `defer_loading`, beta headers, and stale tool_reference stripping are not TS-equivalent",
+      "description": "TS adds provider-specific tool-search beta headers only when request-time ToolSearch is enabled, marks deferred tool schemas with `defer_loading`, and strips tool_reference blocks when tool search is disabled or a referenced tool is no longer available. Go ToolDefinition has no `defer_loading` field, Anthropic beta header logic is hard-coded to the 1P header from env rather than the request's provider/model gate, and Anthropic conversion serializes ToolReferenceBlocks unconditionally whenever they exist.",
+      "ts_evidence": [
+        {
+          "path": "../src/services/api/claude.ts:1174-1182",
+          "note": "TS adds the provider-appropriate ToolSearch beta header only when useToolSearch is true."
+        },
+        {
+          "path": "../src/services/api/claude.ts:1231-1245",
+          "note": "TS passes deferLoading into toolToAPISchema while building tool schemas."
+        },
+        {
+          "path": "../src/utils/api.ts:68-78",
+          "note": "TS API tool schema supports `defer_loading` as a beta extra."
+        },
+        {
+          "path": "../src/utils/api.ts:223-226",
+          "note": "TS adds defer_loading when requested."
+        },
+        {
+          "path": "../src/utils/betas.ts:197-208",
+          "note": "TS chooses advanced-tool-use for firstParty/foundry and tool-search-tool for Vertex/Bedrock."
+        },
+        {
+          "path": "../src/services/api/claude.ts:1283-1289",
+          "note": "TS strips tool_reference blocks when request-time tool search is disabled."
+        },
+        {
+          "path": "../src/utils/messages.ts:1535-1613",
+          "note": "TS strips tool_reference blocks that point to unavailable tools."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "types/tools.go:17-22",
+          "note": "Go ToolDefinition only has name, description, and input_schema."
+        },
+        {
+          "path": "provider/anthropic.go:159-187",
+          "note": "Go adds a hard-coded 1P beta header based on env, without provider-specific header selection or model support checks."
+        },
+        {
+          "path": "provider/anthropic.go:1016-1024",
+          "note": "Go converts every ToolReferenceBlock to an Anthropic tool_reference block unconditionally."
+        },
+        {
+          "path": "provider/openai.go:634-650",
+          "note": "OpenAI fallback converts tool references to text markers rather than TS-style stripping/filtering logic."
+        },
+        {
+          "path": "provider/responses.go:817-840",
+          "note": "Responses API fallback also converts tool references to text markers."
+        }
+      ],
+      "impact": "Go can send beta-only content without the TS safety gates, cannot represent TS defer_loading on tool schemas, and can retain stale references that TS would remove before provider submission.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-005",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-006",
+      "category": "state_lifecycle",
+      "severity": "P1",
+      "title": "Go lacks TS per-turn deferred-tools delta announcements",
+      "description": "TS announces deferred tools during normal attachment generation via `deferred_tools_delta` system reminders, or falls back to prepending an `<available-deferred-tools>` message when the delta gate is off. Go only has a post-compaction deferred-tools reminder; there is no normal-turn ToolSearch attachment in providerParams or loop attachment injection. That means the model may not see the TS-equivalent list of deferred tool names before it decides whether to use `select:<name>`.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/attachments.ts:824-849",
+          "note": "TS normal attachment generation includes deferred_tools_delta for main and subagent turns."
+        },
+        {
+          "path": "../src/utils/attachments.ts:1454-1474",
+          "note": "TS builds deferred_tools_delta after checking optimistic enablement, model support, and ToolSearch availability."
+        },
+        {
+          "path": "../src/utils/messages.ts:4178-4190",
+          "note": "TS renders the delta as a system reminder listing available/removed deferred tools."
+        },
+        {
+          "path": "../src/services/api/claude.ts:1327-1345",
+          "note": "TS falls back to prepending `<available-deferred-tools>` when delta attachments are disabled."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "loop/query.go:728-733",
+          "note": "Go provider params prepare messages/tools/system blocks but do not inject a deferred-tools announcement."
+        },
+        {
+          "path": "loop/post_compact_attachments.go:30-51",
+          "note": "Go exposes deferred and loaded tool names only through post-compact attachment provider callbacks."
+        },
+        {
+          "path": "compact/post_compact_attachments.go:236-253",
+          "note": "Go renders `Post-compaction deferred tools`, not a per-turn `deferred_tools_delta` equivalent."
+        }
+      ],
+      "impact": "The model has weaker name discovery than TS and may rely on keyword search when TS would allow exact select based on announced names.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-006",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-007",
+      "category": "state_lifecycle",
+      "severity": "P0",
+      "title": "Loaded deferred tools are not reliably preserved across compaction and resume",
+      "description": "TS reconstructs discovered tools by scanning nested tool_reference blocks inside tool_result content and by reading `preCompactDiscoveredTools` from compact boundary metadata. Go's live loop learns nested ToolReferenceBlocks from tool results during the current run, but compaction metadata extraction scans only top-level message blocks, so it misses the actual nested ToolSearch result shape. Repository search also shows no QueryLoop constructor/resume path that rebuilds `loadedToolNames` from existing messages or compact boundary metadata.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/toolSearch.ts:525-591",
+          "note": "TS extractDiscoveredToolNames reads compact boundary metadata and nested tool_reference blocks inside user tool_result content."
+        },
+        {
+          "path": "../src/services/compact/compact.ts:603-611",
+          "note": "TS writes preCompactDiscoveredTools onto full compact boundaries."
+        },
+        {
+          "path": "../src/services/compact/compact.ts:1021-1028",
+          "note": "TS also writes discovered tools for partial compaction using all messages."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "loop/query.go:393-402",
+          "note": "Go learns loaded tools from nested ToolReferenceBlocks only in current tool results."
+        },
+        {
+          "path": "loop/query.go:340-345",
+          "note": "New QueryLoop initializes loadedToolNames as an empty map."
+        },
+        {
+          "path": "compact/result.go:151-165",
+          "note": "discoveredToolNames scans top-level ToolReferenceBlock and ToolUseBlock entries, not nested ToolResultBlock.ContentBlocks."
+        },
+        {
+          "path": "compact/compact.go:390-394",
+          "note": "Compaction stores PreCompactDiscoveredTools using the incomplete discoveredToolNames helper."
+        },
+        {
+          "path": "compact/result.go:118-131",
+          "note": "Go can parse compact boundary metadata, but no loadedToolNames reconstruction path was found outside tests/event reporting."
+        }
+      ],
+      "impact": "After compaction or session resume, previously loaded deferred tools can disappear from visible definitions even though TS would keep them loaded.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-007",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-008",
+      "category": "mcp_lifecycle",
+      "severity": "P1",
+      "title": "MCP pending-state and list_changed invalidation hooks exist but are not wired like TS runtime state",
+      "description": "TS ToolSearch consults appState MCP clients on every empty result and reports pending server names. Go has global resolver hooks for pending/full MCP visibility state, and dynamic-MCP list_changed invalidator helpers, but repository search shows the resolver setters are only used by tests and SetupRegistry does not install list_changed invalidators for the production ToolSearch instance. As a result, empty ToolSearch misses normally omit TS pending_mcp_servers information, and dynamic MCP changes can rely on manual/test wiring rather than runtime wiring.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:334-339",
+          "note": "TS reads pending MCP clients from getAppState().mcp.clients on each ToolSearch call."
+        },
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:422-430",
+          "note": "TS includes pending server names when keyword search finds no matches."
+        },
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:383-394",
+          "note": "TS includes pending server names when select finds no requested tools."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/tool_search.go:16-37",
+          "note": "Go defines PendingMCPServersFn and MCPServerStatesFn globals."
+        },
+        {
+          "path": "tools/tool_search.go:111-165",
+          "note": "Go formats current MCP visibility state only if the global resolver hooks return data."
+        },
+        {
+          "path": "tools/k_protocol_test.go:285-307",
+          "note": "Pending MCP coverage injects PendingMCPServersFn directly in a unit test."
+        },
+        {
+          "path": "registry_setup.go:297-313",
+          "note": "SetupRegistry creates/refreshes MCP managers but does not wire ToolSearch pending-state resolvers or list_changed invalidators."
+        },
+        {
+          "path": "tools/mcp_notifications.go:145-172",
+          "note": "List_changed invalidator helper can clear ToolSearch, but repository search found production tests/calls only around explicit test registration."
+        }
+      ],
+      "impact": "Go often loses TS's 'server still connecting' guidance and can serve stale ToolSearch indexes after MCP tool-list changes unless runtime code explicitly wires the helper.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-008",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-009",
+      "category": "robustness",
+      "severity": "P1",
+      "title": "Go lacks TS tool_reference message-normalization safeguards",
+      "description": "TS has dedicated normalization for tool_reference blocks: strip all references when ToolSearch is disabled, strip references for unavailable tools, avoid mixing tool_reference with text inside a tool_result, and inject/relocate sibling text to avoid provider/model stop-sequence pathologies. Go serializes structured tool results directly to provider-specific formats and does not implement equivalent normalization before Anthropic/OpenAI/Responses conversion.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/messages.ts:1672-1730",
+          "note": "TS strips tool_reference blocks when tool search is not enabled and inserts a placeholder when all content is stripped."
+        },
+        {
+          "path": "../src/utils/messages.ts:1910-1965",
+          "note": "TS relocates text siblings away from tool_reference-containing user messages under the gate."
+        },
+        {
+          "path": "../src/utils/messages.ts:2139-2181",
+          "note": "TS injects a separate text sibling boundary for tool_reference messages when relocation is disabled."
+        },
+        {
+          "path": "../src/utils/messages.ts:2522-2532",
+          "note": "TS refuses to smoosh tool_reference content with other tool_result block types."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "provider/anthropic.go:820-827",
+          "note": "Go sends structured ToolResultBlock content to Anthropic directly when ContentBlocks exist."
+        },
+        {
+          "path": "provider/anthropic.go:979-1028",
+          "note": "Go converts Text/Image/Document/ToolReference blocks without TS-style stripping or sibling-boundary normalization."
+        },
+        {
+          "path": "provider/openai.go:625-651",
+          "note": "OpenAI conversion emits tool output text and then appends structured content as text/image parts, including `[tool:name]` for references."
+        },
+        {
+          "path": "provider/responses.go:817-840",
+          "note": "Responses conversion has the same text-marker fallback for tool references."
+        }
+      ],
+      "impact": "Stale or unsupported tool_reference content can survive into provider requests, and Go misses TS's special handling for tool_reference-adjacent text.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-005",
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-010",
+      "category": "testing",
+      "severity": "P1",
+      "title": "Current Go ToolSearch alignment tests assert non-TS behavior",
+      "description": "Several Go tests labeled as TS alignment encode `limit`, min/max clamping, BM25 ranking, score metadata, snippets, and embedding rerank metadata as desired parity. The TS files provided as the benchmark show `max_results`, fixed keyword scoring, and no scores/snippets/rerank fields in the output schema. This gives a false positive on parity and leaves the actual TS behaviors unprotected.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:21-44",
+          "note": "TS schema/output contract uses max_results and typed matches/query/total_deferred_tools."
+        },
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:186-302",
+          "note": "TS keyword search is a fixed scorer, not BM25."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/tool_search_alignment_test.go:60-90",
+          "note": "Go alignment tests claim TS exposes `limit` and clamps to [1,50]."
+        },
+        {
+          "path": "tools/tool_search_alignment_test.go:95-147",
+          "note": "Go alignment tests require BM25 ranking and score metadata."
+        },
+        {
+          "path": "tools/tool_search_alignment_test.go:150-175",
+          "note": "Go alignment tests require snippets/matched text in output."
+        },
+        {
+          "path": "tools/tool_search_alignment_test.go:285-298",
+          "note": "Go alignment tests require embedding rerank metadata in ToolSearch output."
+        },
+        {
+          "path": "tools/tool_search_test.go:26-85",
+          "note": "Basic tests cover structured refs and hints but do not check TS schema, exact-name fast path, MCP prefix fast path, output object shape, or provider gates."
+        }
+      ],
+      "impact": "Future fixes can be blocked by tests that protect Go-specific behavior, and parity regressions can pass because TS-derived cases are absent.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-009"
+      ]
+    },
+    {
+      "id": "TSRCH-GAP-011",
+      "category": "observability_permissions",
+      "severity": "P2",
+      "title": "Analytics, read-only metadata, and result-size controls are not aligned with TS",
+      "description": "TS ToolSearch logs `tengu_tool_search_outcome` with query, queryType, matchCount, totalDeferredTools, maxResults, and hasMatches; declares itself read-only; and sets maxResultSizeChars to 100000. Go has a ToolSearchOutcomeFn hook but the event omits query/maxResults and is not wired outside tests. Go ToolSearch implements IsConcurrentSafe but no IsReadOnly marker and no ToolSearch-specific maxResultSizeChars metadata/threshold.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:304-315",
+          "note": "TS marks ToolSearch enabled, concurrency-safe, read-only, and maxResultSizeChars 100000."
+        },
+        {
+          "path": "../src/tools/ToolSearchTool/ToolSearchTool.ts:341-356",
+          "note": "TS logs structured outcome analytics including query and maxResults."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/tool_search.go:65-97",
+          "note": "Go ToolSearchOutcomeEvent lacks query/maxResults, and the emitter is only a nil-safe hook."
+        },
+        {
+          "path": "tools/tool_search.go:199",
+          "note": "Go exposes IsConcurrentSafe only."
+        },
+        {
+          "path": "tools/tool_search_extra_test.go:110-143",
+          "note": "Outcome tests only assert the hook can emit a partial event and be nil-safe."
+        },
+        {
+          "path": "compact/resultstore.go:189-215",
+          "note": "Go supports result-size metadata generally, but ToolSearch does not set a TS-equivalent per-tool threshold."
+        }
+      ],
+      "impact": "Operational parity is incomplete: dashboards cannot compare the same dimensions, permission/read-only consumers cannot classify ToolSearch the same way, and result-size behavior depends on global defaults.",
+      "candidate_task_ids": [
+        "TSRCH-TASK-010"
+      ]
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "TSRCH-TASK-001",
+      "title": "Restore the TS ToolSearch input schema",
+      "priority": "P0",
+      "owned_files": [
+        "tools/tool_search.go",
+        "tools/tool_search_test.go",
+        "tools/tool_search_alignment_test.go"
+      ],
+      "depends_on": [],
+      "addresses_gaps": [
+        "TSRCH-GAP-001"
+      ],
+      "description": "Change the model-facing schema from `limit` to TS `max_results`, remove TS-incompatible min/max schema claims unless a true TS bound is added upstream, and make Execute semantics match TS defaulting without advertising Go-only fields.",
+      "acceptance": [
+        "ToolSearch Schema().Properties contains `query` and `max_results` and does not advertise `limit` as the canonical parameter.",
+        "`max_results` defaults to 5 when absent, matching TS.",
+        "Existing hidden compatibility for `limit` is either removed or explicitly kept behind tests that prove it is not model-facing.",
+        "Tests no longer claim TS uses `limit` or [1,50] clamping."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'ToolSearch.*Schema|ToolSearch.*Input|ToolSearchAlignment' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-002",
+      "title": "Align Execute search semantics with TS keyword search",
+      "priority": "P0",
+      "owned_files": [
+        "tools/tool_search.go",
+        "tools/tool_search_ranker.go",
+        "tools/tool_search_embedding.go",
+        "tools/tool_search_cache.go",
+        "tools/tool_search_test.go",
+        "tools/tool_search_conformance_test.go",
+        "tools/tool_search_alignment_test.go"
+      ],
+      "depends_on": [
+        "TSRCH-TASK-001"
+      ],
+      "addresses_gaps": [
+        "TSRCH-GAP-002",
+        "TSRCH-GAP-003"
+      ],
+      "description": "Make the production Execute path follow the TS searchToolsWithKeywords algorithm: bare exact names, MCP prefix fast path, `select:` multi-select, `+` required terms, fixed scoring weights, and max_results slicing. BM25/cache/embedding helpers can remain only if they do not alter the TS-visible behavior, or should be moved behind non-parity experiments outside ToolSearch.",
+      "acceptance": [
+        "Bare exact deferred and already-loaded tool names return that tool without ranking.",
+        "`mcp__server` prefix queries return matching deferred MCP tools before generic keyword scoring.",
+        "`+term` required filters use TS name/description/searchHint logic.",
+        "Ranking fixtures match TS fixed-weight ordering, including tie behavior where applicable.",
+        "Embedding rerank and BM25-specific score/snippet output do not affect ToolSearch parity mode."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'ToolSearch.*Exact|ToolSearch.*MCP|ToolSearch.*Required|ToolSearch.*Keyword|ToolSearchAlignment' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-003",
+      "title": "Align ToolSearch output and prompt contract",
+      "priority": "P0",
+      "owned_files": [
+        "tools/tool_search.go",
+        "types/tools.go",
+        "types/messages.go",
+        "provider/anthropic.go",
+        "provider/openai.go",
+        "provider/responses.go",
+        "tools/tool_search_test.go",
+        "provider/provider_test.go",
+        "provider/responses_test.go"
+      ],
+      "depends_on": [
+        "TSRCH-TASK-001",
+        "TSRCH-TASK-002"
+      ],
+      "addresses_gaps": [
+        "TSRCH-GAP-003"
+      ],
+      "description": "Make the Go tool's model-facing description and result mapping match TS: TS query forms, deferred-tool location hint, typed matches/query/total_deferred_tools/pending_mcp_servers data where the Go tool-result abstraction can carry it, success mapped to tool_reference content blocks, and empty-result text compatible with TS.",
+      "acceptance": [
+        "ToolSearch description no longer advertises BM25 scores/snippets as the contract.",
+        "Successful Anthropic tool_result content is a list of tool_reference blocks without Go-only score/snippet text mixed into the same structured result.",
+        "Empty result text matches TS wording and appends the TS pending-server sentence only when pending_mcp_servers are present.",
+        "If Go retains ToolResult metadata for internal observability, provider-bound output remains TS-compatible."
+      ],
+      "verification_commands": [
+        "go test ./tools ./provider -run 'ToolSearch|ToolReferenceResult|ResponsesAPI_ToolReference' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-004",
+      "title": "Implement request-time ToolSearch enablement and visibility gates",
+      "priority": "P0",
+      "owned_files": [
+        "registry_setup.go",
+        "registry/tool_visibility.go",
+        "loop/query.go",
+        "provider/models.go",
+        "provider/env.go",
+        "provider/registry_builtins.go",
+        "registry/registry_test.go",
+        "loop/integration_test.go"
+      ],
+      "depends_on": [
+        "TSRCH-TASK-001"
+      ],
+      "addresses_gaps": [
+        "TSRCH-GAP-004"
+      ],
+      "description": "Split optimistic registration from definitive per-request use, mirroring TS. The loop should decide whether ToolSearch is active for each provider request based on env mode, beta kill switch, model support, provider/proxy support, ToolSearch availability after filtering, auto-threshold sizing, and whether there are deferred tools or pending MCP servers.",
+      "acceptance": [
+        "ToolSearch can be registered optimistically but filtered from provider tools when definitive useToolSearch is false.",
+        "Deferred tools are hidden only when definitive useToolSearch is true for the request.",
+        "Haiku/unsupported model fixtures do not receive ToolSearch or tool_reference-capable results.",
+        "Default first-party proxy base URL behavior matches TS unless ENABLE_TOOL_SEARCH is explicitly set.",
+        "No-deferred/no-pending requests filter ToolSearch out as TS does."
+      ],
+      "verification_commands": [
+        "go test ./registry ./loop ./provider -run 'ToolSearch|VisibleDefinitions|BetaHeader|Model' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-005",
+      "title": "Add provider-specific defer_loading, beta, and tool_reference normalization",
+      "priority": "P0",
+      "owned_files": [
+        "types/tools.go",
+        "provider/anthropic.go",
+        "provider/openai.go",
+        "provider/responses.go",
+        "loop/query.go",
+        "provider/provider_test.go",
+        "provider/responses_test.go",
+        "types/messages_test.go"
+      ],
+      "depends_on": [
+        "TSRCH-TASK-004"
+      ],
+      "addresses_gaps": [
+        "TSRCH-GAP-005",
+        "TSRCH-GAP-009"
+      ],
+      "description": "Represent TS defer_loading in Go tool definitions or prove the provider surface no longer requires it, choose beta headers by provider exactly as TS, and normalize historical tool_reference content before provider conversion when ToolSearch is disabled or references unavailable tools.",
+      "acceptance": [
+        "Go tool definitions can carry defer_loading when useToolSearch and willDefer are true, or an explicit parity decision records why client-side hiding replaces it without changing provider behavior.",
+        "Anthropic/Foundry use advanced-tool-use-2025-11-20; Vertex/Bedrock use tool-search-tool-2025-10-19 where applicable.",
+        "Tool reference blocks are stripped before provider calls when request-time ToolSearch is disabled.",
+        "References to tools no longer registered/available are stripped with a placeholder if all content is removed.",
+        "ToolReferenceBlock is never smooshed into mixed tool_result content in a provider-invalid shape."
+      ],
+      "verification_commands": [
+        "go test ./provider ./types ./loop -run 'ToolReference|BetaHeader|defer|Unsupported|Unavailable' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-006",
+      "title": "Add normal-turn deferred-tools announcements",
+      "priority": "P1",
+      "owned_files": [
+        "loop/attachments.go",
+        "loop/query.go",
+        "compact/post_compact_attachments.go",
+        "loop/attachments_test.go",
+        "loop/integration_test.go"
+      ],
+      "depends_on": [
+        "TSRCH-TASK-004"
+      ],
+      "addresses_gaps": [
+        "TSRCH-GAP-006"
+      ],
+      "description": "Implement the TS normal-turn `deferred_tools_delta` system-reminder flow, including added/removed deferred tools and the same enablement gates. Keep the existing post-compact reminder as recovery state, not as the only announcement path.",
+      "acceptance": [
+        "First active ToolSearch turn announces all currently deferred tool names in a TS-equivalent system reminder.",
+        "Subsequent turns announce only added/removed deferred tool deltas.",
+        "Announcements are suppressed when ToolSearch is not active for the request.",
+        "A fallback `<available-deferred-tools>`-style message is available if the delta path is intentionally disabled."
+      ],
+      "verification_commands": [
+        "go test ./loop ./compact -run 'DeferredTools|Attachment|ToolSearch|PostCompact' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-007",
+      "title": "Preserve loaded deferred tools through compaction and resume",
+      "priority": "P0",
+      "owned_files": [
+        "compact/result.go",
+        "compact/compact.go",
+        "compact/session_memory.go",
+        "loop/query.go",
+        "loop/context_prepare.go",
+        "compact/result_test.go",
+        "compact/compact_test.go",
+        "loop/integration_test.go"
+      ],
+      "depends_on": [
+        "TSRCH-TASK-003"
+      ],
+      "addresses_gaps": [
+        "TSRCH-GAP-007"
+      ],
+      "description": "Teach Go to extract discovered tools from nested ToolResultBlock.ContentBlocks, store them in compact boundary metadata, and reconstruct QueryLoop.loadedToolNames from existing messages and compact boundary metadata on new/resumed loops.",
+      "acceptance": [
+        "compact.discoveredToolNames finds ToolReferenceBlock values nested inside ToolResultBlock.ContentBlocks.",
+        "PreCompactDiscoveredTools contains tools loaded by ToolSearch before full, partial, snip, and session-memory compaction.",
+        "New/resumed QueryLoop rebuilds loadedToolNames from current messages and latest compact boundary metadata before building visible definitions.",
+        "A post-compact/resume integration test proves a previously loaded deferred tool remains visible without rerunning ToolSearch."
+      ],
+      "verification_commands": [
+        "go test ./compact ./loop -run 'DiscoveredTools|Compact.*Tool|ToolSearchLoadsDeferredTools|Resume' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-008",
+      "title": "Wire MCP pending-state and dynamic invalidation into ToolSearch",
+      "priority": "P1",
+      "owned_files": [
+        "registry_setup.go",
+        "tools/tool_search.go",
+        "tools/mcp_notifications.go",
+        "tools/mcp_dynamic_tool.go",
+        "services/mcp/manager.go",
+        "tools/k_protocol_test.go",
+        "tools/mcp_notifications_test.go",
+        "loop/integration_test.go"
+      ],
+      "depends_on": [
+        "TSRCH-TASK-004"
+      ],
+      "addresses_gaps": [
+        "TSRCH-GAP-008"
+      ],
+      "description": "Connect ToolSearch's pending/state resolvers to the actual MCP managers used by SetupRegistry, and register list_changed invalidators for the production ToolSearch instance so registry/index state refreshes when dynamic MCP tool lists change.",
+      "acceptance": [
+        "Empty select/keyword misses include pending_mcp_servers when service MCP has pending clients, matching TS output field semantics.",
+        "Failed/needs-auth/disabled richer state is either mapped behind TS-compatible pending_mcp_servers output or kept out of provider-visible ToolSearch output.",
+        "SetupRegistry wires RegisterMCPListChangedInvalidators for the ToolSearch instance it registers.",
+        "A dynamic MCP tools/list_changed integration test proves a stale cached search result is invalidated without manual test-only wiring."
+      ],
+      "verification_commands": [
+        "go test ./tools ./loop -run 'ToolSearch.*Pending|MCP.*ListChanged|DynamicMCP.*ToolSearch' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-009",
+      "title": "Replace misleading ToolSearch parity tests with TS-derived goldens",
+      "priority": "P1",
+      "owned_files": [
+        "tools/tool_search_alignment_test.go",
+        "tools/tool_search_test.go",
+        "tools/tool_search_conformance_test.go",
+        "registry/registry_test.go",
+        "loop/integration_test.go",
+        "provider/provider_test.go",
+        "provider/responses_test.go",
+        "compact/result_test.go"
+      ],
+      "depends_on": [],
+      "addresses_gaps": [
+        "TSRCH-GAP-001",
+        "TSRCH-GAP-002",
+        "TSRCH-GAP-003",
+        "TSRCH-GAP-004",
+        "TSRCH-GAP-005",
+        "TSRCH-GAP-006",
+        "TSRCH-GAP-007",
+        "TSRCH-GAP-008",
+        "TSRCH-GAP-009",
+        "TSRCH-GAP-010"
+      ],
+      "description": "Rewrite the ToolSearch alignment test suite so it reflects the actual TS files in ../src. Remove or rename tests that intentionally assert Go-only experiments (limit, BM25, score/snippet metadata, embedding rerank) so they do not masquerade as parity coverage.",
+      "acceptance": [
+        "Schema tests assert `max_results` and default 5 from TS.",
+        "Search tests cover exact bare names, already-loaded exact names, MCP prefix fast path, select multi-select, required terms, searchHint scoring, and no-match pending_mcp_servers.",
+        "Provider tests cover beta stripping/selection and stale/unsupported tool_reference normalization.",
+        "Compaction/resume tests cover nested tool_reference extraction and loaded-tool reconstruction.",
+        "Any retained BM25/embedding tests are clearly labeled as Go extensions and do not block TS parity."
+      ],
+      "verification_commands": [
+        "go test ./tools ./registry ./loop ./provider ./compact -run 'ToolSearch|ToolReference|DeferredTools|VisibleDefinitions' -count=1"
+      ]
+    },
+    {
+      "id": "TSRCH-TASK-010",
+      "title": "Align ToolSearch observability and metadata",
+      "priority": "P2",
+      "owned_files": [
+        "tools/tool_search.go",
+        "loop/query.go",
+        "compact/resultstore.go",
+        "tools/tool_search_extra_test.go",
+        "loop/resultstore_test.go"
+      ],
+      "depends_on": [
+        "TSRCH-TASK-003"
+      ],
+      "addresses_gaps": [
+        "TSRCH-GAP-011"
+      ],
+      "description": "Bring Go operational metadata in line with TS: outcome analytics fields, runtime emitter wiring, read-only classification if the Go permission system supports it, and ToolSearch-specific result-size threshold metadata.",
+      "acceptance": [
+        "ToolSearch outcome events include query, queryType, matchCount, totalDeferredTools, maxResults, and hasMatches.",
+        "Outcome event emission is wired to the runtime analytics/logging sink used by other tools, not only unit tests.",
+        "ToolSearch has a Go read-only marker or equivalent permission classification consumed by the loop.",
+        "ToolSearch results carry a maxResultSizeChars threshold equivalent to TS 100000 where Go's result store consumes it."
+      ],
+      "verification_commands": [
+        "go test ./tools ./loop ./compact -run 'ToolSearchOutcome|ReadOnly|ResultStore|MaxResult' -count=1"
+      ]
+    }
+  ],
+  "verification": {
+    "commands_run": [
+      "go test ./tools ./registry ./loop ./compact -run 'ToolSearch|VisibleDefinitions|ToolReference|CompactBoundary|PostCompact' -count=1"
+    ],
+    "result": "pass"
+  }
+}

@@ -1,0 +1,81 @@
+// Complex.gsx
+package testdata
+
+import (
+	"fmt"
+	tui "github.com/grindlemire/go-tui"
+)
+
+// Unassigned block comment
+// For package comment
+
+// ItemList test
+templ ItemList(items []string, selected int) {
+	<div direction={tui.Column} gap={1}>
+		// ItemList direction
+		for i, item := range items {
+			// ItemList for loop
+			if i == selected {
+				<div border={tui.BorderSingle}>
+					// ItemList border
+					<span>{fmt.Sprintf("> %s", /* ItemList item */ item)}</span>
+				</div>
+			} else {
+				// ItemList else
+				<span>{fmt.Sprintf("  %s", item)}</span>
+			}
+		}
+	</div>
+}
+
+// ItemList direction
+
+// ItemList for loop
+
+// ItemList border
+/* ItemList item */
+
+// ItemList else
+
+/*
+Counter
+tests block comment
+*/
+templ Counter(count int, label string) {
+	countText := <span>{fmt.Sprintf("%d", count)}</span>
+	<div direction={tui.Column} gap={1} padding={1}>
+		<span class="font-bold">{label}</span>
+		{countText}
+	</div>
+}
+
+templ ConditionalContent(showHeader bool, showFooter bool) {
+	<div direction={tui.Column}>
+		if showHeader {
+			<span>Header</span>
+		}
+		<span>Main Content</span>
+		if showFooter {
+			<span>Footer</span>
+		} else {
+			<span>No Footer</span>
+		}
+	</div>
+}
+
+templ WithHelper(text string) {
+	shouldShowHeader := true
+	otherHelperFunction("test")
+	<div>
+		<span>{helperFunction(text)}</span>
+		if shouldShowHeader {
+			@ConditionalContent(true, false)
+		} else {
+			<span>False</span>
+		}
+	</div>
+}
+
+func helperFunction(s string) string {
+	return fmt.Sprintf("[%s]", s)
+}

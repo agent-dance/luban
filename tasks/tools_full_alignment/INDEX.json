@@ -1,0 +1,411 @@
+{
+  "generated_at": "2026-07-09T20:47:16.390271+00:00",
+  "directory": "/Users/blurooo/project/go-claude/gosrc/tasks/tools_full_alignment",
+  "source_report_count": 34,
+  "task_count": 38,
+  "foundation_task_count": 4,
+  "tool_task_count": 34,
+  "raw_gap_count": 327,
+  "raw_candidate_task_count": 312,
+  "max_recommended_concurrency": 3,
+  "source_reports": [
+    "tasks/tools_full_alignment/_agent_reports/Agent.json",
+    "tasks/tools_full_alignment/_agent_reports/AskUserQuestion.json",
+    "tasks/tools_full_alignment/_agent_reports/Bash.json",
+    "tasks/tools_full_alignment/_agent_reports/CronCreate.json",
+    "tasks/tools_full_alignment/_agent_reports/CronDelete.json",
+    "tasks/tools_full_alignment/_agent_reports/CronList.json",
+    "tasks/tools_full_alignment/_agent_reports/Edit.json",
+    "tasks/tools_full_alignment/_agent_reports/EnterPlanMode.json",
+    "tasks/tools_full_alignment/_agent_reports/EnterWorktree.json",
+    "tasks/tools_full_alignment/_agent_reports/ExitPlanMode.json",
+    "tasks/tools_full_alignment/_agent_reports/ExitWorktree.json",
+    "tasks/tools_full_alignment/_agent_reports/Glob.json",
+    "tasks/tools_full_alignment/_agent_reports/Grep.json",
+    "tasks/tools_full_alignment/_agent_reports/ListMcpResourcesTool.json",
+    "tasks/tools_full_alignment/_agent_reports/NotebookEdit.json",
+    "tasks/tools_full_alignment/_agent_reports/Read.json",
+    "tasks/tools_full_alignment/_agent_reports/ReadMcpResourceTool.json",
+    "tasks/tools_full_alignment/_agent_reports/RemoteTrigger.json",
+    "tasks/tools_full_alignment/_agent_reports/SendMessage.json",
+    "tasks/tools_full_alignment/_agent_reports/SendUserMessage.json",
+    "tasks/tools_full_alignment/_agent_reports/Skill.json",
+    "tasks/tools_full_alignment/_agent_reports/TaskCreate.json",
+    "tasks/tools_full_alignment/_agent_reports/TaskGet.json",
+    "tasks/tools_full_alignment/_agent_reports/TaskList.json",
+    "tasks/tools_full_alignment/_agent_reports/TaskOutput.json",
+    "tasks/tools_full_alignment/_agent_reports/TaskStop.json",
+    "tasks/tools_full_alignment/_agent_reports/TaskUpdate.json",
+    "tasks/tools_full_alignment/_agent_reports/TeamCreate.json",
+    "tasks/tools_full_alignment/_agent_reports/TeamDelete.json",
+    "tasks/tools_full_alignment/_agent_reports/TodoWrite.json",
+    "tasks/tools_full_alignment/_agent_reports/ToolSearch.json",
+    "tasks/tools_full_alignment/_agent_reports/WebFetch.json",
+    "tasks/tools_full_alignment/_agent_reports/WebSearch.json",
+    "tasks/tools_full_alignment/_agent_reports/Write.json"
+  ],
+  "tools": [
+    "Agent",
+    "AskUserQuestion",
+    "Bash",
+    "CronCreate",
+    "CronDelete",
+    "CronList",
+    "Edit",
+    "EnterPlanMode",
+    "EnterWorktree",
+    "ExitPlanMode",
+    "ExitWorktree",
+    "Glob",
+    "Grep",
+    "ListMcpResourcesTool",
+    "NotebookEdit",
+    "Read",
+    "ReadMcpResourceTool",
+    "RemoteTrigger",
+    "SendMessage",
+    "SendUserMessage",
+    "Skill",
+    "TaskCreate",
+    "TaskGet",
+    "TaskList",
+    "TaskOutput",
+    "TaskStop",
+    "TaskUpdate",
+    "TeamCreate",
+    "TeamDelete",
+    "TodoWrite",
+    "ToolSearch",
+    "WebFetch",
+    "WebSearch",
+    "Write"
+  ],
+  "tool_to_tasks": {
+    "Agent": [
+      "task_05"
+    ],
+    "AskUserQuestion": [
+      "task_06"
+    ],
+    "Bash": [
+      "task_07"
+    ],
+    "CronCreate": [
+      "task_08"
+    ],
+    "CronDelete": [
+      "task_09"
+    ],
+    "CronList": [
+      "task_10"
+    ],
+    "Edit": [
+      "task_11"
+    ],
+    "EnterPlanMode": [
+      "task_12"
+    ],
+    "EnterWorktree": [
+      "task_13"
+    ],
+    "ExitPlanMode": [
+      "task_14"
+    ],
+    "ExitWorktree": [
+      "task_15"
+    ],
+    "Glob": [
+      "task_16"
+    ],
+    "Grep": [
+      "task_17"
+    ],
+    "ListMcpResourcesTool": [
+      "task_18"
+    ],
+    "NotebookEdit": [
+      "task_19"
+    ],
+    "Read": [
+      "task_20"
+    ],
+    "ReadMcpResourceTool": [
+      "task_21"
+    ],
+    "RemoteTrigger": [
+      "task_22"
+    ],
+    "SendMessage": [
+      "task_23"
+    ],
+    "SendUserMessage": [
+      "task_24"
+    ],
+    "Skill": [
+      "task_25"
+    ],
+    "TaskCreate": [
+      "task_26"
+    ],
+    "TaskGet": [
+      "task_27"
+    ],
+    "TaskList": [
+      "task_28"
+    ],
+    "TaskOutput": [
+      "task_29"
+    ],
+    "TaskStop": [
+      "task_30"
+    ],
+    "TaskUpdate": [
+      "task_31"
+    ],
+    "TeamCreate": [
+      "task_32"
+    ],
+    "TeamDelete": [
+      "task_33"
+    ],
+    "TodoWrite": [
+      "task_34"
+    ],
+    "ToolSearch": [
+      "task_35"
+    ],
+    "WebFetch": [
+      "task_36"
+    ],
+    "WebSearch": [
+      "task_37"
+    ],
+    "Write": [
+      "task_38"
+    ]
+  },
+  "category_to_tasks": {
+    "foundations": [
+      "task_01",
+      "task_02",
+      "task_03",
+      "task_04"
+    ],
+    "agent_team_message": [
+      "task_05",
+      "task_32",
+      "task_33",
+      "task_23",
+      "task_24"
+    ],
+    "planning_worktree": [
+      "task_12",
+      "task_14",
+      "task_13",
+      "task_15"
+    ],
+    "file_tools": [
+      "task_20",
+      "task_38",
+      "task_11",
+      "task_19"
+    ],
+    "search_discovery": [
+      "task_16",
+      "task_17",
+      "task_35",
+      "task_25"
+    ],
+    "task_tools": [
+      "task_26",
+      "task_27",
+      "task_28",
+      "task_29",
+      "task_30",
+      "task_31",
+      "task_34"
+    ],
+    "cron_remote_web_mcp": [
+      "task_08",
+      "task_09",
+      "task_10",
+      "task_22",
+      "task_36",
+      "task_37",
+      "task_18",
+      "task_21"
+    ],
+    "bash_question": [
+      "task_07",
+      "task_06"
+    ]
+  },
+  "recommended_waves": [
+    {
+      "wave": 1,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_01",
+        "task_02",
+        "task_03"
+      ]
+    },
+    {
+      "wave": 2,
+      "max_concurrency": 1,
+      "tasks": [
+        "task_04"
+      ]
+    },
+    {
+      "wave": 3,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_06",
+        "task_08",
+        "task_16"
+      ]
+    },
+    {
+      "wave": 4,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_07",
+        "task_09",
+        "task_17"
+      ]
+    },
+    {
+      "wave": 5,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_20",
+        "task_10",
+        "task_35"
+      ]
+    },
+    {
+      "wave": 6,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_38",
+        "task_36",
+        "task_18"
+      ]
+    },
+    {
+      "wave": 7,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_11",
+        "task_37",
+        "task_21"
+      ]
+    },
+    {
+      "wave": 8,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_19",
+        "task_22",
+        "task_24"
+      ]
+    },
+    {
+      "wave": 9,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_12",
+        "task_26",
+        "task_32"
+      ]
+    },
+    {
+      "wave": 10,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_14",
+        "task_27",
+        "task_33"
+      ]
+    },
+    {
+      "wave": 11,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_13",
+        "task_28",
+        "task_34"
+      ]
+    },
+    {
+      "wave": 12,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_15",
+        "task_31",
+        "task_25"
+      ]
+    },
+    {
+      "wave": 13,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_05",
+        "task_29",
+        "task_23"
+      ]
+    },
+    {
+      "wave": 14,
+      "max_concurrency": 1,
+      "tasks": [
+        "task_30"
+      ]
+    }
+  ],
+  "task_files": [
+    "tasks/tools_full_alignment/task_01.json",
+    "tasks/tools_full_alignment/task_02.json",
+    "tasks/tools_full_alignment/task_03.json",
+    "tasks/tools_full_alignment/task_04.json",
+    "tasks/tools_full_alignment/task_05.json",
+    "tasks/tools_full_alignment/task_06.json",
+    "tasks/tools_full_alignment/task_07.json",
+    "tasks/tools_full_alignment/task_08.json",
+    "tasks/tools_full_alignment/task_09.json",
+    "tasks/tools_full_alignment/task_10.json",
+    "tasks/tools_full_alignment/task_11.json",
+    "tasks/tools_full_alignment/task_12.json",
+    "tasks/tools_full_alignment/task_13.json",
+    "tasks/tools_full_alignment/task_14.json",
+    "tasks/tools_full_alignment/task_15.json",
+    "tasks/tools_full_alignment/task_16.json",
+    "tasks/tools_full_alignment/task_17.json",
+    "tasks/tools_full_alignment/task_18.json",
+    "tasks/tools_full_alignment/task_19.json",
+    "tasks/tools_full_alignment/task_20.json",
+    "tasks/tools_full_alignment/task_21.json",
+    "tasks/tools_full_alignment/task_22.json",
+    "tasks/tools_full_alignment/task_23.json",
+    "tasks/tools_full_alignment/task_24.json",
+    "tasks/tools_full_alignment/task_25.json",
+    "tasks/tools_full_alignment/task_26.json",
+    "tasks/tools_full_alignment/task_27.json",
+    "tasks/tools_full_alignment/task_28.json",
+    "tasks/tools_full_alignment/task_29.json",
+    "tasks/tools_full_alignment/task_30.json",
+    "tasks/tools_full_alignment/task_31.json",
+    "tasks/tools_full_alignment/task_32.json",
+    "tasks/tools_full_alignment/task_33.json",
+    "tasks/tools_full_alignment/task_34.json",
+    "tasks/tools_full_alignment/task_35.json",
+    "tasks/tools_full_alignment/task_36.json",
+    "tasks/tools_full_alignment/task_37.json",
+    "tasks/tools_full_alignment/task_38.json"
+  ],
+  "notes": [
+    "task_01-task_04 are shared prerequisites/companions; task_05 onward are one implementation task per tool.",
+    "The six early reports Agent, AskUserQuestion, Bash, Edit, EnterPlanMode, and EnterWorktree were synthesized from prior subagent output, current tools/reports markdown, and historical task JSON because their initial read-only subagents did not persist report files."
+  ]
+}

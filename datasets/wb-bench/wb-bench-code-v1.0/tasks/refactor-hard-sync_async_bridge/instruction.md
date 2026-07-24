@@ -1,0 +1,1 @@
+我这里的小版 asgiref bridge 就在 asgiref_like/bridge.py，sync_to_async 和 async_to_sync 的职责现在揉在一起了。帮我把这块整理清楚，外部函数名和调用方式别变；contextvars 要能带过去，thread_sensitive=True 时直接在当前上下文跑，同步/异步函数里抛的异常也要原样传出来，已有事件循环里再调 async_to_sync 要拒掉。

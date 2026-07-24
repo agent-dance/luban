@@ -1,0 +1,171 @@
+{
+  "generated_at": "2026-07-14",
+  "directory": "/Users/blurooo/project/go-claude/gosrc/tasks/goal_adoption_plan",
+  "purpose": "Execution plan for adding a /goal feature to this Go Claude Code implementation after comparing current Codex and Claude Code behavior.",
+  "task_count": 18,
+  "max_recommended_concurrency": 6,
+  "task_file_pattern": "task_01.json ... task_18.json",
+  "research_summary": {
+    "codex_goal": [
+      "Official Codex docs describe /goal as a persisted goal for a task, available in CLI, IDE, and desktop surfaces.",
+      "Documented commands include /goal <text>, /goal, /goal edit, /goal pause, /goal resume, and /goal clear.",
+      "The objective is used as the task target and completion criteria; the documented max objective length is 4000 chars.",
+      "The goals feature flag is marked stable and enabled by default for persisted goals and automatic continuation.",
+      "Current-session Codex tool APIs expose get_goal, create_goal, and update_goal with statuses such as complete and blocked plus optional token budget. This is verified runtime behavior, not public implementation source."
+    ],
+    "claude_code_goal": [
+      "Official Claude Code docs require v2.1.139+ for /goal; the latest changelog observed during research listed 2.1.209.",
+      "/goal is documented as a session-scoped wrapper around a prompt-based Stop hook.",
+      "After each turn, a small fast model evaluator checks the goal condition from transcript only, with no tools or file reads.",
+      "If the evaluator says no, Claude starts another turn with the evaluator reason as guidance. If yes, the goal clears and an achieved entry is recorded.",
+      "The goal does not change permissions. Unattended operation still needs auto mode or equivalent permission policy.",
+      "Active goals restore on --resume or --continue, while achieved or cleared goals do not restore; counters and token baseline reset."
+    ],
+    "local_repo": [
+      "No built-in /goal command is currently registered in commands/builtins.go.",
+      "Slash commands are registered through commands.RegisterBuiltins and surfaced to TUI suggestions from the command registry.",
+      "SessionMeta in session/session.go is the natural persistence point for a goal sidecar.",
+      "loop/query.go already has a no-tool-use branch that runs Stop hooks and token-budget continuation, which is the natural continuation insertion point.",
+      "loop/stop_hooks.go already models Stop-hook blocking feedback as a user message and continuation."
+    ]
+  },
+  "comparison": [
+    {
+      "dimension": "state ownership",
+      "codex": "First-class persisted task/thread goal.",
+      "claude_code": "Session-scoped hook wrapper.",
+      "project_choice": "Persist goal state in SessionMeta, but evaluate it inside the existing loop Stop-hook window."
+    },
+    {
+      "dimension": "completion decision",
+      "codex": "Public docs expose controls and persistence, but not the evaluator internals.",
+      "claude_code": "Explicit transcript-only small-model yes/no evaluator.",
+      "project_choice": "Use an explicit GoalEvaluator interface with transcript-only tests and fake evaluator coverage."
+    },
+    {
+      "dimension": "user controls",
+      "codex": "set, view, edit, pause, resume, clear.",
+      "claude_code": "set, status, clear/aliases; replacement starts immediately.",
+      "project_choice": "Implement Codex-style controls because they fit persisted session state and reduce risk during long local work."
+    },
+    {
+      "dimension": "permissions",
+      "codex": "Same sandbox and approval policy as the task.",
+      "claude_code": "Does not change permissions; combine with auto mode when desired.",
+      "project_choice": "Never let /goal change permission mode; document that explicitly and test no permission bypass path."
+    },
+    {
+      "dimension": "theoretical effect",
+      "codex": "Better for durable task orchestration, UI state, pause/resume, and budgeted work.",
+      "claude_code": "Better for a lightweight continuation MVP because this repo already has Stop-hook style continuation.",
+      "project_choice": "Hybrid: Claude-style evaluator loop plus Codex-style persisted controls."
+    }
+  ],
+  "source_links": [
+    "https://developers.openai.com/codex/codex-manual.md",
+    "https://code.claude.com/docs/en/goal",
+    "https://code.claude.com/docs/en/hooks-guide.md",
+    "https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md"
+  ],
+  "local_anchors": [
+    "commands/builtins.go:14",
+    "commands/commands.go:41",
+    "session/session.go:72",
+    "loop/query.go:130",
+    "loop/query.go:1344",
+    "loop/stop_hooks.go:23",
+    "tui/slash_commands.go:8",
+    "repl_tui.go:475",
+    "repl_tui.go:1240",
+    "repl_tui.go:1593"
+  ],
+  "task_files": [
+    "task_01.json",
+    "task_02.json",
+    "task_03.json",
+    "task_04.json",
+    "task_05.json",
+    "task_06.json",
+    "task_07.json",
+    "task_08.json",
+    "task_09.json",
+    "task_10.json",
+    "task_11.json",
+    "task_12.json",
+    "task_13.json",
+    "task_14.json",
+    "task_15.json",
+    "task_16.json",
+    "task_17.json",
+    "task_18.json"
+  ],
+  "waves": [
+    {
+      "wave": 1,
+      "tasks": [
+        "task_01"
+      ],
+      "notes": "Define the domain contract before implementation."
+    },
+    {
+      "wave": 2,
+      "tasks": [
+        "task_02"
+      ],
+      "notes": "Implement the core goal package."
+    },
+    {
+      "wave": 3,
+      "tasks": [
+        "task_03",
+        "task_05",
+        "task_08",
+        "task_12",
+        "task_14"
+      ],
+      "notes": "Independent tests for persistence, command, evaluator, prompt context, and tools."
+    },
+    {
+      "wave": 4,
+      "tasks": [
+        "task_04",
+        "task_06",
+        "task_09",
+        "task_13",
+        "task_15"
+      ],
+      "notes": "Implement the surfaces proven by wave 3 tests."
+    },
+    {
+      "wave": 5,
+      "tasks": [
+        "task_07",
+        "task_10",
+        "task_16"
+      ],
+      "notes": "Wire shared runtime paths. Keep concurrency low because repl_tui.go and registry_setup.go are shared files."
+    },
+    {
+      "wave": 6,
+      "tasks": [
+        "task_11",
+        "task_17"
+      ],
+      "notes": "Add final loop behavior and TUI projection after runtime wiring exists."
+    },
+    {
+      "wave": 7,
+      "tasks": [
+        "task_18"
+      ],
+      "notes": "End-to-end verification and documentation."
+    }
+  ],
+  "dispatch_rules": [
+    "Dispatch at most six subagents concurrently.",
+    "Do not dispatch tasks that write the same file in the same wave.",
+    "Treat tasks with dependencies as blocked until every dependency is accepted.",
+    "Each task is designed for 1-5 minutes of focused implementation or test work.",
+    "If a task finds that its owned file is dirty from another actor, report upward instead of overwriting."
+  ]
+}

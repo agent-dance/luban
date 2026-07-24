@@ -1,0 +1,404 @@
+{
+  "tool": "CronList",
+  "summary": "CronList is not fully aligned with the TS baseline. The Go version can list stored jobs, but its model-facing schema, result shape, ordering semantics, teammate visibility, feature-gate exposure, and permanent-task state handling diverge from the original; current tests also lock in several Go-specific observability fields instead of the TS contract.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "cronlist-gap-01",
+      "title": "Input and output contract diverge from TS structured CronList",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/CronListTool.ts:17",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:20",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:70",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:80",
+        "../src/tools/ScheduleCronTool/UI.tsx:46"
+      ],
+      "evidence_go": [
+        "tools/cron.go:1163",
+        "tools/cron.go:1176",
+        "tools/cron.go:1189",
+        "tools/cron.go:1221",
+        "tools/cron.go:1234",
+        "tools/parse.go:182",
+        "types/tools.go:58"
+      ],
+      "description": "TS CronList has a strict empty input schema and returns structured data as {jobs:[{id, cron, humanSchedule, prompt, recurring?, durable?}]}; the model-facing text is derived from that structure with 'No scheduled jobs.' for empty state and one line per job using humanSchedule plus an 80-character prompt truncation. Go accepts a non-TS 'format' parameter, returns only ToolResult.Content, emits a table by default, and emits a JSON envelope with state_file/concurrent_safe/tz/created_at/next_fire/expires_in when format=json. That is a schema and output-structure mismatch, not just wording.",
+      "impact": "Tool callers and tests written against the TS contract will see a different schema, different empty-state text, different job fields, untruncated prompts, and extra Go-only JSON fields."
+    },
+    {
+      "id": "cronlist-gap-02",
+      "title": "List ordering does not preserve TS file-then-session insertion order",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/cronTasks.ts:288",
+        "../src/utils/cronTasks.ts:291",
+        "../src/bootstrap/state.ts:1294",
+        "../src/bootstrap/state.ts:1298",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:64"
+      ],
+      "evidence_go": [
+        "tools/cron.go:168",
+        "tools/cron.go:588",
+        "tools/cron.go:591",
+        "tools/cron.go:605",
+        "tools/cron.go:620"
+      ],
+      "description": "TS listAllCronTasks returns durable file tasks in file order followed by session tasks in append order; CronList maps that returned slice directly. Go stores session jobs in a map, appends durable jobs afterward, then sorts the combined list by computed next-fire time with CreatedAt fallback. The Go comment says this mirrors TS, but the TS code has no next-fire sort in CronList.",
+      "impact": "The same persisted/session task set can appear in different order, which changes model-visible output and makes parity tests flaky or misleading, especially because Go session map iteration is not stable."
+    },
+    {
+      "id": "cronlist-gap-03",
+      "title": "Teammate-scoped CronList visibility is missing",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts:105",
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts:121",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:64",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:66",
+        "../src/bootstrap/state.ts:1280",
+        "../src/utils/teammateContext.ts:47"
+      ],
+      "evidence_go": [
+        "tools/cron.go:145",
+        "tools/cron.go:508",
+        "tools/cron.go:541",
+        "tools/cron.go:588",
+        "tools/runtime_scope.go:93",
+        "tools/runtime_scope.go:96"
+      ],
+      "description": "TS stamps session-only cron tasks with the in-process teammate agentId at creation time and CronList filters to that agentId when a teammate context exists; the team lead sees all jobs. Go has RuntimeScope.AgentID support elsewhere, but CronJob has no AgentID field, create() does not stamp one, and list()/CronList Execute returns all session and durable jobs without an agent filter.",
+      "impact": "A Go teammate can see unrelated session-only cron jobs that TS would hide. This is both a parity gap and a state/permission isolation gap."
+    },
+    {
+      "id": "cronlist-gap-04",
+      "title": "Tool exposure and prompt text do not match TS cron feature gates",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools.ts:29",
+        "../src/tools.ts:33",
+        "../src/tools/ScheduleCronTool/prompt.ts:36",
+        "../src/tools/ScheduleCronTool/prompt.ts:56",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:48",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:60"
+      ],
+      "evidence_go": [
+        "registry_setup.go:153",
+        "registry_setup.go:262",
+        "registry_setup.go:266",
+        "registry_setup.go:272",
+        "tools/cron.go:961",
+        "tools/cron.go:1176"
+      ],
+      "description": "TS combines a build-time AGENT_TRIGGERS gate with the runtime tengu_kairos_cron kill switch in CronList.isEnabled(), and its prompt changes based on durable cron availability. Go registers CronList solely from AGENT_TRIGGERS at registry setup, then returns a tool-level error if CLAUDE_CODE_DISABLE_CRON is set at execution time; it also has a static description/schema and no durable-enabled prompt variant.",
+      "impact": "When cron is disabled, Go may still expose CronList to the model and fail only after tool use. When durable cron is disabled, Go does not mirror the TS model guidance that list scope is session-only."
+    },
+    {
+      "id": "cronlist-gap-05",
+      "title": "Permanent durable task state is dropped and list output can misrepresent expiry",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/cronTasks.ts:50",
+        "../src/utils/cronTasks.ts:57",
+        "../src/utils/cronTasks.ts:127",
+        "../src/utils/cronScheduler.ts:53",
+        "../src/utils/cronScheduler.ts:58"
+      ],
+      "evidence_go": [
+        "tools/cron.go:145",
+        "tools/cron.go:155",
+        "tools/cron.go:451",
+        "tools/cron.go:461",
+        "tools/cron.go:1211",
+        "tools/cron.go:1255"
+      ],
+      "description": "TS durable cron files can contain permanent:true, readCronTasks preserves it, and the scheduler exempts permanent recurring tasks from auto-expiry. Go's persistedCronJob and CronJob omit Permanent entirely, so a permanent task read from scheduled_tasks.json becomes an ordinary recurring task; CronList then emits expires_in/aging fields for every recurring job.",
+      "impact": "CronList can incorrectly tell the model that built-in permanent recurring tasks are expiring, and the Go scheduler can later expire tasks that TS would preserve."
+    },
+    {
+      "id": "cronlist-gap-06",
+      "title": "CronList tests cover Go-specific behavior more than TS parity",
+      "priority": "P2",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/CronListTool.ts:17",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:20",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:84",
+        "../src/tools/ScheduleCronTool/CronListTool.ts:89",
+        "../src/tools/ScheduleCronTool/UI.tsx:47"
+      ],
+      "evidence_go": [
+        "tools/cron_test.go:220",
+        "tools/cron_test.go:230",
+        "tools/cron_test.go:249",
+        "tools/cron_test.go:255",
+        "tools/cron_alignment_test.go:200",
+        "tools/cron_alignment_test.go:210",
+        "tools/cron_alignment_test.go:271",
+        "tools/cron_alignment_test.go:400"
+      ],
+      "description": "The Go CronList tests assert 'No cron jobs', a header row, state_file/concurrent_safe markers, expiry markers, and format=json. The TS contract instead has empty strict input, structured jobs, 'No scheduled jobs.', concise rendered UI, and model text generated from job lines. There is no focused Go test that pins TS CronList's exact schema/output/visibility semantics.",
+      "impact": "Future changes can keep passing local tests while moving farther from TS parity, and cleanup work may preserve Go-only extensions that should be removed or isolated."
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "title": "Align CronList schema and model-facing output with TS",
+      "priority": "P0",
+      "dependency_key": null,
+      "objective": "Make Go CronList expose the same no-argument input contract and same job result/text semantics as TS CronList, including humanSchedule, optional recurring/durable flags, empty-state text, and prompt truncation.",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/parse.go",
+        "tools/cron_test.go",
+        "tools/cron_alignment_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronListTool.ts",
+        "../src/tools/ScheduleCronTool/UI.tsx",
+        "tools/cron.go",
+        "tools/parse.go",
+        "tools/cron_test.go"
+      ],
+      "implementation_steps": [
+        "Remove the non-TS CronListInput.Format surface or make it internal-only so the published Schema has no properties.",
+        "Add/route through a CronList job projection that matches TS fields: id, cron, humanSchedule, prompt, recurring only when true, durable only when false/session-only.",
+        "Change default model-facing Content to TS-style lines: '<id> — <humanSchedule> (recurring|one-shot)[session-only]: <truncated prompt>' and 'No scheduled jobs.' for empty state.",
+        "Replace the table/state_file/concurrent_safe/tz/expires_in default output with TS-compatible output; if Go-only diagnostics are still needed, keep them out of CronList's model-facing contract.",
+        "Update tests to assert the TS empty state, no input properties, prompt truncation, optional field behavior, and absence of format=json as a public parameter."
+      ],
+      "acceptance_criteria": [
+        "CronList.Schema() returns an object schema with no input properties and no required fields.",
+        "Executing CronList with empty input returns 'No scheduled jobs.' when there are no jobs.",
+        "For non-empty lists, output includes each id, a human-readable schedule, recurring/one-shot marker, '[session-only]' only for durable=false jobs, and prompt truncated to the TS 80-character behavior.",
+        "CronList no longer exposes or documents a public format=json option unless a separate non-model diagnostic path is introduced outside this tool contract.",
+        "Go tests fail if state_file/concurrent_safe/tz/created_at/next_fire/expires_in are reintroduced into the TS-compatible default result."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCronList|TestAlignmentCronList'"
+      ],
+      "risks": [
+        "Removing format=json may affect local tooling that started consuming the Go-only extension.",
+        "Go needs a cron-to-human formatter close enough to TS cronToHuman; if none exists, this task may need a small local formatter rather than adding a dependency."
+      ],
+      "non_goals": [
+        "Do not change CronCreate or CronDelete behavior except where tests need fixture setup.",
+        "Do not add new dependencies."
+      ]
+    },
+    {
+      "title": "Preserve TS CronList ordering semantics",
+      "priority": "P1",
+      "dependency_key": "cronlist-gap-02",
+      "objective": "Make Go CronList return durable jobs in persisted file order followed by session jobs in creation order, matching TS listAllCronTasks instead of sorting by next-fire.",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/cron_test.go",
+        "tools/cron_alignment_test.go"
+      ],
+      "read_first": [
+        "../src/utils/cronTasks.ts",
+        "../src/bootstrap/state.ts",
+        "../src/tools/ScheduleCronTool/CronListTool.ts",
+        "tools/cron.go"
+      ],
+      "implementation_steps": [
+        "Remove the next-fire sort from CronStore.list().",
+        "Track session job insertion order explicitly, because sessionJobs is currently a map with nondeterministic iteration order.",
+        "Return durable jobs from readDurableJobsLocked() in file order, then append session jobs in their tracked creation order.",
+        "Keep delete and expiry paths in sync with the session order tracker.",
+        "Replace the current next-fire ordering alignment test with a TS-order parity test."
+      ],
+      "acceptance_criteria": [
+        "Durable jobs list in the same order as scheduled_tasks.json.",
+        "Session-only jobs list in creation order.",
+        "Combined output lists durable file jobs before session-only jobs, matching TS listAllCronTasks.",
+        "Repeated CronList calls over the same session jobs are deterministic."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCronList.*Order|TestAlignmentCronList'"
+      ],
+      "risks": [
+        "Existing users may prefer next-fire sorting, but TS parity requires source order.",
+        "Session order tracking must be maintained on create, delete, one-shot fire, and aged recurring removal."
+      ],
+      "non_goals": [
+        "Do not change scheduler firing order unless a separate cron runtime task owns that behavior.",
+        "Do not add sorting configuration to CronList."
+      ]
+    },
+    {
+      "title": "Add teammate-scoped session cron ownership to CronList",
+      "priority": "P0",
+      "dependency_key": "cronlist-gap-03",
+      "objective": "Stamp session-only cron jobs with the creating agent id and filter CronList so teammates see only their own jobs while the leader sees all, matching TS teammate context behavior.",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/runtime_scope.go",
+        "tools/cron_test.go",
+        "tools/cron_extra_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts",
+        "../src/tools/ScheduleCronTool/CronListTool.ts",
+        "../src/bootstrap/state.ts",
+        "../src/utils/teammateContext.ts",
+        "tools/runtime_scope.go",
+        "tools/cron.go"
+      ],
+      "implementation_steps": [
+        "Add an AgentID field to in-memory CronJob for session-only ownership; do not write it to scheduled_tasks.json.",
+        "When creating durable=false jobs, stamp AgentID from CronStore.scope.AgentID() when non-empty.",
+        "Make CronStore.list() or CronListTool.Execute() accept/apply the current AgentID filter: empty leader context sees all, non-empty teammate context sees only matching AgentID session jobs.",
+        "Keep durable jobs visible to the leader; verify teammate behavior against the TS contract before deciding whether teammates should see durable jobs.",
+        "Add tests with two different RuntimeScope.AgentIDFunc values to prove isolation."
+      ],
+      "acceptance_criteria": [
+        "A session job created under agent A is visible to agent A.",
+        "The same job is not visible to agent B.",
+        "The leader context with empty AgentID sees all session jobs.",
+        "AgentID is never persisted to scheduled_tasks.json.",
+        "Durable teammate creation remains rejected or forced session-only according to the existing Go durable guard."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCronList.*Teammate|TestGuardDurableCreation'"
+      ],
+      "risks": [
+        "Go has process/env RuntimeScope rather than TS AsyncLocalStorage, so tests must avoid global env bleed.",
+        "Filtering durable jobs for teammates needs a deliberate parity decision; TS durable teammate crons are rejected at create time."
+      ],
+      "non_goals": [
+        "Do not redesign team/swarm messaging.",
+        "Do not persist teammate cron jobs across sessions."
+      ]
+    },
+    {
+      "title": "Mirror TS CronList feature gates and durable-aware prompt exposure",
+      "priority": "P1",
+      "dependency_key": "cronlist-gap-04",
+      "objective": "Hide or describe CronList according to the same cron enablement and durable availability decisions used by TS, rather than exposing the tool and returning an execution-time kill-switch error.",
+      "owned_files": [
+        "registry_setup.go",
+        "registry_setup_test.go",
+        "tools/cron.go",
+        "tools/cron_test.go"
+      ],
+      "read_first": [
+        "../src/tools.ts",
+        "../src/tools/ScheduleCronTool/prompt.ts",
+        "../src/tools/ScheduleCronTool/CronListTool.ts",
+        "registry_setup.go",
+        "registry_setup_test.go",
+        "tools/cron.go"
+      ],
+      "implementation_steps": [
+        "Introduce a single Go cron feature resolver for AGENT_TRIGGERS plus CLAUDE_CODE_DISABLE_CRON, with behavior equivalent to TS isKairosCronEnabled within Go's available config system.",
+        "Use that resolver during registry setup so disabled cron tools are not model-visible.",
+        "Represent durable cron availability separately so CronList description/prompt tells the model whether it lists durable plus session-only jobs or session-only jobs only.",
+        "Keep execution-time kill-switch handling only as a defensive fallback for mid-session changes.",
+        "Update registry tests for AGENT_TRIGGERS enabled plus CLAUDE_CODE_DISABLE_CRON=true."
+      ],
+      "acceptance_criteria": [
+        "With AGENT_TRIGGERS unset, CronList is absent.",
+        "With AGENT_TRIGGERS set and CLAUDE_CODE_DISABLE_CRON truthy before setup, CronList is absent or marked disabled consistently with the registry's visibility model.",
+        "CronList description/prompt distinguishes durable-enabled and durable-disabled list scope.",
+        "Mid-session kill-switch still prevents execution if the tool object already exists."
+      ],
+      "verification": [
+        "go test . ./tools -run 'TestSetupRegistry_GatesTriggerTools|TestCronList.*Feature|TestAlignmentCronFeatureFlagGatesList'"
+      ],
+      "risks": [
+        "Go may not have GrowthBook/tengu config plumbing; the task should use the closest existing Go feature resolver and document any unavailable external config.",
+        "Changing registration timing can affect tests that instantiate NewCronListTool directly."
+      ],
+      "non_goals": [
+        "Do not implement GrowthBook if the Go runtime has no existing GrowthBook subsystem.",
+        "Do not change RemoteTrigger gating."
+      ]
+    },
+    {
+      "title": "Preserve permanent durable cron state and suppress false expiry in CronList",
+      "priority": "P1",
+      "dependency_key": "cronlist-gap-05",
+      "objective": "Read, preserve, and respect permanent:true in durable cron tasks so CronList and the scheduler do not treat TS permanent system tasks as expiring ordinary recurring jobs.",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/cron_test.go",
+        "tools/cron_extra_test.go"
+      ],
+      "read_first": [
+        "../src/utils/cronTasks.ts",
+        "../src/utils/cronScheduler.ts",
+        "tools/cron.go",
+        "tools/cron_extra_test.go"
+      ],
+      "implementation_steps": [
+        "Add Permanent to persistedCronJob and CronJob with JSON tag permanent,omitempty.",
+        "Read permanent:true from scheduled_tasks.json and preserve it on write.",
+        "Update recurring age checks so permanent recurring jobs never age out.",
+        "Update CronList output/projection so permanent jobs are not shown as expiring/aging if any expiry metadata remains in Go diagnostics.",
+        "Add tests that seed scheduled_tasks.json with permanent:true and assert list and collectDueJobs behavior."
+      ],
+      "acceptance_criteria": [
+        "A durable job with permanent:true survives read/write round trips.",
+        "A permanent recurring job older than the max age is not removed on fire.",
+        "CronList does not display permanent jobs as aging or expiring.",
+        "Non-permanent recurring jobs keep the existing 7-day expiry behavior."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCron.*Permanent|TestRecurringJob7DayExpiry|TestCronList'"
+      ],
+      "risks": [
+        "Changing persisted structs affects all cron tools, so tests must cover create/delete/list round trips.",
+        "If task 1 removes expiry metadata from CronList, this task still needs scheduler/state tests because the lifecycle gap remains."
+      ],
+      "non_goals": [
+        "Do not make permanent settable through CronCreate; TS says it is only written directly by installer/system code.",
+        "Do not change the default max age for ordinary recurring jobs."
+      ]
+    },
+    {
+      "title": "Replace Go-specific CronList tests with TS parity contract tests",
+      "priority": "P2",
+      "dependency_key": "cronlist-gap-06",
+      "objective": "Make the CronList test suite protect the TS-compatible contract instead of Go-only table/diagnostic extensions.",
+      "owned_files": [
+        "tools/cron_test.go",
+        "tools/cron_alignment_test.go",
+        "registry_setup_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronListTool.ts",
+        "../src/tools/ScheduleCronTool/UI.tsx",
+        "tools/cron_test.go",
+        "tools/cron_alignment_test.go",
+        "registry_setup_test.go"
+      ],
+      "implementation_steps": [
+        "Remove or rewrite tests that require Go-only state_file, concurrent_safe, table header, expires_in, and format=json output from CronList.",
+        "Add tests for TS empty-state text, no public input parameters, TS-style job lines, prompt truncation, durable/session-only markers, and stable ordering.",
+        "Add tests for malformed/invalid persisted task handling only where it affects CronList visible behavior.",
+        "Keep registry gate tests in registry_setup_test.go rather than CronList unit tests.",
+        "Ensure tests do not require broad cron runtime behavior unrelated to listing."
+      ],
+      "acceptance_criteria": [
+        "CronList tests fail on a table-only implementation.",
+        "CronList tests fail if the public schema includes format.",
+        "CronList tests fail if prompts are not truncated consistently with TS.",
+        "CronList tests include at least one durable and one session-only job.",
+        "CronList tests include teammate filtering once the ownership task lands."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCronList|TestAlignmentCronList'",
+        "go test . -run 'TestSetupRegistry_GatesTriggerTools'"
+      ],
+      "risks": [
+        "This task should land with or after the implementation tasks it asserts; otherwise it will intentionally fail.",
+        "Some Go-only diagnostics may still be useful, but they should move to separate non-parity tests if retained."
+      ],
+      "non_goals": [
+        "Do not broaden tests into CronCreate/CronDelete behavior except for fixture setup.",
+        "Do not test scheduler firing semantics here unless they affect list visibility or state."
+      ]
+    }
+  ]
+}

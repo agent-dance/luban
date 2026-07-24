@@ -1,0 +1,76 @@
+{
+  "id": "task_11",
+  "title": "Integrate goal continuation into QueryLoop",
+  "priority": "P0",
+  "status": "accepted",
+  "owner_role": "executor",
+  "estimated_minutes": 5,
+  "parallel_group": "loop",
+  "can_run_in_parallel": false,
+  "dependencies": [
+    "task_10"
+  ],
+  "objective": "Wire active goal evaluation into the existing no-tool-use loop branch.",
+  "context": [
+    "This is the core feature: after a turn ends without tool use, evaluate the active goal and decide whether to continue.",
+    "Regular Stop hooks must keep their current precedence."
+  ],
+  "source_evidence": [
+    {
+      "source": "repo",
+      "file_or_url": "loop/query.go:1344",
+      "note": "Goal evaluation belongs near existing Stop hook and token-budget continuation logic."
+    }
+  ],
+  "read_first": [
+    "loop/goal_continuation_test.go",
+    "loop/query.go",
+    "loop/query_state.go",
+    "loop/goal_evaluator.go",
+    "goal/goal.go"
+  ],
+  "owned_files": [
+    "loop/query.go",
+    "loop/query_state.go",
+    "loop/events.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Add goal state and evaluator to loop Config or snapshot.",
+      "Evaluate active goals after Stop hooks and before token-budget continuation.",
+      "Append a concise user message when evaluator says continue.",
+      "Mark achieved and persist/update through a narrow callback when evaluator says done.",
+      "Emit a goal status event if the event system already has a suitable extension point."
+    ],
+    "exclude": [
+      "No provider model-selection work beyond the evaluator interface.",
+      "No TUI rendering."
+    ]
+  },
+  "implementation_steps": [
+    "Extend Config and snapshot with goal runtime/evaluator fields.",
+    "Insert evaluation in the no-tool-use branch.",
+    "Update state transitions and turn-end events.",
+    "Run loop focused tests."
+  ],
+  "deliverables": [
+    "Automatic goal continuation in QueryLoop."
+  ],
+  "acceptance_criteria": [
+    "go test ./loop -run GoalContinuation passes.",
+    "Existing Stop hook tests still pass.",
+    "Continuation cannot bypass MaxTurns."
+  ],
+  "verification": [
+    "go test ./loop -run 'Goal|StopHook|TokenBudget' -count=1"
+  ],
+  "risks": [
+    "A continuation message placed in the wrong order could change Stop hook behavior."
+  ],
+  "non_goals": [
+    "No command UI.",
+    "No docs."
+  ],
+  "dispatch_prompt": "Implement QueryLoop goal continuation to satisfy loop/goal_continuation_test.go. Keep Stop hook precedence and MaxTurns safety intact.",
+  "notes_for_assignee": "Treat evaluator errors conservatively: visible warning and no unbounded continuation."
+}

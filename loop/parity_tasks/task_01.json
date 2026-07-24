@@ -1,0 +1,66 @@
+{
+  "id": "task_01",
+  "title": "建立 QueryState 与不可变 QueryConfig 快照",
+  "priority": "P0",
+  "can_dispatch_independently": true,
+  "depends_on": [],
+  "objective": "把 Go loop 从线性 for 循环改造成可显式表达 transition 的状态机骨架，并在每次 Run 入口生成不可变配置快照，为后续恢复、续传、hook、预算类 parity 改造提供稳定承载面。",
+  "improvement_points": [
+    "新增 QueryState，携带 messages、turnCount、autoCompactTracking、maxOutputTokensRecoveryCount、hasAttemptedReactiveCompact、maxOutputTokensOverride、pendingToolUseSummary、stopHookActive、transition 等跨迭代状态。",
+    "新增 QueryTransition 枚举，至少覆盖 next_turn、collapse_drain_retry、reactive_compact_retry、max_output_tokens_escalate、max_output_tokens_recovery、stop_hook_blocking、token_budget_continuation。",
+    "新增 QueryConfigSnapshot，进入 Run/RunPrepared/RunWithContent 时一次性冻结 runtime gates，例如 streamingToolExecution、emitToolUseSummaries、fastModeEnabled、isAnt 或对应 Go 配置项。",
+    "先保持现有行为不变，只把状态写入位置集中化，后续任务再逐步接入新 transition。"
+  ],
+  "evidence": [
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "265-295",
+      "note": "TS 原版在 queryLoop 入口创建 State，并在同一入口调用 buildQueryConfig() 生成不可变快照。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query/config.ts",
+      "lines": "8-46",
+      "note": "QueryConfig 明确把 runtime gates 从每轮可变状态中分离出来。"
+    },
+    {
+      "source": "go_current",
+      "file": "loop/query.go",
+      "lines": "549-976",
+      "note": "Go 当前 runLoop 是线性 for 循环，恢复路径分散在局部分支里，没有显式 transition 状态。"
+    }
+  ],
+  "scope": {
+    "include": [
+      "loop/query.go",
+      "loop/query_state.go",
+      "loop/query_state_test.go"
+    ],
+    "exclude": [
+      "具体实现 streaming tool execution",
+      "具体实现 stop hooks",
+      "具体实现 token budget 或 reactive compact"
+    ]
+  },
+  "implementation_steps": [
+    "定义 QueryState、QueryTransition、QueryConfigSnapshot 结构体与构造函数。",
+    "把 runLoop 中 turnCount、恢复计数、pending summary、stopHookActive 等局部状态迁移进 QueryState。",
+    "把 provider.Params 构建抽成基于 state 和 snapshot 的小函数，保持现有参数值不变。",
+    "在所有 continue/return 前保持 state 更新路径可读，后续任务能追加 transition 不再改散落逻辑。"
+  ],
+  "acceptance_criteria": [
+    "所有现有 loop 测试行为不变。",
+    "新增测试能验证 QueryConfigSnapshot 在一次 Run 内不随 q.config 后续变更而变。",
+    "新增测试能验证 next_turn 和 max turn 计数通过 QueryState 更新。",
+    "runLoop 中跨迭代状态不再以一组松散局部变量承载。"
+  ],
+  "tests": [
+    "go test ./loop -run 'TestQueryState|TestQueryLoop' -count=1",
+    "go test ./loop ./sdk ./engine -count=1"
+  ],
+  "risks": [
+    "这是后续任务的基础改造，容易造成无行为变化但 diff 较大；必须先做纯结构迁移。",
+    "不要在本任务中顺手改变重试、hook 或 compact 行为。"
+  ]
+}

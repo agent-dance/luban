@@ -1,0 +1,76 @@
+{
+  "id": "task_06",
+  "title": "补齐 PostSampling、StopFailure 与终轮副作用",
+  "priority": "P1",
+  "can_dispatch_independently": true,
+  "depends_on": [
+    "task_01",
+    "task_04"
+  ],
+  "objective": "补齐模型采样后、工具执行前以及终轮失败路径的 hook/side-effect 行为，减少 Go loop 与原版在鲁棒性和运行时集成上的偏差。",
+  "improvement_points": [
+    "模型响应完整后、工具执行前触发 PostSampling hooks 或 Go 等价事件。",
+    "prompt-too-long、media error、API error 等失败终止路径触发 StopFailure hooks 或等价通知。",
+    "终轮成功后执行轻量副作用接口，例如 prompt suggestion、memory extraction、auto dream、computer use cleanup 的可插拔 provider。",
+    "副作用默认 fire-and-forget，不阻塞主响应；需要在非交互或 shutdown 路径提供 drain 选项。",
+    "bare/simple 模式可跳过背景副作用。"
+  ],
+  "evidence": [
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "999-1006",
+      "note": "TS 在模型响应完成后执行 post-sampling hooks。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query/stopHooks.ts",
+      "lines": "133-157",
+      "note": "TS 终轮执行 prompt suggestion、memory extraction 和 auto dream 等背景副作用。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "1170-1184",
+      "note": "TS prompt/media 失败无法恢复时触发 stop failure hooks 并返回。"
+    },
+    {
+      "source": "go_current",
+      "file": "loop/query.go",
+      "lines": "880-885",
+      "note": "Go 当前无工具调用时直接结束，没有 post-sampling 或终轮副作用接口。"
+    }
+  ],
+  "scope": {
+    "include": [
+      "loop/query.go",
+      "loop/post_sampling.go",
+      "hooks/hooks.go",
+      "loop/post_sampling_test.go"
+    ],
+    "exclude": [
+      "具体实现 memory extraction 服务",
+      "具体实现 prompt suggestion 模型调用",
+      "UI 展示细节"
+    ]
+  },
+  "implementation_steps": [
+    "定义 PostSamplingRunner 和 TurnSideEffects 接口，先让 engine/main 可选注入。",
+    "在 assistantMsg 构造完成且 toolUses 解析前触发 post-sampling。",
+    "在 API error、prompt too long、media error 等失败 return 前调用 StopFailure runner。",
+    "确保 side effects 不能修改将发送给下一轮 API 的消息，除非显式返回受控追加消息。"
+  ],
+  "acceptance_criteria": [
+    "PostSampling hook 能看到 messagesForQuery + assistant message。",
+    "PostSampling hook 失败不会让正常工具执行中断，除非配置为 blocking。",
+    "StopFailure 在可恢复失败耗尽后执行一次。",
+    "bare/simple 模式或未注入 runner 时零开销、无行为变化。"
+  ],
+  "tests": [
+    "go test ./loop ./hooks -run 'TestPostSampling|TestStopFailure|TestTurnSideEffects' -count=1"
+  ],
+  "risks": [
+    "副作用不应把非确定性内容写入 prompt cache 关键路径。",
+    "如果让 post-sampling 修改 assistant 内容，需要同时处理 thinking signature 约束。"
+  ]
+}

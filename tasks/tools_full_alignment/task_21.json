@@ -1,0 +1,553 @@
+{
+  "id": "task_21",
+  "title": "Align ReadMcpResourceTool tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all ReadMcpResourceTool improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "ReadMcpResourceTool"
+    ],
+    "problem": "Go ReadMcpResourceTool matches the canonical name, visible server/uri parameters, concurrency-safe marker, deferred discovery metadata, and the basic live JSON-RPC resources/read call. It is not yet fully parity-aligned with the TS reference. The main gaps are output normalization and robustness rather than the happy-path request itself: Go returns a stringified legacy MCP envelope instead of the TS declared output shape, can inline or truncate binary blobs instead of writing blobSavedTo entries, has a direct HTTP GET fallback that bypasses MCP resources/read semantics, lacks TS connected-state and capabilities gating, does not clear/reconnect stale resource-read clients the way TS ensureConnectedClient/onclose does, and does not expose the TS read-only, max-result, output-schema, and auto-classifier metadata for this tool.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/ReadMcpResourceTool.json"
+    ],
+    "ts_references": [
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:30-44",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:106-143",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:151-156",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:103-138",
+      "../src/utils/mcpOutputStorage.ts:148-174",
+      "../src/utils/mcpOutputStorage.ts:181-188",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:94-101",
+      "../src/services/mcp/client.ts:784-865",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:141-143",
+      "../src/services/mcp/types.ts:180-229",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:78-92",
+      "../src/services/mcp/client.ts:2169-2190",
+      "../src/services/mcp/client.ts:2342-2363",
+      "../src/services/mcp/client.ts:1220-1247",
+      "../src/services/mcp/client.ts:1313-1328",
+      "../src/services/mcp/client.ts:1373-1397",
+      "../src/services/mcp/client.ts:1688-1704",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:49-63",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:69-74",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:145-156",
+      "../src/utils/permissions/classifierDecision.ts:56-66",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:22-27",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:75-83",
+      "../src/tools/ReadMcpResourceTool/prompt.ts:13-15",
+      "../src/tools/ReadMcpResourceTool/ReadMcpResourceTool.ts:90-101"
+    ],
+    "go_references": [
+      "tools/mcp_tools.go:954-964",
+      "tools/mcp_render.go:193-215",
+      "types/tools.go:58-68",
+      "tools/mcp_tools_test.go:696-730",
+      "tools/mcp_tools.go:948-964",
+      "tools/mcp_render.go:218-255",
+      "tools/mcp_render.go:131-160",
+      "tools/mcp_render_test.go:75-106",
+      "tools/mcp_tools.go:936-939",
+      "tools/mcp_tools.go:706-735",
+      "tools/mcp_tools.go:485-499",
+      "registry_setup.go:289-295",
+      "tools/mcp_tools.go:133-140",
+      "tools/mcp_tools.go:369-440",
+      "tools/mcp_tools.go:926-955",
+      "services/mcp/client.go:434-442",
+      "tools/mcp_tools.go:369-386",
+      "tools/mcp_tools.go:954-959",
+      "tools/mcp_stdio_restart.go:24-34",
+      "tools/mcp_stdio_restart.go:66-82",
+      "tools/mcp_stdio_restart.go:29-40",
+      "tools/mcp_tools.go:884-903",
+      "types/tools.go:24-45",
+      "registry/tool_visibility.go:17-31",
+      "tools/tools-architecture.md:516-529",
+      "permissions/permissions.go:151-259",
+      "tools/parse.go:306-312",
+      "tools/mcp_tools.go:911-924",
+      "tools/mcp_tools_test.go:648-673",
+      "tools/mcp_tools_test.go:831-844",
+      "tools/mcp_tools_test.go:696-787",
+      "tools/mcp_parity_contract_test.go:242-252",
+      "tools/mcp_parity_contract_test.go:87-93",
+      "tools/mcp_tools.go",
+      "tools/mcp_render.go",
+      "tools/mcp_tools_test.go",
+      "tools/mcp_parity_contract_test.go",
+      "tools/mcp_output_storage.go",
+      "tools/mcp_render_test.go",
+      "services/mcp/transport_http.go",
+      "services/mcp/client.go",
+      "mcp/mcp.go",
+      "registry_setup.go",
+      "tools/agent.go",
+      "tools/agent_test.go",
+      "tools/mcp_stdio_restart.go",
+      "tools/mcp_sse_reconnect.go",
+      "tools/mcp_sse_reconnect_test.go",
+      "types/tools.go",
+      "registry/tool_visibility.go",
+      "permissions/permissions.go",
+      "tools/tool_search.go",
+      "registry/registry_test.go",
+      "permissions/permissions_test.go",
+      "tools/parse.go"
+    ],
+    "source_note": ""
+  },
+  "owned_files": [
+    "tools/mcp_tools.go",
+    "tools/mcp_render.go",
+    "tools/mcp_tools_test.go",
+    "tools/mcp_parity_contract_test.go",
+    "tools/mcp_output_storage.go",
+    "tools/mcp_render_test.go",
+    "services/mcp/transport_http.go",
+    "services/mcp/client.go",
+    "mcp/mcp.go",
+    "registry_setup.go",
+    "tools/agent.go",
+    "tools/agent_test.go",
+    "tools/mcp_stdio_restart.go",
+    "tools/mcp_sse_reconnect.go",
+    "tools/mcp_sse_reconnect_test.go",
+    "types/tools.go",
+    "registry/tool_visibility.go",
+    "permissions/permissions.go",
+    "tools/tool_search.go",
+    "registry/registry_test.go",
+    "permissions/permissions_test.go",
+    "tools/parse.go",
+    "tools/mcp_tools.go:954-964",
+    "tools/mcp_render.go:193-215",
+    "types/tools.go:58-68",
+    "tools/mcp_tools_test.go:696-730",
+    "tools/mcp_tools.go:948-964",
+    "tools/mcp_render.go:218-255",
+    "tools/mcp_render.go:131-160",
+    "tools/mcp_render_test.go:75-106",
+    "tools/mcp_tools.go:936-939",
+    "tools/mcp_tools.go:706-735",
+    "tools/mcp_tools.go:485-499",
+    "registry_setup.go:289-295",
+    "tools/mcp_tools.go:133-140",
+    "tools/mcp_tools.go:369-440",
+    "tools/mcp_tools.go:926-955",
+    "services/mcp/client.go:434-442",
+    "tools/mcp_tools.go:369-386",
+    "tools/mcp_tools.go:954-959",
+    "tools/mcp_stdio_restart.go:24-34",
+    "tools/mcp_stdio_restart.go:66-82",
+    "tools/mcp_stdio_restart.go:29-40",
+    "tools/mcp_tools.go:884-903",
+    "types/tools.go:24-45",
+    "registry/tool_visibility.go:17-31",
+    "tools/tools-architecture.md:516-529",
+    "permissions/permissions.go:151-259",
+    "tools/parse.go:306-312",
+    "tools/mcp_tools.go:911-924",
+    "tools/mcp_tools_test.go:648-673",
+    "tools/mcp_tools_test.go:831-844",
+    "tools/mcp_tools_test.go:696-787",
+    "tools/mcp_parity_contract_test.go:242-252",
+    "tools/mcp_parity_contract_test.go:87-93"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "RMR-GAP-001",
+      "severity": "P0",
+      "category": "output_contract",
+      "title": "Go returns a legacy raw MCP envelope rather than the exact TS output schema",
+      "description": "TS declares and returns exactly {contents:[{uri,mimeType?,text?,blobSavedTo?}]}. Its mapper constructs a new contents array and intentionally emits only uri, optional mimeType, text, and blobSavedTo-derived fields. Go currently returns ToolResult.Content as the JSON string from renderMCPResourceResult(raw), which preserves the server's resources/read envelope with legacy transformations. This means Go can expose extra fields such as blob, type, annotations, or _meta, can preserve top-level _meta that TS drops, and has no typed outputSchema equivalent for callers to rely on."
+    },
+    {
+      "id": "RMR-GAP-002",
+      "severity": "P0",
+      "category": "robustness_output",
+      "title": "Binary resource blobs are not converted to TS-style blobSavedTo entries on the tool execution path",
+      "description": "TS decodes every resources/read blob, writes the raw bytes to the tool-results directory with a MIME-derived extension, and returns blobSavedTo plus a short text notice. Go has binary persistence helpers and a rich resource renderer, but ReadMcpResourceTool does not use that rich renderer. Its current legacy renderer can leave small binary blobs inline as base64 or truncate large base64 into a JSON item with binary_truncated/original_size_bytes, neither of which matches TS and both of which can pollute model context."
+    },
+    {
+      "id": "RMR-GAP-003",
+      "severity": "P1",
+      "category": "runtime_logic",
+      "title": "HTTP fallback reads /resources/<uri> directly instead of using MCP resources/read semantics",
+      "description": "TS always performs an MCP resources/read request through a connected MCP client, including HTTP servers via the SDK StreamableHTTP transport. Go's AddServer compatibility path bypasses JSON-RPC and performs a direct GET against /resources/<uri>, then returns the raw response body. This changes method, URL encoding, auth/session behavior, response shape, output limits, and binary handling."
+    },
+    {
+      "id": "RMR-GAP-004",
+      "severity": "P1",
+      "category": "state_lifecycle",
+      "title": "Go lacks TS-equivalent connected-state and resources capability gating",
+      "description": "TS receives a runtime list of MCP clients with explicit connected/failed/needs-auth/pending/disabled states. ReadMcpResourceTool first finds a runtime client by name, rejects non-connected clients, and rejects connected clients that do not advertise capabilities.resources before sending resources/read. Resource helper tools are also added to the visible tool set only when at least one connected server supports resources. Go always registers ReadMcpResourceTool at setup and its Execute path attempts Connect(server), then calls resources/read regardless of advertised capabilities because MCPServerConn does not store capabilities."
+    },
+    {
+      "id": "RMR-GAP-005",
+      "severity": "P1",
+      "category": "state_lifecycle",
+      "title": "Resource reads do not get TS-style stale-session/onclose cache clearing and reconnect semantics",
+      "description": "TS installs onerror/onclose handlers that close failed transports, reject pending calls, clear connection and fetch caches, and make ensureConnectedClient reconnect on subsequent tool/resource calls. Go's MCPManager returns any ready cached connection; the stdio restart helper is not wired into Connect, and there is no equivalent onclose/session-expired path that deletes a stale connection before retrying resources/read. A failed resources/read can therefore keep using the same cached connection until explicit Shutdown or manual deletion."
+    },
+    {
+      "id": "RMR-GAP-006",
+      "severity": "P1",
+      "category": "permissions_metadata",
+      "title": "Go does not expose ReadMcpResourceTool's read-only, classifier, output-schema, and result-budget metadata",
+      "description": "TS marks ReadMcpResourceTool as read-only and concurrency-safe, defers it for tool search, provides a searchHint, caps model-facing results at 100000 characters, exposes an outputSchema, converts the input to `${server} ${uri}` for auto classification, and reports truncation based on the JSON output. Go has the name, schema, concurrency-safe marker, and registry-level shouldDefer/searchHint fallback, but the general Tool interface and this tool do not expose read-only status, max result size, output schema, user-facing name, result-truncation predicate, or auto-classifier input."
+    },
+    {
+      "id": "RMR-GAP-007",
+      "severity": "P2",
+      "category": "input_validation",
+      "title": "Runtime input acceptance and validation messages are broader than the TS contract",
+      "description": "The model-visible Go schema has server and uri, which matches TS at the surface. Runtime parsing is broader: Go also accepts server_name/resource_uri aliases, trims whitespace, and has explicit empty-field errors. TS accepts only server and uri in the tool schema, does not trim before lookup, and empty strings flow into the same not-found/not-connected checks as any other string. This is a smaller schema/runtime drift, but it matters for exact replay and error parity."
+    },
+    {
+      "id": "RMR-GAP-008",
+      "severity": "P1",
+      "category": "test_coverage",
+      "title": "Current tests do not lock the high-risk ReadMcpResourceTool parity edges",
+      "description": "Go has useful happy-path resources/read tests and renderer-level tests, but the tool execution path is not covered for TS-exact field whitelisting, binary blobSavedTo output, no base64 leakage, HTTP fallback normalization, capabilities gating, stale connection recovery, or read-only/result-budget metadata. Existing parity tests even assert the current raw contents envelope rather than the TS-normalized output constraints."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "RMR-TASK-001",
+      "title": "Normalize ReadMcpResourceTool output to the TS contents schema",
+      "priority": "P2",
+      "addresses_gaps": [
+        "RMR-GAP-001",
+        "RMR-GAP-008"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/mcp_tools.go",
+        "tools/mcp_render.go",
+        "tools/mcp_tools_test.go",
+        "tools/mcp_parity_contract_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "ReadMcpResourceTool.Execute returns valid JSON with top-level contents and TS-whitelisted item fields only.",
+        "Text resources preserve uri, optional mimeType, and text exactly.",
+        "Empty raw results continue to return {\"contents\":[]}.",
+        "Top-level _meta, per-item annotations/_meta/type, and raw blob/data fields do not appear in the ReadMcpResourceTool output unless converted by a TS-compatible rule.",
+        "Existing successful text and multi-content tests continue to pass."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestReadMcpResourceTool_(SuccessfulRead|MultiContent|PassesURI|TSOutputShape|DropsRawMetaAndUnknownFields)' -count=1",
+        "go test ./tools -run 'TestMCPParityContractTSResourcesListAndReadEnvelopes' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Replace the legacy raw-envelope return for resources/read with a TS-shaped normalizer that emits only {contents:[{uri,mimeType?,text?,blobSavedTo?}]}. Preserve existing text and multi-content behavior, but drop raw blob, _meta, annotations, type, and other MCP fields from this tool's model-facing JSON unless a later TS source starts exposing them."
+    },
+    {
+      "source_id": "RMR-TASK-002",
+      "title": "Persist binary resources and return TS-style blobSavedTo entries",
+      "priority": "P2",
+      "addresses_gaps": [
+        "RMR-GAP-002",
+        "RMR-GAP-008"
+      ],
+      "dependencies": [
+        "RMR-TASK-001"
+      ],
+      "owned_files": [
+        "tools/mcp_tools.go",
+        "tools/mcp_render.go",
+        "tools/mcp_output_storage.go",
+        "tools/mcp_tools_test.go",
+        "tools/mcp_render_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Binary resource blobs are decoded from base64 and written as raw bytes under the configured MCP tool-results directory.",
+        "The JSON output item includes uri, optional mimeType, blobSavedTo, and text matching the saved-content message shape.",
+        "The original base64 blob/data is absent from ToolResult.Content for small and large binaries.",
+        "Persist failures return a text field saying binary content could not be saved, matching the TS behavior class.",
+        "MIME-derived extensions match existing TS/Go MIME extension mappings."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestReadMcpResourceTool_(BinaryBlobSavedTo|BinaryBlobDoesNotInlineBase64|BinaryPersistFailureReturnsText)' -count=1",
+        "go test ./tools -run 'TestMCPOutputBinaryPersistsRawBytes|TestMCPRenderUnknownBinaryDoesNotInlineBase64' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Teach the ReadMcpResourceTool execution normalizer to decode resources/read blob content, persist raw bytes with the existing MIME-derived extension helper, and return blobSavedTo plus the saved-content text notice. Ensure base64 never appears in model-facing resource-read output."
+    },
+    {
+      "source_id": "RMR-TASK-003",
+      "title": "Align HTTP-mode resource reads with MCP resources/read output semantics",
+      "priority": "P2",
+      "addresses_gaps": [
+        "RMR-GAP-003",
+        "RMR-GAP-008"
+      ],
+      "dependencies": [
+        "RMR-TASK-001"
+      ],
+      "owned_files": [
+        "tools/mcp_tools.go",
+        "tools/mcp_tools_test.go",
+        "tools/mcp_parity_contract_test.go",
+        "services/mcp/transport_http.go",
+        "services/mcp/client.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "HTTP-backed ReadMcpResourceTool calls no longer return arbitrary raw HTTP response bodies for successful reads.",
+        "Successful HTTP-mode resource reads return the same TS-shaped contents object as stdio/live MCP reads.",
+        "HTTP 401 still returns the existing structured oauth_required error envelope with WWW-Authenticate preserved.",
+        "URI values containing slashes, schemes, and query strings are not reinterpreted as unsafe REST path segments.",
+        "Existing MCPTool HTTP OAuth tests continue to pass."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestReadMcpResourceTool_HTTP.*|TestMCPParityContractTSOAuth401SurfacesNeedsAuthHint' -count=1",
+        "go test ./services/mcp -run 'Test.*HTTP.*|Test.*Transport.*' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Remove or quarantine the direct GET /resources/<uri> fallback for ReadMcpResourceTool. For HTTP-backed MCP servers, use a JSON-RPC resources/read path when possible; if AddServer compatibility must remain, normalize its response into the same TS-shaped contents output and preserve the structured OAuth-required hint for 401s."
+    },
+    {
+      "source_id": "RMR-TASK-004",
+      "title": "Gate ReadMcpResourceTool on connected server state and resources capability",
+      "priority": "P2",
+      "addresses_gaps": [
+        "RMR-GAP-004",
+        "RMR-GAP-008"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "mcp/mcp.go",
+        "services/mcp/client.go",
+        "tools/mcp_tools.go",
+        "registry_setup.go",
+        "tools/agent.go",
+        "tools/mcp_tools_test.go",
+        "tools/agent_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "MCPServerConn or an equivalent services-layer record stores server capabilities from initialize.",
+        "ReadMcpResourceTool refuses connected servers without resources capability before issuing resources/read.",
+        "ReadMcpResourceTool preserves a TS-like distinction among server not found, server not connected, and resources unsupported.",
+        "The model-visible helper tool is not added in contexts where no connected MCP server supports resources, matching TS resourceTools gating.",
+        "Existing MCP resource-read happy path remains unchanged for resources-capable servers."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestReadMcpResourceTool_(ServerNotConfigured|ServerNotConnected|ServerWithoutResourcesCapability|SuccessfulRead)' -count=1",
+        "go test ./tools -run 'TestAgent.*MCP.*Resource|TestMCPParityContract.*capabilities' -count=1",
+        "go test ./services/mcp -run 'Test.*Capabilities|Test.*Initialize' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Store MCP initialize capabilities and connection state in the Go MCP manager/tool layer, then make ReadMcpResourceTool match TS: absent server, non-connected server, and connected-without-resources produce distinct early errors, and resource helper exposure is gated on at least one server advertising resources."
+    },
+    {
+      "source_id": "RMR-TASK-005",
+      "title": "Clear stale MCP connections and retry resource reads after session close or expiry",
+      "priority": "P2",
+      "addresses_gaps": [
+        "RMR-GAP-005",
+        "RMR-GAP-008"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "mcp/mcp.go",
+        "tools/mcp_tools.go",
+        "tools/mcp_stdio_restart.go",
+        "tools/mcp_sse_reconnect.go",
+        "tools/mcp_sse_reconnect_test.go",
+        "tools/mcp_tools_test.go",
+        "services/mcp/client.go",
+        "services/mcp/transport_http.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Connect does not return a cached ready connection after the underlying client has closed or reported a terminal session error.",
+        "A resources/read error classified as session expired clears the cached connection so a subsequent call reconnects.",
+        "The stdio restart watcher is actually attached for subprocess-backed MCP clients or replaced with an equivalent integrated lifecycle path.",
+        "Reconnect success refreshes the tool/resource-capability state used by ReadMcpResourceTool.",
+        "No goroutine leaks or repeated stale-client reuse in close/reconnect tests."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestReadMcpResourceTool_(ReconnectAfterClose|SessionExpiredClearsCache)|TestMCPStdioRestart.*|Test.*SSEReconnect.*' -count=1",
+        "go test ./mcp ./services/mcp -run 'Test.*Reconnect|Test.*Close|Test.*Session' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Wire Go's MCP connection lifecycle so closed stdio/SSE/HTTP sessions are removed from MCPManager caches and the next ReadMcpResourceTool call reconnects like TS ensureConnectedClient. Detect session-expired errors where possible, reject or surface current failed calls, and avoid returning a permanently stale ready connection."
+    },
+    {
+      "source_id": "RMR-TASK-006",
+      "title": "Expose ReadMcpResourceTool read-only, classifier, output-schema, and result-budget metadata",
+      "priority": "P2",
+      "addresses_gaps": [
+        "RMR-GAP-006",
+        "RMR-GAP-008"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "permissions/permissions.go",
+        "tools/mcp_tools.go",
+        "tools/tool_search.go",
+        "tools/mcp_tools_test.go",
+        "registry/registry_test.go",
+        "permissions/permissions_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "ReadMcpResourceTool can be queried as read-only by the Go permission/risk layer.",
+        "ToolSearch/discovery metadata includes the TS-aligned search hint and deferral semantics.",
+        "A max result size of 100000 characters is available to the result handling layer or explicitly enforced for this tool.",
+        "An output schema equivalent to the TS contents schema is available in Go metadata.",
+        "Auto-classifier input for server=fs uri=memo://a is exactly \"fs memo://a\" after TS-equivalent input normalization."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./permissions -run 'TestReadMcpResourceTool_Metadata|TestToolSearch.*ReadMcpResource|Test.*ReadOnly.*ReadMcpResource|Test.*AutoClassifier.*ReadMcpResource|Test.*Result.*Budget' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Add a local Go metadata surface for ReadMcpResourceTool that can represent the TS contracts: read-only=true, shouldDefer=true, searchHint, maxResultSizeChars=100000, output schema, user-facing name readMcpResource, result-truncation predicate, and auto-classifier input `${server} ${uri}`. Hook the metadata into registry/tool search and permission/risk paths where those concepts already exist."
+    },
+    {
+      "source_id": "RMR-TASK-007",
+      "title": "Decide and lock exact TS input validation semantics for ReadMcpResourceTool",
+      "priority": "P2",
+      "addresses_gaps": [
+        "RMR-GAP-007",
+        "RMR-GAP-008"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/parse.go",
+        "tools/mcp_tools.go",
+        "tools/mcp_tools_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "The visible input schema documents only server and uri.",
+        "Whitespace, blank strings, unknown fields, and legacy aliases have explicit tests documenting whether Go intentionally matches TS or preserves compatibility.",
+        "If exact mode is chosen, server_name/resource_uri no longer alter ReadMcpResourceTool behavior in normal execution.",
+        "If compatibility aliases remain, they are documented as Go compatibility behavior and do not leak into the model-facing schema or classifier input."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestReadMcpResourceInput|TestReadMcpResourceTool_(MissingServerName|MissingResourceURI|RejectsLegacyAliases|CompatibilityAliases)' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "For exact replay parity, align runtime validation with the TS server/uri-only schema or explicitly quarantine legacy aliases behind compatibility tests. This is lower priority because the model-visible schema already uses server/uri, but it should be made intentional rather than accidental."
+    },
+    {
+      "source_id": "RMR-TASK-008",
+      "title": "Add focused TS parity tests for ReadMcpResourceTool edge behavior",
+      "priority": "P2",
+      "addresses_gaps": [
+        "RMR-GAP-001",
+        "RMR-GAP-002",
+        "RMR-GAP-003",
+        "RMR-GAP-004",
+        "RMR-GAP-005",
+        "RMR-GAP-006",
+        "RMR-GAP-007",
+        "RMR-GAP-008"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/mcp_tools_test.go",
+        "tools/mcp_parity_contract_test.go",
+        "tools/mcp_render_test.go",
+        "registry/registry_test.go",
+        "permissions/permissions_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Tests fail on the current implementation for each high-risk gap that remains unfixed.",
+        "Tests include TS evidence comments pointing to ReadMcpResourceTool.ts and relevant MCP client/storage code.",
+        "Tests use local in-process MCP servers or httptest servers only; no network credentials or external MCP services are required.",
+        "The suite can be run independently with a narrow go test command before and after implementation tasks."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./permissions -run 'ReadMcpResource|MCPParityContract.*Resource|ToolSearch.*ReadMcpResource|ReadOnly.*ReadMcpResource' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Create red/green tests that lock the TS ReadMcpResourceTool contract independently of broad MCP alignment tests. Cover TS output field whitelist, blobSavedTo persistence, no base64 leakage, HTTP-mode normalization, resources capability gating, stale-connection recovery, metadata, and input validation decisions."
+    }
+  ],
+  "acceptance_criteria": [
+    "ReadMcpResourceTool input validation and schema behavior match the original TS implementation for all report gaps.",
+    "ReadMcpResourceTool model-visible output and structured result data match TS golden fixtures.",
+    "ReadMcpResourceTool runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "ReadMcpResourceTool.Execute returns valid JSON with top-level contents and TS-whitelisted item fields only.",
+    "Text resources preserve uri, optional mimeType, and text exactly.",
+    "Empty raw results continue to return {\"contents\":[]}.",
+    "Top-level _meta, per-item annotations/_meta/type, and raw blob/data fields do not appear in the ReadMcpResourceTool output unless converted by a TS-compatible rule.",
+    "Existing successful text and multi-content tests continue to pass.",
+    "Binary resource blobs are decoded from base64 and written as raw bytes under the configured MCP tool-results directory.",
+    "The JSON output item includes uri, optional mimeType, blobSavedTo, and text matching the saved-content message shape.",
+    "The original base64 blob/data is absent from ToolResult.Content for small and large binaries.",
+    "Persist failures return a text field saying binary content could not be saved, matching the TS behavior class.",
+    "MIME-derived extensions match existing TS/Go MIME extension mappings.",
+    "HTTP-backed ReadMcpResourceTool calls no longer return arbitrary raw HTTP response bodies for successful reads.",
+    "Successful HTTP-mode resource reads return the same TS-shaped contents object as stdio/live MCP reads.",
+    "HTTP 401 still returns the existing structured oauth_required error envelope with WWW-Authenticate preserved.",
+    "URI values containing slashes, schemes, and query strings are not reinterpreted as unsafe REST path segments.",
+    "Existing MCPTool HTTP OAuth tests continue to pass.",
+    "MCPServerConn or an equivalent services-layer record stores server capabilities from initialize.",
+    "ReadMcpResourceTool refuses connected servers without resources capability before issuing resources/read.",
+    "ReadMcpResourceTool preserves a TS-like distinction among server not found, server not connected, and resources unsupported.",
+    "The model-visible helper tool is not added in contexts where no connected MCP server supports resources, matching TS resourceTools gating.",
+    "Existing MCP resource-read happy path remains unchanged for resources-capable servers.",
+    "Connect does not return a cached ready connection after the underlying client has closed or reported a terminal session error.",
+    "A resources/read error classified as session expired clears the cached connection so a subsequent call reconnects.",
+    "The stdio restart watcher is actually attached for subprocess-backed MCP clients or replaced with an equivalent integrated lifecycle path.",
+    "Reconnect success refreshes the tool/resource-capability state used by ReadMcpResourceTool."
+  ],
+  "verification": [
+    "go test ./tools -run 'TestReadMcpResourceTool_(SuccessfulRead|MultiContent|PassesURI|TSOutputShape|DropsRawMetaAndUnknownFields)' -count=1",
+    "go test ./tools -run 'TestMCPParityContractTSResourcesListAndReadEnvelopes' -count=1",
+    "go test ./tools -run 'TestReadMcpResourceTool_(BinaryBlobSavedTo|BinaryBlobDoesNotInlineBase64|BinaryPersistFailureReturnsText)' -count=1",
+    "go test ./tools -run 'TestMCPOutputBinaryPersistsRawBytes|TestMCPRenderUnknownBinaryDoesNotInlineBase64' -count=1",
+    "go test ./tools -run 'TestReadMcpResourceTool_HTTP.*|TestMCPParityContractTSOAuth401SurfacesNeedsAuthHint' -count=1",
+    "go test ./services/mcp -run 'Test.*HTTP.*|Test.*Transport.*' -count=1",
+    "go test ./tools -run 'TestReadMcpResourceTool_(ServerNotConfigured|ServerNotConnected|ServerWithoutResourcesCapability|SuccessfulRead)' -count=1",
+    "go test ./tools -run 'TestAgent.*MCP.*Resource|TestMCPParityContract.*capabilities' -count=1",
+    "go test ./services/mcp -run 'Test.*Capabilities|Test.*Initialize' -count=1",
+    "go test ./tools -run 'TestReadMcpResourceTool_(ReconnectAfterClose|SessionExpiredClearsCache)|TestMCPStdioRestart.*|Test.*SSEReconnect.*' -count=1",
+    "go test ./mcp ./services/mcp -run 'Test.*Reconnect|Test.*Close|Test.*Session' -count=1",
+    "go test ./tools ./registry ./permissions -run 'TestReadMcpResourceTool_Metadata|TestToolSearch.*ReadMcpResource|Test.*ReadOnly.*ReadMcpResource|Test.*AutoClassifier.*ReadMcpResource|Test.*Result.*Budget' -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

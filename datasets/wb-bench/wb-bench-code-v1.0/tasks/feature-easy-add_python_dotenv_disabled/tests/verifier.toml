@@ -1,0 +1,6 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "pytest_injected"
+
+[run]
+cwd = "/workspace"
+command = '''python -m pytest tests/test_main.py::test_load_dotenv_disabled tests/test_main.py::test_load_dotenv_disabled_notification tests/test_main.py::test_load_dotenv_basic_file -v --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

@@ -1,0 +1,4 @@
+{
+  "query": "golang",
+  "allowed_domains": ["go.dev"]
+}

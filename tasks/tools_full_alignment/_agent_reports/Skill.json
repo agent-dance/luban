@@ -1,0 +1,895 @@
+{
+  "tool": "Skill",
+  "summary": "Go Skill covers the smallest happy path of looking up an installed SKILL.md, substituting arguments, and returning prompt text, but it is not yet TS-equivalent as a runtime tool. The largest parity gaps are around model-visible output shape, new-message/context injection, permission ask/allow/deny lifecycle, forked execution, allowed-tools/model/effort propagation, source discovery, MCP skill wiring, shell/hook support, invoked-skill compaction state, and exact skill-name resolution. Existing Go tests cover local helpers and basic manager behavior, but they do not yet protect the end-to-end query-loop, post-compact, forked-agent, MCP, hook, or conditional-discovery contracts that make TS Skill behave like a lifecycle tool rather than a plain text expander.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "SKILL-GAP-001",
+      "category": "output_contract_runtime",
+      "severity": "P0",
+      "title": "Skill output is returned as tool_result text instead of TS data plus injected messages",
+      "description": "TS Skill returns structured data and injects the rendered skill prompt as new assistant/user messages while the model-facing tool_result text remains a short launcher/completion message. Go returns the rendered skill body directly in ToolResult.Content and puts status fields into metadata. Because Go metadata is not serialized into provider tool_result blocks, downstream runtime state and model-visible output differ materially from TS.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:291-326",
+          "note": "TS declares inline/forked output schemas with success, commandName, allowedTools/model, status, agentId, and result."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:766-840",
+          "note": "Inline execution returns `data`, `newMessages`, and `contextModifier`; skill content is added as messages rather than raw tool_result text."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:843-862",
+          "note": "TS maps inline tool output to short text `Launching skill: ...`; forked output is also a summarized completion string."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/skill.go:375-457",
+          "note": "Go prepares skill content and returns it as ToolResult.Content with metadata keys such as success, commandName, status, model, and effort."
+        },
+        {
+          "path": "types/tools.go:58-68",
+          "note": "Go ToolResult supports Content, ContentBlocks, NewMessages, and Metadata, but SkillTool does not use NewMessages for the rendered skill prompt."
+        },
+        {
+          "path": "types/tools.go:126-144",
+          "note": "ToolResultBlock JSON serialization includes content fields, not ToolResult.Metadata."
+        },
+        {
+          "path": "loop/attachments.go:111-116",
+          "note": "The loop appends ToolResult.NewMessages when present, but SkillTool never populates it."
+        }
+      ],
+      "impact": "The same Skill invocation gives the model a different conversation transcript in Go: TS makes the tool result a small status and injects the prompt separately, while Go exposes the whole prompt as tool output and loses structured status metadata.",
+      "candidate_task_ids": [
+        "SKILL-TASK-001"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-002",
+      "category": "permissions_lifecycle",
+      "severity": "P0",
+      "title": "Skill-specific permission ask/allow/deny lifecycle is not enforced before content exposure",
+      "description": "TS checks Skill permissions against deny rules, allow rules, safe frontmatter properties, remote-skill exceptions, and interactive ask suggestions before loading unsafe skill content into the conversation. Go computes an internal permissionDecision metadata value, but for the `ask` path it still prepares and returns the skill content. The normal outer permission handler sees only the generic Skill tool call and is not wired into Skill frontmatter semantics.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:432-578",
+          "note": "TS `checkPermissions` evaluates deny rules, allow rules, safe-property auto-allow, and ask decisions with addRules suggestions before execution."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:871-933",
+          "note": "TS enumerates safe skill properties and treats unknown meaningful properties as permission-relevant."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:580-840",
+          "note": "TS calls permission logic before inline skill prompt messages are returned."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/skill.go:353-374",
+          "note": "Go computes permissionDecision but does not stop or request permission for `ask`; execution continues into PrepareSkillContent."
+        },
+        {
+          "path": "tools/skill_helpers.go:48-91",
+          "note": "Go has local safe-property and rule matching helpers, but they are not connected to the runtime permission handler."
+        },
+        {
+          "path": "registry_setup.go:318-326",
+          "note": "SetupRegistry constructs a SkillTool without allow/deny rules or a permission bridge."
+        },
+        {
+          "path": "loop/concurrent.go:203-225",
+          "note": "The generic permission handler gates tools by tool name/input before Execute; it does not inspect Skill frontmatter or SkillTool.permissionDecision."
+        }
+      ],
+      "impact": "Unsafe skill properties can become model-visible in Go without the TS ask gate, and allow/deny rules cannot reliably match Skill-specific content properties.",
+      "candidate_task_ids": [
+        "SKILL-TASK-002"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-003",
+      "category": "runtime_context",
+      "severity": "P0",
+      "title": "allowed-tools, model, and reasoning effort modifiers are not applied to the next loop like TS",
+      "description": "TS Skill returns a contextModifier that mutates the next execution context: allowedTools are injected into toolPermissionContext, model is switched with the 1m suffix logic, and reasoning effort is propagated. Go records allowed tools/model/effort in metadata and optionally calls an AllowedToolsApplier, but the applier is not wired in SetupRegistry and its cleanup is deferred until Execute returns, before the next model turn can use it.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:775-838",
+          "note": "TS extracts allowedTools/model/effort from the slash command and returns a contextModifier that applies them to app state."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:817-831",
+          "note": "TS injects skill allowedTools into `toolPermissionContext` with the current tool_use_id."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:832-836",
+          "note": "TS overrides mainLoopModel and effort for subsequent processing."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/skill.go:386-397",
+          "note": "Go optionally applies allowed tools and immediately defers cleanup in Execute."
+        },
+        {
+          "path": "tools/skill.go:407-434",
+          "note": "Go resolves model and effort metadata but does not apply them to the main-loop runtime state."
+        },
+        {
+          "path": "registry_setup.go:318-326",
+          "note": "SkillTool is registered without AllowedToolsApplier or ParentModelResolver wiring."
+        },
+        {
+          "path": "loop/query.go:450-520",
+          "note": "Skill listings are injected from the manager, but there is no matching hook consuming SkillTool model/effort metadata as loop configuration."
+        }
+      ],
+      "impact": "Skills that are intended to temporarily grant tools or switch the model/effort do not affect subsequent Go turns the way TS skills do.",
+      "candidate_task_ids": [
+        "SKILL-TASK-003"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-004",
+      "category": "forked_execution",
+      "severity": "P0",
+      "title": "Fork-context skills are marked as forked but no sub-agent is run",
+      "description": "TS treats `context: fork` as a distinct execution mode: it prepares a forked command context, starts a sub-agent with progress reporting, waits for the result, returns the agent id and result text, and clears invoked skills for the child agent. Go only changes status metadata to `forked` and appends a textual note, but still returns the local prepared content directly.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:122-289",
+          "note": "TS `executeForkedSkill` runs `runAgent`, emits progress, returns success/status/agentId/result, and clears child-agent invoked skills in finally."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:621-632",
+          "note": "TS branches to forked execution when command.context is `fork`."
+        },
+        {
+          "path": "../src/utils/forkedAgent.ts:191-250",
+          "note": "Forked-agent helpers build the child context, allowed tools, model state, selected agent, and result extraction."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/skill.go:399-405",
+          "note": "Go checks skill.Context == `fork`, sets status to `forked`, and appends a note, but does not launch an agent."
+        },
+        {
+          "path": "tools/skill.go:436-457",
+          "note": "The returned result is still the local prepared content with metadata, not a child-agent result."
+        },
+        {
+          "path": "registry_setup.go:318-326",
+          "note": "SkillTool is registered without a dependency capable of executing a forked agent."
+        }
+      ],
+      "impact": "Any TS skill that depends on isolated/forked context semantics will run inline in Go, changing state isolation, permissions, progress, result text, and cleanup behavior.",
+      "candidate_task_ids": [
+        "SKILL-TASK-004"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-005",
+      "category": "source_discovery_lifecycle",
+      "severity": "P0",
+      "title": "Skill source loading and conditional activation do not match TS",
+      "description": "TS loads managed, user, project, additional, plugin, bundled, built-in-plugin, legacy command, dynamic, and conditional path-based skills with explicit ordering, realpath deduplication, policy gates, and deepest-path precedence. Go loads direct child SKILL.md directories from a narrower default dir set, merges MCP prompts after on-disk skills, exposes path-conditional skills immediately, and leaves ActivateConditionalForPath as a no-op. Go file-read dynamic discovery also searches a different set of directories and does not mirror TS cwd-bound/gitignore behavior.",
+      "ts_evidence": [
+        {
+          "path": "../src/skills/loadSkillsDir.ts:638-803",
+          "note": "TS loads managed/user/project/additional/legacy skill directories with policy gates, plugin-only behavior, deduplication, and conditional paths handling."
+        },
+        {
+          "path": "../src/skills/loadSkillsDir.ts:861-915",
+          "note": "TS dynamic discovery walks from the file path toward cwd, checks `.claude/skills`, and skips gitignored paths."
+        },
+        {
+          "path": "../src/skills/loadSkillsDir.ts:923-1058",
+          "note": "TS activates deepest matching dynamic and path-conditional skills into dynamicSkills."
+        },
+        {
+          "path": "../src/commands.ts:353-381",
+          "note": "TS command loading includes skill dir commands plus plugin, bundled, and built-in plugin skills."
+        },
+        {
+          "path": "../src/commands.ts:449-517",
+          "note": "TS orders bundled, built-in plugin, skill-dir, workflows, plugin commands, plugin skills, builtins, then adds dynamic skills."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "skills/loader.go:74-94",
+          "note": "Go DefaultDirs covers only project/user brand and legacy `.claude` skill locations."
+        },
+        {
+          "path": "skills/loader.go:201-216",
+          "note": "Go ActivateConditionalForPath is currently a no-op."
+        },
+        {
+          "path": "skills/loader.go:334-390",
+          "note": "Go populate loads direct child directories with SKILL.md and then merges registered MCP prompts."
+        },
+        {
+          "path": "tools/file_read_skill_discovery.go:50-112",
+          "note": "Go discovery walks up a bounded number of levels and checks `.claude/skills`, `.deepseek-code/skills`, plain `skills`, and sibling SKILL.md rather than the TS cwd-bound/gitignored contract."
+        },
+        {
+          "path": "loop/query.go:450-520",
+          "note": "Go injects all manager skills into prompts; path-conditional skills are not withheld until activation."
+        }
+      ],
+      "impact": "Go can miss TS-visible skills, show TS-hidden conditional skills too early, discover non-TS locations, and order or shadow skills differently.",
+      "candidate_task_ids": [
+        "SKILL-TASK-005"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-006",
+      "category": "mcp_integration",
+      "severity": "P1",
+      "title": "MCP skills support exists locally but is not wired to runtime MCP skill discovery",
+      "description": "TS Skill merges MCP prompt commands from AppState and the command loader uses MCP skill fetch/list plumbing. TS also marks MCP-created commands so they do not run local shell command injections. Go has an MCP prompt registration helper, but repository search evidence shows no production call into it, so runtime MCP prompts are not guaranteed to appear as Skill choices.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:81-94",
+          "note": "TS getAllCommands merges local commands with AppState MCP prompt commands loaded from mcp."
+        },
+        {
+          "path": "../src/commands.ts:542-558",
+          "note": "TS filters command names from MCP skills and exposes them in the command list."
+        },
+        {
+          "path": "../src/skills/loadSkillsDir.ts:371-375",
+          "note": "TS explicitly avoids shell command execution for commands loaded from MCP."
+        },
+        {
+          "path": "../src/services/mcp/client/commands.ts",
+          "note": "TS MCP client code participates in fetching MCP-provided skill commands."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "skills/mcp_prompts.go:110-160",
+          "note": "Go defines MCPPrompt conversion and RegisterMCPPrompts, including prompt metadata mapping."
+        },
+        {
+          "path": "skills/loader.go:334-390",
+          "note": "Go manager can merge package-level MCP prompt registrations during populate."
+        },
+        {
+          "path": "registry_setup.go:318-326",
+          "note": "SetupRegistry registers SkillTool and managers but does not connect an MCP client or MCP prompt refresher."
+        },
+        {
+          "path": "skills/mcp_prompts.go",
+          "note": "A repository search found no production call site for RegisterMCPPrompts; the helper appears unwired outside tests/helpers."
+        }
+      ],
+      "impact": "MCP-backed skills that TS can invoke may be absent in Go, and MCP-specific safety behavior such as disabling shell expansion relies on source metadata that may never be set.",
+      "candidate_task_ids": [
+        "SKILL-TASK-006"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-007",
+      "category": "prompt_expansion_runtime",
+      "severity": "P1",
+      "title": "Inline shell command expansion inside SKILL.md is not implemented",
+      "description": "TS executes `!` shell command injections in skill prompts for non-MCP skills, using the skill's base directory, shell frontmatter, and allowed-tools permission context. Go stores shell metadata and performs argument/path substitutions, but PrepareSkillContent explicitly does not execute shell command substitutions.",
+      "ts_evidence": [
+        {
+          "path": "../src/skills/loadSkillsDir.ts:270-400",
+          "note": "TS createSkillCommand builds getPromptForCommand, substitutes arguments/session variables, and executes shell command injections for non-MCP skills."
+        },
+        {
+          "path": "../src/skills/loadSkillsDir.ts:371-395",
+          "note": "TS passes allowedTools and shell configuration into shell command execution and skips this for MCP commands."
+        },
+        {
+          "path": "../src/skills/loadSkillsDir.ts:185-265",
+          "note": "TS parses shell, allowed-tools, args, model, context, agent, effort, hooks, and paths frontmatter."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "skills/types.go:1-80",
+          "note": "Go Skill type stores Shell and other frontmatter fields."
+        },
+        {
+          "path": "skills/substitute.go:1-320",
+          "note": "Go performs argument/session/base-dir substitutions for skill content."
+        },
+        {
+          "path": "skills/substitute.go:307-309",
+          "note": "Go comment states shell command execution is not performed in PrepareSkillContent."
+        }
+      ],
+      "impact": "Skills relying on live shell snippets produce different prompt text in Go, and their permission/shell configuration is ignored.",
+      "candidate_task_ids": [
+        "SKILL-TASK-007"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-008",
+      "category": "hooks_lifecycle",
+      "severity": "P1",
+      "title": "Skill hooks are not parsed into runtime skill state or registered one-shot like TS",
+      "description": "TS parses hooks from skill frontmatter and registers session-scoped hooks when a prompt slash command/skill is invoked, subject to hook permission policy, with one-shot cleanup. Go frontmatter parsing keeps hooks only in raw metadata and the Skill struct does not expose or register them during SkillTool execution.",
+      "ts_evidence": [
+        {
+          "path": "../src/skills/loadSkillsDir.ts:185-265",
+          "note": "TS parses hooks from skill frontmatter."
+        },
+        {
+          "path": "../src/utils/processUserInput/processSlashCommand.tsx:817-900",
+          "note": "TS prompt slash command processing calls getPromptForCommand and registers command hooks when policy allows."
+        },
+        {
+          "path": "../src/utils/hooks/registerSkillHooks.ts:20-64",
+          "note": "TS registers skill hooks in session state and arranges one-shot removal."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "skills/frontmatter.go:26",
+          "note": "Go raw frontmatter has Hooks as an untyped field."
+        },
+        {
+          "path": "skills/frontmatter.go:170-227",
+          "note": "Go parsing normalizes common fields but does not transfer hooks into Skill."
+        },
+        {
+          "path": "skills/types.go:1-80",
+          "note": "Go Skill type has no Hooks field."
+        },
+        {
+          "path": "tools/skill_helpers.go:68-74",
+          "note": "Go safe-property comments mention hooks are not represented in the parsed Skill model."
+        },
+        {
+          "path": "tools/skill.go:293-457",
+          "note": "SkillTool Execute has no hook registration or cleanup lifecycle."
+        }
+      ],
+      "impact": "Skills that depend on frontmatter hooks for pre/post behavior run without those hooks in Go.",
+      "candidate_task_ids": [
+        "SKILL-TASK-008"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-009",
+      "category": "state_lifecycle_compaction",
+      "severity": "P1",
+      "title": "Invoked-skill session, toolUseID, content/path, and compaction state are incomplete",
+      "description": "TS records invoked skills with name, path, full content, invokedAt, and agentId; compaction reinjects recent invoked skill content and forked execution clears child-agent entries. Go snapshots only name/toolUseID/source, and normal loop context values are not read by SkillTool because it uses private context keys rather than the loop ToolExecutionContext. Post-compact attachments therefore list skill names instead of carrying the TS skill content/path context.",
+      "ts_evidence": [
+        {
+          "path": "../src/bootstrap/state.ts:1501-1563",
+          "note": "TS addInvokedSkill stores skillName, skillPath, content, invokedAt, and agentId and can clear by agent."
+        },
+        {
+          "path": "../src/services/compact/compact.ts:1488-1534",
+          "note": "TS post-compact attachment includes recent invoked skill content/path, sorted most-recent-first and truncated as needed."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:761-764",
+          "note": "TS extracts the current tool_use_id for permission and context linkage."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:1088-1093",
+          "note": "Remote canonical skill invocation also records invoked skill content and path."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:285-288",
+          "note": "Forked execution clears invoked skills for the child agent in finally."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/skill.go:207-230",
+          "note": "Go resolves session id from custom SkillTool context keys, env, or fallback UUID."
+        },
+        {
+          "path": "tools/skill.go:315-320",
+          "note": "Go resolves toolUseID from private context key rather than the loop ToolExecutionContext."
+        },
+        {
+          "path": "tools/skill.go:442-449",
+          "note": "Go records an invocation snapshot after preparing content."
+        },
+        {
+          "path": "tools/skill.go:477-518",
+          "note": "Go InvokedSkillSnapshot stores sessionID, name, toolUseID, source, and invokedAt, but not rendered content or path."
+        },
+        {
+          "path": "loop/tool_context.go:15-22",
+          "note": "The loop provides SessionID, ToolUse.ID, and Model in ToolExecutionContext."
+        },
+        {
+          "path": "loop/concurrent.go:203-225",
+          "note": "Execute is called with loop tool execution context, but SkillTool does not consume this context type."
+        },
+        {
+          "path": "compact/post_compact_attachments.go:46-50",
+          "note": "Post-compact InvokedSkillSnapshot lacks content and path fields."
+        },
+        {
+          "path": "compact/post_compact_attachments.go:170-200",
+          "note": "Go post-compact invoked-skills attachment lists names/source/toolUseID rather than reinjecting content."
+        }
+      ],
+      "impact": "Go loses the TS ability to preserve invoked skill instructions across compaction and may associate invocations with fallback sessions or empty tool ids in normal runtime execution.",
+      "candidate_task_ids": [
+        "SKILL-TASK-009"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-010",
+      "category": "name_resolution",
+      "severity": "P1",
+      "title": "Skill name validation and lookup are stricter than TS and do not cover aliases/display names",
+      "description": "TS trims names, strips a leading slash, validates remote canonical names when relevant, and then uses command lookup that can match the command name, displayed/user-facing names, and aliases. Legacy command loading can produce nested namespace names. Go rejects path separators, path traversal, and any colon form except exactly `plugin:skill` before lookup, and the manager cache is keyed by the canonical skill name only.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:354-430",
+          "note": "TS trims skill input, strips one leading slash with a log, validates remote canonical names, and then searches commands."
+        },
+        {
+          "path": "../src/commands.ts:688-697",
+          "note": "TS findCommand matches exact name, getCommandName, user-facing/display names, and aliases."
+        },
+        {
+          "path": "../src/skills/loadSkillsDir.ts:482-623",
+          "note": "TS legacy command loading supports directory commands, single markdown files, and nested namespaced commands using colons."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/skill.go:159-183",
+          "note": "Go validateSkillName rejects empty names, slash/backslash, path traversal, and any colon count other than exactly one."
+        },
+        {
+          "path": "tools/skill.go:186-195",
+          "note": "Go stripLeadingSlash only runs after validateSkillName, so direct helper validation and Execute behavior are not TS-identical."
+        },
+        {
+          "path": "skills/types.go:1-80",
+          "note": "Go Skill includes Aliases but lookup evidence points to canonical-name cache behavior."
+        },
+        {
+          "path": "skills/loader.go:334-390",
+          "note": "Go populate stores skills by loaded Skill.Name and does not build alias/display-name/nested namespace indexes."
+        }
+      ],
+      "impact": "Go can reject TS-valid skills or fail to resolve aliases/display names that TS would accept, especially legacy namespaced commands.",
+      "candidate_task_ids": [
+        "SKILL-TASK-010"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-011",
+      "category": "listing_usage_prompt",
+      "severity": "P2",
+      "title": "Usage ranking and prompt budget controls are only partially aligned",
+      "description": "TS records skill usage on invocation and prompt slash command processing, and the skill listing prompt honors SLASH_COMMAND_TOOL_CHAR_BUDGET. Go has a usage store and prompt budget helper, but SetupRegistry does not wire the usage store into SkillTool, query-loop listing does not use the ranking store, and the Go char budget helper uses static defaults rather than the TS environment override.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:618-619",
+          "note": "TS records skill usage before normal skill execution."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:1059",
+          "note": "TS also records usage for remote canonical skill invocation."
+        },
+        {
+          "path": "../src/utils/processUserInput/processSlashCommand.tsx:528-531",
+          "note": "Prompt slash command processing records usage for invoked skill commands."
+        },
+        {
+          "path": "../src/tools/SkillTool/prompt.ts:31-40",
+          "note": "TS getCharBudget honors SLASH_COMMAND_TOOL_CHAR_BUDGET."
+        },
+        {
+          "path": "../src/tools/SkillTool/prompt.ts:20-171",
+          "note": "TS skill listing prompt applies budgeted formatting and ranking/truncation behavior."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/skill_usage.go:1-120",
+          "note": "Go defines a default usage store and ranked-name helpers."
+        },
+        {
+          "path": "tools/skill.go:451-455",
+          "note": "Go records usage only if SkillTool.UsageStore is non-nil."
+        },
+        {
+          "path": "registry_setup.go:318-326",
+          "note": "SetupRegistry creates SkillTool without assigning UsageStore."
+        },
+        {
+          "path": "skills/prompt.go:33-42",
+          "note": "Go GetCharBudget returns a static default/compact budget and does not read SLASH_COMMAND_TOOL_CHAR_BUDGET."
+        },
+        {
+          "path": "loop/query.go:450-520",
+          "note": "Go query-loop listing formats Manager.All skills directly; it does not apply usage ranking from tools/skill_usage.go."
+        }
+      ],
+      "impact": "Go skill listing order and budget behavior can diverge from TS, and usage telemetry/ranking state may remain empty in production.",
+      "candidate_task_ids": [
+        "SKILL-TASK-011"
+      ]
+    },
+    {
+      "id": "SKILL-GAP-012",
+      "category": "remote_canonical_lifecycle",
+      "severity": "P2",
+      "title": "Remote canonical skills are not implemented despite matching error code surface",
+      "description": "TS has an experimental remote canonical skill path that validates canonical names, discovers remote skills, fetches SKILL.md, strips frontmatter, substitutes session/base-dir variables, records invoked skill content, and emits telemetry. Go defines a remote-not-discovered error code, but the normal SkillTool path has no remote canonical discovery/load branch.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:374-395",
+          "note": "TS validates experimental remote canonical skill names separately from local command lookup."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:600-612",
+          "note": "TS branches into remote canonical search/load before normal local command execution."
+        },
+        {
+          "path": "../src/tools/SkillTool/SkillTool.ts:969-1107",
+          "note": "TS remote canonical execution loads remote SKILL.md, strips frontmatter, substitutes variables, records invocation, and returns inline data/newMessages."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/skill_errors.go:1-80",
+          "note": "Go defines SkillErrRemoteNotDiscovered."
+        },
+        {
+          "path": "tools/skill.go:293-457",
+          "note": "Go Execute validates local names, calls Manager.Get, and has no remote canonical search/load branch."
+        },
+        {
+          "path": "skills/loader.go:334-390",
+          "note": "Go Manager population is local directories plus registered MCP prompts, not remote canonical sources."
+        }
+      ],
+      "impact": "Feature-gated TS remote canonical skills cannot be invoked in Go; callers may see a local not-found error instead of TS discovery behavior.",
+      "candidate_task_ids": [
+        "SKILL-TASK-012"
+      ]
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "SKILL-TASK-001",
+      "title": "Align Skill tool output contract and injected message flow",
+      "priority": "P0",
+      "owned_files": [
+        "tools/skill.go",
+        "types/tools.go",
+        "loop/attachments.go",
+        "loop/concurrent.go",
+        "tools/skill_test.go",
+        "tools/skill_alignment_test.go",
+        "loop/*skill*_test.go"
+      ],
+      "depends_on": [],
+      "description": "Change Skill execution so inline skills return TS-like structured data/status and inject rendered skill prompt content through NewMessages instead of raw ToolResult.Content. Preserve a short model-facing tool result such as `Launching skill: <name>` and add tests that assert the serialized transcript shape.",
+      "acceptance": [
+        "Inline Skill result exposes success, commandName, status, and optional allowedTools/model fields in a structured Go contract or equivalent provider-visible data path.",
+        "Rendered skill prompt is delivered through ToolResult.NewMessages or the query-loop equivalent, not as the primary tool_result text.",
+        "Tool result text for inline skills matches the TS launcher shape.",
+        "Existing content-block serialization does not drop the injected skill content."
+      ],
+      "verification": [
+        "go test ./tools ./loop -run 'TestSkill|Skill.*NewMessages|ToolResult.*NewMessages|RuntimeAttachment' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-002",
+      "title": "Implement Skill-specific permission ask/allow/deny lifecycle",
+      "priority": "P0",
+      "owned_files": [
+        "tools/skill.go",
+        "tools/skill_helpers.go",
+        "registry_setup.go",
+        "loop/concurrent.go",
+        "permissions/*",
+        "tools/skill_test.go",
+        "tools/skill_alignment_test.go"
+      ],
+      "depends_on": [],
+      "description": "Bridge Skill frontmatter-aware permission checks into the normal permission runtime. Deny must stop before prompt content is prepared; ask must surface a permission request with TS-like rule suggestions; safe-property skills can auto-allow.",
+      "acceptance": [
+        "Skills with deny-matched unsafe properties are blocked before PrepareSkillContent.",
+        "Skills requiring ask do not expose rendered content until permission is granted.",
+        "Allow rules and safe-property-only skills bypass ask consistently with TS.",
+        "SetupRegistry wires the Skill permission context from the active runtime instead of leaving AllowRules/DenyRules empty."
+      ],
+      "verification": [
+        "go test ./tools ./loop -run 'TestSkill.*Permission|TestPermission.*Skill|TestToolPermission.*Skill' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-003",
+      "title": "Apply skill allowed-tools, model, and effort to runtime context",
+      "priority": "P0",
+      "owned_files": [
+        "tools/skill.go",
+        "registry_setup.go",
+        "loop/query.go",
+        "loop/concurrent.go",
+        "loop/tool_context.go",
+        "tools/skill_helpers.go",
+        "tools/skill_test.go",
+        "loop/*skill*_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-001",
+        "SKILL-TASK-002"
+      ],
+      "description": "Implement the TS contextModifier equivalent for Go Skill. Skill allowedTools should become active for the relevant tool_use_id/turn, model metadata should switch the next main-loop model with the existing 1m suffix behavior, and effort should propagate to the next model invocation.",
+      "acceptance": [
+        "Skill allowed-tools apply to subsequent tool permission checks for the right session/toolUseID and are cleaned up after their intended lifecycle.",
+        "Skill model selection affects the next model turn and uses existing parent-model suffix logic.",
+        "Skill effort affects the next model turn where Go supports reasoning effort.",
+        "No context leak occurs across unrelated sessions or concurrent tool invocations."
+      ],
+      "verification": [
+        "go test ./tools ./loop -run 'TestSkill.*AllowedTools|TestSkill.*Model|TestSkill.*Effort|TestRuntimeContext.*Skill' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-004",
+      "title": "Implement forked skill execution",
+      "priority": "P0",
+      "owned_files": [
+        "tools/skill.go",
+        "tools/agent_skill_resolver.go",
+        "loop/query.go",
+        "loop/concurrent.go",
+        "registry_setup.go",
+        "tools/skill_test.go",
+        "loop/*fork*_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-001",
+        "SKILL-TASK-003"
+      ],
+      "description": "Replace the current `status=forked` placeholder with real sub-agent execution for skills whose context is `fork`, including prompt preparation, allowed-tools/model context, progress/result handling, agent id metadata, and cleanup of child invoked-skill state.",
+      "acceptance": [
+        "A fork-context skill runs through the Go agent/sub-agent path rather than returning local prompt content.",
+        "Forked Skill result contains status=forked, agentId, and result text comparable to TS.",
+        "Progress/result failures are reported with forked-skill error metadata.",
+        "Invoked-skill state associated with the child agent is cleared or scoped after completion."
+      ],
+      "verification": [
+        "go test ./tools ./loop -run 'TestSkill.*Fork|TestForkedSkill|TestAgent.*Skill' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-005",
+      "title": "Align skill loading, ordering, dynamic discovery, and conditional paths",
+      "priority": "P0",
+      "owned_files": [
+        "skills/loader.go",
+        "skills/types.go",
+        "skills/prompt.go",
+        "tools/file_read_skill_discovery.go",
+        "loop/query.go",
+        "registry_setup.go",
+        "skills/loader_test.go",
+        "tools/file_read_skill_discovery_test.go",
+        "tools/skill_alignment_test.go"
+      ],
+      "depends_on": [],
+      "description": "Bring Go SkillManager discovery and listing behavior in line with TS: source directories, ordering/shadowing, managed/additional/plugin/bundled/legacy support where applicable, dynamic discovery boundaries, gitignore skipping, and path-conditional activation rather than unconditional listing.",
+      "acceptance": [
+        "Default skill dirs include the TS-equivalent managed/user/project/additional sources supported by the Go app.",
+        "Path-conditional skills are hidden until ActivateConditionalForPath matches a path.",
+        "Dynamic file-read discovery is cwd-bounded and gitignore-aware like TS.",
+        "Ordering and duplicate/shadow handling are covered with fixture tests."
+      ],
+      "verification": [
+        "go test ./skills ./tools ./loop -run 'Test.*Skill.*(Load|Discover|Conditional|Listing|Order|Shadow)' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-006",
+      "title": "Wire MCP skills into SkillManager runtime",
+      "priority": "P1",
+      "owned_files": [
+        "skills/mcp_prompts.go",
+        "skills/loader.go",
+        "registry_setup.go",
+        "mcp/*",
+        "tools/skill.go",
+        "skills/*mcp*_test.go",
+        "tools/skill_alignment_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-005"
+      ],
+      "description": "Connect the runtime MCP client prompt/skill discovery path to skills.RegisterMCPPrompts or a manager-owned equivalent, preserve MCP source metadata, and ensure MCP skills are included in Skill lookup/listing while local shell expansion stays disabled for MCP sources.",
+      "acceptance": [
+        "Runtime MCP prompt skills appear in SkillManager.All/Get with source metadata equivalent to TS loadedFrom=mcp.",
+        "MCP skills can be invoked through SkillTool and produce TS-like output/newMessages.",
+        "MCP skills never execute local shell prompt injections.",
+        "MCP refresh/removal updates the manager without stale entries."
+      ],
+      "verification": [
+        "go test ./skills ./tools ./mcp -run 'Test.*MCP.*Skill|TestSkill.*MCP|TestMCPPrompt' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-007",
+      "title": "Implement TS-compatible shell command expansion for skill prompts",
+      "priority": "P1",
+      "owned_files": [
+        "skills/substitute.go",
+        "skills/types.go",
+        "tools/skill.go",
+        "tools/skill_helpers.go",
+        "registry_setup.go",
+        "skills/substitute_test.go",
+        "tools/skill_alignment_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-002"
+      ],
+      "description": "Execute inline `!` shell command substitutions in non-MCP skill content with the skill base directory, shell configuration, and allowed-tools/permission context matching TS. Preserve current argument and session substitutions.",
+      "acceptance": [
+        "Non-MCP skill content with shell injections expands to command output like TS.",
+        "Shell expansion honors the skill Shell frontmatter and base directory.",
+        "Shell expansion is blocked or asks according to Skill permission lifecycle.",
+        "MCP-sourced skills skip local shell execution."
+      ],
+      "verification": [
+        "go test ./skills ./tools -run 'TestSkill.*Shell|TestPrepareSkillContent.*Shell|TestSkill.*Permission.*Shell' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-008",
+      "title": "Parse and register skill hooks with one-shot lifecycle",
+      "priority": "P1",
+      "owned_files": [
+        "skills/frontmatter.go",
+        "skills/types.go",
+        "tools/skill.go",
+        "registry_setup.go",
+        "hooks/*",
+        "skills/frontmatter_test.go",
+        "tools/skill_alignment_test.go",
+        "hooks/*skill*_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-002"
+      ],
+      "description": "Promote hooks from raw frontmatter into the Skill model and register them when the skill is invoked, subject to the Go hook permission/trust model, with one-shot cleanup equivalent to TS registerSkillHooks.",
+      "acceptance": [
+        "Skill frontmatter hooks parse into typed Skill fields.",
+        "Invoking a skill registers hooks for the current session only when policy permits.",
+        "Registered hooks are removed after their intended one-shot lifecycle.",
+        "Unsafe hook frontmatter participates in Skill permission checks."
+      ],
+      "verification": [
+        "go test ./skills ./tools ./hooks -run 'TestSkill.*Hook|TestRegisterSkillHooks|TestFrontmatter.*Hooks' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-009",
+      "title": "Preserve invoked skill content/path and loop context through compaction",
+      "priority": "P1",
+      "owned_files": [
+        "tools/skill.go",
+        "loop/tool_context.go",
+        "loop/concurrent.go",
+        "compact/post_compact_attachments.go",
+        "registry_setup.go",
+        "tools/skill_test.go",
+        "compact/*skill*_test.go",
+        "loop/*tool_context*_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-001"
+      ],
+      "description": "Consume the normal loop ToolExecutionContext in SkillTool, record real session/toolUseID plus rendered skill content/path/invokedAt/agentId, and update post-compact attachments to reinject recent invoked skill content like TS.",
+      "acceptance": [
+        "Normal Skill invocations use loop session id and tool_use_id instead of fallback UUID/private-only context keys.",
+        "Invocation snapshots include rendered content, skill path, invokedAt, source, and agent id where applicable.",
+        "Post-compact attachments include recent invoked skill content/path sorted most-recent-first with truncation behavior.",
+        "Forked child-agent invoked skill entries are scoped and cleared according to the fork lifecycle."
+      ],
+      "verification": [
+        "go test ./tools ./loop ./compact -run 'TestSkill.*Invocation|TestInvokedSkill|TestPostCompact.*Skill|TestToolExecutionContext.*Skill' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-010",
+      "title": "Align skill name validation, aliases, display names, and legacy namespaces",
+      "priority": "P1",
+      "owned_files": [
+        "tools/skill.go",
+        "skills/loader.go",
+        "skills/types.go",
+        "skills/manager*.go",
+        "skills/loader_test.go",
+        "tools/skill_test.go",
+        "tools/skill_alignment_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-005"
+      ],
+      "description": "Relax Go pre-lookup validation to match TS, then implement lookup indexes for aliases/display names and supported legacy nested namespace names. Keep path traversal/path separator rejection where TS-equivalent safety requires it, but do not reject TS-valid names before lookup.",
+      "acceptance": [
+        "Leading slash handling matches TS Execute behavior.",
+        "Aliases and display/user-facing names resolve to the same skill as canonical name.",
+        "Supported legacy namespaced commands with multiple colons can resolve where TS would load them.",
+        "Invalid path-like names still fail with Skill validation errors."
+      ],
+      "verification": [
+        "go test ./skills ./tools -run 'TestSkill.*Name|TestValidateSkillName|TestSkill.*Alias|TestSkill.*Namespace|TestManager.*Lookup' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-011",
+      "title": "Wire skill usage ranking and prompt budget environment override",
+      "priority": "P2",
+      "owned_files": [
+        "tools/skill.go",
+        "tools/skill_usage.go",
+        "skills/prompt.go",
+        "loop/query.go",
+        "registry_setup.go",
+        "tools/skill_usage_test.go",
+        "skills/prompt_test.go",
+        "loop/*skill_listing*_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-005"
+      ],
+      "description": "Assign a production UsageStore to SkillTool, apply usage ranking to skill listings where TS does, and make Go skill listing budget respect SLASH_COMMAND_TOOL_CHAR_BUDGET.",
+      "acceptance": [
+        "SetupRegistry wires a shared SkillUsageStore into SkillTool.",
+        "Skill invocations update usage state in production runtime.",
+        "Skill listing order/truncation uses usage ranking where TS does.",
+        "SLASH_COMMAND_TOOL_CHAR_BUDGET overrides Go skill listing char budget."
+      ],
+      "verification": [
+        "SLASH_COMMAND_TOOL_CHAR_BUDGET=1200 go test ./tools ./skills ./loop -run 'TestSkill.*Usage|TestSkill.*Budget|TestFormatSkillListing|TestSkillListing.*Rank' -count=1"
+      ]
+    },
+    {
+      "id": "SKILL-TASK-012",
+      "title": "Add remote canonical skill discovery and execution path",
+      "priority": "P2",
+      "owned_files": [
+        "tools/skill.go",
+        "tools/skill_errors.go",
+        "skills/*remote*.go",
+        "registry_setup.go",
+        "tools/skill_remote_test.go",
+        "tools/skill_alignment_test.go"
+      ],
+      "depends_on": [
+        "SKILL-TASK-001",
+        "SKILL-TASK-009"
+      ],
+      "description": "Implement the TS experimental remote canonical branch for Go if the Go product intends to support canonical remote skills: validation, discovery, SKILL.md fetch/cache, frontmatter stripping, base-dir/session substitution, telemetry/state recording, and TS-like not-discovered errors.",
+      "acceptance": [
+        "Canonical remote names are detected and validated before local manager lookup.",
+        "Discovered remote SKILL.md content is fetched, normalized, and injected through the same output/newMessages path as inline skills.",
+        "Remote invocation records invoked-skill content/path/source for compaction.",
+        "Remote-not-discovered and invalid-remote-name errors match the Go/TS error-code contract."
+      ],
+      "verification": [
+        "go test ./tools ./skills -run 'TestSkill.*Remote|TestRemoteCanonicalSkill|TestSkillErrRemote' -count=1"
+      ]
+    }
+  ]
+}

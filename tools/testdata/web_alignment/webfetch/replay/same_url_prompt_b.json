@@ -1,0 +1,25 @@
+{
+  "name": "webfetch-same-url-different-prompt-b",
+  "input": {
+    "url": "https://example.com/docs",
+    "prompt": "Find rate limits",
+    "body": "Rate limits are 100 requests per minute.",
+    "truncated": false,
+    "cacheHit": false
+  },
+  "expected": {
+    "input": {
+      "url": "https://example.com/docs",
+      "prompt": "Find rate limits"
+    },
+    "execution": {
+      "method": "local_fallback",
+      "resolvedUrl": "https://example.com/docs",
+      "truncated": false,
+      "cacheHit": false
+    },
+    "content": {
+      "body": "Rate limits are 100 requests per minute."
+    }
+  }
+}

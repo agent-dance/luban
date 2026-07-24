@@ -1,0 +1,142 @@
+{
+  "id": "task_30",
+  "title": "Open /skills directly as a searchable checklist",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 7,
+  "owner_role": "executor",
+  "estimated_minutes": 60,
+  "parallel_group": "surface_wiring",
+  "can_run_in_parallel": false,
+  "dependencies": [
+    "task_15",
+    "task_16",
+    "task_24"
+  ],
+  "objective": "Make exact /skills immediately open a keyboard-first searchable checklist whose rows show configured visibility, whose details distinguish current activation, and whose Space shortcut toggles the selected skill through the authoritative management backend.",
+  "context": [
+    "Exact /skills has no intermediate action menu: it immediately loads the current catalog and shows checkbox rows. /skills list remains an explicit text subcommand, not an interactive menu entry.",
+    "Interactive toggles are project-local persistent overrides with immediate current-session effect.",
+    "The worktree is shared and dirty; only owned_files may be modified."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Bounded metadata catalog and progressive disclosure inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Live discovery and skill visibility controls."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Management must mutate live state without rewriting the existing prompt prefix."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "tasks/skills_live_catalog_cache/task_15.json",
+    "tasks/skills_live_catalog_cache/task_24.json",
+    "skills/catalog_contract.go",
+    "commands/skills.go",
+    "tui/fork_picker.go",
+    "tui/app.go",
+    "tui/state.go",
+    "tui/root.go",
+    "i18n/skills_menu_keys.go",
+    "tui/skills_surface.go"
+  ],
+  "owned_files": [
+    "tui/skills_menu.go",
+    "tui/skills_toggle_view.go",
+    "tui/skills_surface.go",
+    "tui/skills_surface_task24_test.go",
+    "tui/app.go",
+    "tui/state.go",
+    "i18n/skills_menu_keys.go",
+    "i18n/skills_menu_keys_test.go",
+    "tui/skills_toggle_view_task30_test.go",
+    "repl_tui.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Open the searchable skill checklist directly for exact /skills, start one authoritative Snapshot read immediately, and display status, name, summary, source, path, visibility, mutability, and effective scope.",
+      "Render a checkbox at the left of every row: auto, name-only, and manual-only are [x], while off is [ ]; fresh skills without an override therefore start selected without resetting persisted state.",
+      "Distinguish configured visibility from runtime activation: a non-off shadowed row remains [x], while selected details localize that it is currently inactive and name the winner stable ID.",
+      "Keep /skills list/show/set and other subcommands on the existing text command path; do not expose List Skills or Enable/Disable Skills as an intermediate menu.",
+      "Use Space to submit the selected row's stable SkillID and observed catalog revision, toggling between off and the backend-persisted last non-off visibility; restore auto when no prior non-off value exists.",
+      "Persist interactive changes as project-local overrides and apply them immediately to the current session through the one-call task_15 backend rather than direct filesystem or registry access.",
+      "Reject stale rows and active session overrides, refresh from the returned authoritative snapshot, and show how to clear a session override through the text command.",
+      "Keep managed read-only skills visible with a reason, but do not allow Space to mutate them.",
+      "Never optimistically commit a row: render committed/rejected/degraded results from the backend; when rollback fails, redraw from a fresh authoritative snapshot and show refresh-required state.",
+      "Support filter input, selection movement, inert Enter, Space-only mutation, one-Esc close, Backspace filter editing, empty states, loading states, and narrow terminal widths using existing TUI picker conventions."
+      ,"Put every new user-visible menu, status, help, and error string behind semantic i18n keys with translations for all supported languages."
+    ],
+    "exclude": [
+      "Do not modify command, registry, override-store, tool, or unrelated repl_tui.go production paths owned by other tasks.",
+      "Do not reduce the four-state backend to a boolean model.",
+      "Do not add dependencies or introduce a second modal framework."
+    ]
+  },
+  "implementation_steps": [
+    "Define one direct checklist state plus pure filtering, selection, and visibility-toggle helpers; remove the obsolete primary-action state.",
+    "Wire the overlay into tui/app.go, tui/state.go, and tui/root.go through the launcher contract created by task_24.",
+    "Handle Space by invoking the shared backend once with stable ID and observed revision and redrawing from its committed, rejected, or degraded authoritative result.",
+    "Render state, scope, source/path details, read-only reasons, help text, and errors without exposing internal developer catalog messages.",
+    "Add focused tests for direct open/close behavior, checkbox rendering, keyboard filtering, last-state restoration, read-only rows, and backend failure rollback."
+  ],
+  "deliverables": [
+    "tui/skills_menu.go",
+    "tui/skills_toggle_view.go",
+    "tui/skills_surface.go",
+    "tui/skills_surface_task24_test.go",
+    "tui/app.go",
+    "tui/state.go",
+    "tui/root.go",
+    "i18n/skills_menu_keys.go",
+    "i18n/skills_menu_keys_test.go",
+    "tui/skills_toggle_view_task30_test.go",
+    "repl_tui.go"
+  ],
+  "acceptance_criteria": [
+    "Exact /skills immediately opens the searchable checklist and starts exactly one authoritative catalog read; no action menu or second Enter is required, while /skills subcommands still use text command routing.",
+    "Every row has a left checkbox: configured auto, name-only, and manual-only states render [x], and off renders [ ]; opening the list never resets a persisted off state.",
+    "A shadowed auto row renders [x] and a localized inactive-by-winner detail; toggling it off and on changes only its stable ID, and removing the winner removes the notice and restores active execution.",
+    "Space affects only the selected stable SkillID when its observed revision is current, and the authoritative updated state is visible without restarting the session.",
+    "Toggling name-only or manual-only off and back on restores that state instead of silently changing it to auto.",
+    "Last non-off restoration still works after closing/reopening the menu and after state reload; a skill with no remembered value returns to auto.",
+    "Managed read-only rows remain inspectable and Space reports why they cannot be changed.",
+    "Active session overrides and stale revisions reject the shortcut without mutating another scope or row.",
+    "Persistence or live-apply failures do not leave optimistic UI state behind; rollback failure is displayed as degraded and triggers authoritative refresh.",
+    "Enter never toggles a skill, Backspace only edits the filter, and one Esc closes the skills surface.",
+    "The interface remains usable with an empty catalog, an active filter, and a narrow terminal.",
+    "All new user-visible copy uses semantic i18n keys and the active runtime language."
+  ],
+  "verification": [
+    "go test ./tui -run 'Skills.*Menu|Skills.*Toggle|Space.*Skill' -count=1",
+    "go test ./tui -run 'Picker|Overlay|Skill' -count=1",
+    "go test -race ./tui -run 'Skills.*Menu|Skills.*Toggle|Space.*Skill' -count=1",
+    "go test ./i18n -count=1",
+    "go vet ./tui ./i18n .",
+    "git diff --check"
+  ],
+  "risks": [
+    "tui/app.go and tui/state.go remain task 30 integration points. tui/root.go is retained as task 30 delivery evidence, but final ownership transfers exclusively to task 31 for the isolated layout follow-up; preserve unrelated dirty changes and keep state isolated behind the task_24 launcher contract.",
+    "A naive UI-local boolean toggle would erase name-only/manual-only intent after reopen or restart; task_07/task_13 own durable restoration and transaction semantics.",
+    "Persistence may succeed while live apply fails unless the backend exposes one authoritative operation; do not compose two independent mutations inside the view."
+  ],
+  "non_goals": [
+    "No mouse interaction requirement.",
+    "No session-only or arbitrary four-state editing in the Space shortcut; those remain text-command capabilities.",
+    "No unrelated TUI refactor."
+  ],
+  "dispatch_prompt": "Implement a direct /skills checklist with no intermediate action menu. Exact /skills immediately loads the authoritative snapshot; each row shows [x] unless effectively off, and Space alone sends stable SkillID plus observed revision to the one-call backend and redraws from committed/rejected/degraded results. Preserve text subcommand routing, last-non-off, session/read-only conflicts, and picker conventions. Modify only owned_files.",
+  "notes_for_assignee": "Do not bypass task_15/task_24 interfaces or write settings directly. Remove the obsolete ListSkills launcher callback, but leave /skills list and all other explicit text subcommands on the normal command path.",
+  "follow_up_tasks": [
+    "task_31"
+  ],
+  "follow_up_note": "Task 30 remains the accepted interaction baseline. Task 31 separately owns terminal-cell single-line rendering, selected-only detail layout, resize behavior, and complete bordered-panel height containment."
+}

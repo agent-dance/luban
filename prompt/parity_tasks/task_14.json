@@ -1,0 +1,56 @@
+{
+  "id": "task_14",
+  "title": "Update prompt architecture and migration documentation",
+  "priority": "P2",
+  "status": "ready_for_dispatch",
+  "depends_on": [
+    "task_01",
+    "task_02",
+    "task_03",
+    "task_04",
+    "task_08",
+    "task_12"
+  ],
+  "write_scope": [
+    "prompt/*.md",
+    "ARCHITECTURE.md",
+    "MODULE_DEPENDENCIES.md"
+  ],
+  "read_first": [
+    "prompt/prompt_analysis.md",
+    "prompt/prompt-cache.md",
+    "prompt/prompt-cache-analysis.md",
+    "provider/provider-architecture.md",
+    "ARCHITECTURE.md",
+    "MODULE_DEPENDENCIES.md"
+  ],
+  "objective": "Bring prompt module documentation in sync with the implemented parity architecture and remaining gaps.",
+  "context": [
+    "Some existing prompt cache documentation is stale; for example, it describes zero active cache even though the current Anthropic provider has cache_control markers.",
+    "After the implementation tasks land, documentation should describe the real pipeline and explicitly list remaining non-parity areas.",
+    "This task is intentionally documentation-only."
+  ],
+  "deliverables": [
+    "Update prompt/prompt_analysis.md with the current block pipeline, context injection, memory loader, and cache scope behavior.",
+    "Update prompt cache docs to remove stale zero-cache claims.",
+    "Document any intentional DeepSeek branding deviations from original Claude Code prose.",
+    "Document unsupported original features and link them to remaining tasks or rejected decisions.",
+    "Update architecture indexes that mention prompt module shape."
+  ],
+  "acceptance": [
+    "Docs no longer contradict current code behavior.",
+    "Every known unsupported original behavior is either linked to a task or explicitly marked out of scope.",
+    "No implementation files are changed.",
+    "Markdown renders cleanly enough for repository readers."
+  ],
+  "verification": [
+    "! rg -n \"zero active cache|single-string|TODO|not implemented\" prompt/*.md ARCHITECTURE.md MODULE_DEPENDENCIES.md",
+    "go test ./prompt"
+  ],
+  "non_goals": [
+    "Do not implement code changes.",
+    "Do not rewrite unrelated architecture docs.",
+    "Do not remove historical notes unless they are misleading without context."
+  ],
+  "handoff_notes": "Run this after the core P0 tasks land so the docs describe reality rather than aspiration."
+}

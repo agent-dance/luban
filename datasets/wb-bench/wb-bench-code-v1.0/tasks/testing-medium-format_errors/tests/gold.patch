@@ -1,0 +1,72 @@
+diff --git a/tests/test_regression.py b/tests/test_regression.py
+new file mode 100644
+index 0000000..f1ff810
+--- /dev/null
++++ b/tests/test_regression.py
+@@ -0,0 +1,66 @@
++import unittest
++from collections import UserDict
++from collections.abc import Mapping
++from markupsafe_like.formatting import Markup, escape
++
++
++class MarkupFormatRegressionTests(unittest.TestCase):
++    def test_mapping_value_is_escaped(self):
++        self.assertEqual(Markup("Hello %(name)s") % {"name":"<Ada>"}, "Hello &lt;Ada&gt;")
++
++    def test_mapping_multiple_values_are_escaped(self):
++        self.assertEqual(Markup("%(a)s/%(b)s") % {"a":"<a>", "b":"&b"}, "&lt;a&gt;/&amp;b")
++
++    def test_userdict_mapping_is_supported(self):
++        self.assertEqual(Markup("%(name)s") % UserDict({"name":"<Ada>"}), "&lt;Ada&gt;")
++
++    def test_custom_mapping_with_percent_literal_is_supported(self):
++        class CustomMapping(Mapping):
++            def __init__(self): self.data = {"name":"<Ada>"}
++            def __getitem__(self, key): return self.data[key]
++            def __iter__(self): return iter(self.data)
++            def __len__(self): return len(self.data)
++        self.assertEqual(Markup("%(name)s %%") % CustomMapping(), "&lt;Ada&gt; %")
++
++    def test_missing_mapping_key_raises_value_error(self):
++        self.assertRaisesRegex(ValueError, "missing format key: name", lambda: Markup("%(name)s") % {})
++
++    def test_missing_mapping_key_does_not_leak_key_error(self):
++        try:
++            Markup("%(name)s") % {}
++        except Exception as exc:
++            self.assertNotIsInstance(exc, KeyError)
++
++    def test_missing_mapping_key_message_mentions_key(self):
++        with self.assertRaisesRegex(ValueError, "name"):
++            Markup("%(name)s") % {"other":"x"}
++
++    def test_tuple_values_are_escaped(self):
++        self.assertEqual(Markup("%s %s") % ("<a>", "&b"), "&lt;a&gt; &amp;b")
++
++    def test_tuple_percent_literal_survives(self):
++        self.assertEqual(Markup("%s %% %s") % ("50", "<done>"), "50 % &lt;done&gt;")
++
++    def test_single_value_is_escaped(self):
++        self.assertEqual(Markup("%s") % "'quote'", "&#39;quote&#39;")
++
++    def test_markup_value_is_still_escaped_by_this_helper(self):
++        self.assertEqual(Markup("%s") % Markup("<b>"), "&lt;b&gt;")
++
++    def test_percent_literal_survives(self):
++        self.assertEqual(Markup("%s %%") % "50", "50 %")
++
++    def test_integer_is_formatted_after_escape_conversion(self):
++        self.assertEqual(Markup("%s") % 5, "5")
++
++    def test_escape_handles_double_quotes(self):
++        self.assertEqual(escape('"x"'), "&#34;x&#34;")
++
++    def test_escape_handles_apostrophe(self):
++        self.assertEqual(escape("'x'"), "&#39;x&#39;")
++
++    def test_escape_handles_ampersand_before_angle_brackets(self):
++        self.assertEqual(escape("&<"), "&amp;&lt;")
++
++    def test_result_is_markup_instance(self):
++        self.assertIsInstance(Markup("%s") % "ok", Markup)

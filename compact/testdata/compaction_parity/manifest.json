@@ -1,0 +1,36 @@
+{
+  "schema_version": "1",
+  "updated_at": "2026-07-10",
+  "fixtures": [
+    "long_tool_conversation",
+    "same_id_assistant_fragments",
+    "parallel_tool_results",
+    "media_attachments",
+    "compact_boundaries",
+    "post_compact_segments",
+    "plans_skills_mcp_attachments",
+    "session_metadata",
+    "provider_fake_successful_summary",
+    "provider_fake_prompt_too_long_summary",
+    "provider_fake_prompt_too_long_main_request",
+    "provider_fake_incomplete_summary",
+    "provider_fake_empty_assistant_response",
+    "provider_fake_media_size_error"
+  ],
+  "p0_regression_slots": [
+    {"task_id": "task_01", "status": "active", "case": "boundary_and_post_compact_order"},
+    {"task_id": "task_02", "status": "active", "case": "api_invariant_tail_preservation"},
+    {"task_id": "task_03", "status": "active", "case": "structured_summary_no_tools"},
+    {"task_id": "task_06", "status": "active", "case": "stateful_aggregate_tool_result_budget"},
+    {"task_id": "task_07", "status": "active", "case": "microcompact_trigger_semantics"},
+    {"task_id": "task_08", "status": "pending", "case": "pre_call_and_no_tool_auto_compact", "pending_task": "task_08"},
+    {"task_id": "task_09", "status": "pending", "case": "reactive_compact_retry", "pending_task": "task_09"},
+    {"task_id": "task_10", "status": "active", "case": "post_compact_context_attachments"},
+    {"task_id": "task_11", "status": "pending", "case": "compact_hooks_progress_keepalive_cleanup", "pending_task": "task_11"},
+    {"task_id": "task_12", "status": "pending", "case": "manual_compact_custom_instructions", "pending_task": "task_12"},
+    {"task_id": "task_20", "status": "active", "case": "harness_manifest_and_fixture_docs"}
+  ],
+  "completed_foundation_slots": [
+    {"task_id": "task_05", "status": "active", "case": "result_store_large_tool_result"}
+  ]
+}

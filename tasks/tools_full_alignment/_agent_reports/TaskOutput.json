@@ -1,0 +1,762 @@
+{
+  "tool": "TaskOutput",
+  "summary": "TaskOutput is partially aligned. Go now has a real background task manager, persisted runtime-task records, blocking waits, output files, and tests for basic shell/agent output. It still diverges from the TS baseline in the API/tool metadata contract, structured result payload, supported task/runtime types, local-agent output synthesis, notified/consumed lifecycle, wait cancellation and timeout semantics, output-file robustness, and parity test coverage.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "taskoutput-gap-01",
+      "title": "Tool metadata, aliases, and input validation are not TS-equivalent",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:30",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:31",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:32",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:33",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:144",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:146",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:147",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:148",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:149",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:150",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:157",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:158"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:1175",
+        "tools/tasks.go:1181",
+        "tools/tasks.go:1182",
+        "tools/tasks.go:1184",
+        "tools/tasks.go:1188",
+        "tools/tasks.go:1192",
+        "tools/tasks.go:1196",
+        "tools/tasks.go:1200",
+        "tools/tasks.go:1205",
+        "tools/tasks.go:1219",
+        "tools/tasks.go:1224",
+        "tools/tasks.go:1225",
+        "tools/parse.go:232",
+        "tools/parse.go:233",
+        "tools/parse.go:234",
+        "tools/parse.go:235",
+        "tools/parse.go:236",
+        "types/tools.go:47",
+        "types/tools.go:48",
+        "types/tools.go:49",
+        "types/tools.go:50",
+        "registry/registry.go:41",
+        "registry/registry.go:42",
+        "registry/registry.go:43"
+      ],
+      "description": "TS declares a strict object schema with semanticBoolean default block=true and timeout constrained to 0..600000 ms, marks the tool shouldDefer=true with maxResultSizeChars=100000, exposes aliases AgentOutputTool and BashOutputTool, and describes the tool as deprecated in favor of reading the output file. Go publishes only a loose JSONSchema without default/min/max/additionalProperties, manually defaults block but does not clamp timeout, returns a non-deprecated description, and TaskOutputTool does not implement AliasedTool even though the registry supports aliases.",
+      "impact": "Model-facing availability, legacy tool names, invalid-input behavior, and timeout edge cases can differ from TS before the runtime path is even reached."
+    },
+    {
+      "id": "taskoutput-gap-02",
+      "title": "Go returns only rendered text instead of the TS structured TaskOutput payload",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:38",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:39",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:40",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:41",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:42",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:43",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:44",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:45",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:46",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:48",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:49",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:51",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:52",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:53",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:208",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:227",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:234",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:255",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:263",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:276",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:283",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:307"
+      ],
+      "evidence_go": [
+        "types/tools.go:53",
+        "types/tools.go:58",
+        "types/tools.go:59",
+        "types/tools.go:60",
+        "types/tools.go:61",
+        "types/tools.go:64",
+        "types/tools.go:67",
+        "tools/helpers.go:104",
+        "tools/helpers.go:109",
+        "tools/helpers.go:110",
+        "tools/helpers.go:111",
+        "tools/tasks.go:1209",
+        "tools/tasks.go:1254",
+        "tools/tasks.go:1255",
+        "tools/tasks.go:1256",
+        "tools/tasks.go:1257",
+        "tools/tasks.go:1258",
+        "tools/tasks.go:1270",
+        "tools/tasks.go:1277"
+      ],
+      "description": "TS call() returns data shaped as {retrieval_status:'success'|'timeout'|'not_ready', task:null|TaskOutput}, then mapToolResultToToolResultBlockParam renders the XML-like text. Go builds the XML-like text directly and returns StringResponse, so callers cannot observe or preserve the typed task object, prompt/result fields, or task:null timeout shape separately from rendered content.",
+      "impact": "SDK/runtime consumers, UI renderers, deferred-tool plumbing, and parity fixtures that compare raw tool data cannot match TS behavior even when the visible text happens to look similar."
+    },
+    {
+      "id": "taskoutput-gap-03",
+      "title": "TaskOutput covers fewer task runtime types than TS",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/Task.ts:6",
+        "../src/Task.ts:7",
+        "../src/Task.ts:8",
+        "../src/Task.ts:9",
+        "../src/Task.ts:10",
+        "../src/Task.ts:11",
+        "../src/Task.ts:12",
+        "../src/Task.ts:13",
+        "../src/tasks/types.ts:12",
+        "../src/tasks/types.ts:13",
+        "../src/tasks/types.ts:14",
+        "../src/tasks/types.ts:15",
+        "../src/tasks/types.ts:16",
+        "../src/tasks/types.ts:17",
+        "../src/tasks/types.ts:18",
+        "../src/tasks/types.ts:19",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:59",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:62",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:91",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:107",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:172",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:175",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:181"
+      ],
+      "evidence_go": [
+        "tools/background_tasks.go:117",
+        "tools/background_tasks.go:118",
+        "tools/background_tasks.go:119",
+        "tools/background_tasks.go:122",
+        "tools/background_tasks.go:123",
+        "tools/background_tasks.go:124",
+        "tools/background_tasks.go:245",
+        "tools/background_tasks.go:246",
+        "tools/background_tasks.go:247",
+        "tools/background_tasks.go:252",
+        "tools/agent.go:841",
+        "tools/agent.go:845",
+        "tools/agent.go:856",
+        "tools/agent.go:4659",
+        "tools/agent.go:4661",
+        "tools/agent.go:4663",
+        "tools/agent.go:4667",
+        "tools/agent_remote.go:35",
+        "tools/agent_remote.go:37",
+        "tools/agent_remote.go:38",
+        "tools/agent_remote.go:40",
+        "tools/tasks.go:1233",
+        "tools/tasks.go:1236",
+        "tools/tasks.go:1245"
+      ],
+      "description": "TS TaskOutput is wired against AppState.tasks and explicitly handles local_bash, local_agent, and remote_agent while the broader TaskState union includes additional background-capable task types. Go TaskOutput is tied to BackgroundTaskManager snapshots, whose concrete task types are only local_bash and local_agent. Go remote launches return a remote_launched Agent result with taskId/outputFile, but no remote_agent RuntimeTaskRecord is registered for TaskOutput Snapshot/Wait.",
+      "impact": "Task IDs produced by Go remote-agent paths, and any future non-shell/non-local-agent background tasks, cannot be inspected through TaskOutput the way TS remote sessions can be."
+    },
+    {
+      "id": "taskoutput-gap-04",
+      "title": "Local-agent output synthesis can return noisy/raw output instead of TS clean final result",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:91",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:92",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:93",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:94",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:95",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:96",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:98",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:101",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:102",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:103",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:104",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:116",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:119",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:125",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:126",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:482",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:483"
+      ],
+      "evidence_go": [
+        "tools/background_tasks.go:122",
+        "tools/background_tasks.go:128",
+        "tools/background_tasks.go:131",
+        "tools/background_tasks.go:132",
+        "tools/background_tasks.go:169",
+        "tools/background_tasks.go:176",
+        "tools/background_tasks.go:177",
+        "tools/background_tasks.go:178",
+        "tools/background_tasks.go:179",
+        "tools/agent_sessions.go:447",
+        "tools/agent_sessions.go:448",
+        "tools/agent_sessions.go:459",
+        "tools/agent_sessions.go:488",
+        "tools/agent_sessions.go:494",
+        "tools/agent_sessions.go:495",
+        "tools/tasks.go:1249",
+        "tools/tasks.go:1263",
+        "tools/tasks.go:1264",
+        "tools/tasks.go:1265",
+        "tools/tasks.go:1266",
+        "tools/tasks_test.go:424",
+        "tools/tasks_test.go:428",
+        "tools/tasks_test.go:442",
+        "tools/tasks_test.go:445"
+      ],
+      "description": "TS local_agent TaskOutput deliberately prefers the in-memory final assistant text (extractTextContent(agentTask.result.content)) over the disk transcript because the disk output may be a full JSONL transcript. Go TaskOutput reads snap.OutputPath first and falls back to snap.Result only when the file is blank. The existing Go test covers blank-file fallback, but not the noisy-file case where Result should override streamed/transcript output.",
+      "impact": "For local agents that write progress, JSONL, or tool transcript content to the output file, Go can expose a different and less useful output than TS, and structured prompt/result fields are unavailable to UI-equivalent renderers."
+    },
+    {
+      "id": "taskoutput-gap-05",
+      "title": "Terminal output reads do not mark tasks as notified/consumed",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:219",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:221",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:222",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:223",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:224",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:225",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:271",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:272",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:273",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:274",
+        "../src/Task.ts:45",
+        "../src/Task.ts:54",
+        "../src/Task.ts:55",
+        "../src/Task.ts:56",
+        "../src/utils/task/framework.ts:121",
+        "../src/utils/task/framework.ts:125",
+        "../src/utils/task/framework.ts:132",
+        "../src/utils/task/framework.ts:133",
+        "../src/tasks/LocalShellTask/LocalShellTask.tsx:105",
+        "../src/tasks/LocalShellTask/LocalShellTask.tsx:110",
+        "../src/tasks/LocalShellTask/LocalShellTask.tsx:111",
+        "../src/tasks/LocalShellTask/LocalShellTask.tsx:117",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:224",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:228",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:229",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx:235",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx:185",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx:189",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx:192",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx:198"
+      ],
+      "evidence_go": [
+        "tools/runtime_task_store.go:13",
+        "tools/runtime_task_store.go:27",
+        "tools/background_tasks.go:140",
+        "tools/background_tasks.go:169",
+        "tools/background_tasks.go:170",
+        "tools/background_tasks.go:201",
+        "tools/background_tasks.go:729",
+        "tools/background_tasks.go:731",
+        "tools/background_tasks.go:735",
+        "tools/background_tasks.go:738",
+        "tools/background_tasks.go:745",
+        "tools/tasks.go:1219",
+        "tools/tasks.go:1233",
+        "tools/tasks.go:1236",
+        "tools/tasks.go:1249",
+        "tools/tasks.go:1277"
+      ],
+      "description": "TS marks a terminal task as notified when TaskOutput successfully retrieves it, and task-specific notification code atomically checks notified to avoid duplicate completion notices. Go RuntimeTaskRecord already has a Notified field, but BackgroundTask does not carry it, recordLocked does not persist it, TaskOutput never updates it, and completion hooks are emitted independently of TaskOutput consumption.",
+      "impact": "Go cannot reproduce TS duplicate-notification suppression, consumed-state tracking, or terminal-task eviction semantics around TaskOutput reads."
+    },
+    {
+      "id": "taskoutput-gap-06",
+      "title": "Blocking wait semantics ignore context cancellation and mishandle timeout edge cases",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:117",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:120",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:121",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:122",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:123",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:124",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:125",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:132",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:137",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:140",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:253",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:262",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:263",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:264",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:265",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:266"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:1209",
+        "tools/tasks.go:1224",
+        "tools/tasks.go:1225",
+        "tools/tasks.go:1226",
+        "tools/tasks.go:1232",
+        "tools/tasks.go:1233",
+        "tools/background_tasks.go:848",
+        "tools/background_tasks.go:854",
+        "tools/background_tasks.go:864",
+        "tools/background_tasks.go:867",
+        "tools/background_tasks.go:870",
+        "tools/background_tasks.go:884",
+        "tools/background_tasks.go:888",
+        "tools/background_tasks.go:891",
+        "tools/background_tasks.go:895",
+        "tools/tasks_test.go:374",
+        "tools/tasks_test.go:384",
+        "tools/tasks_test.go:387",
+        "tools/tasks_test.go:392"
+      ],
+      "description": "TS waitForTaskCompletion checks toolUseContext.abortController every 100 ms and timeout=0 is a valid schema value that immediately returns the current task, causing running/pending tasks to render retrieval_status=timeout. Go TaskOutput discards the Execute context, passes only a duration into BackgroundTaskManager.Wait, and treats timeout<=0 as the omitted case by defaulting to 30 seconds before calling Wait.",
+      "impact": "A cancelled Go tool call can keep blocking until timeout or task completion, timeout=0 is not an immediate non-wait check, and negative/oversized timeout values take paths TS schema validation would reject."
+    },
+    {
+      "id": "taskoutput-gap-07",
+      "title": "Output-file storage and read robustness differ from TS",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/task/diskOutput.ts:17",
+        "../src/utils/task/diskOutput.ts:21",
+        "../src/utils/task/diskOutput.ts:23",
+        "../src/utils/task/diskOutput.ts:30",
+        "../src/utils/task/diskOutput.ts:35",
+        "../src/utils/task/diskOutput.ts:37",
+        "../src/utils/task/diskOutput.ts:38",
+        "../src/utils/task/diskOutput.ts:39",
+        "../src/utils/task/diskOutput.ts:43",
+        "../src/utils/task/diskOutput.ts:49",
+        "../src/utils/task/diskOutput.ts:50",
+        "../src/utils/task/diskOutput.ts:52",
+        "../src/utils/task/diskOutput.ts:72",
+        "../src/utils/task/diskOutput.ts:73",
+        "../src/utils/task/diskOutput.ts:336",
+        "../src/utils/task/diskOutput.ts:341",
+        "../src/utils/task/diskOutput.ts:345",
+        "../src/utils/task/diskOutput.ts:346",
+        "../src/utils/task/diskOutput.ts:349",
+        "../src/utils/task/diskOutput.ts:350",
+        "../src/utils/task/diskOutput.ts:351",
+        "../src/utils/task/diskOutput.ts:354",
+        "../src/utils/task/diskOutput.ts:355",
+        "../src/utils/task/outputFormatting.ts:4",
+        "../src/utils/task/outputFormatting.ts:5",
+        "../src/utils/task/outputFormatting.ts:22",
+        "../src/utils/task/outputFormatting.ts:32",
+        "../src/utils/task/outputFormatting.ts:33"
+      ],
+      "evidence_go": [
+        "tools/background_tasks.go:20",
+        "tools/background_tasks.go:21",
+        "tools/background_tasks.go:35",
+        "tools/background_tasks.go:39",
+        "tools/background_tasks.go:245",
+        "tools/background_tasks.go:246",
+        "tools/background_tasks.go:252",
+        "tools/background_tasks.go:342",
+        "tools/background_tasks.go:343",
+        "tools/background_tasks.go:631",
+        "tools/background_tasks.go:640",
+        "tools/background_tasks.go:641",
+        "tools/background_tasks.go:755",
+        "tools/background_tasks.go:764",
+        "tools/background_tasks.go:765",
+        "tools/background_tasks.go:899",
+        "tools/background_tasks.go:900",
+        "tools/background_tasks.go:904",
+        "tools/background_tasks.go:908",
+        "tools/background_tasks.go:916",
+        "tools/background_tasks.go:932",
+        "tools/background_tasks.go:933",
+        "tools/tasks.go:1249",
+        "tools/tasks.go:1250",
+        "tools/tasks.go:1251",
+        "tools/tasks.go:1267",
+        "tools/tasks.go:1268",
+        "tools/tasks.go:1269",
+        "tools/tasks_test.go:289",
+        "tools/tasks_test.go:320"
+      ],
+      "description": "TS task output paths live under a session-scoped project temp directory that is auto-readable and memoized across /clear, writes use O_NOFOLLOW where available, getTaskOutput tails up to 8 MB and returns empty output for read errors after logging, and formatTaskOutput then applies a 32k/160k character cap. Go stores output under project .claude/task-output, uses a 50 MB rotating writer opened without O_NOFOLLOW, reads only 64 KiB before formatting, and surfaces non-ENOENT read failures as tool errors. With TASK_MAX_OUTPUT_LENGTH above 64 KiB, Go cannot return as much tail content as TS can.",
+      "impact": "Large-output tails, symlink/security behavior, session isolation, auto-read assumptions, and transient read-error behavior can all differ from TS."
+    },
+    {
+      "id": "taskoutput-gap-08",
+      "title": "Parity tests do not cover the TS behavior matrix",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:30",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:52",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:91",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:107",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:117",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:144",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:150",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:219",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:253",
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx:283"
+      ],
+      "evidence_go": [
+        "tools/tasks_test.go:226",
+        "tools/tasks_test.go:237",
+        "tools/tasks_test.go:248",
+        "tools/tasks_test.go:261",
+        "tools/tasks_test.go:268",
+        "tools/tasks_test.go:289",
+        "tools/tasks_test.go:320",
+        "tools/tasks_test.go:374",
+        "tools/tasks_test.go:384",
+        "tools/tasks_test.go:392",
+        "tools/tasks_test.go:424",
+        "tools/tasks_test.go:442",
+        "tools/agent_lifecycle_test.go:120",
+        "tools/agent_lifecycle_test.go:131",
+        "tools/agent_test.go:599",
+        "tools/agent_test.go:617",
+        "tools/agent_test.go:696",
+        "tools/agent_test.go:700"
+      ],
+      "description": "Go tests cover basic shell success, non-blocking not_ready, blocking timeout, large-tail truncation, blank-file agent result fallback, and failed-agent output. They do not lock TS parity for aliases on the registry, strict/default/min/max schema semantics, timeout=0, context cancellation, remote_agent TaskOutput, notified state updates, typed payload preservation, or the local-agent noisy-output clean-result preference.",
+      "impact": "Several high-risk runtime and output differences can regress or remain unnoticed because the current tests mostly assert visible substrings on a narrow local_bash/local_agent path."
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "title": "Align TaskOutput tool metadata, aliases, and input validation",
+      "priority": "P1",
+      "dependency_key": "taskoutput-gap-01",
+      "objective": "Make Go TaskOutput expose the same model-facing metadata and input contract as TS, including legacy aliases and timeout/default validation behavior.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/parse.go",
+        "types/tools.go",
+        "registry/registry_test.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx",
+        "../src/utils/semanticBoolean.ts",
+        "tools/tasks.go",
+        "tools/parse.go",
+        "types/tools.go",
+        "registry/registry.go"
+      ],
+      "implementation_steps": [
+        "Add Aliases() []string to TaskOutputTool returning AgentOutputTool and BashOutputTool.",
+        "Update Description() and any prompt/tool metadata surface to match the TS deprecated Read-output-file guidance.",
+        "Represent block default=true and timeout min=0/max=600000 in the Go validation path, even if JSONSchema cannot express all constraints yet.",
+        "Distinguish omitted timeout from explicit timeout=0 so explicit zero behaves like TS.",
+        "Add tests for aliases, omitted block, explicit false block, timeout=0, negative timeout, and timeout>600000."
+      ],
+      "acceptance_criteria": [
+        "registry.Get(\"AgentOutputTool\") and registry.Get(\"BashOutputTool\") resolve to TaskOutput.",
+        "Omitting block waits by default, while block=false remains non-blocking.",
+        "timeout=0 is accepted and does not wait for a running task.",
+        "Negative and >600000 timeout inputs are rejected or surfaced exactly like the agreed TS schema-validation equivalent.",
+        "The public description communicates deprecation in favor of reading the task output file."
+      ],
+      "verification": [
+        "go test ./registry ./tools -run 'Test.*TaskOutput.*Alias|Test.*TaskOutput.*Timeout|Test.*TaskOutput.*Schema|TestRegistry.*Alias'"
+      ],
+      "risks": [
+        "The shared JSONSchema type may need a small extension for defaults/min/max/strictness; keep that change backward-compatible for other tools."
+      ],
+      "non_goals": [
+        "Do not redesign deferred-tool scheduling.",
+        "Do not change Bash or Agent launch behavior except where tests need task IDs."
+      ]
+    },
+    {
+      "title": "Add structured TaskOutput payload and render from it",
+      "priority": "P0",
+      "dependency_key": "taskoutput-gap-02",
+      "objective": "Preserve the TS TaskOutputToolOutput shape in Go while keeping the current XML-like text rendering for model-facing content.",
+      "owned_files": [
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "loop/query.go",
+        "compact/resultstore.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx",
+        "../src/utils/task/outputFormatting.ts",
+        "types/tools.go",
+        "tools/helpers.go",
+        "tools/tasks.go",
+        "registry/registry.go"
+      ],
+      "implementation_steps": [
+        "Define Go structs equivalent to TS TaskOutput and TaskOutputToolOutput.",
+        "Make Execute build the structured payload first for success, timeout, not_ready, and missing/null task cases.",
+        "Render Content from that payload using a small renderer equivalent to TS mapToolResultToToolResultBlockParam.",
+        "Carry structured data through ToolResult using the repo's existing structured-content mechanism or a narrowly scoped payload field.",
+        "Add tests that assert both structured fields and rendered content."
+      ],
+      "acceptance_criteria": [
+        "TaskOutput success exposes retrieval_status=success and a task object with task_id, task_type, status, description, output, optional exitCode/error/prompt/result.",
+        "Blocking timeout for an existing running task exposes retrieval_status=timeout and the current task object.",
+        "Timeout/missing paths can represent task:null where TS does.",
+        "Rendered Content remains compatible with the TS XML-like output format.",
+        "No unrelated tool loses existing text output behavior."
+      ],
+      "verification": [
+        "go test ./tools ./types ./registry -run 'TestTaskOutput.*Structured|TestTaskOutput.*Result|TestToolResult.*Structured'"
+      ],
+      "risks": [
+        "Structured ToolResult propagation may touch shared loop/result-store code; keep payload support opt-in and test existing tools."
+      ],
+      "non_goals": [
+        "Do not change the visible TaskOutput XML tags beyond TS parity.",
+        "Do not migrate all tools to structured output in this task."
+      ]
+    },
+    {
+      "title": "Broaden TaskOutput runtime coverage to remote-agent task IDs",
+      "priority": "P0",
+      "dependency_key": "taskoutput-gap-03",
+      "objective": "Ensure task IDs emitted by Go remote-agent launches can be queried by TaskOutput with a remote_agent snapshot equivalent to TS.",
+      "owned_files": [
+        "tools/agent.go",
+        "tools/agent_remote.go",
+        "tools/background_tasks.go",
+        "tools/runtime_task_store.go",
+        "tools/tasks.go",
+        "tools/agent_conformance_test.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [
+        "taskoutput-gap-02 is recommended first if structured payload fields are required in the same patch."
+      ],
+      "read_first": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx",
+        "../src/tools/AgentTool/AgentTool.tsx",
+        "tools/agent.go",
+        "tools/agent_remote.go",
+        "tools/background_tasks.go",
+        "tools/runtime_task_store.go"
+      ],
+      "implementation_steps": [
+        "Add a remote_agent runtime record/snapshot type that stores task ID, status/phase, command/prompt, description, output path, and error/result where available.",
+        "When isolation=remote spawn succeeds, persist a remote_agent record before returning the launch result.",
+        "Wire polling/completion updates from RemoteRuntimeProvider into the runtime record or document the minimum TaskOutput status available before terminal completion.",
+        "Teach TaskOutput to render remote_agent snapshots with prompt/command and output content following TS.",
+        "Add a fake RemoteRuntimeProvider test that launches remote, queries TaskOutput, advances to terminal, and queries again."
+      ],
+      "acceptance_criteria": [
+        "A taskId returned by Agent isolation=remote is accepted by TaskOutput.",
+        "TaskOutput returns task_type remote_agent for remote task IDs.",
+        "Running remote tasks return not_ready or timeout according to block/timeout settings.",
+        "Terminal remote tasks return success with status and output/error fields matching the persisted remote state.",
+        "Local_bash and local_agent TaskOutput behavior remains unchanged."
+      ],
+      "verification": [
+        "go test ./tools -run 'Test.*Remote.*TaskOutput|Test.*Remote.*Agent|TestTaskOutput.*Remote'"
+      ],
+      "risks": [
+        "Remote provider implementations may not always return outputFile or terminal output; tests should define the minimum compatible fallback behavior."
+      ],
+      "non_goals": [
+        "Do not implement a real remote backend.",
+        "Do not add support for every TS task union member unless a separate audit scopes those task types."
+      ]
+    },
+    {
+      "title": "Mirror TS local-agent clean-result output synthesis",
+      "priority": "P0",
+      "dependency_key": "taskoutput-gap-04",
+      "objective": "Make Go local_agent TaskOutput prefer the clean final agent result over raw output-file content when a final result is available, matching TS getTaskOutputData.",
+      "owned_files": [
+        "tools/background_tasks.go",
+        "tools/agent_sessions.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/agent_lifecycle_test.go"
+      ],
+      "dependencies": [
+        "taskoutput-gap-02 if prompt/result must be exposed as structured fields in the same delivery."
+      ],
+      "read_first": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx",
+        "tools/agent_sessions.go",
+        "tools/background_tasks.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "implementation_steps": [
+        "Centralize TaskOutput output selection for local_agent snapshots.",
+        "If snap.Type is local_agent and snap.Result is non-empty, use snap.Result for output even when the output file has streamed content.",
+        "Keep output-file fallback for running agents and terminal agents with no clean result.",
+        "Expose prompt/result/error in the structured payload if structured TaskOutput support exists.",
+        "Add a test where an agent writes noisy/progress text to the output file but returns a clean final result."
+      ],
+      "acceptance_criteria": [
+        "Terminal local_agent TaskOutput with Result set returns the clean result, not the noisy output file.",
+        "Blank-file result fallback continues to pass.",
+        "Running local_agent TaskOutput still returns available file output for progress checks.",
+        "Error fields remain visible for failed agents."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskOutput.*Agent.*Result|TestAgentLifecycle.*TaskOutput'"
+      ],
+      "risks": [
+        "Some Go callers may currently rely on TaskOutput showing streamed agent logs after completion; preserve logs through the output file path rather than the primary output field."
+      ],
+      "non_goals": [
+        "Do not change SendMessage transcript restoration.",
+        "Do not rewrite agent session storage."
+      ]
+    },
+    {
+      "title": "Implement TaskOutput notified/consumed lifecycle",
+      "priority": "P1",
+      "dependency_key": "taskoutput-gap-05",
+      "objective": "Use the existing RuntimeTaskRecord.Notified concept to mirror TS consumption semantics when TaskOutput reads terminal tasks.",
+      "owned_files": [
+        "tools/background_tasks.go",
+        "tools/runtime_task_store.go",
+        "tools/tasks.go",
+        "tools/agent_sessions.go",
+        "tools/tasks_test.go",
+        "tools/agent_lifecycle_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx",
+        "../src/utils/task/framework.ts",
+        "../src/tasks/LocalShellTask/LocalShellTask.tsx",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx",
+        "tools/runtime_task_store.go",
+        "tools/background_tasks.go",
+        "tools/tasks.go"
+      ],
+      "implementation_steps": [
+        "Add Notified to BackgroundTask and BackgroundTaskSnapshot or an equivalent consumed-state API on BackgroundTaskManager.",
+        "Persist Notified in recordLocked and snapshotFromRecord.",
+        "When TaskOutput returns success for a terminal task, atomically mark the task notified and save the record.",
+        "Ensure notification/hook emission checks the consumed state where TS would suppress redundant task notifications.",
+        "Add tests for block=false terminal success and block=true terminal success marking Notified, plus a duplicate-notification suppression case."
+      ],
+      "acceptance_criteria": [
+        "RuntimeTaskRecord.Notified becomes true after TaskOutput successfully consumes a completed/failed/killed task.",
+        "Running/not_ready TaskOutput does not mark the task notified.",
+        "Terminal notification emission is not duplicated when TaskOutput already consumed the result.",
+        "Persisted records retain Notified across BackgroundTaskManager restart."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskOutput.*Notified|Test.*Background.*Notification|Test.*RuntimeTask.*Notified'"
+      ],
+      "risks": [
+        "Go hook notifications are less tightly coupled to model pending notifications than TS; define exactly which hook path should be suppressible before editing."
+      ],
+      "non_goals": [
+        "Do not remove existing hook support.",
+        "Do not implement a full TS AppState eviction system in this task."
+      ]
+    },
+    {
+      "title": "Make TaskOutput wait and output reads context-aware and TS-robust",
+      "priority": "P1",
+      "dependency_key": "taskoutput-gap-06, taskoutput-gap-07",
+      "objective": "Align blocking waits, cancellation, timeout=0, large-tail reads, output path safety, and read-error behavior with TS as closely as the Go runtime allows.",
+      "owned_files": [
+        "tools/background_tasks.go",
+        "tools/runtime_task_store.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/runtime_lock.go"
+      ],
+      "dependencies": [
+        "taskoutput-gap-01 should land first for timeout validation/default distinction if possible."
+      ],
+      "read_first": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx",
+        "../src/utils/task/diskOutput.ts",
+        "../src/utils/task/outputFormatting.ts",
+        "tools/background_tasks.go",
+        "tools/tasks.go",
+        "tools/runtime_lock.go"
+      ],
+      "implementation_steps": [
+        "Thread context.Context through TaskOutput Execute into BackgroundTaskManager.Wait.",
+        "Make Wait stop promptly on context cancellation while preserving timeout status for ordinary deadlines.",
+        "Preserve explicit timeout=0 as an immediate wait attempt rather than defaulting to 30 seconds.",
+        "Increase the pre-format tail read limit to match TS's 8 MB or compute it from TASK_MAX_OUTPUT_LENGTH so larger configured max lengths are honored.",
+        "Consider O_NOFOLLOW or equivalent safeguards for output file opens on supported platforms.",
+        "Match TS read-error semantics for task output files: ENOENT returns empty output; other read errors should be logged/represented according to an explicit parity decision instead of surprising infrastructure failure."
+      ],
+      "acceptance_criteria": [
+        "A cancelled TaskOutput context returns promptly without waiting for the full timeout.",
+        "timeout=0 on a running task returns immediately with the TS-equivalent timeout/not_ready behavior chosen by the validation task.",
+        "TASK_MAX_OUTPUT_LENGTH=160000 can return more than 64 KiB of tail content when the file contains enough data.",
+        "Missing output files produce an empty output field, not a tool failure.",
+        "Existing success/not_ready/timeout tests still pass."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskOutput.*Cancel|TestTaskOutput.*Timeout|TestTaskOutput.*Large|TestTaskOutput.*MissingOutput|TestTaskOutputReadsLargeTail'"
+      ],
+      "risks": [
+        "Changing output-file paths or O_NOFOLLOW behavior may require platform-specific test handling on Windows."
+      ],
+      "non_goals": [
+        "Do not redesign background task storage layout unless required for security parity.",
+        "Do not change Bash foreground output truncation."
+      ]
+    },
+    {
+      "title": "Add a TaskOutput parity test matrix",
+      "priority": "P1",
+      "dependency_key": "taskoutput-gap-08",
+      "objective": "Lock the TS TaskOutput behavior matrix with focused Go tests so future implementation work has clear red/green targets.",
+      "owned_files": [
+        "tools/tasks_test.go",
+        "tools/agent_lifecycle_test.go",
+        "tools/agent_conformance_test.go",
+        "registry/registry_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskOutputTool/TaskOutputTool.tsx",
+        "../src/Task.ts",
+        "../src/utils/task/diskOutput.ts",
+        "tools/tasks.go",
+        "tools/background_tasks.go",
+        "tools/runtime_task_store.go",
+        "tools/agent_remote.go"
+      ],
+      "implementation_steps": [
+        "Add alias and schema/default tests for TaskOutput.",
+        "Add timeout=0 and context-cancel tests.",
+        "Add structured payload tests if the payload task has landed, otherwise add TODO-marked red tests under a parity/alignment naming convention.",
+        "Add local_agent clean-result-over-noisy-file tests.",
+        "Add Notified state tests against RuntimeTaskStore.",
+        "Add remote_agent TaskOutput tests with a fake RemoteRuntimeProvider."
+      ],
+      "acceptance_criteria": [
+        "The test matrix explicitly covers success, not_ready, timeout, missing task, failed task, terminal notified consumption, local_agent clean result, remote_agent lookup, alias resolution, and timeout validation.",
+        "Tests assert semantic fields rather than only broad substrings where structured data is available.",
+        "Tests can be run independently with a narrow go test -run expression."
+      ],
+      "verification": [
+        "go test ./tools ./registry -run 'TestTaskOutput|Test.*TaskOutput|TestRegistry.*Alias'"
+      ],
+      "risks": [
+        "Some tests may intentionally fail until implementation tasks land; mark them clearly if this repo allows red alignment tests."
+      ],
+      "non_goals": [
+        "Do not rewrite unrelated task-tool tests.",
+        "Do not add external services or network calls to cover remote-agent behavior."
+      ]
+    }
+  ]
+}

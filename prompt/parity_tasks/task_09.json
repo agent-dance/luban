@@ -1,0 +1,54 @@
+{
+  "id": "task_09",
+  "title": "Implement cache-aware microcompact behavior",
+  "priority": "P1",
+  "status": "ready_for_dispatch",
+  "depends_on": [
+    "task_08"
+  ],
+  "write_scope": [
+    "compact/",
+    "provider/anthropic.go",
+    "loop/query.go",
+    "compact/*_test.go",
+    "provider/*_test.go"
+  ],
+  "read_first": [
+    "../src/services/compact/microCompact.ts",
+    "../src/services/api/claude.ts",
+    "../src/utils/toolResultStorage.ts",
+    "compact/compact.go",
+    "compact/microcompact.go",
+    "provider/anthropic.go",
+    "loop/query.go"
+  ],
+  "objective": "Preserve prompt-cache-stable message prefixes during microcompaction by implementing the original cache_edits-style path.",
+  "context": [
+    "Go microcompact currently replaces old tool result content locally.",
+    "The original avoids mutating cached prefixes while the prompt cache is still alive by using cache_edits and cache_reference.",
+    "Go compact package already marks cached microcompact as a known missing area."
+  ],
+  "deliverables": [
+    "Add a ContentReplacementState equivalent that freezes replacement decisions.",
+    "Distinguish idle-expired local clearing from cache-preserving clearing.",
+    "Generate cache_edits and cache_reference blocks for Anthropic when cache is active.",
+    "Place cache_edits blocks according to API constraints.",
+    "Reset cache break baseline after legitimate compaction events.",
+    "Keep non-Anthropic providers on the safe local replacement path."
+  ],
+  "acceptance": [
+    "When cache is active, API messages retain the same local message prefix bytes.",
+    "When idle threshold expires, local clearing can proceed.",
+    "Tests cover duplicate cache_reference prevention and cache_edits placement.",
+    "Existing compaction tests pass."
+  ],
+  "verification": [
+    "go test ./compact ./provider ./loop"
+  ],
+  "non_goals": [
+    "Do not rewrite the full context compaction summary system.",
+    "Do not change tool execution semantics.",
+    "Do not expose user-facing cache warnings by default."
+  ],
+  "handoff_notes": "This task has API-shape risk; add provider-level serialization tests before changing loop behavior."
+}

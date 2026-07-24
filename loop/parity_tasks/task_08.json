@@ -1,0 +1,87 @@
+{
+  "id": "task_08",
+  "title": "接入 API-side Task Budget",
+  "priority": "P1",
+  "can_dispatch_independently": true,
+  "depends_on": [
+    "task_01",
+    "task_10"
+  ],
+  "objective": "实现原版 output_config.task_budget 语义，让 Go loop 能把任务级输出预算传给 provider，并在 compaction 后维护 remaining，避免压缩摘要导致服务端预算低估。",
+  "improvement_points": [
+    "Config 和请求入口支持 TaskBudget total。",
+    "provider.Params 支持 TaskBudget total 和 remaining。",
+    "Responses/Anthropic provider 能在对应 API body 中发送 output_config.task_budget 或等价字段。",
+    "loop 在首次 compact 前只传 total；compact 发生后根据 pre-compact final context tokens 扣减 remaining。",
+    "多次 compact 时 remaining 累计扣减且不小于 0。"
+  ],
+  "evidence": [
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "282-291",
+      "note": "TS taskBudgetRemaining 是 loop-local 状态，专门跨 compaction 边界维护。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "699-703",
+      "note": "TS 每次模型请求把 taskBudget total 和 remaining 传入 API options。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "504-515",
+      "note": "TS auto compact 后扣减 pre-compact final context tokens。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/services/api/claude.ts",
+      "lines": "468-495",
+      "note": "TS configureTaskBudgetParams 写 output_config.task_budget。"
+    },
+    {
+      "source": "go_current",
+      "file": "provider/provider.go",
+      "lines": "29-58",
+      "note": "Go provider.Params 当前没有 task budget 字段。"
+    }
+  ],
+  "scope": {
+    "include": [
+      "loop/query.go",
+      "provider/provider.go",
+      "provider/responses.go",
+      "provider/anthropic.go",
+      "engine/config.go",
+      "cli",
+      "provider/task_budget_test.go",
+      "loop/task_budget_test.go"
+    ],
+    "exclude": [
+      "token budget continuation，交给 task_07",
+      "完整 compact result 重构之外的 UI 展示"
+    ]
+  },
+  "implementation_steps": [
+    "定义 TaskBudget struct {Total int; Remaining *int}。",
+    "把 task budget 从 CLI/SDK/engine request 传到 loop.Config 或 Run 参数。",
+    "provider.Params 增加 TaskBudget，并在各 provider body 中序列化。",
+    "在 QueryState 中维护 taskBudgetRemaining。",
+    "在 compaction 成功和 reactive compact 成功路径更新 remaining。"
+  ],
+  "acceptance_criteria": [
+    "未发生 compaction 时请求只包含 total。",
+    "发生一次 compaction 后后续请求包含 total 和扣减后的 remaining。",
+    "多次 compaction remaining 单调不增且不为负。",
+    "未设置 task budget 时 provider 请求完全不带 output_config.task_budget。"
+  ],
+  "tests": [
+    "go test ./provider -run 'Test.*TaskBudget' -count=1",
+    "go test ./loop -run 'TestTaskBudget' -count=1"
+  ],
+  "risks": [
+    "不同 provider 的 output_config 兼容性不同，应保持能力开关或忽略未知字段。",
+    "remaining 扣减依赖 token usage，缺失 usage 时需要确定保守 fallback。"
+  ]
+}

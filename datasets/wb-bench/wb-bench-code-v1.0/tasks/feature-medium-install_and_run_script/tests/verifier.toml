@@ -1,0 +1,11 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "pytest_injected"
+
+[run]
+cwd = "/workspace"
+command = '''python -m pytest \
+  tests/test_sessions.py::TestSession::test_run_install_script \
+  tests/test_sessions.py::TestSession::test_run_install_script_forwards_args \
+  tests/test_sessions.py::TestSession::test_run_install_script_runs_python_with_script \
+  tests/test_sessions.py::TestSession::test_run_with_func \
+  -o addopts='' -o filterwarnings=default -q --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

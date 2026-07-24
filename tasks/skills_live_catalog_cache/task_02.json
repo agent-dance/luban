@@ -1,0 +1,86 @@
+{
+  "id": "task_02",
+  "title": "Add a transport-neutral developer message role",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 1,
+  "owner_role": "executor",
+  "estimated_minutes": 45,
+  "parallel_group": "foundation",
+  "can_run_in_parallel": true,
+  "dependencies": [],
+  "objective": "Represent catalog snapshot and delta instructions as durable developer-role conversation messages without coupling to one provider.",
+  "context": [
+    "Implement the accepted hybrid design: an initial developer-role catalog snapshot, append-only upsert/revoke deltas, on-demand SKILL.md bodies, and an authoritative execution registry.",
+    "The repository is a dirty shared worktree. Preserve unrelated changes and modify only owned_files."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Codex uses a bounded initial metadata catalog and loads full SKILL.md on demand."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Claude Code supports live skill discovery, visibility overrides, and on-demand skill bodies."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Append-only conversation messages preserve the previously cached prompt prefix."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "types/messages.go",
+    "types/tools.go",
+    "types/messages_test.go",
+    "session/repository.go"
+  ],
+  "owned_files": [
+    "types/messages.go",
+    "types/tools.go",
+    "types/developer_message_task02_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Add RoleDeveloper and a DeveloperMessage constructor.",
+      "Add local metadata sufficient to identify catalog snapshot/delta revision and kind without exposing it to providers accidentally.",
+      "Update only Message.MarshalJSON and Message.UnmarshalJSON in types/tools.go so the new optional metadata survives persistence; preserve all unrelated tool serialization code.",
+      "Preserve JSON/session round trips and existing user/assistant behavior."
+    ],
+    "exclude": [
+      "Do not modify files owned by another task.",
+      "Do not add dependencies or perform unrelated refactors."
+    ]
+  },
+  "implementation_steps": [
+    "Extend Message/Role conservatively.",
+    "Extend the existing custom Message JSON wire shape with optional metadata while keeping legacy encodings byte-compatible when metadata is absent.",
+    "Add serialization and helper tests.",
+    "Verify old session JSON remains readable."
+  ],
+  "deliverables": [
+    "types/messages.go",
+    "types/tools.go",
+    "types/developer_message_task02_test.go"
+  ],
+  "acceptance_criteria": [
+    "Developer messages survive persistence and resume.",
+    "Existing user and assistant message encodings do not change.",
+    "Provider-specific downgrade behavior is not implemented here."
+  ],
+  "verification": [
+    "go test ./types -run 'DeveloperMessage|Message' -count=1"
+  ],
+  "risks": [
+    "Many packages assume only user/assistant roles; later compact and provider tasks must explicitly handle the new role.",
+    "types/tools.go is broad; task_02 ownership is intentionally limited to the Message JSON methods and must not touch other serialization paths."
+  ],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Add and test an internal RoleDeveloper message representation in types/messages.go. Preserve backward compatibility; do not edit providers or compact code.",
+  "notes_for_assignee": "Keep the diff narrow; if a dependency contract is insufficient, report the required change to the integrator instead of editing another task's files."
+}

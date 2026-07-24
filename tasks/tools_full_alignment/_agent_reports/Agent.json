@@ -1,0 +1,912 @@
+{
+  "tool": "Agent",
+  "summary": "Exact surface; Go now supports sync runs, background launch, local continuation, and cwd rebasing, but not the original full remote/swarm lifecycle.",
+  "confidence": "medium",
+  "source_note": "Synthesized because the initial early subagent report was returned in chat but not persisted by the read-only role; inputs were the current tools/reports markdown, the handoff summary, and the historical task JSON under ../tasks.",
+  "gaps": [
+    {
+      "id": "AGENT-SYNTH-GAP-001",
+      "category": "contract_schema_output",
+      "severity": "P0",
+      "title": "Define discriminated-union output schema for Agent",
+      "description": "TS Agent outputSchema is a discriminatedUnion('kind', [completed, error, aborted, partial]). Each variant carries kind-specific fields (transcriptPath, exitReason, latestToolUse, durationMs, totalTokens). Currently Go returns a flat string.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-002",
+      "category": "state_lifecycle",
+      "severity": "P0",
+      "title": "Port agentDefinitions registry with frontmatter parsing",
+      "description": "TS agentDefinitions.ts loads agent definitions from .claude/agents/*.md and built-in registry. Each definition has: name, description, model, tools (allow-list/glob), color, isolation default, runIn (foreground|background).",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-003",
+      "category": "runtime_logic",
+      "severity": "P0",
+      "title": "Port forkSubagent to spin up an in-process child runtime",
+      "description": "TS forkSubagent.ts forks a runtime sharing parent context (memory, history) but with its own tool registry filtered by allow-list. Currently Go's agent.go runs an inline pseudo-loop and lacks proper fork semantics.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-004",
+      "category": "tests",
+      "severity": "P0",
+      "title": "Port runSubagent loop with progress streaming",
+      "description": "TS runSubagent.ts drives the child loop, streaming progress updates back to the parent via 'agent-progress' events with messageCount, latestToolUse, partialText.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-005",
+      "category": "permissions_visibility",
+      "severity": "P0",
+      "title": "Implement isolation modes: none, worktree, remote",
+      "description": "TS Agent supports isolation: 'worktree' (creates git worktree) and 'remote' (delegates to remote runtime). Go currently only has worktree wiring partially done.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-006",
+      "category": "permissions_visibility",
+      "severity": "P0",
+      "title": "Port remoteSubagent for isolation:remote",
+      "description": "TS remoteSubagent.ts delegates execution to the OAuth-authenticated remote runtime via the trigger API.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-007",
+      "category": "runtime_edge_behavior",
+      "severity": "P0",
+      "title": "Wait for MCP servers to be ready before agent start",
+      "description": "TS mcpReadiness.ts blocks subagent start until configured MCP servers report ready, with timeout. Go currently starts immediately.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-008",
+      "category": "state_lifecycle",
+      "severity": "P0",
+      "title": "Surface run_in_background semantics",
+      "description": "TS Agent supports run_in_background: when true, Agent returns immediately with a task handle and surfaces completion via task-notification.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-009",
+      "category": "contract_schema_output",
+      "severity": "P0",
+      "title": "Persist agent transcript to disk",
+      "description": "TS writes the full subagent JSONL transcript to a file referenced by AgentResult.transcriptPath. Useful for debugging and the .output file convention used by /tasks.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-010",
+      "category": "runtime_logic",
+      "severity": "P0",
+      "title": "Wire toAutoClassifierInput and userFacingName",
+      "description": "TS agents expose helper functions used by analytics and the registry. Go currently uses placeholders.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-011",
+      "category": "tests",
+      "severity": "P0",
+      "title": "Conformance test suite vs TS golden runs",
+      "description": "Lock the runtime against TS behaviour with shared fixtures.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "gosrc/tools/agent.go",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_fork.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_remote.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_isolation.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_mcp_readiness.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_definitions.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_output_union.go (new)",
+          "note": "Go implementation or planned target file."
+        },
+        {
+          "path": "gosrc/tools/agent_progress.go (new)",
+          "note": "Go implementation or planned target file."
+        }
+      ]
+    },
+    {
+      "id": "AGENT-SYNTH-GAP-012",
+      "category": "permissions_visibility",
+      "severity": "P1",
+      "title": "Restore Agent cancellation, notification, sidechain transcript, and teammate gating parity",
+      "description": "Close the remaining lifecycle gaps for cancellation, progress notifications, sidechain transcript persistence, permission inheritance, MCP readiness, remote lifecycle, and team/teammate gates.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx",
+          "note": "Primary original implementation reference."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/agent.go",
+          "note": "Go implementation target."
+        },
+        {
+          "path": "tools/agent_sessions.go",
+          "note": "Go implementation target."
+        },
+        {
+          "path": "tools/background_tasks.go",
+          "note": "Go implementation target."
+        },
+        {
+          "path": "tools/team.go",
+          "note": "Go implementation target."
+        }
+      ]
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "agent-01",
+      "title": "Define discriminated-union output schema for Agent",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-001"
+      ],
+      "owned_files": [],
+      "dependencies": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/agent_output_union.go.",
+        "Define types: AgentResult interface and structs AgentCompleted, AgentError, AgentAborted, AgentPartial.",
+        "Each must carry: TranscriptPath string, DurationMs int64, TotalTokens int, Kind string ('completed'|'error'|'aborted'|'partial').",
+        "Provide MarshalJSON that emits kind discriminator.",
+        "Update agent.go Execute to return one of these and stringify in mapToolResultToToolResultBlockParam."
+      ],
+      "acceptance": [
+        "JSON of result includes 'kind' field matching TS exactly",
+        "Existing callers continue to receive a string-rendered fallback",
+        "Round-trip Marshal/Unmarshal preserves variant"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS Agent outputSchema is a discriminatedUnion('kind', [completed, error, aborted, partial]). Each variant carries kind-specific fields (transcriptPath, exitReason, latestToolUse, durationMs, totalTokens). Currently Go returns a flat string."
+    },
+    {
+      "id": "agent-02",
+      "title": "Port agentDefinitions registry with frontmatter parsing",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-002"
+      ],
+      "owned_files": [],
+      "dependencies": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/agent_definitions.go.",
+        "Define struct AgentDefinition with all TS fields including ToolAllowList []string, IsolationDefault string, RunIn string.",
+        "Implement LoadAgentDefinitions(searchPaths []string) ([]AgentDefinition, error) that reads YAML frontmatter from .md files.",
+        "Build a registry merging built-ins (claude, general-purpose, Plan, Explore, statusline-setup) with project-local overrides.",
+        "Validate tool allow-lists against current registry on load.",
+        "Add table-driven tests covering frontmatter parsing edge cases."
+      ],
+      "acceptance": [
+        "Built-in agents present even with no .claude/agents directory",
+        "Project agents override built-ins by name",
+        "Invalid frontmatter surfaces a clear error path",
+        "Tool allow-list rejects unknown tool names"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS agentDefinitions.ts loads agent definitions from .claude/agents/*.md and built-in registry. Each definition has: name, description, model, tools (allow-list/glob), color, isolation default, runIn (foreground|background)."
+    },
+    {
+      "id": "agent-03",
+      "title": "Port forkSubagent to spin up an in-process child runtime",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-003"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-01",
+        "agent-02"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/agent_fork.go.",
+        "Implement ForkSubagent(parent *AgentRuntime, def AgentDefinition, prompt string) (*AgentRuntime, error).",
+        "Child registry must filter parent registry by def.ToolAllowList; honour glob patterns ('Read', 'mcp__*').",
+        "Child must inherit parent CWD, hooks, allowed_dirs, but with its own conversation history slot.",
+        "Wire abortController so Stop on parent cancels child.",
+        "Add fork-recursion guard: max depth = 3 to prevent runaway nesting."
+      ],
+      "acceptance": [
+        "Child only sees tools in allow-list",
+        "Child cannot fork a 4th-level grandchild (returns error)",
+        "Stopping parent cascades to child within 200ms",
+        "Concurrent forks are race-free"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS forkSubagent.ts forks a runtime sharing parent context (memory, history) but with its own tool registry filtered by allow-list. Currently Go's agent.go runs an inline pseudo-loop and lacks proper fork semantics."
+    },
+    {
+      "id": "agent-04",
+      "title": "Port runSubagent loop with progress streaming",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-004"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-03"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/agent_progress.go.",
+        "Define AgentProgressEvent { Phase string; MessageCount int; LatestTool string; ElapsedMs int64; TokensUsed int }.",
+        "Add a channel-based progress emitter on AgentRuntime.",
+        "In agent_fork.go run loop, after every assistant turn emit progress.",
+        "Bubble progress to parent's ToolResult.Progress channel (extend ToolResult if needed).",
+        "Add tests asserting progress events fire for at least 3 phases (start, mid, finish)."
+      ],
+      "acceptance": [
+        "Progress channel emits at least one event per assistant turn",
+        "Final event has Phase='completed' or 'error' or 'aborted'",
+        "Channel is closed on completion"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS runSubagent.ts drives the child loop, streaming progress updates back to the parent via 'agent-progress' events with messageCount, latestToolUse, partialText."
+    },
+    {
+      "id": "agent-05",
+      "title": "Implement isolation modes: none, worktree, remote",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-005"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-03"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/agent_isolation.go.",
+        "Implement PrepareIsolation(ctx, mode string, def AgentDefinition) (cleanup func(), childCWD string, error).",
+        "Mode 'worktree': call git worktree add at .claude/worktrees/<name>; cleanup removes worktree if no changes (mirror EnterWorktree.kept logic).",
+        "Mode 'remote': stub interface RemoteRuntimeProvider with Spawn(prompt) error; integrate with agent_remote.go.",
+        "Mode 'none' or unset: childCWD = parent CWD, cleanup is no-op.",
+        "Add unit tests with a fake git command runner."
+      ],
+      "acceptance": [
+        "worktree mode creates and cleans up correctly when no changes",
+        "worktree mode preserves work when changes exist",
+        "remote mode falls back to error when no provider configured"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS Agent supports isolation: 'worktree' (creates git worktree) and 'remote' (delegates to remote runtime). Go currently only has worktree wiring partially done."
+    },
+    {
+      "id": "agent-06",
+      "title": "Port remoteSubagent for isolation:remote",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-006"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-05"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/agent_remote.go.",
+        "Implement RemoteAgentRuntime that wraps an HTTP client to /v1/code/agents.",
+        "Use the same OAuth token plumbing as remote_trigger.go.",
+        "Stream results back via long-poll or SSE; map to AgentProgressEvent.",
+        "Map remote completion to AgentResult union variants.",
+        "Add integration test against a stub HTTP server."
+      ],
+      "acceptance": [
+        "Remote run round-trips a result for happy path",
+        "Network failure surfaces as AgentError variant",
+        "Auth token refresh occurs before expiry"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS remoteSubagent.ts delegates execution to the OAuth-authenticated remote runtime via the trigger API."
+    },
+    {
+      "id": "agent-07",
+      "title": "Wait for MCP servers to be ready before agent start",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-007"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-03"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/agent_mcp_readiness.go.",
+        "Implement WaitForMCPReadiness(ctx, mcpManager *mcp.Manager, requiredServers []string, timeout time.Duration) error.",
+        "Required servers come from def.ToolAllowList items prefixed mcp__<server>__.",
+        "Surface readiness state in agent's first progress event.",
+        "Add tests with fake mcp.Manager implementations."
+      ],
+      "acceptance": [
+        "Agent does not start until all required MCP servers ready",
+        "Timeout returns a clear error before subagent runs",
+        "No required servers means immediate readiness"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS mcpReadiness.ts blocks subagent start until configured MCP servers report ready, with timeout. Go currently starts immediately."
+    },
+    {
+      "id": "agent-08",
+      "title": "Surface run_in_background semantics",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-008"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-04"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "Extend agent input schema with run_in_background bool.",
+        "When true, dispatch via background_tasks.go and return AgentPartial result with TaskID.",
+        "On completion, emit a task-notification event mirroring TS payload {kind, transcriptPath, durationMs}.",
+        "Hook completion notification into hooks.Runner so harness can re-trigger model.",
+        "Add tests covering both foreground and background paths."
+      ],
+      "acceptance": [
+        "Background agent returns a TaskID immediately",
+        "Completion notification fires via hooks",
+        "Foreground path remains unchanged"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS Agent supports run_in_background: when true, Agent returns immediately with a task handle and surfaces completion via task-notification."
+    },
+    {
+      "id": "agent-09",
+      "title": "Persist agent transcript to disk",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-009"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-04"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "On runtime start, allocate transcriptPath = .claude/agent-transcripts/<sessionId>-<agentId>.jsonl.",
+        "Append every conversation entry as a JSON line.",
+        "Close file on agent completion.",
+        "Set transcriptPath on AgentResult variant.",
+        "Add test verifying file exists and contains expected JSON lines."
+      ],
+      "acceptance": [
+        "Transcript file path returned in result",
+        "File contains valid JSONL with user/assistant entries",
+        "Aborted agent still flushes partial transcript"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS writes the full subagent JSONL transcript to a file referenced by AgentResult.transcriptPath. Useful for debugging and the .output file convention used by /tasks."
+    },
+    {
+      "id": "agent-10",
+      "title": "Wire toAutoClassifierInput and userFacingName",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-010"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-01"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "Implement Agent.AutoClassifierInput(input) string returning 'Agent <subagent_type> <description>'.",
+        "Implement Agent.UserFacingName() returning '' so it is hidden from default tool list (matches TS).",
+        "Update registry_setup.go to pick these up."
+      ],
+      "acceptance": [
+        "Analytics events for Agent contain the classifier string",
+        "Tool listing UI hides Agent name where appropriate"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS agents expose helper functions used by analytics and the registry. Go currently uses placeholders."
+    },
+    {
+      "id": "agent-11",
+      "title": "Conformance test suite vs TS golden runs",
+      "priority": "P0",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-011"
+      ],
+      "owned_files": [],
+      "dependencies": [
+        "agent-01",
+        "agent-02",
+        "agent-03",
+        "agent-04",
+        "agent-05",
+        "agent-08"
+      ],
+      "read_first": [],
+      "implementation_steps": [
+        "Mirror representative TS test cases into gosrc/tools/agent_conformance_test.go.",
+        "Cover: happy path foreground, abort mid-run, fork-depth guard, allow-list filtering, MCP readiness timeout, worktree cleanup decision, background notification.",
+        "Document any case skipped because of TS-only services."
+      ],
+      "acceptance": [
+        "\u226530 conformance cases pass",
+        "Documented skips < 5"
+      ],
+      "verification_commands": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Lock the runtime against TS behaviour with shared fixtures."
+    },
+    {
+      "id": "agent-synth-12",
+      "title": "Restore Agent cancellation, notification, sidechain transcript, and teammate gating parity",
+      "priority": "P1",
+      "addresses_gaps": [
+        "AGENT-SYNTH-GAP-012"
+      ],
+      "owned_files": [
+        "tools/agent.go",
+        "tools/agent_sessions.go",
+        "tools/background_tasks.go",
+        "tools/team.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/AgentTool/AgentTool.tsx"
+      ],
+      "implementation_steps": [
+        "Close the remaining lifecycle gaps for cancellation, progress notifications, sidechain transcript persistence, permission inheritance, MCP readiness, remote lifecycle, and team/teammate gates."
+      ],
+      "acceptance": [
+        "Cancellation reaches running child agents.",
+        "Progress notifications and transcript paths match TS.",
+        "Teammate creation respects TS gates and permissions."
+      ],
+      "verification_commands": [
+        "go test ./tools ./registry ./loop -run 'Agent|Alignment|Parity' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Fresh-summary augmentation for early read-only subagent report."
+    }
+  ]
+}

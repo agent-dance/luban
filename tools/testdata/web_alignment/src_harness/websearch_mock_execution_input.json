@@ -1,0 +1,11 @@
+{
+  "query": "golang",
+  "allowed_domains": ["go.dev"],
+  "mock_results": [
+    {
+      "title": "The Go Programming Language",
+      "url": "https://go.dev",
+      "snippet": "Build simple, secure, scalable systems with Go."
+    }
+  ]
+}

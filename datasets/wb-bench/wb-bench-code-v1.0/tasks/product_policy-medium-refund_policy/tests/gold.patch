@@ -1,0 +1,50 @@
+diff --git a/app/policy.py b/app/policy.py
+index 57a5e02..be920da 100644
+--- a/app/policy.py
++++ b/app/policy.py
+@@ -1,24 +1,24 @@
+ #!/usr/bin/env python3
+-# Expected CLI: python app/policy.py --data data --out decisions.json
+-# Output should explain which rows are allowed/blocked and why.
+-
+-import argparse
+-import json
++import argparse,csv,json
++from datetime import date
+ from pathlib import Path
+-
+-
+-def evaluate(data_dir: Path) -> dict:
+-    # TODO: evaluate the product policy from CSV data.
+-    return {}
+-
+-
++def rows(p):
++    with p.open(newline='',encoding='utf-8') as f: return list(csv.DictReader(f))
++def d(s): return date.fromisoformat(s)
++def evaluate(data_dir: Path):
++    orders={r['order_id']:r for r in rows(data_dir/'orders.csv')}; usage={r['order_id']:r for r in rows(data_dir/'usage.csv')}
++    decisions=[]; summary={'approved':0,'denied':0,'manual_review':0,'refund_cents':0}
++    for req in rows(data_dir/'requests.csv'):
++        o=orders[req['order_id']]; u=usage.get(req['order_id'],{})
++        age=(d(req['requested_at'])-d(o['paid_at'])).days; amount=int(o['amount_cents'])
++        exports=int(u.get('exports',0)); api=int(u.get('api_calls',0))
++        if amount==0 or o['plan']=='trial': status='denied'; reason='no_paid_charge'; refund=0
++        elif exports>0 or api>100: status='manual_review'; reason='meaningful_usage'; refund=0
++        elif age>14: status='denied'; reason='outside_window'; refund=0
++        else: status='approved'; reason='within_window_low_usage'; refund=amount
++        summary[status]+=1; summary['refund_cents']+=refund
++        decisions.append({'request_id':req['request_id'],'order_id':req['order_id'],'status':status,'reason':reason,'days_since_payment':age,'refund_cents':refund,'currency':o['currency']})
++    return {'summary':summary,'decisions':decisions}
+ def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument('--data', default='data')
+-    parser.add_argument('--out', default='decisions.json')
+-    args = parser.parse_args()
+-    Path(args.out).write_text(json.dumps(evaluate(Path(args.data)), ensure_ascii=False, indent=2), encoding='utf-8')
+-
+-
+-if __name__ == '__main__':
+-    main()
++    p=argparse.ArgumentParser(); p.add_argument('--data',default='data'); p.add_argument('--out',default='decisions.json'); a=p.parse_args(); Path(a.out).write_text(json.dumps(evaluate(Path(a.data)),indent=2),encoding='utf-8')
++if __name__=='__main__': main()

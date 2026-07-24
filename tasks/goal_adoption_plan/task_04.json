@@ -1,0 +1,71 @@
+{
+  "id": "task_04",
+  "title": "Persist goal in session metadata",
+  "priority": "P0",
+  "status": "accepted",
+  "owner_role": "executor",
+  "estimated_minutes": 5,
+  "parallel_group": "persistence",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_03"
+  ],
+  "objective": "Add Goal to SessionMeta and preserve it through metadata merge operations.",
+  "context": [
+    "This is the minimal Codex-like durability layer for /goal.",
+    "The change must not disturb existing Usage, Presentation, Decision, Evidence, or SeenToolUseIDs handling."
+  ],
+  "source_evidence": [
+    {
+      "source": "repo",
+      "file_or_url": "session/session.go:308",
+      "note": "SaveMeta is the key merge point."
+    }
+  ],
+  "read_first": [
+    "session/goal_meta_test.go",
+    "session/session.go",
+    "goal/goal.go"
+  ],
+  "owned_files": [
+    "session/session.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Add Goal to SessionMeta.",
+      "Clone or copy Goal safely during SaveMeta merge.",
+      "Keep nil or zero Goal omitted from JSON."
+    ],
+    "exclude": [
+      "No command wiring.",
+      "No loop wiring.",
+      "No UI changes."
+    ]
+  },
+  "implementation_steps": [
+    "Add a Goal field to SessionMeta with json omitempty.",
+    "Update SaveMeta merge to preserve and replace Goal only when provided.",
+    "Add a clone helper if Goal contains maps or slices.",
+    "Run session tests."
+  ],
+  "deliverables": [
+    "Session metadata supports Goal persistence."
+  ],
+  "acceptance_criteria": [
+    "go test ./session -run Goal passes.",
+    "go test ./session passes.",
+    "No import cycle is introduced."
+  ],
+  "verification": [
+    "go test ./session -count=1"
+  ],
+  "risks": [
+    "Import cycle if goal package imports session later."
+  ],
+  "non_goals": [
+    "No evaluator state machine.",
+    "No registry setup changes."
+  ],
+  "dispatch_prompt": "Implement SessionMeta Goal persistence and SaveMeta merge behavior to satisfy session/goal_meta_test.go. Keep changes local to session/session.go unless a tiny helper file is necessary.",
+  "notes_for_assignee": "If a direct import of goal causes a cycle, introduce a session-local DTO and document the conversion point."
+}

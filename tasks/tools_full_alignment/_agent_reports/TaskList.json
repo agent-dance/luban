@@ -1,0 +1,871 @@
+{
+  "tool": "TaskList",
+  "summary": "TaskList is only partially aligned with the TS baseline. The Go implementation matches the visible happy-path text for ordinary tasks and now filters internal tasks plus completed blockers, but it still diverges on todo-v2 exposure gating, structured output data, strict empty input validation, task-row validation and migration, TS-compatible persisted task shape, path/scope resolution, metadata/read-only/prompt behavior, task-list lifecycle notifications, ordering, teammate tool availability, and focused regression coverage.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "tasklist-gap-01",
+      "title": "TaskList is registered unconditionally instead of following the TS todo-v2 enablement gate",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/TaskListTool/TaskListTool.ts:53",
+        "../src/tools/TaskListTool/TaskListTool.ts:54",
+        "../src/tools/TaskListTool/TaskListTool.ts:55",
+        "../src/tools.ts:218",
+        "../src/tools.ts:219",
+        "../src/tools.ts:220",
+        "../src/utils/tasks.ts:133",
+        "../src/utils/tasks.ts:138",
+        "../src/bootstrap/state.ts:1057"
+      ],
+      "evidence_go": [
+        "registry_setup.go:175",
+        "registry_setup.go:177",
+        "registry_setup.go:181",
+        "registry_setup.go:233",
+        "registry_setup.go:234",
+        "registry_setup.go:238",
+        "registry_setup.go:239",
+        "tools/runtime_scope.go:150",
+        "tools/runtime_scope.go:157"
+      ],
+      "description": "TS exposes TaskList only when todo-v2 is enabled: CLAUDE_CODE_ENABLE_TASKS force-enables it, otherwise interactive sessions enable it and non-interactive sessions hide it. Go builds RuntimeScope with the same interactive state and even has IsTodoV2Enabled(), but SetupRegistry registers TaskCreate/TaskList/TaskUpdate/TaskGet unconditionally.",
+      "impact": "Go can advertise and execute TaskList in SDK/headless/non-interactive modes where TS would not expose it, changing model planning, ToolSearch discovery, and task-vs-todo behavior."
+    },
+    {
+      "id": "tasklist-gap-02",
+      "title": "Structured TaskList result data and output schema are missing",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/TaskListTool/TaskListTool.ts:16",
+        "../src/tools/TaskListTool/TaskListTool.ts:17",
+        "../src/tools/TaskListTool/TaskListTool.ts:25",
+        "../src/tools/TaskListTool/TaskListTool.ts:65",
+        "../src/tools/TaskListTool/TaskListTool.ts:77",
+        "../src/tools/TaskListTool/TaskListTool.ts:85",
+        "../src/tools/TaskListTool/TaskListTool.ts:91",
+        "../src/tools/TaskListTool/TaskListTool.ts:113"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:797",
+        "tools/tasks.go:804",
+        "tools/tasks.go:807",
+        "tools/tasks.go:817",
+        "tools/tasks.go:845",
+        "tools/helpers.go:104",
+        "tools/helpers.go:109",
+        "types/tools.go:53",
+        "types/tools.go:58",
+        "registry/registry.go:109",
+        "registry/registry.go:114"
+      ],
+      "description": "TS call() returns structured data shaped as {tasks:[{id,subject,status,owner?,blockedBy}]}, then mapToolResultToToolResultBlockParam renders the model-facing text. Go TaskList directly renders text through StringResponse and the ToolResult/registry conversion path has no TaskList payload equivalent.",
+      "impact": "Any Go caller that needs the TS output schema, parity fixtures that compare tool data, UI/state code that wants typed tasks, or post-hook/result-storage code that should distinguish data from rendered text cannot match TS behavior."
+    },
+    {
+      "id": "tasklist-gap-03",
+      "title": "The TS strict empty input contract is not enforced",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskListTool/TaskListTool.ts:13",
+        "../src/tools/TaskListTool/TaskListTool.ts:14"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:797",
+        "tools/tasks.go:798",
+        "tools/tasks.go:799",
+        "tools/tasks.go:800",
+        "tools/tasks.go:804",
+        "types/tools.go:9",
+        "types/tools.go:10",
+        "types/tools.go:15"
+      ],
+      "description": "TS uses z.strictObject({}), so TaskList takes no parameters and rejects unknown properties at schema validation time. Go publishes an empty object schema but has no additionalProperties/strictness field and Execute ignores the input map entirely, so extra input keys are silently accepted.",
+      "impact": "Malformed or hallucinated TaskList inputs can pass in Go while TS rejects them. That can hide prompt/schema regressions and makes tool-call validation behavior non-identical."
+    },
+    {
+      "id": "tasklist-gap-04",
+      "title": "TaskList reads unvalidated task rows and does not apply TS status migrations",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:69",
+        "../src/utils/tasks.ts:76",
+        "../src/utils/tasks.ts:83",
+        "../src/utils/tasks.ts:84",
+        "../src/utils/tasks.ts:85",
+        "../src/utils/tasks.ts:310",
+        "../src/utils/tasks.ts:319",
+        "../src/utils/tasks.ts:333",
+        "../src/utils/tasks.ts:338",
+        "../src/utils/tasks.ts:443",
+        "../src/utils/tasks.ts:454",
+        "../src/utils/tasks.ts:455"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:18",
+        "tools/tasks.go:25",
+        "tools/tasks.go:26",
+        "tools/tasks.go:27",
+        "tools/tasks.go:262",
+        "tools/tasks.go:275",
+        "tools/tasks.go:280",
+        "tools/tasks.go:284",
+        "tools/tasks.go:810",
+        "tools/tasks.go:825"
+      ],
+      "description": "TS listTasks() routes every row through getTask(), which migrates ant-only legacy statuses and safeParse-validates the TaskSchema before including the row. Go list() unmarshals directly into TaskItem, keeps status as an unconstrained string, and TaskList renders whatever survives JSON unmarshal.",
+      "impact": "Go TaskList can show corrupted, incomplete, or legacy-status rows that TS would hide or normalize, including statuses outside pending/in_progress/completed even though TS TaskList's output schema restricts status."
+    },
+    {
+      "id": "tasklist-gap-05",
+      "title": "Go-created task JSON omits empty dependency arrays required by TS TaskSchema",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:76",
+        "../src/utils/tasks.ts:84",
+        "../src/utils/tasks.ts:85",
+        "../src/utils/tasks.ts:298",
+        "../src/utils/tasks.ts:300",
+        "../src/utils/tasks.ts:333"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:18",
+        "tools/tasks.go:26",
+        "tools/tasks.go:27",
+        "tools/tasks.go:190",
+        "tools/tasks.go:194",
+        "tools/tasks.go:225",
+        "tools/tasks.go:231",
+        "tools/tasks.go:232",
+        "tools/tasks_test.go:361",
+        "tools/tasks_test.go:368"
+      ],
+      "description": "TS TaskSchema requires blocks and blockedBy arrays. Go initializes those slices on create, but TaskItem tags both fields with omitempty, so a normal task with no dependencies is persisted without blocks:[] and blockedBy:[]. The existing Go persistence test checks only that the file exists.",
+      "impact": "Tasks created by Go can be rejected by TS getTask/listTasks safeParse, so cross-runtime TaskList can silently drop the most common Go-created rows."
+    },
+    {
+      "id": "tasklist-gap-06",
+      "title": "Task-list and task-id path sanitization does not match TS",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:217",
+        "../src/utils/tasks.ts:218",
+        "../src/utils/tasks.ts:221",
+        "../src/utils/tasks.ts:225",
+        "../src/utils/tasks.ts:229",
+        "../src/utils/tasks.ts:230"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:107",
+        "tools/tasks.go:119",
+        "tools/tasks.go:123",
+        "tools/tasks.go:124",
+        "tools/tasks.go:125",
+        "tools/tasks.go:130",
+        "tools/tasks.go:134",
+        "tools/tasks.go:135",
+        "tools/runtime_scope.go:127"
+      ],
+      "description": "TS sanitizePathComponent replaces each disallowed character with '-' and preserves the resulting string. Go replaces disallowed runes but then trims leading/trailing '-' and maps an empty sanitized value to 'default'.",
+      "impact": "TaskList can read a different task-list directory than TS for IDs with punctuation, leading/trailing invalid characters, or empty sanitized values; punctuation-only IDs can collapse to default in Go."
+    },
+    {
+      "id": "tasklist-gap-07",
+      "title": "Task-list scope resolution is only partially aligned for teammate and leader-team lifecycle cases",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:20",
+        "../src/utils/tasks.ts:31",
+        "../src/utils/tasks.ts:36",
+        "../src/utils/tasks.ts:43",
+        "../src/utils/tasks.ts:46",
+        "../src/utils/tasks.ts:190",
+        "../src/utils/tasks.ts:199",
+        "../src/utils/tasks.ts:205",
+        "../src/utils/tasks.ts:209",
+        "../src/utils/teammateContext.ts:47",
+        "../src/utils/teammate.ts:111",
+        "../src/bootstrap/state.ts:431"
+      ],
+      "evidence_go": [
+        "tools/runtime_scope.go:10",
+        "tools/runtime_scope.go:16",
+        "tools/runtime_scope.go:68",
+        "tools/runtime_scope.go:80",
+        "tools/runtime_scope.go:84",
+        "tools/runtime_scope.go:87",
+        "tools/runtime_scope.go:90",
+        "registry_setup.go:181",
+        "registry_setup.go:235",
+        "main.go:315",
+        "main.go:316",
+        "main.go:317"
+      ],
+      "description": "TS getTaskListId precedence is explicit task-list env, in-process teammate context, process/dynamic team name, leaderTeamName set by TeamCreate, then current session ID; changing leaderTeamName notifies task subscribers. Go RuntimeScope handles explicit env, TeamName(), and SessionID(), but there is no AsyncLocalStorage-equivalent teammate context, no leaderTeamName notification path, and the fallback is literal 'default' when no session resolver is wired.",
+      "impact": "TaskList can resolve a different directory in in-process teammate, team-leader, resumed/early-session, or test contexts, and UI/runtime consumers may not notice that the active task list changed."
+    },
+    {
+      "id": "tasklist-gap-08",
+      "title": "TaskList metadata, prompt, read-only, and result-size surfaces are incomplete",
+      "priority": "P2",
+      "evidence_ts": [
+        "../src/tools/TaskListTool/prompt.ts:3",
+        "../src/tools/TaskListTool/prompt.ts:28",
+        "../src/tools/TaskListTool/prompt.ts:47",
+        "../src/tools/TaskListTool/TaskListTool.ts:35",
+        "../src/tools/TaskListTool/TaskListTool.ts:36",
+        "../src/tools/TaskListTool/TaskListTool.ts:40",
+        "../src/tools/TaskListTool/TaskListTool.ts:52",
+        "../src/tools/TaskListTool/TaskListTool.ts:56",
+        "../src/tools/TaskListTool/TaskListTool.ts:59",
+        "../src/tools/TaskListTool/TaskListTool.ts:62",
+        "../src/Tool.ts:404",
+        "../src/Tool.ts:466",
+        "../src/utils/toolResultStorage.ts:217",
+        "../src/utils/toolResultStorage.ts:224"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:790",
+        "tools/tasks.go:791",
+        "tools/tasks.go:793",
+        "tools/tasks.go:794",
+        "registry/tool_visibility.go:35",
+        "types/tools.go:24",
+        "types/tools.go:29",
+        "types/tools.go:32",
+        "types/tools.go:35",
+        "types/tools.go:58",
+        "types/tools.go:64",
+        "compact/resultstore.go:188",
+        "loop/query.go:1317"
+      ],
+      "description": "TS gives TaskList the exact description 'List all tasks in the task list', a long prompt, searchHint 'list all tasks', maxResultSizeChars=100000, shouldDefer=true, isConcurrencySafe=true, isReadOnly=true, and renderToolUseMessage=null. Go has a shorter description, registry-level deferred search metadata with different hint text, concurrency safe only, and no TaskList prompt/read-only/max-result metadata path on the tool itself.",
+      "impact": "Model guidance, permission/read-only treatment, ToolSearch ranking, UI tool-use display, and large-result persistence thresholds can diverge from TS."
+    },
+    {
+      "id": "tasklist-gap-09",
+      "title": "Task-list update signals, watcher state, and completed-list cleanup lifecycle are missing",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:17",
+        "../src/utils/tasks.ts:53",
+        "../src/utils/tasks.ts:61",
+        "../src/utils/tasks.ts:67",
+        "../src/hooks/useTasksV2.ts:66",
+        "../src/hooks/useTasksV2.ts:113",
+        "../src/hooks/useTasksV2.ts:118",
+        "../src/hooks/useTasksV2.ts:123",
+        "../src/hooks/useTasksV2.ts:129",
+        "../src/hooks/useTasksV2.ts:154",
+        "../src/hooks/useTasksV2.ts:166"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:210",
+        "tools/tasks.go:218",
+        "tools/tasks.go:249",
+        "tools/tasks.go:262",
+        "tools/tasks.go:311",
+        "tools/tasks.go:340",
+        "tools/tasks.go:804",
+        "registry_setup.go:233",
+        "registry_setup.go:239"
+      ],
+      "description": "TS task mutations notify in-process subscribers, TasksV2Store watches the active task directory, hides empty lists, schedules a 5s all-completed cleanup via resetTaskList, and re-watches when the task-list ID changes. The inspected Go task store exposes direct file-backed CRUD and TaskList reads but no task-list signal, watcher store, hide/reset lifecycle, or TaskList-driven UI cache.",
+      "impact": "Go can have stale or non-TS lifecycle behavior around task-list display, completed-list cleanup, and immediate refresh after create/update/delete/scope changes."
+    },
+    {
+      "id": "tasklist-gap-10",
+      "title": "Visible list ordering is not the same implementation contract",
+      "priority": "P2",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:443",
+        "../src/utils/tasks.ts:451",
+        "../src/utils/tasks.ts:454",
+        "../src/utils/tasks.ts:455",
+        "../src/tools/TaskListTool/TaskListTool.ts:77",
+        "../src/tools/TaskListTool/TaskListTool.ts:101"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:262",
+        "tools/tasks.go:287",
+        "tools/tasks.go:288",
+        "tools/tasks.go:291",
+        "tools/tasks.go:293",
+        "tools/tasks.go:817"
+      ],
+      "description": "TS listTasks() preserves the order produced by readdir/Promise.all and TaskList maps that order directly. Go sorts task rows numerically when possible, then lexicographically. That is useful, but it is not the same implementation contract.",
+      "impact": "Byte-for-byte TaskList output can differ for the same task directory, especially with non-numeric IDs or filesystems whose directory order differs from Go's explicit sort."
+    },
+    {
+      "id": "tasklist-gap-11",
+      "title": "Agent and teammate tool-availability rules do not restore TaskList the way TS does",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/constants/tools.ts:72",
+        "../src/constants/tools.ts:77",
+        "../src/constants/tools.ts:80",
+        "../src/tools/AgentTool/agentToolUtils.ts:100",
+        "../src/tools/AgentTool/agentToolUtils.ts:101",
+        "../src/tools/AgentTool/agentToolUtils.ts:107",
+        "../src/tools/AgentTool/agentToolUtils.ts:108",
+        "../src/tools/AgentTool/agentToolUtils.ts:109"
+      ],
+      "evidence_go": [
+        "tools/agent.go:302",
+        "tools/agent.go:303",
+        "tools/agent.go:304",
+        "tools/agent.go:1042",
+        "tools/agent.go:1043",
+        "tools/agent.go:1071",
+        "tools/agent.go:2482",
+        "tools/agent.go:2489",
+        "tools/agent.go:2505",
+        "tools/agent.go:2519",
+        "tools/agent.go:2549",
+        "tools/agent.go:2567",
+        "tools/agent_test.go:667",
+        "tools/agent_test.go:689"
+      ],
+      "description": "TS removes task tools from ordinary async agents but re-allows TaskList and sibling task tools for in-process teammates so they can coordinate through the shared task list. Go has a TeamMember flag on AgentTool, but agentToolRegistryOptions does not carry it into agentToolAllowedByBaseFilters, and asyncAgentAllowedTools excludes TaskList.",
+      "impact": "Go teammate/async-agent sessions can receive a different TaskList availability surface than TS, breaking the shared-task-list coordination workflow."
+    },
+    {
+      "id": "tasklist-gap-12",
+      "title": "TaskList parity tests cover only the Go text happy path",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskListTool/TaskListTool.ts:13",
+        "../src/tools/TaskListTool/TaskListTool.ts:16",
+        "../src/tools/TaskListTool/TaskListTool.ts:53",
+        "../src/tools/TaskListTool/TaskListTool.ts:68",
+        "../src/tools/TaskListTool/TaskListTool.ts:91",
+        "../src/utils/tasks.ts:310",
+        "../src/utils/tasks.ts:443"
+      ],
+      "evidence_go": [
+        "tools/tasks_test.go:98",
+        "tools/tasks_test.go:113",
+        "tools/tasks_test.go:117",
+        "tools/tasks_test.go:120",
+        "tools/tasks_test.go:150",
+        "tools/tasks_test.go:184",
+        "tools/tasks_test.go:188",
+        "tools/tasks_test.go:361",
+        "tools/tasks_test.go:368",
+        "tools/k_protocol_test.go:312",
+        "tools/k_protocol_test.go:481"
+      ],
+      "description": "Current Go tests assert visible TaskList text for normal pending tasks and blockedBy text after TaskUpdate. They do not lock the TS structured output, feature gate, strict empty input, invalid-row filtering/status migration, dependency-array persistence, sanitizer/scope precedence, metadata/read-only behavior, lifecycle watcher semantics, ordering, or teammate availability.",
+      "impact": "The existing tests can pass while most TaskList parity gaps remain unresolved or regress later."
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "title": "Mirror TS todo-v2 exposure gates for TaskList and sibling task tools",
+      "priority": "P0",
+      "dependency_key": "tasklist-gap-01",
+      "objective": "Register TaskList only under the same todo-v2 enablement rules as TS, using CLAUDE_CODE_ENABLE_TASKS and the interactive/non-interactive runtime state.",
+      "owned_files": [
+        "registry_setup.go",
+        "tools/runtime_scope.go",
+        "registry/registry_test.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools.ts",
+        "../src/utils/tasks.ts",
+        "../src/bootstrap/state.ts",
+        "registry_setup.go",
+        "tools/runtime_scope.go"
+      ],
+      "implementation_steps": [
+        "Use RuntimeScope.IsTodoV2Enabled or an equivalent helper before registering TaskCreate, TaskGet, TaskUpdate, and TaskList.",
+        "Keep TaskStop and TaskOutput outside this gate unless their own parity reports require otherwise.",
+        "Add registry tests for interactive=true, interactive=false, and interactive=false with CLAUDE_CODE_ENABLE_TASKS truthy."
+      ],
+      "acceptance_criteria": [
+        "TaskList is present in an interactive registry.",
+        "TaskList is absent in a non-interactive registry when CLAUDE_CODE_ENABLE_TASKS is unset or falsy.",
+        "TaskList is present in a non-interactive registry when CLAUDE_CODE_ENABLE_TASKS is truthy.",
+        "TaskCreate, TaskGet, and TaskUpdate follow the same gate."
+      ],
+      "verification": [
+        "go test ./registry ./tools -run 'Test.*Task.*Registry|Test.*TodoV2|TestTaskList'"
+      ],
+      "risks": [
+        "Existing SDK/headless tests may assume task tools are always registered and will need explicit env setup."
+      ],
+      "non_goals": [
+        "Do not redesign ToolSearch deferral.",
+        "Do not change TaskStop or TaskOutput availability in this task."
+      ]
+    },
+    {
+      "title": "Add structured TaskList output while preserving TS text rendering",
+      "priority": "P0",
+      "dependency_key": "tasklist-gap-02",
+      "objective": "Expose the TS {tasks:[{id,subject,status,owner?,blockedBy}]} result shape for TaskList and derive the visible text from that structure.",
+      "owned_files": [
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "compact/resultstore.go",
+        "loop/query.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskListTool/TaskListTool.ts",
+        "../src/services/tools/toolExecution.ts",
+        "../src/utils/toolResultStorage.ts",
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/tasks.go"
+      ],
+      "implementation_steps": [
+        "Introduce an additive structured-output field or typed payload mechanism in ToolResult if one does not already exist.",
+        "Make TaskList build the TS tasks payload first, including only id, subject, status, optional owner, and filtered blockedBy.",
+        "Render visible content exactly like TS mapToolResultToToolResultBlockParam, including 'No tasks found' for an empty visible list.",
+        "Ensure registry/tool-result conversion preserves the structured payload for callers that need it.",
+        "Add tests that assert both structured payload and visible text."
+      ],
+      "acceptance_criteria": [
+        "TaskList structured data contains tasks[] with TS field names and no Go-only fields.",
+        "Completed blocker IDs are removed from each task's structured blockedBy array.",
+        "Internal tasks are absent from both structured payload and visible text.",
+        "Visible text remains compatible with TS for empty lists, owners, and blockedBy formatting."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskList.*Structured|TestTaskListAndGetTool|TestTaskUpdateTool'",
+        "go test ./registry ./loop ./compact"
+      ],
+      "risks": [
+        "Structured payload support is cross-cutting; keep it optional so existing tools keep their current behavior."
+      ],
+      "non_goals": [
+        "Do not add description, blocks, metadata, comments, timestamps, or activeForm to TaskList's TS structured output."
+      ]
+    },
+    {
+      "title": "Enforce the TS strict no-input contract for TaskList",
+      "priority": "P1",
+      "dependency_key": "tasklist-gap-03",
+      "objective": "Make TaskList reject every input key the same way z.strictObject({}) does in TS.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "types/tools.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskListTool/TaskListTool.ts",
+        "tools/tasks.go",
+        "types/tools.go",
+        "tools/parse.go"
+      ],
+      "implementation_steps": [
+        "Add TaskList-local input validation that accepts nil or an empty object and rejects any key.",
+        "Represent additionalProperties:false in the published schema if the JSONSchema type is extended to support it.",
+        "Return a tool-level input error for unknown keys without reading the task store.",
+        "Add tests for empty input, nil input, and extra-key input."
+      ],
+      "acceptance_criteria": [
+        "TaskList({}) succeeds.",
+        "TaskList(nil) succeeds if the Go runtime can pass nil for an empty object.",
+        "TaskList({extra:true}) returns an input error and does not list tasks.",
+        "The published schema communicates strict empty-object semantics where supported."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskList.*Input|TestTaskListAndGetTool'"
+      ],
+      "risks": [
+        "Changing the shared parser globally could affect many tools; prefer a TaskList-local check unless a shared strict-schema migration is explicitly planned."
+      ],
+      "non_goals": [
+        "Do not change TaskCreate, TaskGet, or TaskUpdate input parsing in this task."
+      ]
+    },
+    {
+      "title": "Persist TS-compatible empty blocks and blockedBy arrays",
+      "priority": "P0",
+      "dependency_key": "tasklist-gap-05",
+      "objective": "Ensure Go-created task JSON includes blocks:[] and blockedBy:[] so TS TaskList can parse Go-created tasks.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "../src/tools/TaskCreateTool/TaskCreateTool.ts",
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "implementation_steps": [
+        "Remove omitempty from TaskItem.Blocks and TaskItem.BlockedBy or add custom marshaling that always emits empty arrays.",
+        "Normalize nil Blocks/BlockedBy to empty slices before every task write.",
+        "Extend persistence tests to read the JSON file and assert both fields are present as arrays.",
+        "Keep TaskList visible text unchanged for tasks with empty dependency arrays."
+      ],
+      "acceptance_criteria": [
+        "A newly created task JSON file contains \"blocks\": [] and \"blockedBy\": [].",
+        "Existing non-empty dependency arrays still round-trip unchanged.",
+        "TaskList text for no-dependency tasks remains '#id [status] subject' without dependency suffix."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskCreateTool|TestTaskStoreUsesClaudeHome|TestTaskListAndGetTool'"
+      ],
+      "risks": [
+        "Exact JSON golden fixtures, if any, may need updates to include required empty arrays."
+      ],
+      "non_goals": [
+        "Do not add Go-only fields to the TS task schema."
+      ]
+    },
+    {
+      "title": "Validate and migrate task rows before TaskList lists them",
+      "priority": "P1",
+      "dependency_key": "tasklist-gap-04",
+      "objective": "Make TaskStore.list mirror TS listTasks/getTask by normalizing supported legacy statuses and excluding invalid rows.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [
+        "Persist TS-compatible empty blocks and blockedBy arrays"
+      ],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "../src/tools/TaskListTool/TaskListTool.ts",
+        "tools/tasks.go"
+      ],
+      "implementation_steps": [
+        "Add a read-time validation helper for TaskItem that checks required TS fields and status enum.",
+        "When USER_TYPE=ant, migrate open->pending, resolved->completed, and planning/implementing/reviewing/verifying->in_progress before validation.",
+        "Have list() skip rows that fail validation, matching TS listTasks filtering null getTask results.",
+        "Add tests for invalid status, missing required fields, ant legacy statuses, malformed JSON, and valid dependency arrays."
+      ],
+      "acceptance_criteria": [
+        "TaskList omits rows that TS safeParse would reject.",
+        "TaskList renders migrated ant legacy statuses with TS target status names.",
+        "Malformed JSON remains benign and does not produce an infrastructure error.",
+        "Valid Go-created rows still appear after the dependency-array persistence fix."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskList.*Validation|TestTaskListAndGetTool|TestTaskStoreUsesClaudeHome'"
+      ],
+      "risks": [
+        "Strict validation may hide legacy Go-created rows that omitted required fields; sequence after the persistence-shape task."
+      ],
+      "non_goals": [
+        "Do not change TaskUpdate's status input contract except where read-time migration requires tests."
+      ]
+    },
+    {
+      "title": "Align task path sanitization with TS",
+      "priority": "P1",
+      "dependency_key": "tasklist-gap-06",
+      "objective": "Make Go task-list and task-id path components use the same replacement-only sanitizer as TS.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/runtime_scope.go",
+        "tools/tasks_test.go",
+        "tools/k_protocol_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "tools/tasks.go",
+        "tools/runtime_scope.go"
+      ],
+      "implementation_steps": [
+        "Change sanitizeTaskPathComponent to replace invalid characters with '-' without trimming leading/trailing '-' and without mapping the sanitized value to 'default'.",
+        "Move default fallback decisions to scope resolution callers rather than the sanitizer.",
+        "Add table tests for representative values such as 'abc', 'a/b', '!!!', '-x-', and empty string.",
+        "Add a TaskList lookup test proving Go reads the same TS-sanitized task-list directory."
+      ],
+      "acceptance_criteria": [
+        "sanitizeTaskPathComponent matches TS sanitizePathComponent for representative ASCII/punctuation inputs.",
+        "TaskList no longer maps punctuation-only task-list IDs to default.",
+        "Runtime scope fallback still resolves to a usable task-list ID when no env/team/session value exists."
+      ],
+      "verification": [
+        "go test ./tools -run 'Test.*Sanitize|TestTaskList.*Scope|TestKProtocol'"
+      ],
+      "risks": [
+        "Existing Go task files created under trimmed/defaulted names may not be found after strict parity; if migration is needed, make it explicit and backward-compatible."
+      ],
+      "non_goals": [
+        "Do not change runtime background-task ID sanitization unless its own parity audit requires it."
+      ]
+    },
+    {
+      "title": "Close TaskList task-list scope parity for teams and sessions",
+      "priority": "P1",
+      "dependency_key": "tasklist-gap-07",
+      "objective": "Make TaskStore task-list resolution match TS precedence in explicit env, in-process teammate, process/dynamic team, leader team, and session fallback cases.",
+      "owned_files": [
+        "tools/runtime_scope.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/agent.go",
+        "registry_setup.go",
+        "main.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "../src/utils/teammateContext.ts",
+        "../src/utils/teammate.ts",
+        "../src/bootstrap/state.ts",
+        "tools/runtime_scope.go",
+        "tools/tasks.go",
+        "tools/agent.go"
+      ],
+      "implementation_steps": [
+        "Add parity tests documenting the full TS getTaskListId precedence order.",
+        "Introduce explicit teammate-context and leader-team-name hooks in RuntimeScope if TeamManager.CurrentTeamName does not cover every TS case.",
+        "Ensure standalone runtime resolves to the active session ID, not literal default, once session wiring is available.",
+        "Emit or expose a task-list changed notification if the active task-list ID changes and Go UI/runtime has a subscriber surface."
+      ],
+      "acceptance_criteria": [
+        "CLAUDE_CODE_TASK_LIST_ID overrides every other source.",
+        "In-process teammate context resolves to the leader/team task list.",
+        "Leader-created team name is used before standalone session ID.",
+        "Standalone runtime resolves to the active session ID.",
+        "Tests cover all precedence branches without environment bleed."
+      ],
+      "verification": [
+        "go test ./tools -run 'Test.*Task.*Scope|TestKProtocol'",
+        "go test ./... -run 'Test.*Team|Test.*RuntimeScope|Test.*Agent.*Team'"
+      ],
+      "risks": [
+        "Go may not have a direct AsyncLocalStorage equivalent; keep the scope API explicit and testable."
+      ],
+      "non_goals": [
+        "Do not redesign TeamManager or SendMessage routing beyond task-list ID resolution."
+      ]
+    },
+    {
+      "title": "Expose TaskList metadata, prompt, read-only, and result-limit parity",
+      "priority": "P2",
+      "dependency_key": "tasklist-gap-08",
+      "objective": "Represent TaskList's TS model guidance and runtime metadata in Go.",
+      "owned_files": [
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "tools/tasks.go",
+        "compact/resultstore.go",
+        "loop/query.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskListTool/TaskListTool.ts",
+        "../src/tools/TaskListTool/prompt.ts",
+        "../src/Tool.ts",
+        "../src/utils/toolResultStorage.ts",
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "tools/tasks.go"
+      ],
+      "implementation_steps": [
+        "Change TaskList.Description() to the TS description text.",
+        "Add optional interfaces or metadata for read-only status, maxResultSizeChars, prompt text, and renderToolUseMessage suppression if the Go runtime lacks them.",
+        "Return TaskList read-only=true and maxResultSizeChars=100000 through the chosen metadata path.",
+        "Align the deferred search hint with TS or add an explicit test documenting the intended delta.",
+        "Add tests for description, ToolSearch discovery metadata, read-only metadata, and result persistence threshold."
+      ],
+      "acceptance_criteria": [
+        "TaskList's model-facing description matches TS.",
+        "TaskList exposes read-only=true to the Go permission/runtime layer.",
+        "TaskList large-result persistence uses a 100000-character threshold.",
+        "TaskList tool-use display is suppressed where Go has an equivalent UI display hook.",
+        "Deferred-tool metadata remains present."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./loop ./compact -run 'TestTaskList|TestToolVisibility|TestResultStore|TestReadOnly'"
+      ],
+      "risks": [
+        "Metadata interfaces are cross-cutting; keep them optional and additive."
+      ],
+      "non_goals": [
+        "Do not implement unrelated permission-policy changes for mutating task tools."
+      ]
+    },
+    {
+      "title": "Restore TaskList lifecycle signals and completed-list cleanup behavior",
+      "priority": "P1",
+      "dependency_key": "tasklist-gap-09",
+      "objective": "Provide Go equivalents for TS task-list update notifications, active-list watching, and completed-list cleanup where the Go UI/runtime consumes task state.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tui",
+        "loop",
+        "registry_setup.go"
+      ],
+      "dependencies": [
+        "Close TaskList task-list scope parity for teams and sessions"
+      ],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "../src/hooks/useTasksV2.ts",
+        "../src/hooks/useTaskListWatcher.ts",
+        "tools/tasks.go",
+        "registry_setup.go",
+        "tui/root.go",
+        "loop/attachments.go"
+      ],
+      "implementation_steps": [
+        "Add a task-update signal or subscriber surface to TaskStore mutations if Go has UI/runtime consumers for task lists.",
+        "Wire create/update/delete/reset to notify subscribers without making task mutations fail on subscriber errors.",
+        "Implement a watcher/cache layer for the active task-list directory if the Go TUI should mirror TS TaskListV2 behavior.",
+        "Mirror the TS hide/reset behavior for all-completed lists after the configured delay, or document why Go intentionally omits the UI feature.",
+        "Add tests with fake timers or a small injectable clock where practical."
+      ],
+      "acceptance_criteria": [
+        "TaskStore create/update/delete/reset emit a best-effort update signal.",
+        "Changing the active task-list ID causes watchers to re-point to the new directory.",
+        "All-completed task lists are hidden/reset according to the TS lifecycle when the Go UI/runtime surface is active.",
+        "Subscriber failures do not fail task mutations."
+      ],
+      "verification": [
+        "go test ./tools ./loop ./tui -run 'Test.*Task.*Notify|Test.*TaskList.*Watcher|Test.*TasksV2'"
+      ],
+      "risks": [
+        "Go may not yet have a TaskListV2 UI surface; if not, land only the store signal plus tests and leave UI wiring for a separate TUI task."
+      ],
+      "non_goals": [
+        "Do not redesign the whole TUI around task lists in this task."
+      ]
+    },
+    {
+      "title": "Align TaskList ordering with the TS implementation contract",
+      "priority": "P2",
+      "dependency_key": "tasklist-gap-10",
+      "objective": "Decide and lock the exact TaskList ordering contract needed for TS parity, then update Go implementation/tests accordingly.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "../src/tools/TaskListTool/TaskListTool.ts",
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "implementation_steps": [
+        "Create a fixture with mixed numeric and non-numeric task filenames and record the TS-visible order expected for parity.",
+        "If byte-for-byte TS order is required, remove or adjust Go's explicit numeric sort to match the fixture.",
+        "If product chooses numeric ID order despite TS implementation, document that as an intentional parity exception and add tests for the chosen order.",
+        "Keep structured output and visible text in the same order."
+      ],
+      "acceptance_criteria": [
+        "A TaskList ordering test covers numeric IDs, non-numeric IDs, and mixed IDs.",
+        "The order of structured tasks[] matches the order of rendered text lines.",
+        "The accepted order is either TS-compatible or explicitly documented as an intentional exception."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskList.*Order|TestTaskListAndGetTool'"
+      ],
+      "risks": [
+        "TS relies on filesystem readdir order, which may be platform-dependent; avoid overfitting to one platform without a fixture-based decision."
+      ],
+      "non_goals": [
+        "Do not change task ID allocation in this task."
+      ]
+    },
+    {
+      "title": "Align TaskList availability for async agents and teammates",
+      "priority": "P1",
+      "dependency_key": "tasklist-gap-11",
+      "objective": "Make Go agent registry filtering remove TaskList from ordinary async agents but re-allow it for in-process/team-member coordination like TS.",
+      "owned_files": [
+        "tools/agent.go",
+        "tools/agent_test.go",
+        "tools/tasks.go"
+      ],
+      "dependencies": [
+        "Close TaskList task-list scope parity for teams and sessions"
+      ],
+      "read_first": [
+        "../src/constants/tools.ts",
+        "../src/tools/AgentTool/agentToolUtils.ts",
+        "tools/agent.go",
+        "tools/agent_test.go"
+      ],
+      "implementation_steps": [
+        "Carry TeamMember or an equivalent teammate flag into agentToolRegistryOptions.",
+        "Keep TaskList excluded from ordinary async agents unless a profile explicitly allows an equivalent safe path.",
+        "Re-allow TaskList, TaskCreate, TaskGet, TaskUpdate, and SendMessage for team-member/in-process teammate sessions matching TS.",
+        "Add tests covering ordinary async agent filtering and teammate async filtering."
+      ],
+      "acceptance_criteria": [
+        "Ordinary async agents do not receive TaskList by default.",
+        "Team-member/in-process teammate sessions do receive TaskList and sibling coordination tools.",
+        "Existing disallowedTools/profile restrictions still override allowed task-tool visibility.",
+        "Tests explicitly include TaskList, TaskGet, TaskUpdate, and TaskCreate."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestAgentProfileAsyncToolWhitelist|Test.*TeamMember.*Task.*Tools|Test.*Agent.*TaskList'"
+      ],
+      "risks": [
+        "Agent registry filtering is security-sensitive; preserve existing disallow/profile precedence."
+      ],
+      "non_goals": [
+        "Do not broaden task-tool access for ordinary background subagents."
+      ]
+    },
+    {
+      "title": "Add a focused TaskList parity regression suite",
+      "priority": "P1",
+      "dependency_key": "tasklist-gap-12",
+      "objective": "Expand Go tests so TaskList parity is locked across output, validation, storage, scope, metadata, lifecycle, ordering, and agent availability.",
+      "owned_files": [
+        "tools/tasks_test.go",
+        "tools/k_protocol_test.go",
+        "registry/registry_test.go",
+        "tools/agent_test.go",
+        "compact/resultstore_test.go",
+        "loop/resultstore_test.go"
+      ],
+      "dependencies": [
+        "Can be done incrementally with the implementation tasks; tests for not-yet-fixed gaps should land alongside their fixes rather than breaking main."
+      ],
+      "read_first": [
+        "../src/tools/TaskListTool/TaskListTool.ts",
+        "../src/utils/tasks.ts",
+        "../src/hooks/useTasksV2.ts",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/agent_test.go"
+      ],
+      "implementation_steps": [
+        "Add tests for visible text and structured payload with empty, owner, blockedBy, completed blocker, and internal-task cases.",
+        "Add tests for gate, strict input, sanitizer, scope precedence, invalid/migrated rows, persisted empty dependency arrays, metadata, lifecycle notifications, ordering, and teammate availability.",
+        "Keep tests isolated with t.Setenv, temporary CLAUDE_HOME, and temporary project roots.",
+        "Prefer one small test per parity contract rather than a single mega-test."
+      ],
+      "acceptance_criteria": [
+        "TaskList parity tests fail for each documented gap before its fix and pass after the fix.",
+        "Tests assert both visible content and underlying structured/state behavior where applicable.",
+        "No test reads or writes the user's real ~/.claude task directory.",
+        "The suite can be run narrowly during tool parity work."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskList|TestTaskStore|TestKProtocol'",
+        "go test ./registry ./compact ./loop -run 'Test.*TaskList|TestResultStore'",
+        "go test ./tools -run 'Test.*Agent.*Task.*Tool|TestAgentProfileAsyncToolWhitelist'"
+      ],
+      "risks": [
+        "Tests for unresolved gaps should be staged with their implementation tasks to avoid permanently failing main."
+      ],
+      "non_goals": [
+        "Do not rewrite unrelated TaskCreate/TaskGet/TaskUpdate tests except for shared fixtures."
+      ]
+    }
+  ]
+}

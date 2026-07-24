@@ -1,0 +1,98 @@
+{
+  "id": "task_16",
+  "title": "Enforce the latest registry state in SkillTool",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 5,
+  "owner_role": "executor",
+  "estimated_minutes": 50,
+  "parallel_group": "runtime_components",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_04",
+    "task_08",
+    "task_13"
+  ],
+  "objective": "Make execution authorization immediate and authoritative, independent of stale model-visible catalog history.",
+  "context": [
+    "Implement the accepted hybrid skill catalog design in the dirty shared worktree.",
+    "Registry state is authoritative; prompt messages are an append-only model projection and never the authorization boundary."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Bounded metadata catalog and on-demand full skill content."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Live discovery and four-state skill visibility controls."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Append-only messages preserve the prior cached prefix."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "tools/skill.go",
+    "skills/catalog_policy.go",
+    "skills/invocation_envelope.go",
+    "skills/loader.go",
+    "skills/invocation_origin.go",
+    "i18n/skill_tool_keys.go"
+  ],
+  "owned_files": [
+    "tools/skill.go",
+    "tools/skill_registry_enforcement_task16_test.go",
+    "i18n/skill_tool_keys.go",
+    "i18n/skill_tool_keys_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Resolve by stable ID or unambiguous invocation name against the latest Manager snapshot.",
+      "Distinguish model invocation from explicit user invocation.",
+      "Reject off, revoked, shadowed, stale-revision, and managed-denied calls.",
+      "Require explicit skills.InvocationOrigin and perform resolution, policy/revision validation, final body preparation, and envelope construction inside Manager.ResolveLatest's linearizable consume callback.",
+      "Append versioned full/short/superseding envelopes using only a ledger bound to the current context epoch.",
+      "Attach a validated SkillExecutionReceipt to ToolResultBlock metadata; task_19, not SkillTool, commits the loaded ledger after visible-history append.",
+      "Use semantic i18n keys with translations for every supported language for user-visible rejection and execution messages."
+    ],
+    "exclude": [
+      "Do not modify files owned by another task.",
+      "Do not add dependencies or perform unrelated refactors."
+    ]
+  },
+  "implementation_steps": [
+    "Add the smallest registry/policy integration to SkillTool.",
+    "Validate immediately before reading/rendering content to close TOCTOU windows.",
+    "Add stale-call, concurrent disable, manual-only, duplicate digest, and updated body tests."
+  ],
+  "deliverables": [
+    "tools/skill.go",
+    "tools/skill_registry_enforcement_task16_test.go",
+    "i18n/skill_tool_keys.go",
+    "i18n/skill_tool_keys_test.go"
+  ],
+  "acceptance_criteria": [
+    "A disable racing with invocation cannot execute after authoritative validation.",
+    "Prompt history never grants permission.",
+    "Same digest avoids duplicate full body only when the loaded ledger belongs to the visible context epoch.",
+    "Execution emits but does not prematurely commit an epoch-bound receipt containing exact content and rendered payload digests.",
+    "Every new user-visible result or rejection resolves through a semantic i18n key in every supported language."
+  ],
+  "verification": [
+    "go test ./tools -run 'Skill.*Registry|Skill.*Visibility|Skill.*Digest|Skill.*Stale' -count=1",
+    "go test -race ./tools -run 'Skill.*Registry|Skill.*Disable' -count=1"
+  ],
+  "risks": [
+    "tools/skill.go is a hot dirty file; do not absorb command or compaction changes."
+  ],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Wire SkillTool to the latest revisioned Manager and versioned invocation envelopes. Add focused enforcement/race tests; touch no other production files.",
+  "notes_for_assignee": "Respect owned_files. Escalate contract gaps to the integration owner rather than editing another task's production files."
+}

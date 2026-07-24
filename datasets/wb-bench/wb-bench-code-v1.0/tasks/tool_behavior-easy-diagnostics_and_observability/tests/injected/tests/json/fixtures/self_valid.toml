@@ -1,0 +1,6 @@
+[tool.poetry]
+name = "my-package"
+version = "1.0.0"
+description = "A valid package"
+authors = ["Test Author <test@example.com>"]
+requires-poetry = ">=1.0"

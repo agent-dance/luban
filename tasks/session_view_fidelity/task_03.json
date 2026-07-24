@@ -1,0 +1,22 @@
+{
+  "id": "task_03",
+  "title": "Settled resume boundary and Root editor state",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Pair each durable transcript boundary with one event-loop-frozen view and publish it without navigation receipts or stale Root mirrors.",
+  "requirements": [
+    "Drain queued renderer updates and finalize streaming before terminal checkpoint commit.",
+    "Capture on App.UpdateSync; perform evidence/filesystem I/O after releasing the event loop.",
+    "Do not append /resume, /fork, or /clear navigation output to the target presentation.",
+    "Restore draft, Unicode rune cursor, deterministic composer viewport, transcript anchor, and scroll before Run.",
+    "Clear stale modal/action refs on session publication."
+  ],
+  "acceptance": [
+    "settled boundary tests",
+    "repeated /resume does not pollute history",
+    "pre-Run Root mirror and cursor tests",
+    "old captures cannot overwrite newer same-digest checkpoints"
+  ],
+  "cost_person_days": {"low": 1, "base": 3, "high": 5},
+  "result": "Canonical resume, event-loop capture, settled commits, command isolation, cursor persistence, root mirror restore, and in-process newest-wins publication are implemented."
+}

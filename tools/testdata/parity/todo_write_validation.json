@@ -1,0 +1,22 @@
+{
+  "name": "todo-write-unknown-field-validation",
+  "tool": "TodoWrite",
+  "category": "validation",
+  "ts_reference": "../src/tools/TodoWriteTool/TodoWriteTool.ts:13-17",
+  "ts_behavior": "The strict root input object rejects unknown fields before TodoWrite can mutate state.",
+  "runtime": {
+    "interactive": false
+  },
+  "input": {
+    "todos": [],
+    "unexpected": true
+  },
+  "expected_enabled": true,
+  "expected_validation_error": "InputValidationError",
+  "expected_model_text_contains": [
+    "unexpected"
+  ],
+  "expected_state": {
+    "todo_count": 0
+  }
+}

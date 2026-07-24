@@ -1,0 +1,47 @@
+{
+  "id": "task_04",
+  "title": "Rebuild CLAUDE.md and memory file discovery core",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "depends_on": [],
+  "write_scope": [
+    "prompt/memory.go",
+    "prompt/memory_test.go",
+    "prompt/system.go"
+  ],
+  "read_first": [
+    "prompt/system.go",
+    "../src/utils/claudemd.ts",
+    "brand/brand.go"
+  ],
+  "objective": "Replace the simplified instruction-file scan with an original-equivalent memory file discovery core.",
+  "context": [
+    "Go DiscoverInstructions currently walks up directories and reads a fixed candidate list.",
+    "The original has distinct Managed, User, Project, Local, AutoMem, and TeamMem concepts, with deterministic priority ordering.",
+    "This task implements the core discovery and formatting layer, leaving include/rules for task_05."
+  ],
+  "deliverables": [
+    "Define MemoryFileInfo and MemoryType equivalents needed by the Go prompt package.",
+    "Load managed, user, project, and local memory files in original priority order.",
+    "Support CLAUDE.md, .claude/CLAUDE.md, and CLAUDE.local.md.",
+    "Walk from root to cwd so closer project instructions appear later.",
+    "Deduplicate paths and tolerate missing files, directories, symlinks, and permission errors.",
+    "Format loaded content as original-style 'Contents of <path>...' blocks with type descriptions.",
+    "Keep DiscoverClaudeMD as a compatibility wrapper over the new implementation."
+  ],
+  "acceptance": [
+    "Fixture tests cover multiple nested directories and priority order.",
+    "Missing or unreadable files never abort prompt construction.",
+    "Local/private and project/checked-in instruction descriptions are distinguishable.",
+    "Existing callers of DiscoverClaudeMD still compile."
+  ],
+  "verification": [
+    "go test ./prompt"
+  ],
+  "non_goals": [
+    "Do not implement @include parsing.",
+    "Do not implement .claude/rules conditional rules.",
+    "Do not add approval UI for external includes."
+  ],
+  "handoff_notes": "Keep the data model extensible enough for task_05 to add parent, globs, rawContent, and contentDiffersFromDisk metadata."
+}

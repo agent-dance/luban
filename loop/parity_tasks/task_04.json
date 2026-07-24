@@ -1,0 +1,83 @@
+{
+  "id": "task_04",
+  "title": "接入 Stop 与 SubagentStop Hooks",
+  "priority": "P0",
+  "can_dispatch_independently": true,
+  "depends_on": [
+    "task_01"
+  ],
+  "objective": "在模型无工具调用、即将结束本轮时运行 Stop/SubagentStop hooks，并支持阻塞继续、阻止继续、用户中断、摘要事件和 API error 跳过规则。",
+  "improvement_points": [
+    "在无 tool_use 的路径上调用 HookStop 或映射后的 HookSubagentStop。",
+    "Stop hook 返回 blocking error 时追加 meta user message，并以 stop_hook_blocking transition 继续下一轮。",
+    "Stop hook 返回 preventContinuation 时正常结束，不再继续模型调用。",
+    "hook 执行中 ctx cancellation 时返回用户中断语义。",
+    "最后消息为 API error 或 prompt-too-long 等非真实模型响应时跳过 Stop hook，避免错误循环。",
+    "输出 hook summary 或等价 Event，供 TUI/SDK 展示。"
+  ],
+  "evidence": [
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "1258-1305",
+      "note": "TS 在无工具调用时调用 handleStopHooks，并将 blockingErrors 转成 stop_hook_blocking transition。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query/stopHooks.ts",
+      "lines": "65-190",
+      "note": "handleStopHooks 构造 stop hook 上下文并执行 Stop/SubagentStop hook。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query/stopHooks.ts",
+      "lines": "200-331",
+      "note": "TS 处理 blockingError、preventContinuation、取消和 summary 输出。"
+    },
+    {
+      "source": "go_current",
+      "file": "hooks/hooks.go",
+      "lines": "20-32",
+      "note": "Go hooks 已定义 Stop/SubagentStop 常量，但 loop 当前未调用。"
+    },
+    {
+      "source": "go_current",
+      "file": "loop/query.go",
+      "lines": "882-885",
+      "note": "Go 当前无工具调用时直接 turn_end 并 return nil。"
+    }
+  ],
+  "scope": {
+    "include": [
+      "loop/query.go",
+      "loop/stop_hooks.go",
+      "hooks/hooks.go",
+      "loop/stop_hooks_test.go"
+    ],
+    "exclude": [
+      "TeammateIdle 和 TaskCompleted，交给 task_05",
+      "post-sampling hooks 和 StopFailure hooks，交给 task_06"
+    ]
+  },
+  "implementation_steps": [
+    "定义 runStopHooks helper，输入 messagesForQuery、assistantMsg、session metadata、stopHookActive。",
+    "将 HookOutput 扩展到能表达 preventContinuation、stopReason、blockingError 或用现有字段映射最小可行语义。",
+    "在无工具调用分支中先处理 API error 跳过规则，再执行 Stop hook。",
+    "blocking error 进入 QueryState.transition=stop_hook_blocking，messages 包含 assistant 和 blocking meta message。",
+    "为 SubagentStop 使用 Runner.WithHookTypeMapped 或等价机制。"
+  ],
+  "acceptance_criteria": [
+    "无工具调用时 Stop hook 会执行一次。",
+    "Stop hook blocking 会触发下一轮模型调用，并且 stopHookActive=true。",
+    "Stop hook preventContinuation 会结束 loop 且不追加新的模型请求。",
+    "API error 终止消息不会触发 Stop hook。",
+    "Subagent 场景可把 agent frontmatter Stop hook 映射为 SubagentStop。"
+  ],
+  "tests": [
+    "go test ./loop ./hooks -run 'TestStopHook|TestSubagentStop' -count=1"
+  ],
+  "risks": [
+    "Stop hook 如果在错误消息后运行，会制造无限重试，需要测试跳过规则。",
+    "Hook 输出 schema 需要兼容现有 settings 与 command/http hook。"
+  ]
+}

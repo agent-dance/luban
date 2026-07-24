@@ -1,0 +1,6 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "pytest_injected"
+
+[run]
+cwd = "/workspace"
+command = '''env PYTHONPATH=. python -m pytest pathspec/tests/test_pathspec.py::PathSpecTest::test_01_absolute_dir_paths_1 pathspec/tests/test_pathspec.py::PathSpecTest::test_01_absolute_dir_paths_2 pathspec/tests/test_pathspec.py::PathSpecTest::test_01_absolute_dir_paths_3 pathspec/tests/test_pathspec.py::PathSpecTest::test_01_match_files -q --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

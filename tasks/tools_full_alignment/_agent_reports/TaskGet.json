@@ -1,0 +1,643 @@
+{
+  "tool": "TaskGet",
+  "summary": "TaskGet is only partially aligned with the TS baseline. The Go implementation matches the visible happy-path text for found and missing tasks, but it lacks TS-equivalent feature gating, structured result data, strict input parsing, exact path sanitization, schema validation/status migration, TS-compatible persisted task shape, complete tool metadata/prompt behavior, and teammate/session scope parity coverage.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "taskget-gap-01",
+      "title": "TaskGet is registered unconditionally instead of following the TS todo-v2 enablement gate",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/TaskGetTool/TaskGetTool.ts:57",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:58",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:59",
+        "../src/tools.ts:218",
+        "../src/tools.ts:219",
+        "../src/tools.ts:220",
+        "../src/utils/tasks.ts:133",
+        "../src/utils/tasks.ts:138",
+        "../src/bootstrap/state.ts:1057"
+      ],
+      "evidence_go": [
+        "registry_setup.go:175",
+        "registry_setup.go:177",
+        "registry_setup.go:181",
+        "registry_setup.go:227",
+        "registry_setup.go:232",
+        "registry_setup.go:235",
+        "tools/runtime_scope.go:21",
+        "tools/runtime_scope.go:24"
+      ],
+      "description": "TS exposes TaskGet only when todo-v2 is enabled: CLAUDE_CODE_ENABLE_TASKS force-enables it, otherwise non-interactive sessions hide the task tools. Go receives an interactive flag in SetupRegistry/NewRuntimeScope, but TaskCreate/TaskList/TaskUpdate/TaskGet are always registered and RuntimeScope.interactive is not used for task-tool visibility.",
+      "impact": "Go can advertise and execute TaskGet in runtime modes where TS would not expose it, changing tool availability, model planning, and SDK/non-interactive behavior."
+    },
+    {
+      "id": "taskget-gap-02",
+      "title": "Structured TaskGet result data is missing",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/TaskGetTool/TaskGetTool.ts:20",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:21",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:31",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:73",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:78",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:86",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:99",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:125"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:1082",
+        "tools/tasks.go:1088",
+        "tools/tasks.go:1090",
+        "tools/tasks.go:1093",
+        "tools/tasks.go:1112",
+        "tools/helpers.go:104",
+        "tools/helpers.go:109",
+        "types/tools.go:53",
+        "types/tools.go:58",
+        "registry/registry.go:109",
+        "registry/registry.go:114"
+      ],
+      "description": "TS call() returns structured data shaped as {task:null} or {task:{id,subject,description,status,blocks,blockedBy}}, then mapToolResultToToolResultBlockParam renders the model-facing text. Go TaskGet directly returns StringResponse text and ToolResult has no task data field, so callers cannot observe the TS output schema before text rendering.",
+      "impact": "Any Go caller that needs the structured TaskGet payload, parity fixtures that compare tool data, or future UI/runtime paths that consume typed task results cannot match TS behavior."
+    },
+    {
+      "id": "taskget-gap-03",
+      "title": "Input parsing is not TS-strict at execution time",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskGetTool/TaskGetTool.ts:13",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:14",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:15",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:16"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:1069",
+        "tools/tasks.go:1073",
+        "tools/tasks.go:1078",
+        "tools/tasks.go:1082",
+        "tools/parse.go:13",
+        "tools/parse.go:19",
+        "tools/parse.go:27",
+        "tools/parse.go:221",
+        "tools/parse.go:223",
+        "types/tools.go:9",
+        "types/tools.go:13"
+      ],
+      "description": "TS uses z.strictObject({taskId:z.string()}), so taskId is required and unknown properties are rejected by the schema. Go publishes taskId as required in JSONSchema, but Execute round-trips through json.Unmarshal into TaskGetInput; unknown fields are ignored and a missing taskId becomes the zero value. The shared JSONSchema type also has no additionalProperties/strictness field.",
+      "impact": "Malformed model/tool inputs can take different paths in Go than TS. In particular, missing taskId can resolve through Go's empty-id sanitizer instead of failing schema validation, and extra fields are silently accepted."
+    },
+    {
+      "id": "taskget-gap-04",
+      "title": "Task path sanitization does not match TS",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:217",
+        "../src/utils/tasks.ts:218",
+        "../src/utils/tasks.ts:221",
+        "../src/utils/tasks.ts:229",
+        "../src/utils/tasks.ts:230"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:107",
+        "tools/tasks.go:119",
+        "tools/tasks.go:123",
+        "tools/tasks.go:124",
+        "tools/tasks.go:125",
+        "tools/tasks.go:130",
+        "tools/tasks.go:134",
+        "tools/tasks.go:135"
+      ],
+      "description": "TS sanitizePathComponent replaces every non [A-Za-z0-9_-] character with '-' and otherwise preserves the resulting string. Go replaces invalid runes but then trims leading/trailing '-' and maps an empty sanitized string to 'default'. The same taskId can therefore address different JSON files, for example '!!!' becomes '---.json' in TS but 'default.json' in Go.",
+      "impact": "TaskGet can read the wrong task or fail to find a task for IDs containing only invalid characters, leading/trailing invalid characters, or empty-string edge cases."
+    },
+    {
+      "id": "taskget-gap-05",
+      "title": "TaskGet reads unvalidated task JSON and does not apply TS status migrations",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:69",
+        "../src/utils/tasks.ts:71",
+        "../src/utils/tasks.ts:76",
+        "../src/utils/tasks.ts:83",
+        "../src/utils/tasks.ts:84",
+        "../src/utils/tasks.ts:85",
+        "../src/utils/tasks.ts:310",
+        "../src/utils/tasks.ts:319",
+        "../src/utils/tasks.ts:320",
+        "../src/utils/tasks.ts:333",
+        "../src/utils/tasks.ts:338",
+        "../src/utils/tasks.ts:340"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:18",
+        "tools/tasks.go:25",
+        "tools/tasks.go:26",
+        "tools/tasks.go:27",
+        "tools/tasks.go:249",
+        "tools/tasks.go:255",
+        "tools/tasks.go:256",
+        "tools/tasks.go:259",
+        "tools/tasks.go:1093",
+        "tools/tasks.go:1095"
+      ],
+      "description": "TS getTask migrates legacy statuses to pending/completed/in_progress for USER_TYPE=ant, then safeParse validates the complete TaskSchema and returns null on invalid data. Go unmarshals any JSON that fits TaskItem's loose struct fields and returns it; status is a plain string and no enum/schema validation or ant-only legacy migration runs before TaskGet renders the status.",
+      "impact": "Go TaskGet can surface corrupted or legacy task rows that TS would hide or normalize, including invalid statuses and structurally incomplete tasks."
+    },
+    {
+      "id": "taskget-gap-06",
+      "title": "Go-created task JSON omits dependency arrays required by TS TaskSchema",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:76",
+        "../src/utils/tasks.ts:84",
+        "../src/utils/tasks.ts:85",
+        "../src/utils/tasks.ts:333",
+        "../src/utils/tasks.ts:338"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:18",
+        "tools/tasks.go:26",
+        "tools/tasks.go:27",
+        "tools/tasks.go:190",
+        "tools/tasks.go:194",
+        "tools/tasks.go:198",
+        "tools/tasks.go:225",
+        "tools/tasks.go:231",
+        "tools/tasks.go:232",
+        "tools/tasks_test.go:361",
+        "tools/tasks_test.go:368"
+      ],
+      "description": "TS TaskSchema requires blocks and blockedBy arrays. Go initializes empty slices when creating a task, but TaskItem tags blocks and blockedBy with omitempty, so MarshalIndent omits empty arrays from persisted JSON. The existing Go persistence test checks the file path only, not that the stored row remains readable by TS.",
+      "impact": "A task created by Go with no dependencies can be rejected by TS getTask safeParse, which makes cross-runtime TaskGet/TaskList parity fail for the most common task shape."
+    },
+    {
+      "id": "taskget-gap-07",
+      "title": "TaskGet tool metadata and prompt surface are incomplete",
+      "priority": "P2",
+      "evidence_ts": [
+        "../src/tools/TaskGetTool/prompt.ts:1",
+        "../src/tools/TaskGetTool/prompt.ts:3",
+        "../src/tools/TaskGetTool/prompt.ts:11",
+        "../src/tools/TaskGetTool/prompt.ts:22",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:40",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:41",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:42",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:45",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:57",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:64",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:67",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:70"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:1062",
+        "tools/tasks.go:1065",
+        "tools/tasks.go:1066",
+        "registry/tool_visibility.go:33",
+        "registry/tool_visibility.go:34",
+        "registry/tool_visibility.go:35",
+        "types/tools.go:24",
+        "types/tools.go:29",
+        "types/tools.go:32",
+        "types/tools.go:35"
+      ],
+      "description": "TS declares a specific description ('Get a task by ID from the task list'), a longer prompt explaining when to use TaskGet and blockedBy safety, searchHint, maxResultSizeChars=100000, shouldDefer=true, isReadOnly=true, toAutoClassifierInput(taskId), and no tool-use display message. Go has a shorter Description and registry-level deferred search metadata, but no prompt method, read-only metadata, max-result metadata, classifier projection, or renderToolUseMessage equivalent on the Tool interface.",
+      "impact": "The model-facing guidance, permission/read-only semantics, tool-search/classifier inputs, and result persistence limits are not fully represented for TaskGet in Go."
+    },
+    {
+      "id": "taskget-gap-08",
+      "title": "Task-list scope resolution is only partially aligned for teammate and session lifecycle cases",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/utils/tasks.ts:20",
+        "../src/utils/tasks.ts:25",
+        "../src/utils/tasks.ts:31",
+        "../src/utils/tasks.ts:43",
+        "../src/utils/tasks.ts:190",
+        "../src/utils/tasks.ts:199",
+        "../src/utils/tasks.ts:205",
+        "../src/utils/tasks.ts:209",
+        "../src/bootstrap/state.ts:331",
+        "../src/bootstrap/state.ts:431"
+      ],
+      "evidence_go": [
+        "tools/runtime_scope.go:10",
+        "tools/runtime_scope.go:16",
+        "tools/runtime_scope.go:68",
+        "tools/runtime_scope.go:80",
+        "tools/runtime_scope.go:84",
+        "tools/runtime_scope.go:87",
+        "tools/runtime_scope.go:90",
+        "registry_setup.go:181",
+        "main.go:315",
+        "main.go:316",
+        "main.go:317"
+      ],
+      "description": "TS getTaskListId has explicit precedence for CLAUDE_CODE_TASK_LIST_ID, in-process teammate context, process team name, leaderTeamName, and a generated session id; leader team changes notify task watchers. Go centralizes scope and main wires TeamManager.CurrentTeamName plus session id, but there is no explicit in-process teammate context or leaderTeamName notification path in the task store, and the fallback is literal 'default' when no session id is wired.",
+      "impact": "TaskGet can resolve a different task directory in teammate, team-leader, tests, or early runtime contexts, and parity regressions are not currently covered by TaskGet-specific tests."
+    },
+    {
+      "id": "taskget-gap-09",
+      "title": "TaskGet tests cover only the Go text happy path",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskGetTool/TaskGetTool.ts:20",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:58",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:73",
+        "../src/tools/TaskGetTool/TaskGetTool.ts:99",
+        "../src/utils/tasks.ts:310"
+      ],
+      "evidence_go": [
+        "tools/tasks_test.go:98",
+        "tools/tasks_test.go:124",
+        "tools/tasks_test.go:131",
+        "tools/tasks_test.go:138",
+        "tools/tasks_test.go:145",
+        "tools/tasks_test.go:193",
+        "tools/tasks_test.go:217"
+      ],
+      "description": "The current Go tests assert TaskGet text contains the title/description, not-found text is non-error, and deleted dependencies disappear. They do not assert the TS structured data shape, tool exposure gates, strict input behavior, sanitizer edge cases, read-time validation/status migration, persisted blocks/blockedBy arrays, metadata, or scope precedence.",
+      "impact": "The existing tests can pass while most TaskGet parity gaps remain unresolved or regress later."
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "title": "Mirror TS todo-v2 exposure gates for TaskGet and sibling task tools",
+      "priority": "P0",
+      "dependency_key": "taskget-gap-01",
+      "objective": "Register TaskGet only under the same todo-v2 enablement rules as TS, using CLAUDE_CODE_ENABLE_TASKS and the interactive/non-interactive runtime state.",
+      "owned_files": [
+        "registry_setup.go",
+        "tools/runtime_scope.go",
+        "tools/tasks_test.go",
+        "registry/registry_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools.ts",
+        "../src/utils/tasks.ts",
+        "../src/bootstrap/state.ts",
+        "registry_setup.go",
+        "tools/runtime_scope.go"
+      ],
+      "implementation_steps": [
+        "Add a Go equivalent of isTodoV2Enabled that returns true when CLAUDE_CODE_ENABLE_TASKS is truthy and otherwise returns interactive.",
+        "Use that gate before registering TaskCreate, TaskList, TaskUpdate, and TaskGet.",
+        "Keep TaskStop and TaskOutput governed by their background-task contract; do not hide them under the todo-v2 gate unless a separate parity audit proves TS does so.",
+        "Add registry tests for interactive=true, interactive=false, and interactive=false with CLAUDE_CODE_ENABLE_TASKS=true."
+      ],
+      "acceptance_criteria": [
+        "TaskGet is present in an interactive registry.",
+        "TaskGet is absent in a non-interactive registry when CLAUDE_CODE_ENABLE_TASKS is unset/falsy.",
+        "TaskGet is present in a non-interactive registry when CLAUDE_CODE_ENABLE_TASKS is truthy.",
+        "TaskCreate, TaskList, and TaskUpdate follow the same gate as TaskGet."
+      ],
+      "verification": [
+        "go test ./... -run 'Test.*Task.*Registry|Test.*TodoV2|TestRegistry'"
+      ],
+      "risks": [
+        "Some existing Go SDK/non-interactive tests may assume task tools are always registered and will need fixture env updates."
+      ],
+      "non_goals": [
+        "Do not redesign ToolSearch deferral.",
+        "Do not change TaskStop or TaskOutput availability unless separately audited."
+      ]
+    },
+    {
+      "title": "Add structured TaskGet output while preserving TS text rendering",
+      "priority": "P0",
+      "dependency_key": "taskget-gap-02",
+      "objective": "Expose the TS {task:null|task:{id,subject,description,status,blocks,blockedBy}} result shape for TaskGet and derive the existing model-facing text from that structure.",
+      "owned_files": [
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "loop/query.go",
+        "compact/resultstore.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskGetTool/TaskGetTool.ts",
+        "../src/services/tools/toolExecution.ts",
+        "../src/utils/toolResultStorage.ts",
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/tasks.go"
+      ],
+      "implementation_steps": [
+        "Introduce a small structured-output field or typed payload mechanism in ToolResult that can carry TaskGet's raw data without changing the visible content.",
+        "Make TaskGet build a structured payload first, including task:null for not-found.",
+        "Render the visible content exactly like TS mapToolResultToToolResultBlockParam: 'Task not found' for null, otherwise Task/Status/Description plus optional Blocked by and Blocks lines.",
+        "Ensure registry/tool-result conversion preserves the structured payload for callers that need it.",
+        "Add tests that assert both the structured payload and the rendered text."
+      ],
+      "acceptance_criteria": [
+        "Found TaskGet results expose task.id, subject, description, status, blocks, and blockedBy in structured form.",
+        "Not-found TaskGet results expose task:null and still render 'Task not found' with IsError=false.",
+        "The visible text remains byte-for-byte compatible with the TS renderer for found tasks with and without dependency arrays.",
+        "No unrelated tools are forced to produce structured payloads."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskListAndGetTool|TestTaskGetStructured'",
+        "go test ./registry ./loop ./compact"
+      ],
+      "risks": [
+        "Adding structured payload support is a shared framework change; keep it additive and optional to avoid changing other tool outputs."
+      ],
+      "non_goals": [
+        "Do not add Go-only TaskGet fields such as createdAt, updatedAt, comments, owner, or metadata to the TS structured output."
+      ]
+    },
+    {
+      "title": "Enforce the TS strict input contract for TaskGet",
+      "priority": "P1",
+      "dependency_key": "taskget-gap-03",
+      "objective": "Make TaskGet reject missing taskId and unknown input keys the same way the TS z.strictObject schema does.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "types/tools.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskGetTool/TaskGetTool.ts",
+        "tools/parse.go",
+        "tools/tasks.go",
+        "types/tools.go"
+      ],
+      "implementation_steps": [
+        "Add TaskGet-specific input validation before or inside parseInputOrError so only taskId is accepted.",
+        "Reject missing taskId and non-string taskId as tool-level input errors.",
+        "Represent additionalProperties:false in the published schema if the Go schema layer supports it or is extended to support it.",
+        "Keep empty-string taskId behavior aligned with the sanitizer parity task rather than inventing a min-length rule absent from TS."
+      ],
+      "acceptance_criteria": [
+        "TaskGet({}) returns an input error instead of looking up an empty/default id.",
+        "TaskGet({taskId:'1', extra:true}) is rejected as an unknown-property input.",
+        "TaskGet({taskId:'1'}) still succeeds when task #1 exists.",
+        "The published input schema communicates strict object semantics where the Go schema type can express it."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskGet.*Input|TestTaskListAndGetTool'"
+      ],
+      "risks": [
+        "If parseInputOrError is changed globally, many tools could be affected. Prefer a TaskGet-local validator unless a shared strict-parser migration is explicitly planned."
+      ],
+      "non_goals": [
+        "Do not change TaskUpdate's Go-only id alias in this task.",
+        "Do not add a taskId minLength constraint that TS does not have."
+      ]
+    },
+    {
+      "title": "Align task path sanitization with TS",
+      "priority": "P1",
+      "dependency_key": "taskget-gap-04",
+      "objective": "Make Go task-list and task-id path components use the same replacement-only sanitizer as TS so TaskGet addresses identical files.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/runtime_scope.go",
+        "tools/tasks_test.go",
+        "tools/k_protocol_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "tools/tasks.go",
+        "tools/runtime_scope.go"
+      ],
+      "implementation_steps": [
+        "Change sanitizeTaskPathComponent to replace invalid characters with '-' without trimming leading/trailing '-' and without mapping an empty sanitized value to 'default'.",
+        "Audit callers that depend on the current default fallback and move defaulting to scope resolution rather than sanitizer output where needed.",
+        "Add table tests for 'abc', 'a/b', '!!!', '-x-', and empty string against the TS-equivalent expected values.",
+        "Add a TaskGet file lookup test proving a task stored under the TS-sanitized filename is found by Go."
+      ],
+      "acceptance_criteria": [
+        "sanitizeTaskPathComponent matches TS sanitizePathComponent for representative ASCII and punctuation inputs.",
+        "TaskGet no longer maps punctuation-only task IDs to default.json.",
+        "Runtime scope defaulting still produces a usable task-list directory when no session/team/env id is available."
+      ],
+      "verification": [
+        "go test ./tools -run 'Test.*Sanitize|TestTaskListAndGetTool|TestKProtocol'"
+      ],
+      "risks": [
+        "Existing Go task files created under trimmed/defaulted names may not be found after strict parity. If migration is needed, make it explicit and backward-compatible."
+      ],
+      "non_goals": [
+        "Do not change background runtime-task id sanitization unless separately audited against its TS baseline."
+      ]
+    },
+    {
+      "title": "Persist TS-compatible empty blocks and blockedBy arrays",
+      "priority": "P0",
+      "dependency_key": "taskget-gap-06",
+      "objective": "Ensure Go-created task JSON includes blocks:[] and blockedBy:[] so TS TaskGet can parse Go-created tasks.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "../src/tools/TaskCreateTool/TaskCreateTool.ts",
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "implementation_steps": [
+        "Remove omitempty from TaskItem.Blocks and TaskItem.BlockedBy or add custom marshaling that always emits empty arrays.",
+        "Normalize nil Blocks/BlockedBy to empty slices before writing tasks.",
+        "Extend the persistence test to read the JSON file and assert blocks and blockedBy are present as arrays.",
+        "Keep Go's visible TaskGet output unchanged for tasks with empty dependency arrays."
+      ],
+      "acceptance_criteria": [
+        "A newly created task JSON file contains \"blocks\": [] and \"blockedBy\": [].",
+        "TaskGet text for a task with empty dependency arrays omits Blocked by/Blocks lines, matching TS.",
+        "Existing tasks with non-empty arrays still round-trip unchanged."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskCreateTool|TestTaskStoreUsesClaudeHome|TestTaskListAndGetTool'"
+      ],
+      "risks": [
+        "Golden fixtures or tests that compare exact persisted JSON may need updating to include the now-required empty arrays."
+      ],
+      "non_goals": [
+        "Do not add Go-only persisted fields to the TS task schema in this task."
+      ]
+    },
+    {
+      "title": "Validate and migrate task rows before TaskGet renders them",
+      "priority": "P1",
+      "dependency_key": "taskget-gap-05",
+      "objective": "Make Go TaskStore.get mirror TS getTask: normalize ant-only legacy statuses and reject rows that do not satisfy the TS Task schema.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [
+        "Persist TS-compatible empty blocks and blockedBy arrays"
+      ],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "../src/tools/TaskGetTool/TaskGetTool.ts",
+        "tools/tasks.go"
+      ],
+      "implementation_steps": [
+        "Add a read-time validation helper for TaskItem that checks id, subject, description, status enum, blocks array, and blockedBy array according to TS TaskSchema.",
+        "When USER_TYPE=ant, migrate open->pending, resolved->completed, and planning/implementing/reviewing/verifying->in_progress before validation.",
+        "Return not-found/null semantics for invalid or unreadable rows, matching TS getTask's null behavior.",
+        "Apply the same validation path to list() if TaskList parity depends on getTask-equivalent filtering.",
+        "Add tests for invalid status, missing required fields, ant legacy statuses, malformed JSON, and valid dependency arrays."
+      ],
+      "acceptance_criteria": [
+        "TaskGet renders migrated ant legacy statuses using the TS target status names.",
+        "TaskGet returns non-error 'Task not found' for invalid task rows that TS safeParse would reject.",
+        "TaskGet still returns valid rows created by Go after the dependency-array persistence fix.",
+        "Malformed JSON remains a benign not-found result, not an infrastructure error."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskGet.*Validation|TestTaskListAndGetTool'"
+      ],
+      "risks": [
+        "Strict validation may hide legacy Go-created rows that omitted fields; sequence after the persistence-shape task and consider a deliberate one-time compatibility migration if product requirements demand it."
+      ],
+      "non_goals": [
+        "Do not expand TaskGet's structured TS output with owner, metadata, comments, or timestamps."
+      ]
+    },
+    {
+      "title": "Expose TaskGet metadata and prompt parity hooks",
+      "priority": "P2",
+      "dependency_key": "taskget-gap-07",
+      "objective": "Represent TaskGet's TS metadata and model guidance in Go: exact description, long prompt guidance where supported, read-only status, max result size, and classifier input projection.",
+      "owned_files": [
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "tools/tasks.go",
+        "loop/query.go",
+        "compact/resultstore.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskGetTool/prompt.ts",
+        "../src/tools/TaskGetTool/TaskGetTool.ts",
+        "../src/utils/permissions/yoloClassifier.ts",
+        "../src/utils/toolResultStorage.ts",
+        "registry/tool_visibility.go",
+        "types/tools.go"
+      ],
+      "implementation_steps": [
+        "Change TaskGet.Description() to the TS description text.",
+        "Add optional interfaces or metadata for read-only, maxResultSizeChars, and auto-classifier projection if the Go runtime lacks them.",
+        "Return TaskGet read-only=true, maxResultSizeChars=100000, and classifier input equal to taskId.",
+        "Add a way to surface the TS long prompt guidance for deferred tools if Go has or introduces a prompt-discovery surface.",
+        "Keep existing registry ToolDiscoveryMetadata.ShouldDefer=true and search hint behavior."
+      ],
+      "acceptance_criteria": [
+        "TaskGet's model-facing description matches TS.",
+        "Runtime metadata identifies TaskGet as read-only.",
+        "Result persistence/budgeting can see TaskGet maxResultSizeChars=100000.",
+        "Classifier metadata for TaskGet receives only the taskId value.",
+        "ToolSearch/deferred metadata remains present."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./loop ./compact -run 'TestTaskGet|TestToolVisibility|TestResultStore|TestClassifier'"
+      ],
+      "risks": [
+        "Metadata interfaces are cross-cutting; keep them optional so tools without parity metadata retain current behavior."
+      ],
+      "non_goals": [
+        "Do not implement unrelated permission-policy changes for mutating tools."
+      ]
+    },
+    {
+      "title": "Close TaskGet task-list scope parity for teams and sessions",
+      "priority": "P1",
+      "dependency_key": "taskget-gap-08",
+      "objective": "Make TaskStore task-list resolution match TS precedence in explicit env, in-process teammate, process team, leader team, and session fallback cases.",
+      "owned_files": [
+        "tools/runtime_scope.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/k_protocol_test.go",
+        "registry_setup.go",
+        "main.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/utils/tasks.ts",
+        "../src/utils/teammateContext.ts",
+        "../src/bootstrap/state.ts",
+        "tools/runtime_scope.go",
+        "tools/tasks.go",
+        "main.go"
+      ],
+      "implementation_steps": [
+        "Add parity tests documenting the full TS precedence order for task-list id resolution.",
+        "Introduce explicit teammate-context and leader-team-name hooks in RuntimeScope if TeamManager.CurrentTeamName does not cover all TS cases.",
+        "Ensure session fallback is a generated/current session id in normal runtime, not literal default except in isolated tests with no session wiring.",
+        "If the resolved task list changes, provide a task-update notification hook if the Go UI/runtime has an equivalent watcher surface."
+      ],
+      "acceptance_criteria": [
+        "CLAUDE_CODE_TASK_LIST_ID overrides every other task-list source.",
+        "A teammate context resolves to the leader/team task list, matching TS.",
+        "A leader-created team name is used before the standalone session id.",
+        "Standalone runtime resolves to the active session id.",
+        "Tests cover all precedence branches without global env bleed."
+      ],
+      "verification": [
+        "go test ./tools -run 'Test.*Task.*Scope|TestKProtocol'",
+        "go test ./... -run 'Test.*Team|Test.*RuntimeScope'"
+      ],
+      "risks": [
+        "Go's team runtime may not have a one-to-one AsyncLocalStorage equivalent; keep the scope API explicit and testable rather than relying only on process env."
+      ],
+      "non_goals": [
+        "Do not redesign TeamManager or SendMessage routing beyond task-list id resolution."
+      ]
+    },
+    {
+      "title": "Add a focused TaskGet parity regression suite",
+      "priority": "P1",
+      "dependency_key": "taskget-gap-09",
+      "objective": "Expand Go tests so TaskGet parity is locked across output, validation, storage, scope, metadata, and exposure behavior.",
+      "owned_files": [
+        "tools/tasks_test.go",
+        "tools/k_protocol_test.go",
+        "registry/registry_test.go",
+        "loop/resultstore_test.go"
+      ],
+      "dependencies": [
+        "Can be done incrementally alongside the implementation tasks; tests for not-yet-fixed gaps should land with the corresponding fix rather than breaking main."
+      ],
+      "read_first": [
+        "../src/tools/TaskGetTool/TaskGetTool.ts",
+        "../src/utils/tasks.ts",
+        "tools/tasks.go",
+        "tools/tasks_test.go"
+      ],
+      "implementation_steps": [
+        "Add table-driven tests for TS-compatible text rendering with no dependencies, blockedBy only, blocks only, and both arrays.",
+        "Add tests for structured payload once the structured output task lands.",
+        "Add tests for strict inputs, sanitizer edge cases, invalid/migrated task rows, persisted empty arrays, feature gating, and scope precedence.",
+        "Keep tests isolated with t.Setenv and temporary CLAUDE_HOME/session roots."
+      ],
+      "acceptance_criteria": [
+        "TaskGet parity tests fail for each documented gap before its fix and pass after the fix.",
+        "Tests assert both visible content and underlying structured/state behavior where applicable.",
+        "No test depends on a user's real ~/.claude task directory.",
+        "TaskGet tests are narrow enough to run quickly during tool parity work."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskGet|TestTaskListAndGetTool|TestKProtocol'",
+        "go test ./registry ./loop -run 'Test.*TaskGet|TestResultStore'"
+      ],
+      "risks": [
+        "A single mega-test would make failures hard to route; prefer one test per parity contract."
+      ],
+      "non_goals": [
+        "Do not rewrite unrelated TaskCreate/TaskUpdate tests except for fixture helpers shared with TaskGet."
+      ]
+    }
+  ]
+}

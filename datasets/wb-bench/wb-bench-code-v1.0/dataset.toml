@@ -1,0 +1,37 @@
+[dataset]
+id = "wb-bench-code-v1.0"
+schema = "workbuddy.dataset.v1"
+version = "1.0"
+description = "WorkBuddy Bench v1.0 subset (80 tasks) for batch evaluation; task images are harness-free and agent CLIs are delivered via split mount."
+task_count = 80
+
+[stats]
+categories = { "api-contract" = 4, "bug-fix" = 10, "data-quality" = 4, "data-reporting" = 4, "feature" = 10, "feature-pipeline" = 4, "model-evaluation" = 4, "performance" = 4, "product-analytics" = 3, "product-policy" = 3, "python-port" = 4, "refactor" = 4, "reliability" = 4, "repo-understanding" = 4, "schema-behavior" = 4, "security-hardening" = 4, "testing" = 4, "tool-behavior" = 2 }
+difficulties = { "easy" = 7, "hard" = 42, "medium" = 31 }
+complexities = { "L2" = 4, "L3" = 27, "L4" = 40, "L5" = 9 }
+
+# Grading runs through workbuddy_bench.judge:CompositeVerifier. Task-local
+# verifier scripts and tests are adapted by the dataset shared verifier plugin;
+# tests/test.sh is retained only as a Harbor format compatibility stub after
+# migration.
+
+[verifier]
+schema = "workbuddy.verifier.v1"
+engine = "composite"
+
+[runtime]
+# Task images use a harness-free base. The selected agent CLI is provided at run
+# time as a read-only split-mount image, according to the harness below.
+harness_delivery = "harness-free"
+requires_harness_mount = false
+
+[runtime.harness_delivery_by_harness]
+claude-code = "split-mount"
+cbc-agent = "split-mount"
+
+[layout]
+task_root        = "tasks"
+environment      = "environment"
+workspace_archive = "environment/workspace.tar.gz"
+tests            = "tests"
+diff_capture     = "git"

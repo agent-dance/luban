@@ -1,0 +1,11 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "pytest_injected"
+
+[run]
+cwd = "/workspace"
+command = '''python -m pytest \
+  tests/json/test_schema.py::test_self_invalid_version \
+  tests/json/test_schema.py::test_pyproject_toml_invalid_priority \
+  tests/json/test_schema.py::test_self_invalid_plugin \
+  tests/json/test_schema.py::test_pyproject_toml_valid \
+  -q -o addopts='' -p no:randomly --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

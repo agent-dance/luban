@@ -1,0 +1,54 @@
+{
+  "id": "task_16",
+  "title": "Implement context warning and blocking-limit state",
+  "priority": "P1",
+  "status": "ready_for_dispatch",
+  "owner_role": "executor",
+  "parallel_group": "ui_context",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_08"
+  ],
+  "objective": "Replace the simple Go context bar thresholding with TS-equivalent warning, error, auto-compact, and blocking-limit calculations.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/services/compact/autoCompact.ts:93",
+    "/Users/blurooo/project/go-claude/src/query.ts:592",
+    "/Users/blurooo/project/go-claude/src/commands/compact/compact.ts:114",
+    "/Users/blurooo/project/go-claude/gosrc/ui/context_bar.go:17",
+    "/Users/blurooo/project/go-claude/gosrc/commands/context.go:23"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go",
+    "/Users/blurooo/project/go-claude/gosrc/ui/context_bar.go",
+    "/Users/blurooo/project/go-claude/gosrc/commands/context.go",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go"
+  ],
+  "implementation_scope": [
+    "Add CalculateTokenWarningState with percentLeft, warning threshold, error threshold, auto-compact threshold, and blocking limit.",
+    "Respect auto-compact enabled/disabled state when selecting threshold basis.",
+    "Reserve manual compact buffer when auto-compact is disabled.",
+    "Implement compact warning suppression after microcompact or full compact success.",
+    "Update context UI/command display to reflect warning state rather than fixed 50/80 percent color cutoffs.",
+    "Add pre-call blocking behavior only when automatic recovery paths are disabled, matching TS semantics."
+  ],
+  "out_of_scope": [
+    "Do not redesign the TUI layout.",
+    "Do not implement auto-compact itself; consume task_08 interfaces."
+  ],
+  "acceptance_criteria": [
+    "Tests cover warning, error, auto-compact, blocking, auto-disabled, and post-compact suppression cases.",
+    "No synthetic blocking error is emitted when reactive compact or context-collapse recovery should own real provider overflow.",
+    "Context display uses the effective input window after output-token reservation."
+  ],
+  "verification": [
+    "go test ./compact",
+    "go test ./ui",
+    "go test ./commands",
+    "go test ./loop"
+  ],
+  "risks": [
+    "UI state must stay consistent with query-loop compaction decisions.",
+    "Over-eager blocking can prevent reactive recovery from firing."
+  ],
+  "dispatch_prompt": "Implement TS-equivalent context warning/blocking state in Go and wire it into context UI and query preflight behavior."
+}

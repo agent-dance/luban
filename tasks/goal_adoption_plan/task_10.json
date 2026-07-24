@@ -1,0 +1,80 @@
+{
+  "id": "task_10",
+  "title": "Add goal loop continuation tests",
+  "priority": "P0",
+  "status": "accepted",
+  "owner_role": "test-engineer",
+  "estimated_minutes": 5,
+  "parallel_group": "loop",
+  "can_run_in_parallel": false,
+  "dependencies": [
+    "task_04",
+    "task_09"
+  ],
+  "objective": "Prove how active goals continue, stop, and update state inside QueryLoop.",
+  "context": [
+    "The natural insertion point is the no-tool-use branch after regular Stop hooks and before token-budget continuation.",
+    "This is where the project should adopt Claude's evaluator behavior while preserving existing Stop hook semantics."
+  ],
+  "source_evidence": [
+    {
+      "source": "repo",
+      "file_or_url": "loop/query.go:1344",
+      "note": "No-tool-use branch runs Stop hooks and token-budget continuation."
+    },
+    {
+      "source": "repo",
+      "file_or_url": "loop/stop_hooks.go:23",
+      "note": "Stop hooks already model block-as-user-message continuation."
+    }
+  ],
+  "read_first": [
+    "loop/query.go",
+    "loop/stop_hooks.go",
+    "loop/stop_hooks_test.go",
+    "loop/goal_evaluator.go",
+    "goal/goal.go"
+  ],
+  "owned_files": [
+    "loop/goal_continuation_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Test unmet goal appends evaluator reason and continues.",
+      "Test met goal marks achieved and stops.",
+      "Test paused, blocked, cleared, and absent goals do not evaluate.",
+      "Test Stop hooks run before goal evaluation.",
+      "Test max turns still bounds continuation."
+    ],
+    "exclude": [
+      "Do not implement QueryLoop changes.",
+      "Do not alter Stop hook tests."
+    ]
+  },
+  "implementation_steps": [
+    "Create loop/goal_continuation_test.go with fake provider and fake evaluator.",
+    "Use existing loop test helpers where possible.",
+    "Assert event order and state updates minimally.",
+    "Add failure expectation for missing loop config fields."
+  ],
+  "deliverables": [
+    "Failing loop tests for automatic goal continuation."
+  ],
+  "acceptance_criteria": [
+    "Tests are deterministic and provider-free.",
+    "Tests assert no infinite loop by using MaxTurns.",
+    "Stop hook precedence is explicit."
+  ],
+  "verification": [
+    "go test ./loop -run GoalContinuation -count=1"
+  ],
+  "risks": [
+    "Loop tests can become slow if they use real streaming paths."
+  ],
+  "non_goals": [
+    "No TUI.",
+    "No command parsing."
+  ],
+  "dispatch_prompt": "Add failing QueryLoop tests for automatic /goal continuation using a fake evaluator. Cover unmet, met, paused/cleared, Stop-hook ordering, and MaxTurns bounds. Do not implement loop changes.",
+  "notes_for_assignee": "Keep the continuation message text stable but not verbose."
+}

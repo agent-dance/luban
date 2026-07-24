@@ -1,0 +1,38 @@
+diff --git a/click_like/formatter.py b/click_like/formatter.py
+index 4d3cbd9..d0f5e0c 100644
+--- a/click_like/formatter.py
++++ b/click_like/formatter.py
+@@ -1,4 +1,5 @@
+ import textwrap
++from collections import OrderedDict
+ 
+ WRAP_CALLS = 0
+ 
+@@ -19,6 +20,7 @@ class HelpFormatter:
+         # cache_size is part of the formatter contract: 0 disables
+         # caching, positive values bound the per-formatter cache.
+         self.cache_size = cache_size
++        self._wrap_cache = OrderedDict()
+ 
+     def _wrap_text(self, text, width, indent):
+         global WRAP_CALLS
+@@ -32,7 +34,18 @@ class HelpFormatter:
+         return prefix + wrapped if wrapped else prefix
+ 
+     def format_paragraph(self, text):
+-        return self._wrap_text(text, self.width, self.indent)
++        key = (str(text), int(self.width), int(self.indent))
++        try:
++            value = self._wrap_cache.pop(key)
++        except KeyError:
++            value = self._wrap_text(text, self.width, self.indent)
++            if self.cache_size > 0:
++                if len(self._wrap_cache) >= self.cache_size:
++                    self._wrap_cache.popitem(last=False)
++                self._wrap_cache[key] = value
++            return value
++        self._wrap_cache[key] = value
++        return value
+ 
+     def format_commands(self, commands):
+         lines = []

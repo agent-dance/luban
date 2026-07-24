@@ -1,0 +1,546 @@
+{
+  "tool": "RemoteTrigger",
+  "summary": "Go RemoteTrigger is close on the visible tool name, action enum, core CCR endpoint mapping, request headers, OAuth-backed request path, and final HTTP-text tool-result content. It is not yet exact parity with the TS reference. The remaining gaps are mostly runtime/security/lifecycle issues: Go still accepts a hidden legacy webhook input path, trusts arbitrary custom OAuth base URLs, uses env/resolver approximations instead of the TS GrowthBook and policy-limits services, adds Go-only retry and pagination behavior, lacks TS-style output schema/max-result handling, does not surface read-only/concurrency/autoclassifier metadata, and resolves OAuth credentials/org UUID through different sources and lifecycle checks.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "RT-GAP-001",
+      "category": "schema_runtime_security",
+      "severity": "P0",
+      "title": "Go keeps a hidden legacy webhook branch that TS does not expose",
+      "description": "The TS input is a strict object with only action, trigger_id, and body, and the call path only maps those inputs to the claude.ai CCR trigger API. Go publishes a schema with the same three fields, but its typed input still includes url and method. Because parseInput round-trips through json.Unmarshal, unknown fields are silently accepted, and Execute diverts to executeLegacyWebhook when url is present. This creates a model-invisible runtime capability that bypasses the OAuth CCR API path and has no TS equivalent.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:18-30",
+          "note": "TS uses z.strictObject and only declares action, trigger_id, and body."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:100-133",
+          "note": "TS switches only over list/get/create/update/run and always targets the CCR trigger base URL."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/prompt.ts:6-15",
+          "note": "The prompt describes calling the claude.ai remote-trigger API, not arbitrary webhooks."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/misc.go:124-143",
+          "note": "The published Go schema only declares action, trigger_id, and body."
+        },
+        {
+          "path": "tools/misc.go:264-271",
+          "note": "RemoteTriggerInput additionally accepts URL and Method."
+        },
+        {
+          "path": "tools/misc.go:173-176",
+          "note": "Execute diverts to executeLegacyWebhook when in.URL is non-empty."
+        },
+        {
+          "path": "tools/misc.go:212-246",
+          "note": "The legacy branch sends an arbitrary HTTP request and returns its response."
+        },
+        {
+          "path": "tools/parse.go:13-20",
+          "note": "Generic parsing uses json.Unmarshal into a struct, which ignores unknown object keys by default."
+        }
+      ],
+      "impact": "Inputs rejected by the TS strict schema can execute in Go, and RemoteTrigger can perform network behavior that the model schema and TS reference do not permit.",
+      "candidate_task_ids": [
+        "RT-TASK-001"
+      ]
+    },
+    {
+      "id": "RT-GAP-002",
+      "category": "auth_security",
+      "severity": "P0",
+      "title": "Go sends OAuth bearer tokens to arbitrary CLAUDE_CODE_CUSTOM_OAUTH_URL values",
+      "description": "TS only accepts CLAUDE_CODE_CUSTOM_OAUTH_URL when the base URL is on a hard-coded allowlist, then derives all OAuth URLs from that approved base. Go returns the custom base URL directly from resolveRemoteTriggerBaseURL and uses it for the trigger API request with the bearer token. In addition, Go refreshes tokens through auth.AnthropicOAuthConfig, whose token URL is fixed to production, so custom/staging/local trigger API routing is not consistently tied to the same OAuth config the way TS getOauthConfig is.",
+      "ts_evidence": [
+        {
+          "path": "../src/constants/oauth.ts:176-205",
+          "note": "TS defines ALLOWED_OAUTH_BASE_URLS and throws when CLAUDE_CODE_CUSTOM_OAUTH_URL is not approved."
+        },
+        {
+          "path": "../src/constants/oauth.ts:208-221",
+          "note": "For approved custom OAuth, TS derives BASE_API_URL, TOKEN_URL, profile URLs, and suffix from the same base."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:91-98",
+          "note": "RemoteTrigger builds its API base and auth headers from getOauthConfig().BASE_API_URL."
+        },
+        {
+          "path": "../src/services/oauth/client.ts:146-168",
+          "note": "OAuth refresh uses getOauthConfig().TOKEN_URL, preserving the same config source."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/remote_trigger.go:377-379",
+          "note": "Go accepts CLAUDE_CODE_CUSTOM_OAUTH_URL directly with no allowlist check."
+        },
+        {
+          "path": "tools/remote_trigger.go:172-176",
+          "note": "Go sends Authorization: Bearer plus trigger headers to the resolved URL."
+        },
+        {
+          "path": "tools/remote_trigger.go:303-306",
+          "note": "Go refreshes through auth.AnthropicOAuthConfig while resolving the trigger API base separately."
+        },
+        {
+          "path": "auth/providers.go:6-10",
+          "note": "AnthropicOAuthConfig has fixed production authorize/token URLs."
+        }
+      ],
+      "impact": "A malformed or malicious environment value can receive a Claude OAuth access token in Go, and non-prod/custom deployments can mix production token refresh with non-production trigger API routing.",
+      "candidate_task_ids": [
+        "RT-TASK-002"
+      ]
+    },
+    {
+      "id": "RT-GAP-003",
+      "category": "availability_policy",
+      "severity": "P1",
+      "title": "Feature and policy gating are approximated with env/resolver hooks instead of TS services",
+      "description": "TS only registers RemoteTrigger behind the AGENT_TRIGGERS_REMOTE bundle feature and then enables it at runtime only when the GrowthBook flag tengu_surreal_dali is true and the policy-limits cache says allow_remote_sessions is allowed. Go has a similar registration env gate, but runtime availability is driven by optional test-style resolvers or local env variables. It does not integrate with a GrowthBook equivalent or the TS policy-limits lifecycle: eligibility, cached restrictions, fail-open semantics, background refresh, and auth-aware policy fetch.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools.ts:36-38",
+          "note": "TS conditionally imports RemoteTriggerTool only when feature('AGENT_TRIGGERS_REMOTE') is enabled."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:57-61",
+          "note": "TS isEnabled requires GrowthBook tengu_surreal_dali and isPolicyAllowed('allow_remote_sessions')."
+        },
+        {
+          "path": "../src/services/policyLimits/index.ts:510-526",
+          "note": "isPolicyAllowed reads cached restrictions, fails open on missing policy data, and returns restriction.allowed when present."
+        },
+        {
+          "path": "../src/services/policyLimits/index.ts:551-589",
+          "note": "TS loads, refreshes, and background-polls policy limits as part of the policy lifecycle."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "registry_setup.go:158-160",
+          "note": "Go registration is controlled by the AGENT_TRIGGERS_REMOTE environment variable."
+        },
+        {
+          "path": "registry_setup.go:336-338",
+          "note": "SetupRegistry registers RemoteTrigger only when isAgentTriggersRemoteEnabled returns true."
+        },
+        {
+          "path": "tools/misc.go:153-170",
+          "note": "Go Execute blocks via featureFlagDisabled and policyForbids before issuing traffic."
+        },
+        {
+          "path": "tools/misc.go:180-210",
+          "note": "The default guards read CLAUDE_CODE_DISABLE_REMOTE_TRIGGER and CLAUDE_CODE_ALLOW_REMOTE_SESSIONS rather than a GrowthBook/policy-limits service."
+        }
+      ],
+      "impact": "RemoteTrigger can be visible or executable in Go under policy/feature states where TS would hide or disable it, and the runtime behavior will not follow admin policy updates unless custom resolvers are injected.",
+      "candidate_task_ids": [
+        "RT-TASK-003"
+      ]
+    },
+    {
+      "id": "RT-GAP-004",
+      "category": "request_lifecycle",
+      "severity": "P1",
+      "title": "Go adds post-response retries and body mutation that TS does not perform",
+      "description": "TS refreshes OAuth before the call, then performs one axios request with validateStatus returning true, so HTTP 401/429/5xx responses are surfaced as the tool result. Go refreshes or resolves a token before the call, but then adds a 401 retry, retries 5xx and 429 up to three attempts with backoff, and injects _retry_after_seconds into 429 JSON bodies so the retry loop can inspect Retry-After. These can change both upstream side effects and the final output compared with TS.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:78-85",
+          "note": "TS checks and refreshes OAuth before reading the access token."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:135-143",
+          "note": "TS performs a single axios.request with timeout, abort signal, and validateStatus: () => true."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:145-149",
+          "note": "TS returns the HTTP status and JSON-stringified response data from that request."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/remote_trigger.go:99-109",
+          "note": "Go retries once with a refreshed token after a 401 response."
+        },
+        {
+          "path": "tools/remote_trigger.go:120-153",
+          "note": "Go retries transient 5xx and 429 responses up to three attempts with backoff."
+        },
+        {
+          "path": "tools/remote_trigger.go:188-193",
+          "note": "Go appends Retry-After metadata into the response body for 429 handling."
+        },
+        {
+          "path": "tools/remote_trigger.go:233-262",
+          "note": "appendRetryAfterHint mutates JSON response bodies by inserting _retry_after_seconds."
+        },
+        {
+          "path": "tools/remote_trigger_extra_test.go:125-157",
+          "note": "Existing Go tests assert retry-on-5xx behavior, which is not present in the TS tool."
+        }
+      ],
+      "impact": "Create/update/run can be attempted more times in Go than in TS, final errors can disappear after retry, and 429 bodies can include fields the server did not send.",
+      "candidate_task_ids": [
+        "RT-TASK-004"
+      ]
+    },
+    {
+      "id": "RT-GAP-005",
+      "category": "output_lifecycle",
+      "severity": "P1",
+      "title": "Go list action aggregates pagination into a synthetic envelope",
+      "description": "TS maps list to a single GET /v1/code/triggers request and returns the API response body as received. Go special-cases list by following next_cursor up to a max page cap and replacing the server response with a synthetic envelope containing triggers, page_count, max_pages, truncated, and last_cursor. That may be useful, but it is not exact runtime or output parity with the current TS reference.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:104-108",
+          "note": "The TS list action builds exactly one GET request to the base trigger URL."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:135-149",
+          "note": "TS returns jsonStringify(res.data) from the one API response."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/remote_trigger.go:73-92",
+          "note": "Go routes list through executePaginatedList instead of the normal single-call path."
+        },
+        {
+          "path": "tools/remote_trigger.go:399-463",
+          "note": "executePaginatedList follows next_cursor and emits a synthetic aggregate envelope."
+        },
+        {
+          "path": "tools/remote_trigger_extra_test.go:85-123",
+          "note": "Existing Go tests assert pagination aggregation and page_count in the result."
+        }
+      ],
+      "impact": "The model sees a different response shape for paginated list results, and Go can make multiple upstream reads where TS makes one.",
+      "candidate_task_ids": [
+        "RT-TASK-005"
+      ]
+    },
+    {
+      "id": "RT-GAP-006",
+      "category": "output_contract",
+      "severity": "P1",
+      "title": "Go lacks the TS structured output schema and 100k result-size contract",
+      "description": "TS declares an output schema {status:number,json:string}, returns that as tool data, then maps it to the final tool_result content 'HTTP <status>\\n<json>'. It also sets maxResultSizeChars to 100000. Go emits the final HTTP-text directly in ToolResult.Content and has no per-tool output schema or maxResultSizeChars field; the HTTP response body is read with a 1 MiB LimitReader and then normalized. Final content is close for ordinary small JSON bodies, but the structured data contract and size lifecycle are not exact.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:35-40",
+          "note": "TS outputSchema defines status and json."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:49-56",
+          "note": "TS sets maxResultSizeChars: 100000 and exposes outputSchema."
+        },
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:145-157",
+          "note": "TS returns structured data and maps it to the final HTTP-text tool result block."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "types/tools.go:17-21",
+          "note": "Go ToolDefinition carries only the input schema."
+        },
+        {
+          "path": "types/tools.go:58-68",
+          "note": "Go ToolResult has string Content and metadata, but no typed RemoteTrigger output data."
+        },
+        {
+          "path": "tools/remote_trigger.go:89-90",
+          "note": "The Go list path returns the final HTTP-text content directly."
+        },
+        {
+          "path": "tools/remote_trigger.go:111-112",
+          "note": "The Go non-list path also returns final HTTP-text content directly."
+        },
+        {
+          "path": "tools/remote_trigger.go:184-195",
+          "note": "Go reads up to 1 MiB from the response body before normalization, not the TS 100k tool-result cap."
+        }
+      ],
+      "impact": "Internal consumers and persistence layers cannot observe the same RemoteTrigger output data shape as TS, and large responses are bounded differently.",
+      "candidate_task_ids": [
+        "RT-TASK-006"
+      ]
+    },
+    {
+      "id": "RT-GAP-007",
+      "category": "permissions_metadata",
+      "severity": "P2",
+      "title": "Go does not expose RemoteTrigger read-only, concurrency-safe, or autoclassifier signals",
+      "description": "TS marks RemoteTrigger as concurrency-safe, classifies list/get as read-only, and provides a concise auto-classifier input. Go has deferred discovery metadata for RemoteTrigger, but the Tool interface and RemoteTrigger implementation do not provide equivalent per-input read-only, concurrency, or auto-classifier hooks. This affects permission and scheduling behavior rather than the raw HTTP request.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/RemoteTriggerTool/RemoteTriggerTool.ts:63-70",
+          "note": "TS isConcurrencySafe returns true, isReadOnly returns true for list/get, and toAutoClassifierInput includes action and trigger_id."
+        },
+        {
+          "path": "../src/services/tools/toolOrchestration.ts:98-112",
+          "note": "TS orchestration batches tools based on isConcurrencySafe."
+        },
+        {
+          "path": "../src/cli/print.ts:1660",
+          "note": "TS rendering can expose readOnly metadata from tool.isReadOnly."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "types/tools.go:24-44",
+          "note": "The Go Tool interface only includes Name, Description, Schema, and Execute."
+        },
+        {
+          "path": "registry/tool_visibility.go:17-32",
+          "note": "Go has discovery metadata for RemoteTrigger, but only ShouldDefer and SearchHint."
+        },
+        {
+          "path": "tools/misc.go:119-177",
+          "note": "RemoteTrigger implements name, description, schema, Execute, and availability guards, but no per-input read-only/concurrency/classifier metadata."
+        }
+      ],
+      "impact": "Go cannot make the same permission and orchestration decisions for RemoteTrigger list/get versus create/update/run as TS.",
+      "candidate_task_ids": [
+        "RT-TASK-007"
+      ]
+    },
+    {
+      "id": "RT-GAP-008",
+      "category": "auth_state_lifecycle",
+      "severity": "P1",
+      "title": "OAuth token and organization resolution sources differ from TS",
+      "description": "TS reads Claude.ai OAuth tokens from env/file-descriptor/secure storage, respects bare mode, checks Claude.ai inference/profile scopes, refreshes with cache invalidation and concurrent refresh deduplication, and resolves org UUID from cached global config before fetching profile only when profile scope exists. Go resolves through an auth.Store, falls back to provider credentials named oauth or anthropic, does not surface scope checks in RemoteTrigger, and resolves org UUID from CLAUDE_CODE_ORGANIZATION_UUID/OAUTH_ORGANIZATION_UUID or a profile fetch. Some of this may be necessary in the Go architecture, but it is not exact state/lifecycle parity.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/auth.ts:1255-1299",
+          "note": "TS getClaudeAIOAuthTokens handles bare mode, env token, token from file descriptor, and secure storage."
+        },
+        {
+          "path": "../src/utils/auth.ts:1427-1470",
+          "note": "TS checkAndRefreshOAuthTokenIfNeeded deduplicates refreshes and refuses refresh when tokens lack Claude.ai auth scope."
+        },
+        {
+          "path": "../src/services/oauth/client.ts:426-445",
+          "note": "TS getOrganizationUUID uses cached global config first, then profile fetch only with access token and profile scope."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/remote_trigger.go:298-335",
+          "note": "Go resolves an access token from auth.Store.EnsureValid and then provider credentials named oauth or anthropic."
+        },
+        {
+          "path": "auth/store.go:239-270",
+          "note": "auth.Store.EnsureValid refreshes based on stored expiry and persists refreshed credentials."
+        },
+        {
+          "path": "tools/remote_trigger.go:337-369",
+          "note": "Go resolves organization UUID from environment variables or /api/oauth/profile, without the TS cached config/profile-scope gate."
+        }
+      ],
+      "impact": "Go may use a different token source, profile-fetch behavior, or organization UUID than TS for the same user/session state, which can change auth failures and selected organization.",
+      "candidate_task_ids": [
+        "RT-TASK-008"
+      ]
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "RT-TASK-001",
+      "title": "Remove the hidden legacy webhook input path and enforce strict RemoteTrigger inputs",
+      "owned_files": [
+        "tools/misc.go",
+        "tools/parse.go",
+        "tools/remote_trigger_test.go",
+        "tools/remote_trigger_alignment_test.go"
+      ],
+      "dependencies": [],
+      "addresses_gaps": [
+        "RT-GAP-001"
+      ],
+      "acceptance_criteria": [
+        "RemoteTriggerInput contains only action, trigger_id, and body, or RemoteTrigger has a dedicated strict parser that rejects any other top-level key.",
+        "RemoteTrigger.Execute never calls executeLegacyWebhook and cannot issue arbitrary webhook requests through url/method inputs.",
+        "Unknown keys such as url and method produce a tool-level invalid-input error before auth or network traffic.",
+        "Existing CCR API action tests still pass for list/get/create/update/run."
+      ],
+      "validation_commands": [
+        "go test ./tools -run 'RemoteTrigger|AlignmentRemoteTrigger'",
+        "go test ./tools -run 'RemoteTrigger.*Unknown|RemoteTrigger.*Legacy|RemoteTrigger.*Strict'"
+      ]
+    },
+    {
+      "id": "RT-TASK-002",
+      "title": "Align RemoteTrigger OAuth base URL resolution with TS allowlist and shared OAuth config",
+      "owned_files": [
+        "tools/remote_trigger.go",
+        "auth/providers.go",
+        "auth/store.go",
+        "tools/remote_trigger_test.go",
+        "tools/remote_trigger_extra_test.go"
+      ],
+      "dependencies": [],
+      "addresses_gaps": [
+        "RT-GAP-002",
+        "RT-GAP-008"
+      ],
+      "acceptance_criteria": [
+        "CLAUDE_CODE_CUSTOM_OAUTH_URL is accepted only for the TS-approved bases or an explicitly reviewed Go equivalent of that allowlist.",
+        "An unapproved custom OAuth URL fails before any Authorization header can be sent.",
+        "RemoteTrigger API base URL and OAuth refresh token URL are derived from one coherent OAuth config for prod/staging/local/custom modes.",
+        "Tests cover approved custom URL, rejected custom URL, staging/local routing, and the token-refresh endpoint used under each mode."
+      ],
+      "validation_commands": [
+        "go test ./auth ./tools -run 'OAuth|RemoteTrigger.*BaseURL|RemoteTrigger.*Custom|RemoteTrigger.*Staging|RemoteTrigger.*Local'"
+      ]
+    },
+    {
+      "id": "RT-TASK-003",
+      "title": "Wire RemoteTrigger availability to feature and policy services instead of env-only fallbacks",
+      "owned_files": [
+        "registry_setup.go",
+        "tools/misc.go",
+        "tools/remote_trigger_flag.go",
+        "tools/remote_trigger_extra_test.go"
+      ],
+      "dependencies": [],
+      "addresses_gaps": [
+        "RT-GAP-003"
+      ],
+      "acceptance_criteria": [
+        "RemoteTrigger registration remains gated by the AGENT_TRIGGERS_REMOTE equivalent.",
+        "Runtime isEnabled parity checks use a Go equivalent of tengu_surreal_dali and allow_remote_sessions policy data, not only CLAUDE_CODE_DISABLE_REMOTE_TRIGGER or CLAUDE_CODE_ALLOW_REMOTE_SESSIONS.",
+        "Policy behavior matches TS fail-open semantics on missing policy data and blocks only when allow_remote_sessions is explicitly false.",
+        "Tests prove no network call occurs when feature or policy denies, and requests proceed when policy data is missing."
+      ],
+      "validation_commands": [
+        "go test ./tools -run 'RemoteTrigger.*Feature|RemoteTrigger.*Policy|RemoteTrigger.*Availability'",
+        "go test ./... -run 'Policy|RemoteTrigger'"
+      ]
+    },
+    {
+      "id": "RT-TASK-004",
+      "title": "Match TS RemoteTrigger single-request lifecycle for HTTP failures",
+      "owned_files": [
+        "tools/remote_trigger.go",
+        "tools/remote_trigger_extra_test.go",
+        "tools/remote_worktree_features_test.go",
+        "tools/remote_trigger_alignment_test.go"
+      ],
+      "dependencies": [],
+      "addresses_gaps": [
+        "RT-GAP-004"
+      ],
+      "acceptance_criteria": [
+        "After pre-call token refresh/resolution, RemoteTrigger performs exactly one upstream trigger API request per action unless TS gains equivalent retry behavior.",
+        "HTTP 401, 429, and 5xx responses are surfaced as HTTP-text results with the server body from that response.",
+        "Retry-After headers are not injected into the response body.",
+        "Create/update/run tests prove that failed first attempts are not retried and that response bodies are not mutated."
+      ],
+      "validation_commands": [
+        "go test ./tools -run 'RemoteTrigger.*401|RemoteTrigger.*429|RemoteTrigger.*5xx|RemoteTrigger.*Retry|RemoteTrigger.*RetryAfter'"
+      ]
+    },
+    {
+      "id": "RT-TASK-005",
+      "title": "Remove or gate Go-only RemoteTrigger list pagination aggregation",
+      "owned_files": [
+        "tools/remote_trigger.go",
+        "tools/remote_trigger_extra_test.go",
+        "tools/remote_worktree_features_test.go"
+      ],
+      "dependencies": [],
+      "addresses_gaps": [
+        "RT-GAP-005"
+      ],
+      "acceptance_criteria": [
+        "The list action sends one GET /v1/code/triggers request and returns that response body unchanged under default TS-parity behavior.",
+        "Synthetic fields page_count, max_pages, truncated, and last_cursor no longer appear in default RemoteTrigger output.",
+        "If pagination is kept as a deliberate Go extension, it is opt-in and disabled in TS-parity mode with tests documenting the divergence.",
+        "Existing list/get/create/update/run path tests still pass under the default behavior."
+      ],
+      "validation_commands": [
+        "go test ./tools -run 'RemoteTrigger.*List|RemoteTrigger.*Pagination|AlignmentRemoteTriggerList'"
+      ]
+    },
+    {
+      "id": "RT-TASK-006",
+      "title": "Restore RemoteTrigger output data and size-limit parity",
+      "owned_files": [
+        "types/tools.go",
+        "tools/remote_trigger.go",
+        "tools/remote_trigger_test.go",
+        "tools/remote_trigger_alignment_test.go"
+      ],
+      "dependencies": [],
+      "addresses_gaps": [
+        "RT-GAP-006"
+      ],
+      "acceptance_criteria": [
+        "RemoteTrigger exposes a stable status/json data shape to any Go tool-result storage or inspection layer that needs TS outputSchema parity.",
+        "The final model-visible result remains exactly 'HTTP <status>\\n<json>' for normal responses.",
+        "RemoteTrigger responses obey the TS 100000 character maxResultSizeChars behavior rather than a silent 1 MiB body read cap as the only bound.",
+        "Tests cover small JSON, non-2xx JSON, non-JSON response bodies, empty bodies, and over-100k response bodies."
+      ],
+      "validation_commands": [
+        "go test ./tools ./types -run 'RemoteTrigger.*Output|RemoteTrigger.*Size|RemoteTrigger.*Large|ToolResult'"
+      ]
+    },
+    {
+      "id": "RT-TASK-007",
+      "title": "Add RemoteTrigger read-only, concurrency-safe, and autoclassifier metadata",
+      "owned_files": [
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "tools/misc.go",
+        "tools/remote_trigger_alignment_test.go"
+      ],
+      "dependencies": [],
+      "addresses_gaps": [
+        "RT-GAP-007"
+      ],
+      "acceptance_criteria": [
+        "Go has an optional interface or registry metadata path that can express RemoteTrigger is concurrency-safe.",
+        "Go can classify RemoteTrigger list/get as read-only and create/update/run as non-read-only using the parsed input.",
+        "Go exposes the equivalent classifier string 'RemoteTrigger <action> [trigger_id]' for permission/autoclassification consumers.",
+        "Tests cover all five actions for read-only classification and verify discovery metadata still marks RemoteTrigger as deferred."
+      ],
+      "validation_commands": [
+        "go test ./registry ./tools ./types -run 'RemoteTrigger.*ReadOnly|RemoteTrigger.*Concurrency|RemoteTrigger.*Classifier|ToolVisibility'"
+      ]
+    },
+    {
+      "id": "RT-TASK-008",
+      "title": "Align RemoteTrigger token and organization resolution with TS Claude.ai OAuth lifecycle",
+      "owned_files": [
+        "tools/remote_trigger.go",
+        "auth/store.go",
+        "provider/credential_store.go",
+        "tools/remote_trigger_test.go"
+      ],
+      "dependencies": [
+        "RT-TASK-002"
+      ],
+      "addresses_gaps": [
+        "RT-GAP-008"
+      ],
+      "acceptance_criteria": [
+        "RemoteTrigger uses only Claude.ai OAuth token sources that are valid for the trigger API, and does not silently fall back to unrelated provider credentials.",
+        "Scope requirements match TS: inference/profile scope handling is explicit, and org profile fetch is skipped or fails predictably when profile scope is unavailable.",
+        "Organization UUID resolution prefers the Go equivalent of cached account configuration before profile fetch, with env overrides only where TS has equivalent behavior.",
+        "Tests cover env token, stored OAuth token, missing profile scope, cached org UUID, profile-derived org UUID, and absent auth."
+      ],
+      "validation_commands": [
+        "go test ./auth ./provider ./tools -run 'RemoteTrigger.*Auth|RemoteTrigger.*Organization|OAuth.*Scope|Credential'"
+      ]
+    }
+  ]
+}

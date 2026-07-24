@@ -1,0 +1,542 @@
+{
+  "id": "task_23",
+  "title": "Align SendMessage tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all SendMessage improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "SendMessage"
+    ],
+    "problem": "Current TS baseline is ../src/tools/SendMessageTool/SendMessageTool.ts plus registration in ../src/tools.ts. Per tools/reports/SendMessage.md, the removed bridge/Remote Control delivery path is treated as out of scope for Go parity; this report therefore focuses on teammate mailbox, local agent continuation, UDS, and structured control messages. The Go implementation has useful coverage for those paths, including mailbox writes, UDS, local-agent resume, request-id generation, and shutdown approval cancellation. Remaining parity gaps are concentrated in sender identity spoofing, loose input/schema and lifecycle metadata, Go-only MessageBus fallback/output, mailbox state/layout/read semantics, broadcast behavior, structured control payload/lifecycle details, permission/read-only handling, and stale alignment tests that assert non-current TS envelope behavior. Verification note: attempted `go test ./tools ./swarm ./permissions -run 'TestSendMessage|TestRequiresBridgePermission|TestIsMailboxRetryable|TestModeAllowAllSendMessage|TestCacheKeyDifferentiatesSendMessageTargets' -count=1`; `./swarm` had no matching tests and passed, while `./tools` and `./permissions` could not build because provider/responses.go references undefined classifyResponsesAPIError.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/SendMessage.json"
+    ],
+    "ts_references": [
+      "../src/tools/SendMessageTool/SendMessageTool.ts:67-86",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:155-160",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:442-457",
+      "../src/tools/SendMessageTool/prompt.ts:3-48",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:46-86",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:520-541",
+      "../src/tools.ts:226-230",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:800-880",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:149-188",
+      "../src/utils/teammateMailbox.ts:56-75",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:728-739",
+      "../src/utils/teammateMailbox.ts:1-8",
+      "../src/utils/teammateMailbox.ts:43-50",
+      "../src/utils/teammateMailbox.ts:173-180",
+      "../src/utils/teammateMailbox.ts:279-320",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:133-147",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:175-186",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:191-207",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:220-225",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:228-265",
+      "../src/utils/teammateMailbox.ts:184-187",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:46-64",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:694-715",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:434-457",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:493-509",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:906-910",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:317-389",
+      "../src/utils/teammateMailbox.ts:737-745",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:539-541",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:585-602",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:604-718",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:101-132",
+      "../src/tools/SendMessageTool/SendMessageTool.ts:520-917"
+    ],
+    "go_references": [
+      "tools/parse.go:239-246",
+      "tools/send_message_routing.go:448-459",
+      "tools/team.go:275-278",
+      "tools/send_message_routing.go:802-811",
+      "tools/team_dispatch_test.go:246-272",
+      "tools/team.go:133-157",
+      "registry_setup.go:304-315",
+      "registry/tool_visibility.go:32",
+      "types/tools.go:24-45",
+      "tools/team.go:262-271",
+      "tools/team.go:273-390",
+      "tools/send_message_envelope.go:80-95",
+      "tools/team_test.go:44-92",
+      "swarm/mailbox.go:35-46",
+      "swarm/mailbox.go:65-75",
+      "swarm/mailbox.go:121-150",
+      "swarm/team.go:23-31",
+      "tools/send_message_routing.go:602-606",
+      "tools/send_message_routing.go:635-650",
+      "tools/send_message_routing.go:430-445",
+      "tools/send_message_routing.go:584-632",
+      "tools/team.go:280-312",
+      "tools/team_alignment_test.go:146-187",
+      "tools/send_message_routing.go:461-477",
+      "tools/team.go:393-409",
+      "tools/send_message_routing.go:744-800",
+      "tools/send_message_routing.go:802-839",
+      "tools/send_message_routing_test.go:82-190",
+      "permissions/risk.go:165-184",
+      "permissions/permissions_test.go:575-596",
+      "tools/team.go:165-228",
+      "tools/team.go:175-188",
+      "tools/k_protocol_test.go:95-128",
+      "tools/team_alignment_test.go:12-21",
+      "tools/team_alignment_test.go:45-144",
+      "tools/team_alignment_test.go:189-258",
+      "tools/send_message_routing_test.go:45-243",
+      "provider/responses.go:634",
+      "tools/parse.go",
+      "tools/team.go",
+      "tools/send_message_routing.go",
+      "tools/team_test.go",
+      "tools/team_dispatch_test.go",
+      "tools/send_message_routing_test.go",
+      "registry_setup.go",
+      "registry/tool_visibility.go",
+      "types/tools.go",
+      "permissions/risk.go",
+      "permissions/send_message.go",
+      "tools/team_alignment_test.go",
+      "tools/send_message_envelope.go",
+      "coordinator/coordinator.go",
+      "swarm/mailbox.go",
+      "swarm/mailbox_test.go",
+      "swarm/team.go",
+      "loop/teammate_hooks_test.go",
+      "tools/agent_sessions.go",
+      "tools/agent_send_message_test.go",
+      "permissions/permissions_test.go"
+    ],
+    "source_note": ""
+  },
+  "owned_files": [
+    "tools/parse.go",
+    "tools/team.go",
+    "tools/send_message_routing.go",
+    "tools/team_test.go",
+    "tools/team_dispatch_test.go",
+    "tools/send_message_routing_test.go",
+    "registry_setup.go",
+    "registry/tool_visibility.go",
+    "types/tools.go",
+    "permissions/risk.go",
+    "permissions/send_message.go",
+    "tools/team_alignment_test.go",
+    "tools/send_message_envelope.go",
+    "coordinator/coordinator.go",
+    "swarm/mailbox.go",
+    "swarm/mailbox_test.go",
+    "swarm/team.go",
+    "loop/teammate_hooks_test.go",
+    "tools/agent_sessions.go",
+    "tools/agent_send_message_test.go",
+    "permissions/permissions_test.go",
+    "tools/parse.go:239-246",
+    "tools/send_message_routing.go:448-459",
+    "tools/team.go:275-278",
+    "tools/send_message_routing.go:802-811",
+    "tools/team_dispatch_test.go:246-272",
+    "tools/team.go:133-157",
+    "registry_setup.go:304-315",
+    "registry/tool_visibility.go:32",
+    "types/tools.go:24-45",
+    "tools/team.go:262-271",
+    "tools/team.go:273-390",
+    "tools/send_message_envelope.go:80-95",
+    "tools/team_test.go:44-92",
+    "swarm/mailbox.go:35-46",
+    "swarm/mailbox.go:65-75",
+    "swarm/mailbox.go:121-150",
+    "swarm/team.go:23-31",
+    "tools/send_message_routing.go:602-606",
+    "tools/send_message_routing.go:635-650",
+    "tools/send_message_routing.go:430-445",
+    "tools/send_message_routing.go:584-632",
+    "tools/team.go:280-312",
+    "tools/team_alignment_test.go:146-187",
+    "tools/send_message_routing.go:461-477",
+    "tools/team.go:393-409",
+    "tools/send_message_routing.go:744-800",
+    "tools/send_message_routing.go:802-839",
+    "tools/send_message_routing_test.go:82-190",
+    "permissions/risk.go:165-184",
+    "permissions/permissions_test.go:575-596",
+    "tools/team.go:165-228",
+    "tools/team.go:175-188",
+    "tools/k_protocol_test.go:95-128",
+    "tools/team_alignment_test.go:12-21",
+    "tools/team_alignment_test.go:45-144",
+    "tools/team_alignment_test.go:189-258",
+    "tools/send_message_routing_test.go:45-243",
+    "provider/responses.go:634"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "SM-GAP-001",
+      "severity": "P0",
+      "category": "security_sender_identity",
+      "title": "Go lets tool input spoof sender identity and authority",
+      "description": "TS SendMessage input only accepts to, summary, and message; sender identity is derived from runtime/team state. Go's SendMessageInput adds from and content, then trusts from for mailbox sender selection, MessageBus reply routing, and structured plan-approval authority checks. A model/tool caller can therefore claim to be team-lead or another teammate in Go in ways the TS tool contract does not permit."
+    },
+    {
+      "id": "SM-GAP-002",
+      "severity": "P1",
+      "category": "schema_lifecycle_metadata",
+      "title": "Go model-visible schema, description, availability, and read-only metadata are looser than TS",
+      "description": "TS publishes a specific tool description, prompt, zod union for three structured message types, summary requirement for plain text except UDS, shouldDefer/searchHint, isEnabled via agent-swarms, and isReadOnly for string messages. Go publishes a broad object message schema, omits UDS/bridge from the visible to description despite supporting uds routing, exposes content/from as typed inputs, registers SendMessage unconditionally, and has no SendMessage-specific read-only hook in the tool interface."
+    },
+    {
+      "id": "SM-GAP-003",
+      "severity": "P0",
+      "category": "runtime_routing_output",
+      "title": "Go falls back to a coordinator MessageBus/envelope path that TS SendMessage does not expose",
+      "description": "For plain non-UDS messages, TS routes to local-agent continuation first and then mailbox write/broadcast. If no explicit teamName is available for a direct message, writeToMailbox defaults to the default team inbox. Go only uses mailbox routing when loadActiveTeamConfig returns a config; otherwise it routes through coordinator.MessageBus and returns an Envelope with request_id/kind/delivered/recipients/reply_text/quorum. Existing Go tests pin this Go-only path using content/from inputs."
+    },
+    {
+      "id": "SM-GAP-004",
+      "severity": "P1",
+      "category": "mailbox_state_lifecycle_output",
+      "title": "Mailbox file layout, read lifecycle, and routing metadata are not TS-compatible",
+      "description": "TS mailbox messages are stored under a team-level inboxes directory, include a read boolean, preserve messages while marking them read, and SendMessage routing returns senderColor/targetColor when available. Go stores each recipient under {team}/{agent}/inbox.json, has no read field, reads by removing/clearing the inbox file, and SendMessage writes do not populate Color or return senderColor/targetColor even though TeamMember has a Color field."
+    },
+    {
+      "id": "SM-GAP-005",
+      "severity": "P1",
+      "category": "broadcast_runtime_output_robustness",
+      "title": "Broadcast validation, recipient selection, failure semantics, and output differ",
+      "description": "TS broadcast requires an active team context and team file, broadcasts to every team file member except the sender regardless of isActive, and returns success true with message 'Message broadcast to N teammate(s): ...'. Go falls back to MessageBus broadcast when no team config is loaded, filters inactive persisted members, returns delivered/failed bookkeeping for mailbox broadcast, and uses a different message format."
+    },
+    {
+      "id": "SM-GAP-006",
+      "severity": "P0",
+      "category": "structured_control_state_lifecycle",
+      "title": "Structured control message payloads and lifecycle side effects are incomplete or over-broad",
+      "description": "TS SendMessage accepts only shutdown_request, shutdown_response, and plan_approval_response structured inputs. Its plan approval response includes inherited permissionMode, plan rejection writes default feedback when none is supplied, shutdown approval includes pane/backend metadata when known, and non-in-process approval schedules gracefulShutdown. Go accepts extra structured message types on its no-team MessageBus path, misses permissionMode/default feedback in mailbox payloads, omits paneId/backendType from shutdown approval payloads, and marks members inactive/aborts local background sessions instead of matching TS graceful process-exit behavior."
+    },
+    {
+      "id": "SM-GAP-007",
+      "severity": "P1",
+      "category": "permissions_error_handling",
+      "title": "Permission/read-only handling and supported error semantics do not match TS",
+      "description": "For the supported non-bridge subset, TS marks plain string SendMessage calls read-only and structured messages non-read-only. Go classifies all SendMessage calls as medium risk through the generic permission system. For bridge, which is excluded from this report's candidate scope, Go currently implements only an Execute-time grant registry and tests that a granted bridge target falls through to no-transport behavior; this is not equivalent to TS checkPermissions if bridge is ever reintroduced."
+    },
+    {
+      "id": "SM-GAP-008",
+      "severity": "P1",
+      "category": "test_coverage_staleness",
+      "title": "Go alignment tests partly encode stale/nonexistent TS contracts and miss current TS parity cases",
+      "description": "Several SendMessage alignment tests reference TS files that are not present in the current ../src/tools/SendMessageTool directory and assert an envelope/InflightTable contract that the current TS SendMessageTool.ts does not expose. At the same time, tests do not cover sender spoofing rejection, TS mailbox layout/read flags/colors, current TS direct/broadcast output shapes, plan approval permissionMode/default feedback, or TS isReadOnly behavior. Targeted Go verification is currently also blocked by an unrelated provider build error."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "SM-TASK-001",
+      "title": "Remove or ignore Go-only SendMessage from/content inputs for user-facing calls",
+      "priority": "P2",
+      "addresses_gaps": [
+        "SM-GAP-001",
+        "SM-GAP-003"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/parse.go",
+        "tools/team.go",
+        "tools/send_message_routing.go",
+        "tools/team_test.go",
+        "tools/team_dispatch_test.go",
+        "tools/send_message_routing_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "User-facing SendMessage derives sender from runtime/team/env context only; input from cannot spoof team-lead or another teammate.",
+        "TS-compatible calls require message for user-facing SendMessage; content is either removed, ignored, or moved behind an internal-only compatibility path with explicit tests.",
+        "Pending-reply drain behavior no longer depends on caller-supplied from in the TS-compatible SendMessage path.",
+        "Regression tests show from=team-lead cannot authorize plan_approval_response unless runtime context is actually team lead."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestSendMessage.*From|TestSendMessage.*Content|TestSendMessage.*Spoof|TestSendMessage.*PlanApproval' -count=1",
+        "go test ./permissions -run 'TestCacheKeyDifferentiatesSendMessageTargets|TestModeAllowAllSendMessage' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "SM-TASK-002",
+      "title": "Align SendMessage schema, description, availability, and read-only metadata with TS",
+      "priority": "P2",
+      "addresses_gaps": [
+        "SM-GAP-002",
+        "SM-GAP-007"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/team.go",
+        "tools/send_message_routing.go",
+        "registry_setup.go",
+        "registry/tool_visibility.go",
+        "types/tools.go",
+        "permissions/risk.go",
+        "permissions/send_message.go",
+        "tools/team_alignment_test.go",
+        "tools/send_message_routing_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Published Name and Description match TS: SendMessage / 'Send a message to another agent'.",
+        "Published schema documents teammate, '*', and supported UDS targets; structured message objects are constrained to TS SendMessage's three structured types.",
+        "SendMessage visibility follows TS isAgentSwarmsEnabled-equivalent gating in normal tool assembly, while preserving any intentional coordinator/simple-mode exception with explicit tests.",
+        "Plain string messages are represented as read-only in the Go permission/risk layer; structured messages are not.",
+        "Unsupported bridge delivery remains explicitly out of scope unless a separate bridge transport parity task is created."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./permissions -run 'TestSendMessage.*Schema|TestSendMessage.*Description|TestSendMessage.*Visibility|TestSendMessage.*ReadOnly|TestSendMessage.*Structured' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "SM-TASK-003",
+      "title": "Replace or isolate the Go-only MessageBus fallback from the TS-compatible SendMessage path",
+      "priority": "P2",
+      "addresses_gaps": [
+        "SM-GAP-003",
+        "SM-GAP-005"
+      ],
+      "dependencies": [
+        "SM-TASK-001",
+        "SM-TASK-002"
+      ],
+      "owned_files": [
+        "tools/team.go",
+        "tools/send_message_routing.go",
+        "tools/send_message_envelope.go",
+        "coordinator/coordinator.go",
+        "tools/team_test.go",
+        "tools/team_dispatch_test.go",
+        "tools/team_alignment_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TS-compatible direct SendMessage without an active team config follows TS mailbox/default-team behavior or returns the same validation/error semantics TS would expose; it does not silently switch to Envelope output.",
+        "If MessageBus send/await remains needed for Go internals, it is moved behind a clearly internal transport or separate tool path and no longer changes the public SendMessage contract.",
+        "Direct SendMessage output in the public path is {success,message,routing?}, not Envelope.",
+        "Tests distinguish TS-compatible SendMessage from any internal MessageBus transport."
+      ],
+      "verification": [
+        "go test ./tools ./coordinator -run 'TestSendMessage.*Mailbox|TestSendMessage.*NoTeam|TestSendMessage.*Envelope|TestSendMessage.*MessageBus|TestSendMessage.*AgentNotFound' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "SM-TASK-004",
+      "title": "Align mailbox persistence, read lifecycle, and routing color metadata",
+      "priority": "P2",
+      "addresses_gaps": [
+        "SM-GAP-004"
+      ],
+      "dependencies": [
+        "SM-TASK-003"
+      ],
+      "owned_files": [
+        "swarm/mailbox.go",
+        "swarm/mailbox_test.go",
+        "swarm/team.go",
+        "tools/send_message_routing.go",
+        "tools/send_message_routing_test.go",
+        "loop/teammate_hooks_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Mailbox write/read format is compatible with TS TeammateMessage, including read:false on write and optional color/summary fields.",
+        "Inbox path/layout is TS-compatible or a tested compatibility adapter reads/writes both Go and TS layouts without losing messages.",
+        "Mailbox read lifecycle preserves read/audit semantics equivalent to TS markMessagesAsRead; destructive read/remove behavior is not used for the TS-compatible path unless explicitly isolated.",
+        "Direct SendMessage routing includes senderColor and targetColor when available from team state/config.",
+        "Tests assert file layout, read flag behavior, color round-trip, and direct routing color fields."
+      ],
+      "verification": [
+        "go test ./swarm ./tools -run 'TestMailbox.*Read|TestMailbox.*Layout|TestMailbox.*ReadFlag|TestSendMessage.*Color|TestSendMessage.*TeamMailboxDirect' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "SM-TASK-005",
+      "title": "Align broadcast validation, recipients, failure semantics, and output",
+      "priority": "P2",
+      "addresses_gaps": [
+        "SM-GAP-005"
+      ],
+      "dependencies": [
+        "SM-TASK-003",
+        "SM-TASK-004"
+      ],
+      "owned_files": [
+        "tools/send_message_routing.go",
+        "tools/team.go",
+        "tools/send_message_routing_test.go",
+        "tools/team_alignment_test.go",
+        "swarm/mailbox.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Broadcast without active team context returns the TS-style 'Not in a team context...' failure instead of MessageBus envelope output.",
+        "Broadcast to a missing team returns the TS-style Team does not exist failure.",
+        "Recipient selection matches TS: every team file member except sender by case-insensitive name; no extra IsActive filter in the TS-compatible path.",
+        "Successful broadcast output matches TS success/message/recipients/routing shape and message wording.",
+        "If Go keeps partial-success bookkeeping, it is isolated from the TS-compatible output path or documented as non-parity internal behavior with tests."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestSendMessage.*Broadcast|TestSendMessage.*NoTeam|TestSendMessage.*MissingTeam|TestSendMessage.*Inactive|TestSendMessage.*Partial' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "SM-TASK-006",
+      "title": "Align structured SendMessage control payloads and shutdown/plan lifecycle effects",
+      "priority": "P2",
+      "addresses_gaps": [
+        "SM-GAP-001",
+        "SM-GAP-006"
+      ],
+      "dependencies": [
+        "SM-TASK-001",
+        "SM-TASK-004"
+      ],
+      "owned_files": [
+        "tools/send_message_routing.go",
+        "tools/team.go",
+        "tools/agent_sessions.go",
+        "swarm/team.go",
+        "tools/send_message_routing_test.go",
+        "tools/team_alignment_test.go",
+        "loop/teammate_hooks_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Structured SendMessage user-facing input accepts only shutdown_request, shutdown_response, and plan_approval_response, matching TS.",
+        "Plan approval is authorized from real team-lead runtime state, not input from.",
+        "Approved plan payload includes permissionMode with TS plan-mode default handling.",
+        "Rejected plan payload includes feedback, defaulting to 'Plan needs revision' when omitted.",
+        "Shutdown approval payload includes paneId/backendType when known.",
+        "Approved shutdown lifecycle matches TS for in-process and non-in-process equivalents, including actual session/process termination semantics or a documented Go-equivalent with tests."
+      ],
+      "verification": [
+        "go test ./tools ./loop -run 'TestSendMessage.*Shutdown|TestSendMessage.*PlanApproval|TestSendMessage.*PermissionMode|TestSendMessage.*Feedback|TestSendMessage.*Backend|TestSendMessage.*Structured' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "SM-TASK-007",
+      "title": "Refresh SendMessage parity tests against the current TS baseline",
+      "priority": "P2",
+      "addresses_gaps": [
+        "SM-GAP-001",
+        "SM-GAP-002",
+        "SM-GAP-003",
+        "SM-GAP-004",
+        "SM-GAP-005",
+        "SM-GAP-006",
+        "SM-GAP-007",
+        "SM-GAP-008"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/team_alignment_test.go",
+        "tools/send_message_routing_test.go",
+        "tools/team_test.go",
+        "tools/team_dispatch_test.go",
+        "tools/agent_send_message_test.go",
+        "permissions/permissions_test.go",
+        "swarm/mailbox_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Alignment tests reference only files and behavior present in the current TS baseline: ../src/tools.ts, ../src/tools/SendMessageTool/SendMessageTool.ts, prompt.ts, constants.ts, teammateMailbox.ts, peerAddress.ts, LocalAgentTask, and resumeAgent.",
+        "Tests stop asserting nonexistent Envelope.ts/types.ts/structured.ts/leader_inbox.ts/SendAndAwait.ts contracts as TS SendMessage parity.",
+        "New red/green tests cover sender spoofing, strict input surface, no-team direct message behavior, direct output/routing colors, mailbox read flags/layout, broadcast output, plan approval permissionMode/default feedback, shutdown pane/backend metadata, and plain-message read-only classification.",
+        "Test package build blockers unrelated to SendMessage are either resolved upstream or documented so SendMessage verification can run deterministically."
+      ],
+      "verification": [
+        "go test ./tools ./swarm ./permissions -run 'TestSendMessage|TestMailbox|TestRequiresBridgePermission|TestCacheKeyDifferentiatesSendMessageTargets|TestModeAllowAllSendMessage' -count=1",
+        "go test ./tools -run 'TestSendMessageAlignment' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    }
+  ],
+  "acceptance_criteria": [
+    "SendMessage input validation and schema behavior match the original TS implementation for all report gaps.",
+    "SendMessage model-visible output and structured result data match TS golden fixtures.",
+    "SendMessage runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "User-facing SendMessage derives sender from runtime/team/env context only; input from cannot spoof team-lead or another teammate.",
+    "TS-compatible calls require message for user-facing SendMessage; content is either removed, ignored, or moved behind an internal-only compatibility path with explicit tests.",
+    "Pending-reply drain behavior no longer depends on caller-supplied from in the TS-compatible SendMessage path.",
+    "Regression tests show from=team-lead cannot authorize plan_approval_response unless runtime context is actually team lead.",
+    "Published Name and Description match TS: SendMessage / 'Send a message to another agent'.",
+    "Published schema documents teammate, '*', and supported UDS targets; structured message objects are constrained to TS SendMessage's three structured types.",
+    "SendMessage visibility follows TS isAgentSwarmsEnabled-equivalent gating in normal tool assembly, while preserving any intentional coordinator/simple-mode exception with explicit tests.",
+    "Plain string messages are represented as read-only in the Go permission/risk layer; structured messages are not.",
+    "Unsupported bridge delivery remains explicitly out of scope unless a separate bridge transport parity task is created.",
+    "TS-compatible direct SendMessage without an active team config follows TS mailbox/default-team behavior or returns the same validation/error semantics TS would expose; it does not silently switch to Envelope output.",
+    "If MessageBus send/await remains needed for Go internals, it is moved behind a clearly internal transport or separate tool path and no longer changes the public SendMessage contract.",
+    "Direct SendMessage output in the public path is {success,message,routing?}, not Envelope.",
+    "Tests distinguish TS-compatible SendMessage from any internal MessageBus transport.",
+    "Mailbox write/read format is compatible with TS TeammateMessage, including read:false on write and optional color/summary fields.",
+    "Inbox path/layout is TS-compatible or a tested compatibility adapter reads/writes both Go and TS layouts without losing messages.",
+    "Mailbox read lifecycle preserves read/audit semantics equivalent to TS markMessagesAsRead; destructive read/remove behavior is not used for the TS-compatible path unless explicitly isolated.",
+    "Direct SendMessage routing includes senderColor and targetColor when available from team state/config.",
+    "Tests assert file layout, read flag behavior, color round-trip, and direct routing color fields.",
+    "Broadcast without active team context returns the TS-style 'Not in a team context...' failure instead of MessageBus envelope output.",
+    "Broadcast to a missing team returns the TS-style Team does not exist failure.",
+    "Recipient selection matches TS: every team file member except sender by case-insensitive name; no extra IsActive filter in the TS-compatible path.",
+    "Successful broadcast output matches TS success/message/recipients/routing shape and message wording.",
+    "If Go keeps partial-success bookkeeping, it is isolated from the TS-compatible output path or documented as non-parity internal behavior with tests.",
+    "Structured SendMessage user-facing input accepts only shutdown_request, shutdown_response, and plan_approval_response, matching TS."
+  ],
+  "verification": [
+    "go test ./tools -run 'TestSendMessage.*From|TestSendMessage.*Content|TestSendMessage.*Spoof|TestSendMessage.*PlanApproval' -count=1",
+    "go test ./permissions -run 'TestCacheKeyDifferentiatesSendMessageTargets|TestModeAllowAllSendMessage' -count=1",
+    "go test ./tools ./registry ./permissions -run 'TestSendMessage.*Schema|TestSendMessage.*Description|TestSendMessage.*Visibility|TestSendMessage.*ReadOnly|TestSendMessage.*Structured' -count=1",
+    "go test ./tools ./coordinator -run 'TestSendMessage.*Mailbox|TestSendMessage.*NoTeam|TestSendMessage.*Envelope|TestSendMessage.*MessageBus|TestSendMessage.*AgentNotFound' -count=1",
+    "go test ./swarm ./tools -run 'TestMailbox.*Read|TestMailbox.*Layout|TestMailbox.*ReadFlag|TestSendMessage.*Color|TestSendMessage.*TeamMailboxDirect' -count=1",
+    "go test ./tools -run 'TestSendMessage.*Broadcast|TestSendMessage.*NoTeam|TestSendMessage.*MissingTeam|TestSendMessage.*Inactive|TestSendMessage.*Partial' -count=1",
+    "go test ./tools ./loop -run 'TestSendMessage.*Shutdown|TestSendMessage.*PlanApproval|TestSendMessage.*PermissionMode|TestSendMessage.*Feedback|TestSendMessage.*Backend|TestSendMessage.*Structured' -count=1",
+    "go test ./tools ./swarm ./permissions -run 'TestSendMessage|TestMailbox|TestRequiresBridgePermission|TestCacheKeyDifferentiatesSendMessageTargets|TestModeAllowAllSendMessage' -count=1",
+    "go test ./tools -run 'TestSendMessageAlignment' -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

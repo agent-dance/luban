@@ -1,0 +1,5 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "script_verifier"
+
+[run]
+cwd = "/workspace"

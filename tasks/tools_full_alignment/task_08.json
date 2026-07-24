@@ -1,0 +1,511 @@
+{
+  "id": "task_08",
+  "title": "Align CronCreate tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all CronCreate improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "CronCreate"
+    ],
+    "problem": "Go CronCreate has the same top-level tool name and basic inputs, stores session and durable jobs, and current cron-focused tests pass. The remaining parity gaps are in the exact tool result/error contract, durable feature-gating semantics, mixed-store max-job enforcement, durable-state robustness, and the scheduler lifecycle that CronCreate enables after creation.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/CronCreate.json"
+    ],
+    "ts_references": [
+      "../src/tools/ScheduleCronTool/CronCreateTool.ts",
+      "../src/tools/ScheduleCronTool/prompt.ts",
+      "../src/utils/cronTasks.ts",
+      "../src/utils/cronScheduler.ts",
+      "../src/utils/semanticBoolean.ts"
+    ],
+    "go_references": [
+      "tools/cron.go",
+      "tools/helpers.go",
+      "tools/cron_test.go",
+      "tools/cron_alignment_test.go",
+      "registry_setup.go",
+      "tools/cron_extra_test.go",
+      "tools/cron_jitter.go",
+      "tools/cron_jitter_formula.go",
+      "tools/cron_markdown_escape.go",
+      "tools/cron_lock_test.go",
+      "tools/cron_idle_gate.go",
+      "tools/cron_executor.go",
+      "tools/parse.go"
+    ],
+    "source_note": ""
+  },
+  "owned_files": [
+    "tools/cron.go",
+    "tools/helpers.go",
+    "tools/cron_test.go",
+    "tools/cron_alignment_test.go",
+    "registry_setup.go",
+    "tools/cron_extra_test.go",
+    "tools/cron_jitter.go",
+    "tools/cron_jitter_formula.go",
+    "tools/cron_markdown_escape.go",
+    "tools/cron_lock_test.go",
+    "tools/cron_idle_gate.go",
+    "tools/cron_executor.go",
+    "tools/parse.go"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "croncreate-gap-01",
+      "severity": "P2",
+      "category": "contract_schema_output",
+      "title": "CronCreate result and validation-error contract is text-only in Go",
+      "description": "The TS tool has an output schema with id, humanSchedule, recurring, and durable, returns structured data from call(), and maps that data to the exact user-facing tool_result text. Its validation path also assigns errorCode 1-4 for invalid syntax, no future calendar match, max jobs, and teammate durable refusal. Go returns a single formatted Content string and IsError flag; only the teammate guard includes errorCode=4 text, while other validation failures are unstructured text."
+    },
+    {
+      "id": "croncreate-gap-02",
+      "severity": "P2",
+      "category": "contract_schema_output",
+      "title": "Durable cron kill switch is not modeled as effectiveDurable in Go",
+      "description": "TS has a narrow durable-only gate, isDurableCronEnabled(), and CronCreate coerces durable=true to effectiveDurable=false when that gate is off while leaving session-only cron available. The prompt/description also changes when durable cron is disabled. Go has AGENT_TRIGGERS registration and CLAUDE_CODE_DISABLE_CRON full-tool refusal, but no durable-only resolver; durable input is passed directly into Store.create and reported directly in output."
+    },
+    {
+      "id": "croncreate-gap-03",
+      "severity": "P2",
+      "category": "state_lifecycle",
+      "title": "Session-only creation does not enforce the global 50-job cap across durable jobs",
+      "description": "TS validates MAX_JOBS against listAllCronTasks(), which merges durable file-backed tasks and session-only tasks. Go durable creation checks len(durable)+sessionCount, but the non-durable branch only checks len(sessionJobs), so creating session jobs can exceed 50 total jobs when durable jobs already exist."
+    },
+    {
+      "id": "croncreate-gap-04",
+      "severity": "P2",
+      "category": "permissions_visibility",
+      "title": "Durable state reader is less tolerant of malformed files and malformed entries",
+      "description": "TS readCronTasks returns an empty list for missing, inaccessible, empty, or malformed scheduled_tasks.json and skips individual malformed or invalid-cron entries. Go readDurableJobsLocked returns errors for JSON unmarshal failures and accepts zero-value fields such as empty id/prompt or CreatedAt=0 as long as cron parses. Durable CronCreate fails if the existing file is malformed because Store.create propagates the read error."
+    },
+    {
+      "id": "croncreate-gap-05",
+      "severity": "P2",
+      "category": "contract_schema_output",
+      "title": "Scheduler firing logic does not use the TS next-fire/jitter model that CronCreate promises",
+      "description": "TS stores per-task nextFireAt, computes first sight from lastFiredAt ?? createdAt for recurring jobs and createdAt for one-shots, applies deterministic recurring and one-shot jitter, and then fires when now >= next. Go computes jitter for create/list output, but collectDueJobs fires by direct cron field match on the current minute. The Go scheduler therefore does not actually apply the jittered next_fire time it reports and does not use the same createdAt/lastFiredAt anchoring lifecycle."
+    },
+    {
+      "id": "croncreate-gap-06",
+      "severity": "P2",
+      "category": "state_lifecycle",
+      "title": "Startup missed-task lifecycle differs for one-shot and recurring jobs",
+      "description": "TS initial load surfaces only missed one-shot tasks to the user, wraps the prompts in fenced text, prevents immediate raw firing, and removes them from scheduled_tasks.json. Recurring jobs are not surfaced as missed; they are handled by the normal check() path, which can fire and reschedule based on the anchored next-fire model. Go detectMissedRuns only scans recurring jobs with LastFiredAt and emits a missed-run notification; it does not handle missed one-shot durable tasks at startup and its normal scheduler only fires on exact current-minute cron matches."
+    },
+    {
+      "id": "croncreate-gap-07",
+      "severity": "P2",
+      "category": "permissions_visibility",
+      "title": "Runtime kill switch and idle/loading gate are not applied to actual firing",
+      "description": "TS scheduler accepts isLoading and isKilled callbacks; every check skips firing while loading unless assistantMode and bails out when the cron gate is killed mid-session. Go checks CLAUDE_CODE_DISABLE_CRON only when tools execute, not in runScheduler/collectDueJobs, and the IdleGate hook exists but is not called by StartCronPromptExecution or the scheduler."
+    },
+    {
+      "id": "croncreate-gap-08",
+      "severity": "P2",
+      "category": "contract_schema_output",
+      "title": "CronCreate does not accept TS semanticBoolean string inputs",
+      "description": "TS preprocesses recurring and durable through semanticBoolean, accepting literal string inputs \"true\" and \"false\" while still advertising boolean schema. Go round-trips the input map through encoding/json into *bool and bool fields, so quoted booleans fail parsing before CronCreate can apply defaults or validation."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": null,
+      "title": "Align CronCreate structured success and validation error contract",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "gosrc/tools/cron.go",
+        "gosrc/tools/helpers.go",
+        "gosrc/tools/cron_test.go",
+        "gosrc/tools/cron_alignment_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts",
+        "gosrc/tools/cron.go",
+        "gosrc/tools/helpers.go",
+        "gosrc/tools/cron_test.go"
+      ],
+      "implementation_steps": [
+        "Introduce a CronCreate result struct with id, humanSchedule, recurring, durable, and optional next_fire/tz metadata if the Go ToolResult type supports metadata; otherwise emit stable parseable content that exactly carries those fields.",
+        "Normalize successful user-facing text to distinguish recurring vs one-shot and durable vs session-only using TS wording.",
+        "Add stable error-code markers for invalid cron syntax, no future date, too many jobs, and durable teammate refusal.",
+        "Add tests for success fields and each validation code."
+      ],
+      "acceptance_criteria": [
+        "CronCreate success exposes id, humanSchedule-equivalent schedule text, recurring, and effective durable status.",
+        "Invalid cron syntax maps to code 1, no future date to code 2, max jobs to code 3, and durable teammate refusal to code 4.",
+        "Existing basic CronCreate tests continue to pass."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCronCreateTool|TestAlignmentCron|CronCreate'"
+      ],
+      "risks": [
+        "If types.ToolResult has no structured metadata field, exact TS data/result separation may require broader loop/types changes; keep this task scoped to CronCreate-visible contract unless that API already exists."
+      ],
+      "non_goals": [
+        "Do not change CronDelete or CronList contracts except where shared helpers require it."
+      ],
+      "notes": ""
+    },
+    {
+      "source_id": null,
+      "title": "Add durable-only CronCreate kill switch and effectiveDurable semantics",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "gosrc/tools/cron.go",
+        "gosrc/registry_setup.go",
+        "gosrc/tools/cron_test.go",
+        "gosrc/tools/cron_alignment_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/prompt.ts",
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts",
+        "gosrc/tools/cron.go",
+        "gosrc/registry_setup.go"
+      ],
+      "implementation_steps": [
+        "Add a durable cron feature resolver or env-backed equivalent separate from CLAUDE_CODE_DISABLE_CRON.",
+        "Compute effectiveDurable as requested durable && durable gate enabled before guardDurableCreation, Store.create, and output rendering.",
+        "Adjust CronCreate description/schema descriptions if the Go registry exposes dynamic descriptions; otherwise document the runtime behavior in tests.",
+        "Add tests proving durable=true becomes durable=false/session-only when the durable gate is off while normal cron remains enabled."
+      ],
+      "acceptance_criteria": [
+        "A disabled durable gate does not reject CronCreate; it creates a session-only job.",
+        "The result reports durable=false when durable=true is coerced off.",
+        "CLAUDE_CODE_DISABLE_CRON still disables the entire tool."
+      ],
+      "verification": [
+        "go test ./tools -run 'CronCreate|Durable|FeatureFlag'"
+      ],
+      "risks": [
+        "Go may not have a GrowthBook equivalent; use an injectable resolver so production wiring can be added without hardcoding test-only env behavior."
+      ],
+      "non_goals": [
+        "Do not implement a full GrowthBook client in this task unless one already exists in the Go codebase."
+      ],
+      "notes": ""
+    },
+    {
+      "source_id": null,
+      "title": "Enforce the global 50-job cap across session and durable CronCreate paths",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts",
+        "../src/utils/cronTasks.ts",
+        "gosrc/tools/cron.go"
+      ],
+      "implementation_steps": [
+        "Add a helper that counts durable file-backed jobs plus session jobs under the appropriate locks.",
+        "Use that helper in both durable and non-durable Store.create branches.",
+        "Return the TS-compatible too-many-jobs message and error code from the CronCreate layer.",
+        "Add a mixed-store regression test with preseeded durable jobs followed by session-only creation."
+      ],
+      "acceptance_criteria": [
+        "Creating a session-only job fails once durable + session jobs reaches 50.",
+        "Creating a durable job still fails at the same combined threshold.",
+        "The failure message remains 'Too many scheduled jobs (max 50). Cancel one first.' or the agreed TS-compatible equivalent."
+      ],
+      "verification": [
+        "go test ./tools -run 'CronCreate|Max|Too many|CronStore'"
+      ],
+      "risks": [
+        "Care is needed to avoid lock-order deadlocks between the in-memory mutex and runtime file lock."
+      ],
+      "non_goals": [
+        "Do not change the MAX_JOBS value."
+      ],
+      "notes": ""
+    },
+    {
+      "source_id": null,
+      "title": "Harden durable scheduled_tasks.json read compatibility",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_test.go",
+        "gosrc/tools/cron_extra_test.go"
+      ],
+      "read_first": [
+        "../src/utils/cronTasks.ts",
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_extra_test.go"
+      ],
+      "implementation_steps": [
+        "Change readDurableJobsLocked to return an empty job list for malformed JSON and expected file-access failures that TS treats as inaccessible.",
+        "Validate each persisted entry has non-empty id, cron, prompt, and non-zero/valid createdAt before appending it.",
+        "Skip invalid cron entries instead of failing the whole file.",
+        "Add regression tests for malformed JSON, missing fields, invalid cron entries, and durable CronCreate after a bad file."
+      ],
+      "acceptance_criteria": [
+        "A malformed scheduled_tasks.json does not block CronCreate durable creation.",
+        "Malformed individual entries are skipped and do not count toward the 50-job cap.",
+        "Valid entries in a mixed file still load and persist round-trip."
+      ],
+      "verification": [
+        "go test ./tools -run 'Cron.*Durable|Cron.*Malformed|CronCreate'"
+      ],
+      "risks": [
+        "Returning empty on malformed JSON can overwrite user-edited bad files on the next durable write, matching TS recovery but potentially discarding invalid content."
+      ],
+      "non_goals": [
+        "Do not add migration support for alternate cron file paths."
+      ],
+      "notes": ""
+    },
+    {
+      "source_id": null,
+      "title": "Rework Go cron scheduler around TS next-fire, jitter, and anchoring semantics",
+      "priority": "P0",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_jitter.go",
+        "gosrc/tools/cron_jitter_formula.go",
+        "gosrc/tools/cron_test.go",
+        "gosrc/tools/cron_alignment_test.go"
+      ],
+      "read_first": [
+        "../src/utils/cronScheduler.ts",
+        "../src/utils/cronTasks.ts",
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_jitter.go"
+      ],
+      "implementation_steps": [
+        "Introduce per-job nextFireAt state for session and durable jobs.",
+        "Compute first-sight next fire from lastFiredAt ?? createdAt for recurring jobs and from createdAt for one-shot jobs.",
+        "Apply recurring jitter based on the interval between cron matches, not a fixed one-minute proxy.",
+        "Apply one-shot early jitter and clamp to createdAt/from time.",
+        "Persist LastFiredAt for durable recurring jobs after firing so restarts reconstruct the same next fire.",
+        "Update create/list next_fire computation to use the same helper as the scheduler."
+      ],
+      "acceptance_criteria": [
+        "Scheduler fires at the jittered next fire, not merely on raw cron minute match.",
+        "Create output next_fire matches the scheduler's first fire time within test-controlled clock precision.",
+        "Recurring durable jobs persist LastFiredAt and do not refire immediately after store rebuild unless due under TS semantics.",
+        "One-shot jobs at :00/:30 can fire early according to deterministic jitter."
+      ],
+      "verification": [
+        "go test ./tools -run 'Cron.*Jitter|Cron.*Scheduler|CronCreate|AlignmentCron'"
+      ],
+      "risks": [
+        "This changes core firing timing and must use deterministic clocks in tests to avoid flakes.",
+        "It may require replacing current direct cron match logic rather than patching around it."
+      ],
+      "non_goals": [
+        "Do not change CronDelete/List public behavior except next_fire consistency."
+      ],
+      "notes": ""
+    },
+    {
+      "source_id": null,
+      "title": "Match TS startup missed-task lifecycle",
+      "priority": "P0",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_markdown_escape.go",
+        "gosrc/tools/cron_extra_test.go",
+        "gosrc/tools/cron_lock_test.go"
+      ],
+      "read_first": [
+        "../src/utils/cronScheduler.ts",
+        "../src/utils/cronTasks.ts",
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_extra_test.go"
+      ],
+      "implementation_steps": [
+        "Replace or extend detectMissedRuns so initial load identifies missed one-shot durable tasks using nextCronRun(createdAt) < now.",
+        "Surface missed one-shot tasks using fenced prompt text that tells the model to ask before executing.",
+        "Remove surfaced one-shot missed tasks from scheduled_tasks.json.",
+        "Do not surface recurring tasks as missed notifications; let the next-fire scheduler path fire/reschedule them according to TS semantics.",
+        "Add tests for missed one-shot removal and recurring non-notification on initial load."
+      ],
+      "acceptance_criteria": [
+        "A missed one-shot durable task is surfaced once, fenced safely, and removed from the cron file.",
+        "Recurring missed tasks are not surfaced through the one-shot missed notification path.",
+        "No raw missed one-shot prompt fires before user confirmation."
+      ],
+      "verification": [
+        "go test ./tools -run 'Missed|Cron.*Startup|Cron.*OneShot'"
+      ],
+      "risks": [
+        "Existing Go tests currently assert recurring missed-run notification behavior; those tests must be intentionally updated to the TS contract."
+      ],
+      "non_goals": [
+        "Do not implement AskUserQuestion execution; only produce the scheduler notification prompt equivalent."
+      ],
+      "notes": ""
+    },
+    {
+      "source_id": null,
+      "title": "Wire firing-time idle/loading gate and runtime cron kill switch",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_idle_gate.go",
+        "gosrc/tools/cron_executor.go",
+        "gosrc/registry_setup.go",
+        "gosrc/tools/cron_alignment_test.go",
+        "gosrc/tools/cron_test.go"
+      ],
+      "read_first": [
+        "../src/utils/cronScheduler.ts",
+        "../src/tools/ScheduleCronTool/prompt.ts",
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_idle_gate.go",
+        "gosrc/tools/cron_executor.go"
+      ],
+      "implementation_steps": [
+        "Add injectable isKilled and isLoading/idle policy callbacks to CronStore or the scheduler loop.",
+        "Check the kill switch before collecting or firing due jobs.",
+        "Call IdleGateConsult or a runtime-provided loading policy before callback execution; skip/defer firing when the policy says not to fire.",
+        "Wire registry defaults so behavior is no-op when no richer runtime policy is available.",
+        "Add tests proving a disabled runtime gate and a false IdleGate prevent callback execution."
+      ],
+      "acceptance_criteria": [
+        "Existing scheduled jobs stop firing when the runtime cron kill switch is enabled.",
+        "IdleGate=false prevents StartCronPromptExecution or scheduler callback from launching a background agent.",
+        "Default behavior remains fire-allowed when no policy is configured."
+      ],
+      "verification": [
+        "go test ./tools -run 'Idle|FeatureFlag|Cron.*Scheduler|CronCreate'"
+      ],
+      "risks": [
+        "Skipping versus deferring must be chosen to match TS: TS check simply returns and retries next tick while the task remains scheduled."
+      ],
+      "non_goals": [
+        "Do not implement OS-level idle/battery detection in this task."
+      ],
+      "notes": ""
+    },
+    {
+      "source_id": null,
+      "title": "Accept TS semanticBoolean values for CronCreate optional booleans",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "gosrc/tools/parse.go",
+        "gosrc/tools/cron.go",
+        "gosrc/tools/cron_test.go"
+      ],
+      "read_first": [
+        "../src/utils/semanticBoolean.ts",
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts",
+        "gosrc/tools/parse.go",
+        "gosrc/tools/cron.go"
+      ],
+      "implementation_steps": [
+        "Add a small semantic boolean decoder for CronCreateInput that accepts bool, \"true\", and \"false\" without treating arbitrary non-empty strings as true.",
+        "Preserve current defaults: recurring omitted means true, durable omitted means false.",
+        "Reject other string values with a clear invalid-input ToolResult.",
+        "Add tests for recurring=\"false\", recurring=\"true\", durable=\"true\", durable=\"false\", and invalid durable=\"yes please\"."
+      ],
+      "acceptance_criteria": [
+        "CronCreate accepts quoted \"true\" and \"false\" for recurring and durable.",
+        "CronCreate does not accept truthy arbitrary strings.",
+        "Other tools are unaffected unless a reusable helper is deliberately adopted with tests."
+      ],
+      "verification": [
+        "go test ./tools -run 'CronCreate.*Boolean|CronCreateTool'"
+      ],
+      "risks": [
+        "A generic parser change could affect unrelated tools; keep decoding local to CronCreate unless broader parity work requests it."
+      ],
+      "non_goals": [
+        "Do not change the advertised JSON schema type from boolean."
+      ],
+      "notes": ""
+    }
+  ],
+  "acceptance_criteria": [
+    "CronCreate input validation and schema behavior match the original TS implementation for all report gaps.",
+    "CronCreate model-visible output and structured result data match TS golden fixtures.",
+    "CronCreate runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "CronCreate success exposes id, humanSchedule-equivalent schedule text, recurring, and effective durable status.",
+    "Invalid cron syntax maps to code 1, no future date to code 2, max jobs to code 3, and durable teammate refusal to code 4.",
+    "Existing basic CronCreate tests continue to pass.",
+    "A disabled durable gate does not reject CronCreate; it creates a session-only job.",
+    "The result reports durable=false when durable=true is coerced off.",
+    "CLAUDE_CODE_DISABLE_CRON still disables the entire tool.",
+    "Creating a session-only job fails once durable + session jobs reaches 50.",
+    "Creating a durable job still fails at the same combined threshold.",
+    "The failure message remains 'Too many scheduled jobs (max 50). Cancel one first.' or the agreed TS-compatible equivalent.",
+    "A malformed scheduled_tasks.json does not block CronCreate durable creation.",
+    "Malformed individual entries are skipped and do not count toward the 50-job cap.",
+    "Valid entries in a mixed file still load and persist round-trip.",
+    "Scheduler fires at the jittered next fire, not merely on raw cron minute match.",
+    "Create output next_fire matches the scheduler's first fire time within test-controlled clock precision.",
+    "Recurring durable jobs persist LastFiredAt and do not refire immediately after store rebuild unless due under TS semantics.",
+    "One-shot jobs at :00/:30 can fire early according to deterministic jitter.",
+    "A missed one-shot durable task is surfaced once, fenced safely, and removed from the cron file.",
+    "Recurring missed tasks are not surfaced through the one-shot missed notification path.",
+    "No raw missed one-shot prompt fires before user confirmation.",
+    "Existing scheduled jobs stop firing when the runtime cron kill switch is enabled.",
+    "IdleGate=false prevents StartCronPromptExecution or scheduler callback from launching a background agent.",
+    "Default behavior remains fire-allowed when no policy is configured.",
+    "CronCreate accepts quoted \"true\" and \"false\" for recurring and durable.",
+    "CronCreate does not accept truthy arbitrary strings."
+  ],
+  "verification": [
+    "go test ./tools -run 'TestCronCreateTool|TestAlignmentCron|CronCreate'",
+    "go test ./tools -run 'CronCreate|Durable|FeatureFlag'",
+    "go test ./tools -run 'CronCreate|Max|Too many|CronStore'",
+    "go test ./tools -run 'Cron.*Durable|Cron.*Malformed|CronCreate'",
+    "go test ./tools -run 'Cron.*Jitter|Cron.*Scheduler|CronCreate|AlignmentCron'",
+    "go test ./tools -run 'Missed|Cron.*Startup|Cron.*OneShot'",
+    "go test ./tools -run 'Idle|FeatureFlag|Cron.*Scheduler|CronCreate'",
+    "go test ./tools -run 'CronCreate.*Boolean|CronCreateTool'"
+  ],
+  "risks": [
+    "If types.ToolResult has no structured metadata field, exact TS data/result separation may require broader loop/types changes; keep this task scoped to CronCreate-visible contract unless that API already exists.",
+    "Go may not have a GrowthBook equivalent; use an injectable resolver so production wiring can be added without hardcoding test-only env behavior.",
+    "Care is needed to avoid lock-order deadlocks between the in-memory mutex and runtime file lock.",
+    "Returning empty on malformed JSON can overwrite user-edited bad files on the next durable write, matching TS recovery but potentially discarding invalid content.",
+    "This changes core firing timing and must use deterministic clocks in tests to avoid flakes.",
+    "It may require replacing current direct cron match logic rather than patching around it.",
+    "Existing Go tests currently assert recurring missed-run notification behavior; those tests must be intentionally updated to the TS contract.",
+    "Skipping versus deferring must be chosen to match TS: TS check simply returns and retries next tick while the task remains scheduled.",
+    "A generic parser change could affect unrelated tools; keep decoding local to CronCreate unless broader parity work requests it.",
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not change CronDelete or CronList contracts except where shared helpers require it.",
+    "Do not implement a full GrowthBook client in this task unless one already exists in the Go codebase.",
+    "Do not change the MAX_JOBS value.",
+    "Do not add migration support for alternate cron file paths.",
+    "Do not change CronDelete/List public behavior except next_fire consistency.",
+    "Do not implement AskUserQuestion execution; only produce the scheduler notification prompt equivalent.",
+    "Do not implement OS-level idle/battery detection in this task.",
+    "Do not change the advertised JSON schema type from boolean.",
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

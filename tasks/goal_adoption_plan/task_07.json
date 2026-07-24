@@ -1,0 +1,84 @@
+{
+  "id": "task_07",
+  "title": "Wire goal runtime into REPL command contexts",
+  "priority": "P1",
+  "status": "accepted",
+  "owner_role": "executor",
+  "estimated_minutes": 5,
+  "parallel_group": "runtime",
+  "can_run_in_parallel": false,
+  "dependencies": [
+    "task_04",
+    "task_06"
+  ],
+  "objective": "Make /goal work in TUI and screen-reader command paths by connecting commands.Context to session-backed Goal state.",
+  "context": [
+    "The command is now registered, but it needs a runtime adapter that reads and writes the current session's Goal metadata.",
+    "This task is intentionally separate because repl_tui.go is a large shared file."
+  ],
+  "source_evidence": [
+    {
+      "source": "repo",
+      "file_or_url": "repl_tui.go:475",
+      "note": "TUI builds command registry and command context."
+    },
+    {
+      "source": "repo",
+      "file_or_url": "repl_tui.go:1240",
+      "note": "Slash command dispatch executes cmd.Execute(buildCmdCtx(), args)."
+    },
+    {
+      "source": "repo",
+      "file_or_url": "repl_screen_reader.go:300",
+      "note": "Screen-reader mode has a separate command path."
+    }
+  ],
+  "read_first": [
+    "repl_tui.go",
+    "repl_screen_reader.go",
+    "commands/goal.go",
+    "session/session.go"
+  ],
+  "owned_files": [
+    "repl_tui.go",
+    "repl_screen_reader.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Build a session-backed GoalRuntime adapter.",
+      "Attach it to commands.Context in TUI and screen-reader paths.",
+      "Ensure /goal changes are saved via existing session metadata repository.",
+      "Refresh local runtime state after command execution."
+    ],
+    "exclude": [
+      "No new UI status bar rendering.",
+      "No evaluator loop."
+    ]
+  },
+  "implementation_steps": [
+    "Find buildCmdCtx or equivalent command context creation.",
+    "Implement a tiny adapter around current session ID and repo SaveMeta/GetMeta.",
+    "Attach the adapter in both REPL surfaces.",
+    "Run focused command and session tests."
+  ],
+  "deliverables": [
+    "Interactive command paths can read and write session Goal metadata."
+  ],
+  "acceptance_criteria": [
+    "/goal works from the TUI command path.",
+    "Screen-reader command mode compiles and uses the same behavior.",
+    "No unrelated TUI code is refactored."
+  ],
+  "verification": [
+    "go test ./... -run 'Goal|Command|Session' -count=1"
+  ],
+  "risks": [
+    "repl_tui.go is likely to be dirty or conflict-prone."
+  ],
+  "non_goals": [
+    "No automatic continuation.",
+    "No visual redesign."
+  ],
+  "dispatch_prompt": "Wire the /goal command runtime into TUI and screen-reader command contexts. Use session metadata as the backing store and keep edits minimal around command context creation.",
+  "notes_for_assignee": "If repl_tui.go has unrelated dirty changes, read carefully and avoid overwriting them."
+}

@@ -1,0 +1,81 @@
+{
+  "id": "task_07",
+  "title": "实现 Token Budget 与 max_output_tokens 原版恢复策略",
+  "priority": "P0",
+  "can_dispatch_independently": true,
+  "depends_on": [
+    "task_01"
+  ],
+  "objective": "把 Go 当前简单的 max_tokens auto-continue 升级为原版的输出预算体系：支持 max_output_tokens escalate、recovery message、token budget 90% 续传和收益递减停止。",
+  "improvement_points": [
+    "新增 BudgetTracker，跟踪 continuationCount、lastDeltaTokens、lastGlobalTurnTokens、startedAt。",
+    "实现 token budget 决策：非 subagent、budget>0、turnTokens 低于 90% 时注入 nudge message 继续。",
+    "连续多轮收益低于 500 tokens 时停止，记录 completion event 或等价事件。",
+    "实现 max_output_tokens_escalate：首次命中 capped default 时同一请求升级到 64k 或 provider/model 上限。",
+    "实现 max_output_tokens_recovery：escalate 后仍命中时追加 meta recovery message，最多 3 次。",
+    "替换当前 '[continue from where you left off]' 合并逻辑，避免与原版 recovery path 语义不一致。"
+  ],
+  "evidence": [
+    {
+      "source": "ts_original",
+      "file": "../src/query/tokenBudget.ts",
+      "lines": "3-93",
+      "note": "TS token budget 使用 0.9 阈值和 500 token diminishing returns 判断。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "1185-1255",
+      "note": "TS max_output_tokens 先 escalate，再进入 recovery message 续传。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "1308-1340",
+      "note": "TS 在 Stop hooks 通过后执行 token_budget_continuation transition。"
+    },
+    {
+      "source": "go_current",
+      "file": "loop/query.go",
+      "lines": "722-820",
+      "note": "Go 当前只做固定 3 次 '[continue from where you left off]'，没有 escalate 和 token budget。"
+    }
+  ],
+  "scope": {
+    "include": [
+      "loop/token_budget.go",
+      "loop/query.go",
+      "provider/provider.go",
+      "provider/responses.go",
+      "provider/anthropic.go",
+      "loop/token_budget_test.go",
+      "provider/*_test.go"
+    ],
+    "exclude": [
+      "API-side task_budget，交给 task_08",
+      "UI budget 展示"
+    ]
+  },
+  "implementation_steps": [
+    "新增 Config.TokenBudget 或等价入口，并记录当前 turn output tokens 来源。",
+    "扩展 provider.Params 支持 MaxOutputTokensOverride，Anthropic 与 Responses provider 使用 override。",
+    "实现 max_output_tokens_escalate transition，保留原 prompt cache 与 previous_response_id 安全规则。",
+    "实现 max_output_tokens_recovery transition，使用原版 recovery 文案或 Go 等价常量。",
+    "实现 token budget continuation，注入 meta user nudge message。"
+  ],
+  "acceptance_criteria": [
+    "首次 stop_reason=max_tokens 且允许 escalate 时，不追加用户 continue 消息，而是用更高 max tokens 重试同一请求。",
+    "escalate 后仍 max_tokens 时，最多 3 次使用 recovery message 续传。",
+    "token budget 未达 90% 时继续，达到 90% 或 diminishing returns 时停止。",
+    "subagent 或 budget<=0 时 token budget 不触发。",
+    "所有 continuation 都通过 QueryTransition 可观测。"
+  ],
+  "tests": [
+    "go test ./loop -run 'TestTokenBudget|TestMaxOutputTokens' -count=1",
+    "go test ./provider -run 'Test.*MaxOutputTokens' -count=1"
+  ],
+  "risks": [
+    "max token retry不能破坏 thinking signature，继续路径应避免拼接多个 thinking block。",
+    "Responses API 与 Anthropic Messages API 参数名不同，需要分别测试。"
+  ]
+}

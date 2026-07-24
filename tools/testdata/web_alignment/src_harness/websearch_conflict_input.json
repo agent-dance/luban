@@ -1,0 +1,5 @@
+{
+  "query": "golang",
+  "allowed_domains": ["go.dev"],
+  "blocked_domains": ["example.com"]
+}

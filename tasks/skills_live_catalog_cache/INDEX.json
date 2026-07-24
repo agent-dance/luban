@@ -1,0 +1,279 @@
+{
+  "id": "skills_live_catalog_cache",
+  "status": "accepted",
+  "generated_at": "2026-07-15",
+  "directory": "/Users/blurooo/project/go-claude/gosrc/tasks/skills_live_catalog_cache",
+  "purpose": "Implement live session skill management with an initial developer-role catalog snapshot, append-only upsert/revoke deltas, on-demand versioned SKILL.md bodies, authoritative execution-time validation, and high prompt-cache prefix reuse.",
+  "task_count": 31,
+  "max_recommended_concurrency": 6,
+  "task_file_pattern": "task_01.json ... task_31.json",
+  "accepted_design": {
+    "authority": "The revisioned Effective Skill Registry is authoritative. Prompt history is only a model-visible projection and never grants execution permission.",
+    "first_turn_order": [
+      "stable system/model instructions",
+      "fixed Skill tool schema",
+      "developer-role full catalog snapshot",
+      "current user input"
+    ],
+    "changed_turn_order": [
+      "unchanged prior conversation prefix",
+      "developer-role coalesced catalog delta",
+      "current user input"
+    ],
+    "invocation_order": [
+      "current user input or Skill tool call",
+      "latest-registry validation",
+      "versioned user-role SKILL.md envelope",
+      "continued sampling"
+    ],
+    "catalog_events": [
+      "upsert for add, metadata/content/visibility update, and re-enable",
+      "revoke for disable, delete, or permission loss"
+    ],
+    "visibility_states": [
+      "auto",
+      "name-only",
+      "manual-only",
+      "off"
+    ],
+    "management_ui": {
+      "entry": "Exact /skills immediately opens one searchable checklist with status, name, summary, source, path, visibility, mutability, and scope. Explicit /skills subcommands continue through the text command path.",
+      "checkboxes": "Every row shows configured visibility on the left: auto, name-only, and manual-only are [x], while off is [ ]. A configured-on row shadowed by a same-name winner stays [x] but its selected details identify the winner stable ID and explain that it is currently inactive. Opening the checklist does not reset persisted state.",
+      "space_toggle": "Space toggles only the selected skill between off and its last non-off visibility; when no prior non-off state exists, it restores auto.",
+      "layout": "Each skill item occupies exactly one terminal row and is ellipsized by terminal display-cell width. Only the selected skill renders a bounded detail block. The complete panel height, including both borders and optional chrome, never exceeds the current viewport and is recomputed on resize.",
+      "scope": "Interactive toggles persist as project-local overrides and apply immediately to the current session. An active session override blocks the shortcut with an actionable conflict instead of being silently replaced. Session-only and advanced visibility edits remain available through text commands.",
+      "concurrency": "Every Space mutation uses stable SkillID plus observed catalog revision and redraws from the authoritative result; stale rows are rejected and refreshed."
+    },
+    "cache_rules": [
+      "never rewrite the initial catalog in visible history",
+      "never generate one tool definition per skill",
+      "keep system instructions, tool definitions, and prompt cache key independent of catalog revision",
+      "append only changed catalog state",
+      "treat compaction/new context epoch as an intentional one-time prefix rebuild"
+    ],
+    "security_boundary": "Disable/revoke immediately blocks future execution but cannot erase skill text already exposed to the model. Sensitive-content revocation requires a new or scrubbed context."
+  },
+  "current_repo_findings": [
+    "Current loop ordering is user input followed by a user-role skill listing; it must become developer catalog followed by user input.",
+    "Current Manager is primarily name-keyed and needs stable source-plus-locator identity to manage same-name skills correctly.",
+    "Current session enable/disable overlay is in-memory and boolean-only.",
+    "Current types.Message has no developer role.",
+    "Current announced skill state is not bound to visible context epoch, so compaction can leave an invalid cursor.",
+    "Current SkillTool already has a natural execution-time validation point and should remain the hard enforcement boundary."
+  ],
+  "concurrency_strategy": {
+    "principle": "Increase throughput by splitting pure contracts, catalog components, provider adapters, compact sub-pipelines, runtime surfaces, and acceptance lanes while giving each existing production file one owner.",
+    "peak_concurrency": 6,
+    "conflict_controls": [
+      "No two tasks in the same or different waves own the same existing production file.",
+      "Tasks add uniquely named taskNN test files instead of editing shared broad test files.",
+      "Integration and acceptance tasks modify tests/reports only; production defects return to the owning implementation task.",
+      "A dependent task starts only after every dependency is accepted.",
+      "If an owned production file contains unrelated dirty changes, preserve them and report overlap instead of overwriting."
+    ]
+  },
+  "waves": [
+    {
+      "wave": 1,
+      "max_concurrency": 2,
+      "tasks": [
+        "task_01",
+        "task_02"
+      ],
+      "notes": "Freeze the catalog value contract and transport-neutral developer message contract."
+    },
+    {
+      "wave": 2,
+      "max_concurrency": 6,
+      "tasks": [
+        "task_03",
+        "task_04",
+        "task_05",
+        "task_06",
+        "task_07",
+        "task_08"
+      ],
+      "notes": "Build six independent pure catalog/storage/envelope components in new files."
+    },
+    {
+      "wave": 3,
+      "max_concurrency": 6,
+      "tasks": [
+        "task_09",
+        "task_10",
+        "task_11",
+        "task_12",
+        "task_14",
+        "task_18"
+      ],
+      "notes": "Implement three provider projections, settings validation, MCP catalog inputs, and the pure loop coordinator."
+    },
+    {
+      "wave": 4,
+      "max_concurrency": 4,
+      "tasks": [
+        "task_13",
+        "task_17",
+        "task_20",
+        "task_21"
+      ],
+      "notes": "Integrate the Manager and session state while two disjoint compact pipelines handle the new developer role."
+    },
+    {
+      "wave": 5,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_15",
+        "task_16",
+        "task_19"
+      ],
+      "notes": "Expose command/invocation contracts, enforce execution, and install pre-user query ordering."
+    },
+    {
+      "wave": 6,
+      "max_concurrency": 3,
+      "tasks": [
+        "task_22",
+        "task_24",
+        "task_25"
+      ],
+      "notes": "Rebuild catalog state after every compact/recovery path and implement TUI/screen-reader surfaces in parallel."
+    },
+    {
+      "wave": 7,
+      "max_concurrency": 1,
+      "tasks": [
+        "task_30"
+      ],
+      "notes": "Build the direct interactive skills checklist after its command and launcher contracts are stable."
+    },
+    {
+      "wave": 8,
+      "max_concurrency": 1,
+      "tasks": [
+        "task_23"
+      ],
+      "notes": "Wire the completed component and surface contracts through root runtime composition."
+    },
+    {
+      "wave": 9,
+      "max_concurrency": 4,
+      "tasks": [
+        "task_26",
+        "task_27",
+        "task_31",
+        "task_28"
+      ],
+      "notes": "Run the isolated skills-panel layout follow-up alongside already-independent integration/cache lanes; task_28 starts only after task_31 and then validates the combined lifecycle and visual contract without editing production code."
+    },
+    {
+      "wave": 10,
+      "max_concurrency": 1,
+      "tasks": [
+        "task_29"
+      ],
+      "notes": "Final verifier runs all gates and publishes evidence without fixing production code. Its existing dependency on task_28 makes task_31 a transitive prerequisite."
+    }
+  ],
+  "integration_and_acceptance": {
+    "integration_task": "task_26",
+    "cache_acceptance_task": "task_27",
+    "layout_task": "task_31",
+    "lifecycle_acceptance_task": "task_28",
+    "final_verifier_task": "task_29",
+    "required_scenarios": [
+      "Initial full catalog snapshot is before the current user message.",
+      "No catalog change emits no catalog message.",
+      "Add/update/visibility changes emit coalesced upserts.",
+      "Disable/delete emits revoke and execution rejects immediately.",
+      "Re-enable emits a current upsert.",
+      "Same-name skills from different sources remain separately manageable.",
+      "Session and persistent overrides remain isolated and survive only their intended lifecycle.",
+      "Resume/compact rebuild when catalog/body messages are absent from the visible context epoch.",
+      "Full SKILL.md content loads only on invocation and carries ID, revision, and digest.",
+      "Anthropic, OpenAI Chat, and OpenAI Responses preserve equivalent logical order.",
+      "System instructions, tool schemas, model settings, and PromptCacheKey remain stable across catalog revisions.",
+      "Internal developer catalog messages remain hidden from normal transcript presentation.",
+      "Exact /skills immediately opens a searchable checkbox list with no intermediate action menu; Enter is inert and one Esc closes it.",
+      "Effective non-off states render [x], off renders [ ], and explicit /skills subcommands continue through the text command path.",
+      "Space changes only the selected mutable stable ID, preserves its persisted last non-off visibility, rejects stale/session-overridden rows, and redraws from the authoritative result after success or failure.",
+      "Every skill list item occupies one terminal row and uses grapheme-safe terminal-cell ellipsis for ASCII, CJK, combining text, emoji/ZWJ sequences, and long metadata.",
+      "Only the selected skill exposes detail rows; selection and filtering remove the previous skill's details.",
+      "The complete skills panel, including top and bottom borders, stays inside the terminal viewport at extreme widths/heights and after shrink/grow resize.",
+      "Concurrent refresh, toggle, snapshot, and invoke are race-free."
+    ]
+  },
+  "hot_file_owners": {
+    "types/messages.go + Message JSON methods in types/tools.go": "task_02",
+    "skills/invocation_origin.go + catalog_manager_task13_test.go": "task_13",
+    "commands/skills.go + commands/commands.go": "task_15",
+    "i18n/session_command_keys.go + session_command_keys_test.go skill command copy": "task_15",
+    "tools/skill.go": "task_16",
+    "i18n/skill_tool_keys.go + skill_tool_keys_test.go": "task_16",
+    "session/session.go": "task_17",
+    "loop/query.go": "task_19",
+    "compact/compact.go + compact/invariants.go": "task_20",
+    "compact/microcompact.go + cached_microcompact.go + content_replacement.go": "task_21",
+    "compact/post_compact.go + post_compact_attachments.go + result.go + loop compact/recovery/attachment paths + post_compact/transaction tests + downstream compact assertions in skill_catalog_query_task19_test.go": "task_22",
+    "provider/anthropic.go": "task_09",
+    "provider/openai.go": "task_10",
+    "provider/responses.go": "task_11",
+    "engine/config.go + engine/core.go + registry_setup.go + main.go": "task_23",
+    "engine/session_adapter.go + skills/loader.go + skills/override_store.go + task23 runtime/session tests": "task_23",
+    "mcp_skill_runtime.go + skills/mcp_prompt_discovery.go + skills/mcp_runtime_generation.go + services/mcp/catalog_lifecycle.go": "task_23",
+    "services/mcp/cache.go + services/mcp/manager.go + services/mcp/notifications.go + services/mcp/reconnect.go + tools/mcp_notifications.go": "task_23",
+    "loop/skill_loaded_resolver.go + skill_loaded_resolver_task23_test.go visible explicit-invocation ledger reconciliation": "task_23",
+    "loop/tool_context.go complete defensive message clone + tool_context_clone_task23_test.go": "task_23",
+    "tools/agent.go + tools/agent_sessions.go + tools/background_tasks.go + tools/runtime_task_store.go + tools/team.go skill generation/retained-owner fencing": "task_23",
+    "tools/skill_project_generation.go + worktree_session_runtime.go + tools/worktree_enter*.go + tools/worktree_exit.go + tools/worktree_session_state.go": "task_23",
+    "tui/slash_commands.go + tui/session_projection.go + TUI skill invocation/suggestion surfaces": "task_24",
+    "i18n/skills_tui_routing_keys.go + skills_tui_routing_keys_test.go": "task_24",
+    "repl_tui.go exact-skills request + tui/skills_surface.go + tui/app.go + tui/state.go + direct skills checklist interaction": "task_30",
+    "tui/root.go skills checklist rendering + tui/skills_layout.go single-line/cell-width/viewport layout follow-up": "task_31",
+    "i18n/skills_menu_keys.go + skills_menu_keys_test.go": "task_30",
+    "repl_screen_reader.go": "task_25",
+    "i18n/skills_screen_reader_keys.go + skills_screen_reader_keys_test.go": "task_25"
+  },
+  "dispatch_rules": [
+    "Dispatch no more than six subagents concurrently, per workspace AGENTS.md.",
+    "Use the wave order unless a task's explicit dependencies permit a narrower safe advance.",
+    "Assign each task as a standalone prompt using its dispatch_prompt, read_first, owned_files, and verification fields.",
+    "Do not let integration, acceptance, or verifier tasks repair production code.",
+    "Do not merge task ownership because work appears small; the split is intentionally optimized for concurrent low-conflict execution.",
+    "Mark a task accepted only after its verification commands pass and its owned-file diff is reviewed.",
+    "Task status transitions are recorded by the external coordinator after verification; implementation agents do not edit task definition JSON unless explicitly assigned that bookkeeping."
+  ],
+  "task_files": [
+    "task_01.json",
+    "task_02.json",
+    "task_03.json",
+    "task_04.json",
+    "task_05.json",
+    "task_06.json",
+    "task_07.json",
+    "task_08.json",
+    "task_09.json",
+    "task_10.json",
+    "task_11.json",
+    "task_12.json",
+    "task_13.json",
+    "task_14.json",
+    "task_15.json",
+    "task_16.json",
+    "task_17.json",
+    "task_18.json",
+    "task_19.json",
+    "task_20.json",
+    "task_21.json",
+    "task_22.json",
+    "task_23.json",
+    "task_24.json",
+    "task_25.json",
+    "task_26.json",
+    "task_27.json",
+    "task_28.json",
+    "task_29.json",
+    "task_30.json",
+    "task_31.json"
+  ]
+}

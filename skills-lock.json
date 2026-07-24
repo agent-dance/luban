@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "gangjing": {
+      "source": "agent-dance/harness-engineering",
+      "sourceType": "github",
+      "computedHash": "303b309bd60c9c7eaa2493bcce59a416f6bf062c6b87891f036b0b84586041be"
+    }
+  }
+}

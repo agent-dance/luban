@@ -1,0 +1,24 @@
+{
+  "name": "web-fetch-domain-permission-suggestion",
+  "tool": "WebFetch",
+  "category": "web",
+  "ts_reference": "../src/tools/WebFetchTool/WebFetchTool.ts:104-180",
+  "ts_behavior": "A non-preapproved domain requires approval and proposes a persistent localSettings allow rule scoped to domain:<hostname>.",
+  "input": {
+    "url": "https://example.invalid/reference",
+    "prompt": "Find the parity contract"
+  },
+  "expected_enabled": true,
+  "permission": {
+    "behavior": "ask",
+    "message_contains": [
+      "WebFetch requires permission before it can access this resource."
+    ],
+    "suggestions_json_contains": [
+      "\"type\":\"addRules\"",
+      "\"destination\":\"localSettings\"",
+      "\"ruleContent\":\"domain:example.invalid\""
+    ]
+  },
+  "skip_execution": true
+}

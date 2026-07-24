@@ -1,0 +1,49 @@
+diff --git a/pydantic_like/errors.py b/pydantic_like/errors.py
+index d9df85b..ddb91c7 100644
+--- a/pydantic_like/errors.py
++++ b/pydantic_like/errors.py
+@@ -1,7 +1,7 @@
+ class ValidationError(Exception):
+-    def __init__(self, message):
+-        super().__init__(message)
+-        self.message = message
++    def __init__(self, errors):
++        super().__init__("validation failed")
++        self._errors = list(errors)
+ 
+     def errors(self):
+-        return [{"loc": (), "msg": self.message, "type": "value_error"}]
++        return list(self._errors)
+diff --git a/pydantic_like/model.py b/pydantic_like/model.py
+index dbfa1e4..ab79dba 100644
+--- a/pydantic_like/model.py
++++ b/pydantic_like/model.py
+@@ -7,15 +7,24 @@ class Model:
+ 
+     def validate(self, data):
+         result = {}
++        errors = []
+         for name, field in self.fields.items():
+             key = field.alias or name
++            loc = (key,)
+             if key not in data:
+                 if field.required:
+-                    raise ValidationError(f"{key} is required")
+-                result[name] = field.default
++                    errors.append({"loc": loc, "msg": "Field required", "type": "missing", "input": data})
++                else:
++                    result[name] = field.default
+                 continue
+             value = data[key]
+-            if not isinstance(value, field.typ):
+-                raise ValidationError(f"{key} has wrong type")
++            if (field.typ is int and isinstance(value, bool)) or not isinstance(value, field.typ):
++                errors.append({"loc": loc, "msg": f"Input should be {field.typ.__name__}", "type": f"{field.typ.__name__}_type", "input": value})
++                continue
+             result[name] = value
++        extra = sorted(set(data) - {f.alias or name for name, f in self.fields.items()})
++        for key in extra:
++            errors.append({"loc": (key,), "msg": "Extra inputs are not permitted", "type": "extra_forbidden", "input": data[key]})
++        if errors:
++            raise ValidationError(errors)
+         return result

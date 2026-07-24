@@ -1,0 +1,57 @@
+{
+  "id": "task_14",
+  "title": "Implement session-memory compaction path",
+  "priority": "P1",
+  "status": "ready_for_dispatch",
+  "owner_role": "executor",
+  "parallel_group": "advanced_compaction",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_01",
+    "task_02"
+  ],
+  "objective": "Add the TS session-memory-first compaction path or an explicit compatible no-op when the required upstream session memory system is unavailable.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/services/compact/sessionMemoryCompact.ts:57",
+    "/Users/blurooo/project/go-claude/src/services/compact/sessionMemoryCompact.ts:232",
+    "/Users/blurooo/project/go-claude/src/services/compact/sessionMemoryCompact.ts:324",
+    "/Users/blurooo/project/go-claude/src/services/compact/sessionMemoryCompact.ts:403",
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go:14"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/compact",
+    "/Users/blurooo/project/go-claude/gosrc/session",
+    "/Users/blurooo/project/go-claude/gosrc/memory",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/commands"
+  ],
+  "implementation_scope": [
+    "Add session-memory compaction configuration with minTokens, minTextBlockMessages, and maxTokens defaults matching TS.",
+    "Implement capability gates/env gates equivalent to shouldUseSessionMemoryCompaction where Go has config support.",
+    "Load or receive pre-extracted session memory summary if the Go product has a session memory subsystem.",
+    "Calculate messagesToKeep index from last summarized message, minimum token/text requirements, max cap, compact boundary floor, and API invariants.",
+    "Build a CompactionResult using the session memory summary and preserved tail.",
+    "Reset last summarized message tracking after legacy compaction replaces history.",
+    "If upstream session memory extraction does not exist, provide an explicit TrySessionMemoryCompaction no-op with tests and TODO references so auto/manual compact call sites can be wired safely."
+  ],
+  "out_of_scope": [
+    "Do not implement a full new memory extraction service unless a Go memory subsystem already exists.",
+    "Do not change the traditional LLM summary path."
+  ],
+  "acceptance_criteria": [
+    "Auto and manual compact can call TrySessionMemoryCompaction first without nil behavior or cycles.",
+    "When session memory is available, the result preserves a bounded invariant-safe recent tail.",
+    "When unavailable, behavior is an explicit no-op and traditional compact continues.",
+    "Tests cover config thresholds, boundary floor, tool pair preservation, same assistant id preservation, and no-op mode."
+  ],
+  "verification": [
+    "go test ./compact",
+    "go test ./loop",
+    "go test ./commands"
+  ],
+  "risks": [
+    "This task may reveal that Go lacks the upstream session memory subsystem; record that as a product gap rather than faking memory content.",
+    "Incorrect tail selection can produce invalid provider messages."
+  ],
+  "dispatch_prompt": "Implement the Go session-memory compaction path, including TS-like tail selection and a safe explicit no-op if upstream session memory is not present."
+}

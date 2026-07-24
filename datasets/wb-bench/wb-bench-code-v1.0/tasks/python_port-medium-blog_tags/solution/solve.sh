@@ -1,0 +1,87 @@
+#!/bin/bash
+set -euo pipefail
+if [ -d /workspace ]; then cd /workspace; else cd "$(pwd)"; fi
+cat > target_python/main.py <<'PY_MAIN'
+#!/usr/bin/env python3
+import argparse, html, shutil, tomllib
+from pathlib import Path
+
+def parse_front_matter(text):
+    if text.startswith('+++'):
+        parts = text.split('+++', 2)
+        if len(parts) >= 3:
+            return tomllib.loads(parts[1]), parts[2].lstrip('\n')
+    return {}, text
+
+def markdown(text):
+    blocks = []
+    for part in text.strip().split('\n\n'):
+        lines = part.splitlines()
+        if not lines:
+            continue
+        if lines[0].startswith('# '):
+            blocks.append('<h1>' + html.escape(lines[0][2:].strip()) + '</h1>')
+            rest = ' '.join(lines[1:]).strip()
+            if rest:
+                blocks.append('<p>' + html.escape(rest) + '</p>')
+        else:
+            blocks.append('<p>' + html.escape(' '.join(lines)) + '</p>')
+    return '\n'.join(blocks)
+
+def render(template, ctx):
+    out = template
+    for k, v in ctx.items():
+        out = out.replace('{{ ' + k + ' }}', str(v)).replace('{{'+k+'}}', str(v))
+    return out
+
+def build(root, output):
+    root, out = Path(root), Path(output)
+    if out.exists(): shutil.rmtree(out)
+    out.mkdir(parents=True)
+    config_path = root / 'config.toml'
+    config = tomllib.loads(config_path.read_text()) if config_path.exists() else {}
+    templates = root / 'templates'
+    post_tpl = (templates/'post.html').read_text() if (templates/'post.html').exists() else '{{ content }}'
+    index_tpl = (templates/'index.html').read_text() if (templates/'index.html').exists() else '{{ posts }}'
+    tag_tpl = (templates/'tag.html').read_text() if (templates/'tag.html').exists() else '{{ tag }}{{ posts }}'
+    posts, tags = [], {}
+    for path in sorted((root/'content'/'posts').glob('*.md')):
+        data, body = parse_front_matter(path.read_text())
+        slug = data.get('slug') or path.stem
+        title = data.get('title', slug)
+        date = str(data.get('date', ''))
+        post_tags = list((data.get('taxonomies') or {}).get('tags', []))
+        content = markdown(body)
+        page = render(post_tpl, {'title': html.escape(title), 'content': content, 'date': html.escape(date), 'tags': ', '.join(post_tags), 'site_title': html.escape(config.get('title',''))})
+        dest = out/'posts'/slug/'index.html'
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(page)
+        item = {'slug': slug, 'title': title, 'date': date, 'tags': post_tags}
+        posts.append(item)
+        for tag in post_tags:
+            tags.setdefault(tag, []).append(item)
+    posts.sort(key=lambda p: p['date'], reverse=True)
+    links = '\n'.join(f'<li><a href="/posts/{p["slug"]}/">{html.escape(p["title"])}</a></li>' for p in posts)
+    (out/'index.html').write_text(render(index_tpl, {'site_title': html.escape(config.get('title','')), 'posts': links}))
+    for tag, group in tags.items():
+        group.sort(key=lambda p: p['date'], reverse=True)
+        tag_links = '\n'.join(f'<li><a href="/posts/{p["slug"]}/">{html.escape(p["title"])}</a></li>' for p in group)
+        dest = out/'tags'/tag/'index.html'
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(render(tag_tpl, {'tag': html.escape(tag), 'posts': tag_links, 'site_title': html.escape(config.get('title',''))}))
+
+def main(argv=None):
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest='command')
+    build_cmd = sub.add_parser('build')
+    build_cmd.add_argument('--root', required=True)
+    build_cmd.add_argument('--output', required=True)
+    args = parser.parse_args(argv)
+    if args.command != 'build':
+        parser.error('expected build')
+    build(args.root, args.output)
+
+if __name__ == '__main__':
+    main()
+PY_MAIN
+chmod +x target_python/main.py

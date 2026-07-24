@@ -1,0 +1,372 @@
+{
+  "id": "task_06",
+  "title": "Align AskUserQuestion tool with the TS baseline",
+  "priority": "P1",
+  "status": "accepted",
+  "objective": "Implement all AskUserQuestion improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "AskUserQuestion"
+    ],
+    "problem": "Exact surface; the CLI questionnaire flow is close, but Go still returns serialized JSON text instead of the richer original typed result pipeline.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/AskUserQuestion.json"
+    ],
+    "ts_references": [
+      "../src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx"
+    ],
+    "go_references": [
+      "gosrc/tools/ask_user_question.go",
+      "gosrc/tools/ask_user_schema.go (new)",
+      "gosrc/tools/ask_user_preview.go (new)",
+      "gosrc/tools/ask_user_multi_select.go (new)",
+      "tools/askuser.go",
+      "types/tools.go",
+      "loop/concurrent.go",
+      "tools/ask_user_question.go",
+      "tools/ask_user_schema.go (new)",
+      "tools/ask_user_preview.go (new)",
+      "tools/ask_user_multi_select.go (new)"
+    ],
+    "source_note": "Synthesized because the initial early subagent report was returned in chat but not persisted by the read-only role; inputs were the current tools/reports markdown, the handoff summary, and the historical task JSON under ../tasks."
+  },
+  "owned_files": [
+    "tools/askuser.go",
+    "types/tools.go",
+    "loop/concurrent.go",
+    "tools/ask_user_question.go",
+    "tools/ask_user_schema.go (new)",
+    "tools/ask_user_preview.go (new)",
+    "tools/ask_user_multi_select.go (new)"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "ASKUSERQUESTION-SYNTH-GAP-001",
+      "severity": "P2",
+      "category": "contract_schema_output",
+      "title": "Strict question / option schema with validation",
+      "description": "TS schema requires 1-4 questions; each question has 2-4 options; question text must end with '?'; option labels are 1-5 words concise; header chip max 12 chars; multiSelect bool; questions cannot have an 'Other' option (UI auto-adds it)."
+    },
+    {
+      "id": "ASKUSERQUESTION-SYNTH-GAP-002",
+      "severity": "P2",
+      "category": "contract_schema_output",
+      "title": "Preview rendering rules (single-select only)",
+      "description": "TS allows preview content as monospace markdown box. When ANY option in a question has preview, UI switches to side-by-side; multi-select questions cannot use previews."
+    },
+    {
+      "id": "ASKUSERQUESTION-SYNTH-GAP-003",
+      "severity": "P2",
+      "category": "runtime_logic",
+      "title": "Auto-injected 'Other' option semantics",
+      "description": "TS auto-adds 'Other' so the user can supply free-text. Tool must accept that response and surface it under 'Other' answer key."
+    },
+    {
+      "id": "ASKUSERQUESTION-SYNTH-GAP-004",
+      "severity": "P2",
+      "category": "runtime_logic",
+      "title": "Transport: post questions and await answers",
+      "description": "TS posts questions through SendMessage envelope and awaits user reply with request_id correlation."
+    },
+    {
+      "id": "ASKUSERQUESTION-SYNTH-GAP-005",
+      "severity": "P2",
+      "category": "runtime_logic",
+      "title": "Plan-mode auxiliary support",
+      "description": "TS notes that AskUserQuestion in plan mode must not be used to ask 'Should I proceed?' (use ExitPlanMode). Surface guard rail."
+    },
+    {
+      "id": "ASKUSERQUESTION-SYNTH-GAP-006",
+      "severity": "P2",
+      "category": "contract_schema_output",
+      "title": "Annotations payload (preview notes)",
+      "description": "TS supports per-question annotations (notes, selected preview content) returned alongside answers."
+    },
+    {
+      "id": "ASKUSERQUESTION-SYNTH-GAP-007",
+      "severity": "P2",
+      "category": "tests",
+      "title": "Conformance tests",
+      "description": "Lock vs TS."
+    },
+    {
+      "id": "ASKUSERQUESTION-SYNTH-GAP-008",
+      "severity": "P1",
+      "category": "permissions_visibility",
+      "title": "Mirror AskUserQuestion typed result and updatedInput lifecycle",
+      "description": "Return TS-shaped typed answers/annotations data instead of JSON text only, and preserve the permission/updatedInput lifecycle when user answers are collected."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "askuser-01",
+      "title": "Strict question / option schema with validation",
+      "priority": "P2",
+      "addresses_gaps": [
+        "ASKUSERQUESTION-SYNTH-GAP-001"
+      ],
+      "dependencies": [],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/ask_user_schema.go.",
+        "Define Question struct {Text, Header string; MultiSelect bool; Options []Option}.",
+        "Define Option struct {Label, Description string; Preview *string}.",
+        "Validate counts (1-4 questions, 2-4 options); reject 'Other' label; require '?' suffix; cap header at 12 chars.",
+        "Add table-driven tests."
+      ],
+      "acceptance_criteria": [
+        "Empty options rejected",
+        "5+ options rejected",
+        "Header >12 chars rejected",
+        "Options labelled 'Other' rejected"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS schema requires 1-4 questions; each question has 2-4 options; question text must end with '?'; option labels are 1-5 words concise; header chip max 12 chars; multiSelect bool; questions cannot have an 'Other' option (UI auto-adds it)."
+    },
+    {
+      "source_id": "askuser-02",
+      "title": "Preview rendering rules (single-select only)",
+      "priority": "P2",
+      "addresses_gaps": [
+        "ASKUSERQUESTION-SYNTH-GAP-002"
+      ],
+      "dependencies": [
+        "askuser-01"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/ask_user_preview.go.",
+        "Reject preview on multiSelect questions.",
+        "Validate preview length under reasonable cap (e.g. 4000 chars).",
+        "Tag question with HasPreview bool for UI hint.",
+        "Add tests."
+      ],
+      "acceptance_criteria": [
+        "Preview + multiSelect rejected",
+        "Oversize preview rejected",
+        "HasPreview flag correct"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS allows preview content as monospace markdown box. When ANY option in a question has preview, UI switches to side-by-side; multi-select questions cannot use previews."
+    },
+    {
+      "source_id": "askuser-03",
+      "title": "Auto-injected 'Other' option semantics",
+      "priority": "P2",
+      "addresses_gaps": [
+        "ASKUSERQUESTION-SYNTH-GAP-003"
+      ],
+      "dependencies": [
+        "askuser-01"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/ask_user_multi_select.go.",
+        "When parsing user reply, recognise sentinel 'Other:<text>' or annotation block.",
+        "Map to Answer.OtherText alongside Answer.Selection.",
+        "Tests."
+      ],
+      "acceptance_criteria": [
+        "Other free-text captured",
+        "Selection not lost when both used",
+        "Sentinel parser robust"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS auto-adds 'Other' so the user can supply free-text. Tool must accept that response and surface it under 'Other' answer key."
+    },
+    {
+      "source_id": "askuser-04",
+      "title": "Transport: post questions and await answers",
+      "priority": "P2",
+      "addresses_gaps": [
+        "ASKUSERQUESTION-SYNTH-GAP-004"
+      ],
+      "dependencies": [
+        "askuser-01",
+        "sendmsg-01"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Refactor gosrc/tools/ask_user_question.go.Execute.",
+        "Generate request_id; build envelope {questions, metadata?}.",
+        "SendAndAwait via SendMessage.",
+        "Parse reply into AskUserQuestionResult {Answers, Annotations, Metadata}.",
+        "Cancel on context done."
+      ],
+      "acceptance_criteria": [
+        "Reply mapped 1:1 to questions",
+        "Cancel returns context error",
+        "Metadata round-trips"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS posts questions through SendMessage envelope and awaits user reply with request_id correlation."
+    },
+    {
+      "source_id": "askuser-05",
+      "title": "Plan-mode auxiliary support",
+      "priority": "P2",
+      "addresses_gaps": [
+        "ASKUSERQUESTION-SYNTH-GAP-005"
+      ],
+      "dependencies": [
+        "askuser-04"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Detect approval-style questions heuristically (regex on text and options).",
+        "Emit warning instructing tool to use ExitPlanMode instead.",
+        "Add tests."
+      ],
+      "acceptance_criteria": [
+        "Approval phrasing flagged",
+        "Non-approval phrasing untouched"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS notes that AskUserQuestion in plan mode must not be used to ask 'Should I proceed?' (use ExitPlanMode). Surface guard rail."
+    },
+    {
+      "source_id": "askuser-06",
+      "title": "Annotations payload (preview notes)",
+      "priority": "P2",
+      "addresses_gaps": [
+        "ASKUSERQUESTION-SYNTH-GAP-006"
+      ],
+      "dependencies": [
+        "askuser-04"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Define AnnotationEntry struct {Notes string; Preview string}.",
+        "Map reply.annotations[questionText] -> AnnotationEntry.",
+        "Tests."
+      ],
+      "acceptance_criteria": [
+        "Notes present on returned struct",
+        "Preview content matches selected option"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS supports per-question annotations (notes, selected preview content) returned alongside answers."
+    },
+    {
+      "source_id": "askuser-07",
+      "title": "Conformance tests",
+      "priority": "P2",
+      "addresses_gaps": [
+        "ASKUSERQUESTION-SYNTH-GAP-007"
+      ],
+      "dependencies": [
+        "askuser-01",
+        "askuser-02",
+        "askuser-03",
+        "askuser-04",
+        "askuser-05",
+        "askuser-06"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Add gosrc/tools/ask_user_question_conformance_test.go covering schema, preview rules, multi-select, Other parsing."
+      ],
+      "acceptance_criteria": [
+        "\u226520 cases pass under -race"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Lock vs TS."
+    },
+    {
+      "source_id": "askuser-synth-08",
+      "title": "Mirror AskUserQuestion typed result and updatedInput lifecycle",
+      "priority": "P1",
+      "addresses_gaps": [
+        "ASKUSERQUESTION-SYNTH-GAP-008"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/askuser.go",
+        "types/tools.go",
+        "loop/concurrent.go"
+      ],
+      "read_first": [
+        "../src/tools/AskUserQuestionTool/AskUserQuestionTool.tsx"
+      ],
+      "implementation_steps": [
+        "Return TS-shaped typed answers/annotations data instead of JSON text only, and preserve the permission/updatedInput lifecycle when user answers are collected."
+      ],
+      "acceptance_criteria": [
+        "Result data is typed and model-visible text remains TS-compatible.",
+        "updatedInput/answer lifecycle can be consumed by the runtime rather than reparsing JSON text."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./loop -run 'AskUserQuestion|Alignment|Parity' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Fresh-summary augmentation for early read-only subagent report."
+    }
+  ],
+  "acceptance_criteria": [
+    "AskUserQuestion input validation and schema behavior match the original TS implementation for all report gaps.",
+    "AskUserQuestion model-visible output and structured result data match TS golden fixtures.",
+    "AskUserQuestion runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "Empty options rejected",
+    "5+ options rejected",
+    "Header >12 chars rejected",
+    "Options labelled 'Other' rejected",
+    "Preview + multiSelect rejected",
+    "Oversize preview rejected",
+    "HasPreview flag correct",
+    "Other free-text captured",
+    "Selection not lost when both used",
+    "Sentinel parser robust",
+    "Reply mapped 1:1 to questions",
+    "Cancel returns context error",
+    "Metadata round-trips",
+    "Approval phrasing flagged",
+    "Non-approval phrasing untouched",
+    "Notes present on returned struct",
+    "Preview content matches selected option",
+    "\u226520 cases pass under -race",
+    "Result data is typed and model-visible text remains TS-compatible.",
+    "updatedInput/answer lifecycle can be consumed by the runtime rather than reparsing JSON text."
+  ],
+  "verification": [
+    "go test ./tools ./registry ./loop -run 'AskUserQuestion|Alignment|Parity' -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

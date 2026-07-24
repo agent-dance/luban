@@ -1,0 +1,52 @@
+schema_version = "1.3"
+[task]
+name = "workbuddy/feature-medium-envless_file_load"
+authors = []
+keywords = []
+
+[metadata]
+source_case = "feature-medium-envless_file_load"
+difficulty = "medium"
+category = "feature"
+subcategory = "config-and-environment"
+tags = ["file-loading", "settings"]
+repo = "dynaconf"
+commit = "4893f4744d2c590069890756ae935059fbc08e2c"
+source_commit = "aeb31b256b436485211466214ba4f5f01a8a8305"
+pr_url = ""
+n_files_changed = 2
+n_lines_changed = 7
+instruction_clarity = "high"
+solution_space = "constrained"
+
+domain = "file_loading"
+intent = "implement"
+artifact_type = "config_tooling"
+role = "ops"
+edit_mode = "patch_light"
+complexity = "L3"
+surface = "multi_file"
+verification_mode = "unit"
+retrofit_action = "query-reframe"
+taxonomy_status = "aligned"
+task-type = ["snapshot_trimmed", "filename_hint"]
+[verifier]
+import_path = "workbuddy_bench.judge:CompositeVerifier"
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240
+gpus = 0
+network_mode = "public"
+mcp_servers = []
+
+
+[v2_1_changes]
+instruction_modified = true
+snapshot_trimmed = true

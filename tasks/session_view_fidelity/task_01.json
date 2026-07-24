@@ -1,0 +1,15 @@
+{
+  "id": "task_01",
+  "title": "Converged view invariant and single schema owner",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Define the exactness boundary and make every settled session-owned rendering input flow through one DurableSessionView schema.",
+  "requirements": [
+    "Separate DurableSessionView, RenderContext, transient runtime controls, and operational identity.",
+    "SessionSnapshot and checkpoint must each embed exactly one DurableSessionView.",
+    "Future session-owned visible fields must create a compile-time schema change instead of a resume-only compatibility path."
+  ],
+  "acceptance": ["TestDurableSessionViewHasOneSchemaOwner", "documented exactness invariant"],
+  "cost_person_days": {"low": 1, "base": 2, "high": 3},
+  "result": "DurableSessionView is the single persisted/publication schema; transient overlays and RenderContext are explicitly classified."
+}

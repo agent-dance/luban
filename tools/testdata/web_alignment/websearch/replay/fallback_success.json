@@ -1,0 +1,37 @@
+{
+  "name": "websearch-fallback-success",
+  "input": {
+    "query": "golang tutorial",
+    "results": [
+      {
+        "Title": "A Tour of Go",
+        "URL": "https://go.dev/tour/",
+        "Snippet": "Learn the basics of Go with interactive examples."
+      }
+    ],
+    "cacheHit": false,
+    "fallbackReason": "instant_answer_empty"
+  },
+  "expected": {
+    "input": {
+      "query": "golang tutorial"
+    },
+    "execution": {
+      "method": "local_fallback",
+      "fallbackReason": "instant_answer_empty",
+      "cacheHit": false
+    },
+    "progress": [
+      {"type": "started"},
+      {"type": "query_issued", "query": "golang tutorial"},
+      {"type": "results_received", "count": 1}
+    ],
+    "results": [
+      {
+        "title": "A Tour of Go",
+        "url": "https://go.dev/tour/",
+        "snippet": "Learn the basics of Go with interactive examples."
+      }
+    ]
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "schema_version": "1",
+  "id": "tool_use_response",
+  "title": "executes a tool and sends the tool result into the next turn",
+  "status": "active",
+  "updated_at": "2026-07-10",
+  "source_tests": ["loop/integration_test.go:TestIntegrationToolUseAndResponse"],
+  "coverage_tags": ["core.agentic_loop", "tools.execution", "tools.tool_result_backfill", "events.tool_use", "events.tool_result"],
+  "parity_tasks": ["task_02", "task_03", "task_16"],
+  "input": {
+    "user_message": "echo world",
+    "max_turns": 10,
+    "max_tokens": 1024
+  },
+  "tools": [
+    {"name": "Echo", "kind": "echo", "echo_prefix": "echo: "}
+  ],
+  "turns": [
+    {
+      "events": [
+        {"type": "message_start", "message": {"role": "assistant"}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "call_1", "name": "Echo"}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{\"text\":\"world\"}"}},
+        {"type": "content_block_stop", "index": 0},
+        {"type": "message_delta", "stop_reason": "tool_use"},
+        {"type": "message_stop"}
+      ]
+    },
+    {
+      "events": [
+        {"type": "message_start", "message": {"role": "assistant"}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Got: echo: world"}},
+        {"type": "content_block_stop", "index": 0},
+        {"type": "message_delta", "stop_reason": "end_turn"},
+        {"type": "message_stop"}
+      ]
+    }
+  ],
+  "expected": {
+    "terminal_reason": "end_turn",
+    "final_text": "Got: echo: world",
+    "provider_call_count": 2,
+    "events": [
+      {"type": "tool_use", "tool_name": "Echo"},
+      {"type": "tool_result", "tool_result_contains": "echo: world"},
+      {"type": "text", "text": "Got: echo: world"}
+    ]
+  }
+}

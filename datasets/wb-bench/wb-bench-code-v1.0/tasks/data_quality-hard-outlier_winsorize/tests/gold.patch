@@ -1,0 +1,61 @@
+diff --git a/app/clean_numeric.py b/app/clean_numeric.py
+index 6551c60..ef7deb0 100644
+--- a/app/clean_numeric.py
++++ b/app/clean_numeric.py
+@@ -1,10 +1,39 @@
+ #!/usr/bin/env python3
+-import argparse
++import argparse, csv, json
+ from pathlib import Path
+-
++FIELDS = ["age", "income", "score"]
++def parse(value):
++    try:
++        if value == "":
++            raise ValueError
++        return float(value)
++    except ValueError:
++        return None
++def fmt(value):
++    return str(int(value)) if float(value).is_integer() else str(round(value, 6))
+ def clean(data_dir: Path) -> tuple[list[dict], dict]:
+-    return [], {}
+-
++    config = json.loads((data_dir / "clean_config.json").read_text())
++    summary = {field: {"filled": 0, "clipped_low": 0, "clipped_high": 0} for field in FIELDS}
++    out = []
++    with (data_dir / "raw.csv").open(newline="", encoding="utf-8") as f:
++        for row in csv.DictReader(f):
++            item = {"id": row["id"]}
++            for field in FIELDS:
++                cfg = config[field]
++                value = parse(row[field])
++                if value is None:
++                    value = float(cfg["fill"])
++                    summary[field]["filled"] += 1
++                if value < cfg["min"]:
++                    value = float(cfg["min"])
++                    summary[field]["clipped_low"] += 1
++                if value > cfg["max"]:
++                    value = float(cfg["max"])
++                    summary[field]["clipped_high"] += 1
++                item[field] = fmt(value)
++            out.append(item)
++    summary["rows"] = len(out)
++    return out, summary
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--data", default="data")
+@@ -12,12 +41,10 @@ def main():
+     parser.add_argument("--summary", default="summary.json")
+     args = parser.parse_args()
+     rows, summary = clean(Path(args.data))
+-    import csv, json
+     with Path(args.out).open("w", newline="", encoding="utf-8") as f:
+         writer = csv.DictWriter(f, fieldnames=["id", "age", "income", "score"])
+         writer.writeheader()
+         writer.writerows(rows)
+     Path(args.summary).write_text(json.dumps(summary, indent=2), encoding="utf-8")
+-
+ if __name__ == "__main__":
+     main()

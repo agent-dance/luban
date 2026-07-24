@@ -1,0 +1,41 @@
+diff --git a/redis_like/pipeline.py b/redis_like/pipeline.py
+index bf0cbb4..75209b0 100644
+--- a/redis_like/pipeline.py
++++ b/redis_like/pipeline.py
+@@ -1,3 +1,6 @@
++from .errors import ConnectionError, WatchError
++
++
+ class Pipeline:
+     def __init__(self, connection):
+         self.connection = connection
+@@ -20,10 +23,26 @@ class Pipeline:
+         self.commands.append(("INCR", key))
+         return self
+ 
++    def _can_replay(self):
++        return not self.watched and all(cmd[0] in {"GET", "SET"} for cmd in self.commands)
++
+     def execute(self):
++        commands = list(self.commands)
++        try:
++            return self._execute_once(commands)
++        except ConnectionError:
++            self.connection.reconnect()
++            if self.watched or not self._can_replay():
++                self.commands.clear()
++                self.watched.clear()
++                raise WatchError("pipeline state lost after reconnect")
++            return self._execute_once(commands)
++        finally:
++            self.commands.clear()
++            self.watched.clear()
++
++    def _execute_once(self, commands):
+         results = []
+-        for command in self.commands:
++        for command in commands:
+             results.append(self.connection.execute(*command))
+-        self.commands.clear()
+-        self.watched.clear()
+         return results

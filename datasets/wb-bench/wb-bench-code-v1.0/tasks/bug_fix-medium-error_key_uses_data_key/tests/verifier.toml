@@ -1,0 +1,6 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "pytest_injected"
+
+[run]
+cwd = "/workspace"
+command = '''python -m pytest tests/test_decorators.py::TestValidatesSchemaDecorator::test_data_key_is_used_in_errors_dict tests/test_decorators.py::TestValidatesSchemaDecorator::test_data_key_is_used_for_declared_only_field tests/test_decorators.py::TestValidatesSchemaDecorator::test_data_key_is_used_with_schema_validate tests/test_decorators.py::TestValidatesDecorator::test_validates -v --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

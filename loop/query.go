@@ -1,0 +1,3167 @@
+package loop
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"reflect"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/agent-dance/luban/compact"
+	"github.com/agent-dance/luban/goal"
+	"github.com/agent-dance/luban/hooks"
+	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/messagecontrol"
+	"github.com/agent-dance/luban/prompt"
+	"github.com/agent-dance/luban/provider"
+	"github.com/agent-dance/luban/registry"
+	"github.com/agent-dance/luban/skills"
+	"github.com/agent-dance/luban/types"
+)
+
+const (
+	defaultMaxTurns              = 100
+	escalatedMaxTokens           = 64000
+	maxOutputTokensRecoveryLimit = 3
+	// Legacy persisted sessions lack InternalKind and require this one-time
+	// compatibility value for deduplication. New messages never render it.
+	legacyMaxOutputTokensRecoveryContent = "Output token limit hit. Resume directly - no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces."
+)
+
+func queryTurnIdentity(snapshot QueryConfigSnapshot, queryID string, turnCount int) (turnID, actorID, workUnitID string) {
+	turnID = fmt.Sprintf("%s:query-%s:turn-%d", snapshot.SessionID, queryID, turnCount)
+	actorID = snapshot.AgentID
+	if actorID == "" {
+		actorID = "assistant"
+	}
+	workUnitID = snapshot.AgentID
+	if workUnitID == "" {
+		workUnitID = turnID
+	}
+	return turnID, actorID, workUnitID
+}
+
+// PermissionDecision is the outcome of a loop-level permission check.
+// This is a loop-local definition to avoid import cycles with engine/.
+type PermissionDecision int
+
+const (
+	// PermissionAllow permits the tool call.
+	PermissionAllow PermissionDecision = iota
+	// PermissionDeny blocks the tool call.
+	PermissionDeny
+	// PermissionAllowOnce permits this single invocation only.
+	PermissionAllowOnce
+)
+
+// PermissionRequest describes a tool invocation awaiting authorisation.
+// This is a loop-local definition to avoid import cycles with engine/.
+type PermissionRequest struct {
+	SessionID          string
+	ExecutionSessionID string
+	TurnID             string
+	DecisionID         string
+	ToolUseID          string
+	ToolName           string
+	Input              map[string]any
+	ActorID            string
+	ActorType          string
+	WorkUnitID         string
+	Kind               string
+	Action             string
+	Target             string
+	Impact             string
+	RiskReason         string
+	RuleSource         string
+	ApprovalScope      string
+	Choices            []string
+	Body               string
+	ReviewDetails      []string
+	PostMode           string
+	Mode               string
+	AvoidPrompts       bool
+	Required           bool
+	Sandboxed          bool
+	SandboxCapability  string
+	Message            string
+	Suggestions        []types.PermissionUpdate
+	BlockedPath        string
+	PolicyDecision     *types.PolicyDecision
+}
+
+// PermissionHandler decides whether a tool call should be allowed.
+// Implementations must respect ctx cancellation.
+// This interface is loop-local; engine/ provides an adapter that satisfies it.
+// Custom implementations are a trusted embedder boundary: returning Allow for
+// a Required request attests to an explicit human decision for that exact call.
+type PermissionHandler interface {
+	Check(ctx context.Context, req PermissionRequest) (PermissionDecision, error)
+}
+
+// TeammateTask is the loop-local task shape needed for teammate lifecycle hooks.
+type TeammateTask struct {
+	ID          string
+	Subject     string
+	Description string
+	Owner       string
+	Status      string
+}
+
+// TeammateContext describes the current teammate and its visible task state.
+type TeammateContext struct {
+	TeammateName string
+	TeamName     string
+	Tasks        []TeammateTask
+}
+
+// TeammateContextProvider supplies teammate state without coupling loop to a
+// particular swarm/task persistence backend.
+type TeammateContextProvider interface {
+	CurrentTeammateContext(ctx context.Context) (TeammateContext, bool, error)
+}
+
+// GoalRuntime supplies the current session goal through a live reference. The
+// loop snapshots this interface, not a Goal value, so in-run updates stay visible.
+type GoalRuntime interface {
+	LoadGoal() (*goal.Goal, error)
+	SaveGoal(goal.Goal) error
+}
+
+// Config holds query loop configuration
+type Config struct {
+	MaxTurns            int
+	DisableMaxTurns     bool
+	System              string
+	SystemBlocks        []prompt.SystemPromptBlock
+	UserContext         prompt.UserContext
+	SystemContext       prompt.SystemContext
+	GoalRuntime         GoalRuntime
+	GoalEvaluator       GoalEvaluator
+	Model               string
+	MaxTokens           int
+	MaxContextTokens    int           // max context window size for compaction (0 = no compaction)
+	MaxOutputTokens     int           // max output tokens per response; used for output reservation in compaction threshold
+	TokenBudget         int           // target output tokens for token-budget continuation; 0 disables
+	TaskBudget          int           // API-side task output budget; 0 disables
+	HookRunner          *hooks.Runner // optional hook runner (nil = no hooks)
+	PostSamplingRunner  PostSamplingRunner
+	TurnSideEffects     TurnSideEffects
+	BareMode            bool
+	AllowedDirs         []string // directories allowed for post-compact file recovery
+	SessionID           string   // runtime conversation identity
+	CacheLineageID      string   // stable PromptCacheKey inherited by forked sessions; defaults to SessionID
+	SessionProjectDir   string   // exact persisted session namespace; may differ from ProjectRoot for resumed legacy stores
+	ProjectRoot         string   // immutable workspace identity; distinct from an execution CWD
+	TranscriptPath      string   // readable persisted transcript path for compact summaries
+	AgentID             string   // non-empty marks subagent runs and disables token-budget continuation
+	AgentType           string   // subagent type/name for SubagentStop hooks
+	AgentTranscriptPath string   // readable persisted transcript path for SubagentStop hooks
+	ReasoningEffort     string   // "low", "medium", "high" for reasoning models
+	// StreamingToolExecution starts tool execution when a tool_use content block
+	// closes. Default false preserves the previous message-stop path.
+	StreamingToolExecution bool
+	// PermissionHandler gates tool execution. nil = allow all (zero overhead, backward compatible).
+	PermissionHandler PermissionHandler
+	// SkillManager provides access to discovered skills for listing injection.
+	// If nil, no skill listing is injected into the conversation.
+	// Aligns with TS getSkillListingAttachments() in src/utils/attachments.ts.
+	SkillManager *skills.Manager
+	// SkillProjectGeneration optionally pins this loop to a workspace authority
+	// captured by its parent. Zero lets a top-level loop bind the Manager's
+	// current generation at Run start. Child/background loops must inherit the
+	// non-zero parent capability so a later retarget cannot silently rebind them.
+	SkillProjectGeneration skills.ProjectSourceGeneration
+	CWD                    string
+	PlanState              compact.PlanStateProvider
+	InvokedSkills          compact.InvokedSkillProvider
+	BackgroundTasks        compact.BackgroundTaskProvider
+	MCPState               compact.MCPStateProvider
+	AgentDefinitions       compact.AgentDefinitionProvider
+	// Optional tool-post attachment pipeline integrations. Nil preserves the
+	// baseline loop behavior.
+	CommandQueue       CommandQueue
+	MemoryPrefetcher   MemoryPrefetcher
+	SkillPrefetcher    SkillPrefetcher
+	ToolRefresher      ToolRefresher
+	QueryScope         QueryScope
+	TeammateContext    TeammateContextProvider
+	PostCompactCleanup func(context.Context) error
+	QuerySource        QuerySource
+}
+
+// QueryLoop implements the agentic tool-use loop
+type QueryLoop struct {
+	provider        provider.Provider
+	registry        *registry.Registry
+	config          Config
+	messages        []types.Message
+	loadedToolNames map[string]struct{}
+	seenToolUseIDs  map[string]struct{}
+	lastResponseID  string // captured from EventMessageStop.ResponseID for Responses API chaining
+	// Safety: read/written only in Run()'s goroutine (processStream is synchronous)
+	disableResponseChain       bool                   // set true after previous_response_id fallback; stops retrying chain for this session
+	lastEnvelopeFingerprint    string                 // fingerprint of non-input request fields; previous_response_id reused only when this matches (aligned with Codex CLI get_incremental_items check)
+	currentEnvelopeFingerprint string                 // request fingerprint for the in-flight stream
+	ctxWindow                  *compact.ContextWindow // nil if compaction disabled
+	compactor                  compact.Compactor
+	toolBudget                 *compact.ToolResultBudget
+	microcompactCfg            compact.MicrocompactConfig
+	cachedMicrocompactState    *compact.CachedMicrocompactState
+	resultStore                *compact.ResultStore
+	contentReplacementState    *compact.ContentReplacementState
+	internalControlScope       messagecontrol.Scope
+	calibratedCounter          *compact.CalibratedCounter // nil if compaction disabled
+	thinkingConfig             *provider.ThinkingConfig   // nil = thinking disabled
+	cacheBreakDetector         *CacheBreakDetector        // monitors prompt cache breaks
+	compactStatus              string
+
+	// skillCatalogMu protects the context-epoch-bound catalog cursor and loaded
+	// body ledger. SkillTool resolvers may read this state from concurrent tool
+	// executions; only the query loop commits receipts after visible append.
+	skillCatalogMu     sync.RWMutex
+	skillCatalogEpoch  uint64
+	skillCatalogCursor SkillCatalogCursor
+	loadedSkillDigests map[skills.SkillID]SkillLoadedLedgerEntry
+	// readEvidenceOwnerID is a private per-QueryLoop capability namespace.
+	// Together with skillCatalogEpoch and actor identity it prevents a shared
+	// registry from leaking Read evidence across sessions, agents, or compacted
+	// context generations.
+	readEvidenceOwnerID string
+	// skillRunGeneration is the project authority pinned for the active Run.
+	// It is a short capability value, not a held Manager lock, so retarget
+	// writers never deadlock behind provider or tool execution.
+	skillRunGenerationMu sync.RWMutex
+	skillRunGeneration   skills.ProjectSourceGeneration
+
+	workspaceRuntimeMu      sync.Mutex
+	pendingWorkspaceRuntime *WorkspaceRuntimeUpdate
+	activeRunTokenMu        sync.RWMutex
+	activeRunToken          string
+	// mcpInstructionAnnouncements tracks connected MCP servers whose
+	// instructions have already been announced through delta attachments.
+	mcpInstructionAnnouncements map[string]struct{}
+}
+
+// WorkspaceRuntimeUpdate is queued by the engine when an existing
+// conversation enters or exits a worktree. The active run keeps its immutable
+// config snapshot; the next Run applies this update before taking its snapshot.
+// SessionProjectDir intentionally remains unchanged because worktrees do not
+// move the durable conversation namespace.
+type WorkspaceRuntimeUpdate struct {
+	System       string
+	SystemBlocks []prompt.SystemPromptBlock
+	HookRunner   *hooks.Runner
+	AllowedDirs  []string
+	ProjectRoot  string
+	CWD          string
+}
+
+// QueueWorkspaceRuntime schedules an infallible next-run runtime rebind.
+func (q *QueryLoop) QueueWorkspaceRuntime(update WorkspaceRuntimeUpdate) {
+	if q == nil {
+		return
+	}
+	clone := update
+	clone.SystemBlocks = append([]prompt.SystemPromptBlock(nil), update.SystemBlocks...)
+	clone.AllowedDirs = append([]string(nil), update.AllowedDirs...)
+	q.workspaceRuntimeMu.Lock()
+	q.pendingWorkspaceRuntime = &clone
+	q.workspaceRuntimeMu.Unlock()
+}
+
+func (q *QueryLoop) hasPendingWorkspaceRuntime() bool {
+	if q == nil {
+		return false
+	}
+	q.workspaceRuntimeMu.Lock()
+	defer q.workspaceRuntimeMu.Unlock()
+	return q.pendingWorkspaceRuntime != nil
+}
+
+func (q *QueryLoop) applyPendingWorkspaceRuntime() {
+	if q == nil {
+		return
+	}
+	q.workspaceRuntimeMu.Lock()
+	pending := q.pendingWorkspaceRuntime
+	q.pendingWorkspaceRuntime = nil
+	q.workspaceRuntimeMu.Unlock()
+	if pending == nil {
+		return
+	}
+	q.config.System = pending.System
+	q.config.SystemBlocks = append([]prompt.SystemPromptBlock(nil), pending.SystemBlocks...)
+	q.config.HookRunner = pending.HookRunner
+	q.config.AllowedDirs = append([]string(nil), pending.AllowedDirs...)
+	q.config.ProjectRoot = pending.ProjectRoot
+	q.config.CWD = pending.CWD
+}
+
+type triggeredCompactor interface {
+	CompactWithTrigger(ctx context.Context, messages []types.Message, keepRecent int, trigger string) (*compact.CompactionResult, error)
+}
+
+// SetResultStore sets the result store for persisting oversized tool results.
+func (q *QueryLoop) SetResultStore(rs *compact.ResultStore) {
+	q.resultStore = rs
+}
+
+// HookRunner returns the hook runner configured for this loop.
+func (q *QueryLoop) HookRunner() *hooks.Runner {
+	return q.config.HookRunner
+}
+
+func (q *QueryLoop) postSamplingRunner(snapshot QueryConfigSnapshot, onEvent func(Event)) PostSamplingRunner {
+	if snapshot.PostSamplingRunner != nil {
+		return snapshot.PostSamplingRunner
+	}
+	if snapshot.HookRunner == nil || (!snapshot.HookRunner.HasHooks(hooks.HookPostSampling) && !snapshot.HookRunner.HasHooks(hooks.HookStopFailure)) {
+		return nil
+	}
+	return newHookPostSamplingRunner(snapshot.HookRunner, onEvent)
+}
+
+func (q *QueryLoop) runStopFailure(ctx context.Context, snapshot QueryConfigSnapshot, onEvent func(Event), queryID string, turnCount int, message types.Message) {
+	runner := q.postSamplingRunner(snapshot, onEvent)
+	if runner == nil {
+		return
+	}
+	turnID, actorID, workUnitID := queryTurnIdentity(snapshot, queryID, turnCount)
+	runner.RunStopFailure(ctx, message, StopFailureOptions{
+		SessionID:  snapshot.SessionID,
+		TurnID:     turnID,
+		AgentID:    actorID,
+		AgentType:  snapshot.AgentType,
+		WorkUnitID: workUnitID,
+	})
+}
+
+func (q *QueryLoop) startTurnSideEffects(ctx context.Context, snapshot QueryConfigSnapshot, messages []types.Message) {
+	if snapshot.TurnSideEffects == nil || snapshot.BareMode || isSimpleMode() {
+		return
+	}
+	snapshot.TurnSideEffects.StartTurnSideEffects(ctx, append([]types.Message(nil), messages...), TurnSideEffectOptions{
+		SessionID: snapshot.SessionID,
+		AgentID:   snapshot.AgentID,
+		AgentType: snapshot.AgentType,
+	})
+}
+
+func isSimpleMode() bool {
+	value := strings.TrimSpace(strings.ToLower(os.Getenv("CLAUDE_CODE_SIMPLE")))
+	return value == "1" || value == "true" || value == "yes" || value == "on"
+}
+
+// previousResponseIDForRequest returns the response ID to use for chaining,
+// or empty string if chaining has been disabled (e.g. after a fallback due to
+// account switching in codex-lb) or if the request envelope has changed enough
+// that the prior response is no longer a safe parent for the next turn.
+//
+// Aligned with Codex CLI (codex-rs): previous_response_id is reusable as long as
+// the non-input fields (model, system prompt, tools, reasoning config) stay the
+// same. The message history is explicitly NOT part of the fingerprint — it is
+// expected to grow every turn, and the Responses API's incremental input mechanism
+// handles this correctly. Including messages in the fingerprint would cause the
+// fingerprint to change every turn and effectively disable chaining.
+func (q *QueryLoop) previousResponseIDForRequest(envelopeFingerprint string) string {
+	if q.disableResponseChain {
+		return ""
+	}
+	if q.lastResponseID == "" {
+		return ""
+	}
+	// Envelope fingerprint covers model/system/tools/reasoning — NOT messages.
+	// If these haven't changed since the last successful response, chaining is safe.
+	if q.lastEnvelopeFingerprint != "" && envelopeFingerprint != "" && q.lastEnvelopeFingerprint != envelopeFingerprint {
+		return ""
+	}
+	return q.lastResponseID
+}
+
+// envelopeFingerprint computes a fingerprint of the *non-input* request fields.
+// Aligned with Codex CLI's get_incremental_items() check: "compare non-input
+// fields must be exactly identical". This intentionally excludes messages/input
+// because those grow every turn.
+func envelopeFingerprint(params provider.Params) string {
+	payload := struct {
+		Model                   string
+		MaxTokens               int
+		MaxOutputTokensOverride int
+		SystemBlocks            []prompt.SystemPromptBlock
+		Tools                   []types.ToolDefinition
+		ExtraToolSchemas        []types.ServerToolDefinition
+		ToolChoice              *provider.ToolChoice
+		Conversation            string
+		Truncation              string
+		PromptCacheKey          string
+		UsePromptCache          bool
+		ReasoningEffort         string
+		TaskBudgetTotal         int
+		TaskRemaining           *int
+		ThinkingEnabled         bool
+		ThinkingBudget          int
+	}{
+		Model:                   params.Model,
+		MaxTokens:               params.MaxTokens,
+		MaxOutputTokensOverride: params.MaxOutputTokensOverride,
+		SystemBlocks:            params.SystemTextBlocks(),
+		Tools:                   params.Tools,
+		ExtraToolSchemas:        params.ExtraToolSchemas,
+		ToolChoice:              params.ToolChoice,
+		Conversation:            params.Conversation,
+		Truncation:              params.Truncation,
+		PromptCacheKey:          params.PromptCacheKey,
+		UsePromptCache:          params.UsePromptCache,
+		ReasoningEffort:         params.ReasoningEffort,
+	}
+	if params.TaskBudget != nil {
+		payload.TaskBudgetTotal = params.TaskBudget.Total
+		payload.TaskRemaining = params.TaskBudget.Remaining
+	}
+	if params.Thinking != nil {
+		payload.ThinkingEnabled = params.Thinking.Enabled
+		payload.ThinkingBudget = params.Thinking.BudgetTokens
+	}
+
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(b)
+	return fmt.Sprintf("sha256:%x", digest)
+}
+
+// ForceCompact runs context compaction on the current message history immediately.
+// Returns an error if no compactor is configured (MaxContextTokens == 0).
+func (q *QueryLoop) ForceCompact(ctx context.Context) error {
+	return q.ForceCompactWithInstructions(ctx, "")
+}
+
+// ForceCompactWithInstructions runs manual compaction with optional user
+// summary instructions from "/compact <args>".
+func (q *QueryLoop) ForceCompactWithInstructions(ctx context.Context, customInstructions string) error {
+	return q.forceCompactWithInstructions(ctx, customInstructions, nil)
+}
+
+// ForceCompactWithInstructionsAndEvents is the event-bearing manual
+// compaction surface used by interactive clients to account the compaction
+// provider request in session usage and cost.
+func (q *QueryLoop) ForceCompactWithInstructionsAndEvents(ctx context.Context, customInstructions string, onEvent func(Event)) error {
+	return q.forceCompactWithInstructions(ctx, customInstructions, onEvent)
+}
+
+type manualCompactLifecycleBuffer struct {
+	mu     sync.Mutex
+	events []Event
+}
+
+func (b *manualCompactLifecycleBuffer) record(event Event) {
+	b.mu.Lock()
+	b.events = append(b.events, event)
+	b.mu.Unlock()
+}
+
+func (b *manualCompactLifecycleBuffer) snapshot() []Event {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]Event(nil), b.events...)
+}
+
+func (b *manualCompactLifecycleBuffer) publish(onEvent func(Event)) {
+	if onEvent == nil {
+		return
+	}
+	for _, event := range b.snapshot() {
+		onEvent(event)
+	}
+}
+
+func (b *manualCompactLifecycleBuffer) publishCleanupFailure(q *QueryLoop, onEvent func(Event), cleanupErr error) {
+	if onEvent == nil {
+		return
+	}
+	turnCount := 0
+	for _, event := range b.snapshot() {
+		if event.Type == EventCompactBoundary {
+			continue
+		}
+		if event.Type == EventProgress && event.Progress != nil {
+			switch event.Progress.Stage {
+			case "compact_end", "compact_failed", "compact_cancelled", "compact_success", "auto_compact_success":
+				if event.Progress.Stage == "compact_end" {
+					turnCount = event.TurnCount
+				}
+				continue
+			}
+		}
+		if event.Type == EventProviderUsage && event.Metadata["kind"] == "compaction" {
+			metadata := make(map[string]any, len(event.Metadata))
+			for key, value := range event.Metadata {
+				metadata[key] = value
+			}
+			metadata["status"] = "failure"
+			event.Metadata = metadata
+		}
+		onEvent(event)
+	}
+	q.emitCompactProgress(onEvent, turnCount, "compact_failed", "failed", "manual", "", cleanupErr)
+}
+
+type manualCompactCacheBreakPreimage struct {
+	prevCacheRead   int
+	prevCacheCreate int
+	prevTime        time.Time
+	callCount       int
+	hasBaseline     bool
+}
+
+type manualCompactInstallPreimage struct {
+	visible                    PreparedVisibleState
+	lastResponseID             string
+	disableResponseChain       bool
+	lastEnvelopeFingerprint    string
+	currentEnvelopeFingerprint string
+	contentReplacementState    *compact.ContentReplacementState
+	cachedMicrocompactPointer  *compact.CachedMicrocompactState
+	cachedMicrocompactState    *compact.CachedMicrocompactState
+	microcompactCfg            compact.MicrocompactConfig
+	toolBudget                 *compact.ToolResultBudget
+	cacheBreakDetector         *CacheBreakDetector
+	cacheBreakState            manualCompactCacheBreakPreimage
+}
+
+func (q *QueryLoop) captureManualCompactInstallPreimage() (manualCompactInstallPreimage, error) {
+	visible, err := q.CapturePreparedVisibleState()
+	if err != nil {
+		return manualCompactInstallPreimage{}, err
+	}
+	preimage := manualCompactInstallPreimage{
+		visible:                    visible,
+		lastResponseID:             q.lastResponseID,
+		disableResponseChain:       q.disableResponseChain,
+		lastEnvelopeFingerprint:    q.lastEnvelopeFingerprint,
+		currentEnvelopeFingerprint: q.currentEnvelopeFingerprint,
+		contentReplacementState:    q.contentReplacementState,
+		cachedMicrocompactPointer:  q.cachedMicrocompactState,
+		cachedMicrocompactState:    cloneManualCompactCachedState(q.cachedMicrocompactState),
+		microcompactCfg:            q.microcompactCfg,
+		toolBudget:                 q.toolBudget,
+		cacheBreakDetector:         q.cacheBreakDetector,
+	}
+	if q.cacheBreakDetector != nil {
+		q.cacheBreakDetector.mu.Lock()
+		preimage.cacheBreakState = manualCompactCacheBreakPreimage{
+			prevCacheRead:   q.cacheBreakDetector.prevCacheRead,
+			prevCacheCreate: q.cacheBreakDetector.prevCacheCreate,
+			prevTime:        q.cacheBreakDetector.prevTime,
+			callCount:       q.cacheBreakDetector.callCount,
+			hasBaseline:     q.cacheBreakDetector.hasBaseline,
+		}
+		q.cacheBreakDetector.mu.Unlock()
+	}
+	return preimage, nil
+}
+
+func (q *QueryLoop) restoreManualCompactInstallPreimage(preimage manualCompactInstallPreimage) {
+	q.messages = cloneMessages(preimage.visible.messages)
+	q.loadedToolNames = make(map[string]struct{}, len(preimage.visible.loadedToolNames))
+	for _, name := range preimage.visible.loadedToolNames {
+		q.loadedToolNames[name] = struct{}{}
+	}
+	q.seenToolUseIDs = make(map[string]struct{}, len(preimage.visible.seenToolUseIDs))
+	for _, id := range preimage.visible.seenToolUseIDs {
+		q.seenToolUseIDs[id] = struct{}{}
+	}
+	skillState := preimage.visible.skillState.Clone()
+	q.skillCatalogMu.Lock()
+	q.skillCatalogEpoch = skillState.ContextEpoch
+	q.skillCatalogCursor = skillState.Cursor
+	q.loadedSkillDigests = skillState.LoadedDigests
+	if q.loadedSkillDigests == nil {
+		q.loadedSkillDigests = make(map[skills.SkillID]SkillLoadedLedgerEntry)
+	}
+	q.skillCatalogMu.Unlock()
+	q.internalControlScope = preimage.visible.controlScope
+	q.lastResponseID = preimage.lastResponseID
+	q.disableResponseChain = preimage.disableResponseChain
+	q.lastEnvelopeFingerprint = preimage.lastEnvelopeFingerprint
+	q.currentEnvelopeFingerprint = preimage.currentEnvelopeFingerprint
+	q.contentReplacementState = preimage.contentReplacementState
+	q.cachedMicrocompactState = preimage.cachedMicrocompactPointer
+	if q.cachedMicrocompactState != nil {
+		*q.cachedMicrocompactState = *cloneManualCompactCachedState(preimage.cachedMicrocompactState)
+	}
+	q.microcompactCfg = preimage.microcompactCfg
+	q.toolBudget = preimage.toolBudget
+	q.cacheBreakDetector = preimage.cacheBreakDetector
+	if q.cacheBreakDetector != nil {
+		q.cacheBreakDetector.mu.Lock()
+		q.cacheBreakDetector.prevCacheRead = preimage.cacheBreakState.prevCacheRead
+		q.cacheBreakDetector.prevCacheCreate = preimage.cacheBreakState.prevCacheCreate
+		q.cacheBreakDetector.prevTime = preimage.cacheBreakState.prevTime
+		q.cacheBreakDetector.callCount = preimage.cacheBreakState.callCount
+		q.cacheBreakDetector.hasBaseline = preimage.cacheBreakState.hasBaseline
+		q.cacheBreakDetector.mu.Unlock()
+	}
+}
+
+func cloneManualCompactCachedState(state *compact.CachedMicrocompactState) *compact.CachedMicrocompactState {
+	if state == nil {
+		return nil
+	}
+	cloned := *state
+	cloned.RegisteredTools = make(map[string]struct{}, len(state.RegisteredTools))
+	for name := range state.RegisteredTools {
+		cloned.RegisteredTools[name] = struct{}{}
+	}
+	cloned.DeletedRefs = make(map[string]struct{}, len(state.DeletedRefs))
+	for id := range state.DeletedRefs {
+		cloned.DeletedRefs[id] = struct{}{}
+	}
+	cloned.ToolOrder = append([]string(nil), state.ToolOrder...)
+	cloned.ToolGroups = make([][]string, len(state.ToolGroups))
+	for index := range state.ToolGroups {
+		cloned.ToolGroups[index] = append([]string(nil), state.ToolGroups[index]...)
+	}
+	cloned.PinnedEdits = append([]compact.PinnedCacheEdits(nil), state.PinnedEdits...)
+	for index := range cloned.PinnedEdits {
+		cloned.PinnedEdits[index].Block.Edits = append([]compact.CacheEdit(nil), state.PinnedEdits[index].Block.Edits...)
+	}
+	return &cloned
+}
+
+func (q *QueryLoop) forceCompactWithInstructions(ctx context.Context, customInstructions string, onEvent func(Event)) error {
+	if q.compactor == nil {
+		return i18n.NewError(i18n.KeyLoopQueryCompactionNotConfigured)
+	}
+	if err := q.validateInternalControlScope(); err != nil {
+		return i18n.WrapInternalError(i18n.KeyLoopQueryControlScopeInvalid, err)
+	}
+	preimage, err := q.captureManualCompactInstallPreimage()
+	if err != nil {
+		return i18n.WrapInternalError(i18n.KeyLoopQuerySnapshotSkillCatalogFailed, err)
+	}
+	customInstructions = strings.TrimSpace(customInstructions)
+	ctx = provider.WithDebugCall(ctx, provider.DebugCallCompaction, map[string]any{
+		"trigger":       "manual",
+		"message_count": len(q.messages),
+	})
+	var lifecycle manualCompactLifecycleBuffer
+	eventSink := onEvent
+	if onEvent != nil {
+		eventSink = lifecycle.record
+	}
+	compactionInput := compact.MicrocompactWithResult(cloneMessages(q.messages), q.microcompactCfg).Messages
+	result, semanticNoop, err := q.runCompactionAgainst(ctx, "manual", 0, eventSink, compactionInput, func() (*compact.CompactionResult, error) {
+		if customInstructions == "" {
+			if result, ok, err := compact.TrySessionMemoryCompaction(ctx, cloneMessages(q.messages), compact.SessionMemoryCompactionOptions{Trigger: "manual"}); err != nil {
+				return nil, i18n.WrapError(i18n.KeyLoopQuerySessionCompactionFailed, err)
+			} else if ok {
+				return result, nil
+			}
+		}
+		if sc, ok := q.compactor.(*compact.SummaryCompactor); ok {
+			previous := sc.CustomInstructions
+			sc.CustomInstructions = customInstructions
+			defer func() {
+				sc.CustomInstructions = previous
+			}()
+		}
+		return q.compactor.Compact(ctx, cloneMessages(compactionInput), 0)
+	})
+	if err != nil {
+		lifecycle.publish(onEvent)
+		return i18n.WrapError(i18n.KeyLoopQueryForcedCompactionFailed, err)
+	}
+	if result == nil && !semanticNoop {
+		lifecycle.publish(onEvent)
+		return nil
+	}
+	if result != nil {
+		q.messages = q.installVisibleHistory(compact.BuildPostCompactMessages(result))
+	} else if q.config.SkillManager != nil {
+		// Reconcile only the runtime-owned projection. The deep-equal compactor
+		// output itself is not installed and cannot borrow a microcompact delta,
+		// while an authoritative catalog revoke can still advance its epoch.
+		reconciled, reconcileErr := q.installPostCompactVisibleHistory(q.messages, q.messages)
+		if reconcileErr != nil {
+			q.restoreManualCompactInstallPreimage(preimage)
+			reconcileErr = i18n.WrapInternalError(i18n.KeyRuntimeCompactionCommitFailed, reconcileErr)
+			lifecycle.publishCleanupFailure(q, onEvent, reconcileErr)
+			return reconcileErr
+		}
+		q.messages = reconciled
+	}
+	// A non-nil deep-equal result is a semantic no-op and must not install the
+	// compactor output. Manual compact still runs authoritative cleanup against
+	// the unchanged live history so catalog/ledger revocations are reconciled.
+	if cleanupErr := q.RunPostCompactCleanup(ctx, q.messages); cleanupErr != nil {
+		q.restoreManualCompactInstallPreimage(preimage)
+		cleanupErr = i18n.WrapInternalError(i18n.KeyRuntimePostCompactCleanupFailed, cleanupErr)
+		lifecycle.publishCleanupFailure(q, onEvent, cleanupErr)
+		return cleanupErr
+	}
+	if q.ctxWindow != nil {
+		q.ctxWindow.RecordCompactSuccess()
+	}
+	if result != nil {
+		q.updatePostCompactContext(result)
+	}
+	lifecycle.publish(onEvent)
+	return nil
+}
+
+// New creates a new QueryLoop with a Provider
+func New(p provider.Provider, reg *registry.Registry, cfg Config) *QueryLoop {
+	if strings.TrimSpace(cfg.Model) == "" && p != nil {
+		cfg.Model = p.ModelID()
+	}
+	if cfg.DisableMaxTurns {
+		cfg.MaxTurns = 0
+	} else if cfg.MaxTurns == 0 {
+		cfg.MaxTurns = defaultMaxTurns
+	}
+	ql := &QueryLoop{
+		provider:                p,
+		registry:                reg,
+		config:                  cfg,
+		loadedToolNames:         make(map[string]struct{}),
+		seenToolUseIDs:          make(map[string]struct{}),
+		toolBudget:              compact.NewToolResultBudget(),
+		contentReplacementState: compact.NewContentReplacementState(),
+		internalControlScope:    messagecontrol.NewLoopScope(messagecontrol.Runtime()),
+		skillCatalogEpoch:       1,
+		loadedSkillDigests:      make(map[skills.SkillID]SkillLoadedLedgerEntry),
+		readEvidenceOwnerID:     uuid.NewString(),
+		microcompactCfg:         compact.DefaultMicrocompactConfig(),
+		cachedMicrocompactState: compact.NewCachedMicrocompactState(),
+		calibratedCounter:       compact.NewCalibratedCounter(4.0),
+		cacheBreakDetector:      &CacheBreakDetector{},
+	}
+	if cfg.AgentID != "" || cfg.QueryScope.IsSubagent {
+		ql.microcompactCfg.QuerySource = compact.MicrocompactSourceNonMain
+	} else {
+		ql.microcompactCfg.QuerySource = compact.MicrocompactSourceMain
+	}
+	// Adapt MaxContextTokens to the current provider's actual limit upfront,
+	// so ContextWindow is created with the correct size from the start.
+	ql.adaptContextWindow()
+
+	// Enable compaction if MaxContextTokens is set
+	if ql.config.MaxContextTokens > 0 {
+		cw := compact.NewContextWindow(ql.config.MaxContextTokens)
+		cw.MaxOutputTokens = cfg.MaxOutputTokens
+		ql.ctxWindow = cw
+		ql.compactor = &compact.SummaryCompactor{
+			Summarize:          compact.NewLLMSummarizeFunc(p),
+			SummarizeMessages:  compact.NewLLMStructuredSummarizeFunc(p),
+			KeepRecent:         20,
+			AllowedDirs:        cfg.AllowedDirs,
+			TranscriptPath:     cfg.TranscriptPath,
+			AttachmentProvider: ql.postCompactAttachmentProvider(),
+			SessionID:          cfg.SessionID,
+			CWD:                cfg.CWD,
+			HookRunner:         cfg.HookRunner,
+		}
+	}
+	return ql
+}
+
+// CompactStatus reports the current compaction lifecycle status.
+func (q *QueryLoop) CompactStatus() string {
+	return q.compactStatus
+}
+
+func (q *QueryLoop) visibleToolDefinitions() []types.ToolDefinition {
+	if q.registry == nil {
+		return nil
+	}
+	return q.registry.VisibleDefinitions(q.loadedToolNames)
+}
+
+func (q *QueryLoop) learnLoadedTools(results []types.ToolResultBlock) {
+	for _, result := range results {
+		for _, block := range result.ContentBlocks {
+			ref, ok := block.(types.ToolReferenceBlock)
+			if !ok || ref.ToolName == "" {
+				continue
+			}
+			q.loadedToolNames[ref.ToolName] = struct{}{}
+		}
+	}
+}
+
+func loadedToolNamesFromMessages(messages []types.Message) map[string]struct{} {
+	loaded := make(map[string]struct{})
+	add := func(blocks []types.ContentBlock) {
+		for _, block := range blocks {
+			if ref, ok := block.(types.ToolReferenceBlock); ok {
+				if name := strings.TrimSpace(ref.ToolName); name != "" {
+					loaded[name] = struct{}{}
+				}
+			}
+		}
+	}
+	for _, message := range messages {
+		for _, block := range message.Content {
+			switch typed := block.(type) {
+			case types.ToolReferenceBlock:
+				add([]types.ContentBlock{typed})
+			case types.ToolResultBlock:
+				add(typed.ContentBlocks)
+			}
+		}
+	}
+	return loaded
+}
+
+// Messages returns the current conversation messages (defensive copy)
+func (q *QueryLoop) Messages() []types.Message {
+	out := make([]types.Message, len(q.messages))
+	copy(out, q.messages)
+	return out
+}
+
+const maxMessagesHardLimit = 500
+
+// enforceMessageHistoryLimit fails closed before an over-limit history can be
+// sampled. It deliberately does not rewrite msgs: semantic compaction is the
+// only production path allowed to remove ordinary conversation messages.
+func enforceMessageHistoryLimit(msgs []types.Message) error {
+	if len(msgs) <= maxMessagesHardLimit {
+		return nil
+	}
+	return &MessageHistoryLimitError{
+		MessageCount: len(msgs),
+		Limit:        maxMessagesHardLimit,
+	}
+}
+
+// SetMessages replaces the model-visible conversation and resets the identity
+// ledger to identities present in msgs. It is the session-transition API: use
+// SetMessagesPreservingToolUseLedger for same-session message mutations.
+func (q *QueryLoop) SetMessages(msgs []types.Message) {
+	q.SetMessagesWithToolUseLedger(msgs, nil)
+}
+
+// SetMessagesPreservingToolUseLedger replaces the model-visible conversation
+// without forgetting identities that left the transcript through compaction.
+// Same-session commands that append or rewrite messages must use this method.
+func (q *QueryLoop) SetMessagesPreservingToolUseLedger(msgs []types.Message) {
+	loadedToolNames := q.LoadedToolNames()
+	q.SetMessagesWithToolUseLedger(msgs, q.SeenToolUseIDs())
+	for _, name := range loadedToolNames {
+		q.loadedToolNames[name] = struct{}{}
+	}
+}
+
+// SetMessagesWithToolUseLedger replaces the model-visible conversation while
+// restoring session-lifetime tool identities that may no longer be derivable
+// from compacted messages. The two sources are unioned so legacy sessions that
+// have no ledger remain safe and fully backward compatible.
+func (q *QueryLoop) SetMessagesWithToolUseLedger(msgs []types.Message, persistedIDs []string) {
+	q.SetMessagesWithRuntimeLedgers(msgs, persistedIDs, nil)
+}
+
+// SetMessagesWithRuntimeLedgers restores session-lifetime identities and
+// deferred tool visibility alongside a replacement model-visible history.
+// Visible tool_reference blocks are always authoritative; persisted names
+// only preserve schemas that survived compaction outside the visible tail.
+func (q *QueryLoop) SetMessagesWithRuntimeLedgers(msgs []types.Message, persistedIDs, persistedLoadedToolNames []string) {
+	q.messages = q.installVisibleHistory(msgs)
+	q.loadedToolNames = loadedToolNamesFromMessages(msgs)
+	for _, name := range persistedLoadedToolNames {
+		if name = strings.TrimSpace(name); name != "" {
+			q.loadedToolNames[name] = struct{}{}
+		}
+	}
+	q.seenToolUseIDs = collectToolUseIDs(msgs)
+	for _, id := range persistedIDs {
+		if strings.TrimSpace(id) != "" {
+			q.seenToolUseIDs[id] = struct{}{}
+		}
+	}
+}
+
+// PreparedVisibleState is an opaque, prevalidated replacement for the
+// session-visible QueryLoop state. Runtime composition captures it from a
+// detached loop before touching a live conversation, then installs it under
+// that conversation's publication lock with no remaining failure path.
+type PreparedVisibleState struct {
+	messages        []types.Message
+	seenToolUseIDs  []string
+	loadedToolNames []string
+	skillState      SkillCatalogRuntimeState
+	controlScope    messagecontrol.Scope
+	valid           bool
+}
+
+// CapturePreparedVisibleState snapshots a fully reconciled detached loop.
+func (q *QueryLoop) CapturePreparedVisibleState() (PreparedVisibleState, error) {
+	if q == nil {
+		return PreparedVisibleState{}, errors.New("nil query loop")
+	}
+	state := q.SkillCatalogState()
+	if err := state.Validate(); err != nil {
+		return PreparedVisibleState{}, err
+	}
+	return PreparedVisibleState{
+		messages:        q.Messages(),
+		seenToolUseIDs:  q.SeenToolUseIDs(),
+		loadedToolNames: q.LoadedToolNames(),
+		skillState:      state.Clone(),
+		controlScope:    q.internalControlScope,
+		valid:           true,
+	}, nil
+}
+
+// InstallPreparedVisibleState performs only clone and assignment operations.
+// The opaque value can be constructed only by CapturePreparedVisibleState, so
+// validation never occurs after a surrounding override transaction commits.
+func (q *QueryLoop) InstallPreparedVisibleState(prepared PreparedVisibleState) {
+	if q == nil || !prepared.valid {
+		return
+	}
+	q.messages = q.installVisibleHistory(prepared.messages)
+	q.loadedToolNames = loadedToolNamesFromMessages(prepared.messages)
+	for _, name := range prepared.loadedToolNames {
+		if name = strings.TrimSpace(name); name != "" {
+			q.loadedToolNames[name] = struct{}{}
+		}
+	}
+	q.seenToolUseIDs = collectToolUseIDs(prepared.messages)
+	for _, id := range prepared.seenToolUseIDs {
+		if strings.TrimSpace(id) != "" {
+			q.seenToolUseIDs[id] = struct{}{}
+		}
+	}
+	state := prepared.skillState.Clone()
+	q.skillCatalogMu.Lock()
+	q.skillCatalogEpoch = state.ContextEpoch
+	q.skillCatalogCursor = state.Cursor
+	q.loadedSkillDigests = state.LoadedDigests
+	if q.loadedSkillDigests == nil {
+		q.loadedSkillDigests = make(map[skills.SkillID]SkillLoadedLedgerEntry)
+	}
+	q.skillCatalogMu.Unlock()
+	q.internalControlScope = prepared.controlScope
+}
+
+// CaptureCompactionContextState snapshots context usage for the outer engine
+// persistence transaction. It stays separate from visible state so detached
+// state installs cannot overwrite a live provider measurement.
+func (q *QueryLoop) CaptureCompactionContextState() compact.CompactionTrackerSnapshot {
+	if q == nil || q.ctxWindow == nil {
+		return compact.CompactionTrackerSnapshot{}
+	}
+	return q.ctxWindow.CaptureCompactionTracker()
+}
+
+func (q *QueryLoop) RestoreCompactionContextState(snapshot compact.CompactionTrackerSnapshot) {
+	if q != nil && q.ctxWindow != nil {
+		q.ctxWindow.RestoreCompactionTracker(snapshot)
+	}
+}
+
+// SeenToolUseIDs returns the complete session-lifetime identity ledger in a
+// stable order suitable for deterministic sidecar persistence.
+func (q *QueryLoop) SeenToolUseIDs() []string {
+	ids := make([]string, 0, len(q.seenToolUseIDs))
+	for id := range q.seenToolUseIDs {
+		if strings.TrimSpace(id) != "" {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// LoadedToolNames returns deferred tools already surfaced to the model in a
+// stable order suitable for session persistence and fork restoration.
+func (q *QueryLoop) LoadedToolNames() []string {
+	names := make([]string, 0, len(q.loadedToolNames))
+	for name := range q.loadedToolNames {
+		if name = strings.TrimSpace(name); name != "" {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names
+}
+
+// SkillCatalogState returns an atomic, defensive view of the catalog cursor
+// and loaded-body ledger for runtime persistence and SkillTool wiring.
+func (q *QueryLoop) SkillCatalogState() SkillCatalogRuntimeState {
+	q.skillCatalogMu.Lock()
+	defer q.skillCatalogMu.Unlock()
+	q.ensureSkillCatalogEpochLocked()
+	return q.skillCatalogStateLocked()
+}
+
+// SetSkillCatalogState restores state that runtime composition has already
+// reconciled against visible-history evidence for the same context epoch.
+// Invalid or cross-epoch cursors are rejected before any live state changes.
+func (q *QueryLoop) SetSkillCatalogState(state SkillCatalogRuntimeState) error {
+	if err := state.Validate(); err != nil {
+		return err
+	}
+	state = state.Clone()
+	q.skillCatalogMu.Lock()
+	q.skillCatalogEpoch = state.ContextEpoch
+	q.skillCatalogCursor = state.Cursor
+	q.loadedSkillDigests = state.LoadedDigests
+	if q.loadedSkillDigests == nil {
+		q.loadedSkillDigests = make(map[skills.SkillID]SkillLoadedLedgerEntry)
+	}
+	q.skillCatalogMu.Unlock()
+	return nil
+}
+
+// SkillLoadedLedgerState returns the current epoch even when the requested
+// body has not been loaded. SkillTool uses that non-zero epoch to emit a
+// pending receipt, then this loop commits the receipt only after visible append.
+func (q *QueryLoop) SkillLoadedLedgerState(id skills.SkillID) SkillLoadedLedgerState {
+	q.skillCatalogMu.Lock()
+	defer q.skillCatalogMu.Unlock()
+	q.ensureSkillCatalogEpochLocked()
+	state := SkillLoadedLedgerState{ContextEpoch: q.skillCatalogEpoch}
+	if entry, ok := q.loadedSkillDigests[id]; ok {
+		state.LoadedContextEpoch = q.skillCatalogEpoch
+		state.ContentDigest = entry.ContentDigest
+		state.PayloadDigest = entry.PayloadDigest
+	}
+	return state
+}
+
+func (q *QueryLoop) ensureSkillCatalogEpochLocked() {
+	if q.skillCatalogEpoch == 0 {
+		q.skillCatalogEpoch = 1
+	}
+	if q.loadedSkillDigests == nil {
+		q.loadedSkillDigests = make(map[skills.SkillID]SkillLoadedLedgerEntry)
+	}
+}
+
+func (q *QueryLoop) currentReadEvidenceEpoch() uint64 {
+	q.skillCatalogMu.RLock()
+	defer q.skillCatalogMu.RUnlock()
+	if q.skillCatalogEpoch == 0 {
+		return 1
+	}
+	return q.skillCatalogEpoch
+}
+
+func (q *QueryLoop) skillCatalogStateLocked() SkillCatalogRuntimeState {
+	state := SkillCatalogRuntimeState{
+		ContextEpoch:  q.skillCatalogEpoch,
+		Cursor:        q.skillCatalogCursor.Clone(),
+		LoadedDigests: make(map[skills.SkillID]SkillLoadedLedgerEntry, len(q.loadedSkillDigests)),
+	}
+	for id, entry := range q.loadedSkillDigests {
+		state.LoadedDigests[id] = entry
+	}
+	return state
+}
+
+// installVisibleHistory is the single epoch fence for wholesale model-visible
+// history replacement. Callers assign its return value to q.messages or a
+// QueryState. It intentionally preserves config.CacheLineageID and
+// the session-lifetime tool-use ledger while clearing Responses chaining and
+// all ledgers whose evidence belonged to the replaced context.
+func (q *QueryLoop) installVisibleHistory(messages []types.Message) []types.Message {
+	q.skillCatalogMu.Lock()
+	q.ensureSkillCatalogEpochLocked()
+	q.skillCatalogEpoch++
+	if q.skillCatalogEpoch == 0 { // practically unreachable overflow; keep zero reserved
+		q.skillCatalogEpoch = 1
+	}
+	q.skillCatalogCursor = SkillCatalogCursor{}
+	q.loadedSkillDigests = make(map[skills.SkillID]SkillLoadedLedgerEntry)
+	q.skillCatalogMu.Unlock()
+
+	q.lastResponseID = ""
+	q.lastEnvelopeFingerprint = ""
+	q.currentEnvelopeFingerprint = ""
+	q.disableResponseChain = false
+	q.contentReplacementState = compact.ReconstructContentReplacementStateForScope(messages, q.internalControlScope, true)
+	if q.cachedMicrocompactState != nil {
+		q.cachedMicrocompactState.Reset()
+	}
+	return messages
+}
+
+func (q *QueryLoop) prepareSkillCatalogForSampling(messages []types.Message, snapshot QueryConfigSnapshot, insertBefore int) ([]types.Message, *types.Message, error) {
+	if snapshot.SkillManager == nil {
+		return messages, nil, nil
+	}
+	var current skills.CatalogSnapshot
+	var err error
+	if snapshot.SkillProjectGeneration != 0 {
+		current, err = snapshot.SkillManager.SnapshotAtGeneration(snapshot.SessionID, snapshot.SkillProjectGeneration)
+	} else {
+		// Compatibility for direct helper callers outside Run. Real model runs
+		// always bind a non-zero generation before reaching this boundary.
+		current, err = snapshot.SkillManager.Snapshot(snapshot.SessionID)
+	}
+	if err != nil {
+		// EnterWorktree/ExitWorktree may retarget the shared Manager during the
+		// current assistant run. Keep the old run's catalog frozen instead of
+		// leaking the new workspace or aborting before a compensating Exit can
+		// run. Skill/Agent/Team execution remains generation-fenced; the queued
+		// workspace and a fresh generation become visible only on the next Run.
+		if errors.Is(err, skills.ErrSkillProjectGenerationChanged) && q.hasPendingWorkspaceRuntime() {
+			return messages, nil, nil
+		}
+		return nil, nil, i18n.WrapInternalError(i18n.KeyLoopQuerySnapshotSkillCatalogFailed, err)
+	}
+	runtimeState := q.SkillCatalogState()
+	plan, err := PlanSkillCatalog(SkillCatalogCoordinatorInput{
+		CurrentSnapshot: current,
+		PriorCursor:     runtimeState.Cursor,
+		ContextEpoch:    skillCatalogContextEpoch(runtimeState.ContextEpoch),
+		VisibleHistory:  messages,
+		CharBudget:      skills.GetCharBudget(snapshot.MaxContextTokens),
+	})
+	if err != nil {
+		return nil, nil, i18n.WrapInternalError(i18n.KeyLoopQueryPlanSkillCatalogFailed, err)
+	}
+	if plan.Message != nil {
+		trusted := q.sealRuntimeControlMessage(*plan.Message)
+		plan.Message = &trusted
+		messages = insertMessageAt(messages, trusted, insertBefore)
+	}
+
+	q.skillCatalogMu.Lock()
+	defer q.skillCatalogMu.Unlock()
+	q.ensureSkillCatalogEpochLocked()
+	if q.skillCatalogEpoch != runtimeState.ContextEpoch {
+		return nil, nil, i18n.NewError(i18n.KeyLoopQuerySkillCatalogContextChanged)
+	}
+	q.skillCatalogCursor = plan.Cursor.Clone()
+	return messages, plan.Message, nil
+}
+
+func insertMessageAt(messages []types.Message, message types.Message, index int) []types.Message {
+	if index < 0 || index > len(messages) {
+		return append(messages, message)
+	}
+	result := make([]types.Message, 0, len(messages)+1)
+	result = append(result, messages[:index]...)
+	result = append(result, message)
+	result = append(result, messages[index:]...)
+	return result
+}
+
+func trailingPlainUserInputIndex(messages []types.Message) int {
+	if len(messages) == 0 {
+		return -1
+	}
+	index := len(messages) - 1
+	message := messages[index]
+	if message.Role != types.RoleUser {
+		return -1
+	}
+	for _, block := range message.Content {
+		if _, isToolResult := block.(types.ToolResultBlock); isToolResult {
+			return -1
+		}
+	}
+	return index
+}
+
+func skillCatalogInsertionIndexForTransition(messages []types.Message, transition QueryTransition) int {
+	switch transition {
+	case QueryTransitionCollapseDrainRetry,
+		QueryTransitionReactiveCompactRetry,
+		QueryTransitionMaxOutputTokensRecovery,
+		QueryTransitionStopHookBlocking,
+		QueryTransitionGoalContinuation,
+		QueryTransitionTokenBudgetContinuation,
+		QueryTransitionPlanModeContextRestart:
+		return trailingPlainUserInputIndex(messages)
+	default:
+		return -1
+	}
+}
+
+func messageAt(messages []types.Message, index int) (types.Message, bool) {
+	if index < 0 || index >= len(messages) {
+		return types.Message{}, false
+	}
+	return messages[index], true
+}
+
+func messageIndexFromEnd(messages []types.Message, target types.Message) int {
+	for index := len(messages) - 1; index >= 0; index-- {
+		if reflect.DeepEqual(messages[index], target) {
+			return index
+		}
+	}
+	return -1
+}
+
+func (q *QueryLoop) commitVisibleSkillExecutionReceipts(messages []types.Message, toolUses []types.ToolUseBlock, results []types.ToolResultBlock) error {
+	skillToolUseIDs := make(map[string]struct{})
+	for _, toolUse := range toolUses {
+		if toolUse.Name == "Skill" && strings.TrimSpace(toolUse.ID) != "" {
+			skillToolUseIDs[toolUse.ID] = struct{}{}
+		}
+	}
+	if len(skillToolUseIDs) == 0 {
+		return nil
+	}
+
+	for _, result := range results {
+		if _, isSkill := skillToolUseIDs[result.ToolUseID]; !isSkill || result.IsError || result.Outcome != types.ToolOutcomeSucceeded {
+			continue
+		}
+		receipt, found, err := skills.DecodeSkillExecutionReceiptMetadata(result.Metadata)
+		if err != nil {
+			return i18n.WrapInternalError(i18n.KeyLoopQueryValidateSkillReceiptFailed, err, result.ToolUseID)
+		}
+		if !found || !skillExecutionReceiptVisible(messages, result, receipt) {
+			continue
+		}
+
+		q.skillCatalogMu.Lock()
+		q.ensureSkillCatalogEpochLocked()
+		if receipt.ContextEpoch == q.skillCatalogEpoch {
+			existing, alreadyLoaded := q.loadedSkillDigests[receipt.SkillID]
+			if receipt.InvocationEnvelopeKind != skills.InvocationEnvelopeAlreadyLoaded ||
+				(alreadyLoaded && existing.ContentDigest == receipt.ContentDigest && existing.PayloadDigest == receipt.InvocationPayloadDigest) {
+				q.loadedSkillDigests[receipt.SkillID] = SkillLoadedLedgerEntry{
+					ContentDigest: receipt.ContentDigest,
+					PayloadDigest: receipt.InvocationPayloadDigest,
+				}
+			}
+		}
+		q.skillCatalogMu.Unlock()
+	}
+	return nil
+}
+
+func skillExecutionReceiptVisible(messages []types.Message, expected types.ToolResultBlock, receipt skills.SkillExecutionReceipt) bool {
+	encodedReceipt := expected.Metadata[skills.SkillExecutionReceiptMetadataKey]
+	if strings.TrimSpace(expected.ToolUseID) == "" || strings.TrimSpace(encodedReceipt) == "" {
+		return false
+	}
+	if err := validateVisibleSkillInvocationEnvelope(expected.Content, receipt); err != nil {
+		return false
+	}
+	for _, message := range messages {
+		if message.Role != types.RoleUser || message.IsInternalRuntimeMessage() {
+			continue
+		}
+		for _, block := range message.Content {
+			result, ok := block.(types.ToolResultBlock)
+			if !ok || result.ToolUseID != expected.ToolUseID || result.IsError || result.Outcome != types.ToolOutcomeSucceeded {
+				continue
+			}
+			// A receipt proves that one exact rendered envelope is about to enter
+			// visible history. Metadata alone is insufficient: aggregate result
+			// budgeting may persist/replace the envelope while retaining metadata.
+			// In that case a later invocation must load the body again rather than
+			// treating a persistence stub as the complete skill text.
+			if result.Content == expected.Content &&
+				reflect.DeepEqual(result.ContentBlocks, expected.ContentBlocks) &&
+				result.Metadata[skills.SkillExecutionReceiptMetadataKey] == encodedReceipt {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+type visibleSkillInvocationEnvelope struct {
+	Type    string                        `json:"type"`
+	Version int                           `json:"version"`
+	Kind    skills.InvocationEnvelopeKind `json:"kind"`
+	Skill   struct {
+		ID       skills.SkillID       `json:"id"`
+		Name     string               `json:"name"`
+		Revision skills.SkillRevision `json:"revision"`
+		Digest   skills.SkillDigest   `json:"digest"`
+		Source   skills.SkillSource   `json:"source"`
+		Locator  skills.SkillLocator  `json:"locator"`
+	} `json:"skill"`
+	Arguments      skills.InvocationArguments     `json:"arguments"`
+	PayloadDigest  skills.InvocationPayloadDigest `json:"payload_digest"`
+	PreviousDigest skills.SkillDigest             `json:"previous_digest,omitempty"`
+	Body           *string                        `json:"body,omitempty"`
+}
+
+func validateVisibleSkillInvocationEnvelope(encoded string, receipt skills.SkillExecutionReceipt) error {
+	decoder := json.NewDecoder(strings.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	var envelope visibleSkillInvocationEnvelope
+	if err := decoder.Decode(&envelope); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("skill invocation envelope contains trailing JSON")
+		}
+		return err
+	}
+	if envelope.Type != "skill_invocation" || envelope.Version != skills.InvocationEnvelopeVersion {
+		return errors.New("invalid skill invocation envelope header")
+	}
+	if envelope.Kind != receipt.InvocationEnvelopeKind || envelope.Skill.ID != receipt.SkillID ||
+		envelope.Skill.Digest != receipt.ContentDigest || envelope.PayloadDigest != receipt.InvocationPayloadDigest {
+		return errors.New("skill invocation envelope does not match execution receipt")
+	}
+	if err := envelope.Skill.ID.Validate(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(envelope.Skill.Name) == "" {
+		return errors.New("skill invocation envelope has incomplete skill identity")
+	}
+	if err := envelope.Skill.Revision.Validate(); err != nil {
+		return err
+	}
+	if err := envelope.Skill.Digest.Validate(); err != nil {
+		return err
+	}
+	if err := envelope.Skill.Source.Validate(); err != nil {
+		return err
+	}
+	if source, ok := envelope.Skill.ID.Source(); !ok || source != envelope.Skill.Source {
+		return errors.New("skill invocation envelope ID source mismatch")
+	}
+	if err := envelope.Skill.Locator.Validate(); err != nil {
+		return err
+	}
+	if err := envelope.PayloadDigest.Validate(); err != nil {
+		return err
+	}
+	if !envelope.Arguments.Provided && envelope.Arguments.Value != "" {
+		return errors.New("omitted skill invocation arguments carry a value")
+	}
+
+	switch envelope.Kind {
+	case skills.InvocationEnvelopeFull:
+		if envelope.Body == nil || envelope.PreviousDigest != "" {
+			return errors.New("invalid full skill invocation envelope")
+		}
+	case skills.InvocationEnvelopeSuperseding:
+		if envelope.Body == nil || envelope.PreviousDigest.Validate() != nil || envelope.PreviousDigest == envelope.Skill.Digest {
+			return errors.New("invalid superseding skill invocation envelope")
+		}
+	case skills.InvocationEnvelopeAlreadyLoaded:
+		if envelope.Body != nil || envelope.PreviousDigest != "" {
+			return errors.New("invalid already-loaded skill invocation envelope")
+		}
+		return nil
+	default:
+		return errors.New("unknown skill invocation envelope kind")
+	}
+	if skills.DigestInvocationPayload(*envelope.Body) != envelope.PayloadDigest {
+		return errors.New("skill invocation body digest does not match payload digest")
+	}
+	return nil
+}
+
+// Model returns the model identifier currently configured for the loop.
+func (q *QueryLoop) Model() string {
+	return q.config.Model
+}
+
+// SetModel updates the model identifier used for future requests.
+func (q *QueryLoop) SetModel(model string) {
+	q.config.Model = model
+}
+
+// SetReasoningEffort updates the reasoning effort used for future requests.
+func (q *QueryLoop) SetReasoningEffort(effort string) {
+	q.config.ReasoningEffort = effort
+}
+
+// SetProvider replaces the provider used for future requests.
+// If the current provider is a *ProviderRef, it calls Swap() to notify listeners.
+// Otherwise it replaces the provider field directly.
+// This takes effect between queries — an in-flight stream is not interrupted.
+//
+// After swapping, it adapts MaxContextTokens to min(originalMax, providerMax)
+// so that switching between models with different context windows works seamlessly.
+func (q *QueryLoop) SetProvider(p provider.Provider) {
+	if pRef, ok := q.provider.(*provider.ProviderRef); ok {
+		pRef.Swap(p)
+	} else {
+		q.provider = p
+	}
+	q.adaptContextWindow()
+}
+
+// AdaptContextWindow re-reads the current provider's capabilities and updates
+// MaxContextTokens and the ContextWindow to match. Exported so that engine/ can
+// call it after swapping the underlying ProviderRef without going through
+// SetProvider (which would double-Swap).
+func (q *QueryLoop) AdaptContextWindow() {
+	q.adaptContextWindow()
+}
+
+// adaptContextWindow sets MaxContextTokens to the current provider's actual
+// context window size. Called after provider initialization and on every
+// provider switch, so the context budget always matches the active model.
+func (q *QueryLoop) adaptContextWindow() {
+	caps := q.providerCapabilities()
+	if caps.MaxContext <= 0 {
+		return // provider didn't report a limit; keep config as-is
+	}
+	q.config.MaxContextTokens = caps.MaxContext
+	if q.ctxWindow != nil {
+		q.ctxWindow.MaxTokens = caps.MaxContext
+	}
+}
+
+// SetSessionID sets the runtime conversation identity.
+func (q *QueryLoop) SetSessionID(id string) {
+	q.config.SessionID = id
+	if sc, ok := q.compactor.(*compact.SummaryCompactor); ok {
+		sc.SessionID = id
+		sc.AttachmentProvider = q.PostCompactAttachmentProvider()
+	}
+}
+
+// SetThinkingConfig enables or disables extended thinking for future requests.
+// When enabled is false the config is cleared (thinking disabled).
+// When enabled is true, budgetTokens controls the token budget (0 = provider default).
+func (q *QueryLoop) SetThinkingConfig(enabled bool, budgetTokens int) {
+	if !enabled {
+		q.thinkingConfig = nil
+		return
+	}
+	q.thinkingConfig = &provider.ThinkingConfig{
+		Enabled:      true,
+		BudgetTokens: budgetTokens,
+	}
+}
+
+// ContextUsage returns the current context window usage.
+// Returns (0, 0) if compaction is disabled.
+func (q *QueryLoop) ContextUsage() (maxTokens, usedTokens int) {
+	maxTokens, usage := q.ContextUsageDetail()
+	return maxTokens, usage.UsedTokens
+}
+
+// ContextUsageDetail preserves whether the current value came from a local
+// preflight estimate or authoritative provider usage.
+func (q *QueryLoop) ContextUsageDetail() (maxTokens int, usage compact.ContextInputUsage) {
+	if q.ctxWindow == nil {
+		return 0, compact.ContextInputUsage{Measurement: compact.ContextUsageUnknown}
+	}
+	usage = q.ctxWindow.CurrentInputUsage()
+	return max(q.ctxWindow.MaxTokens, 0), usage
+}
+
+// ContextWarningState returns the current context warning state for UI and
+// slash-command display.
+func (q *QueryLoop) ContextWarningState() compact.TokenWarningState {
+	if q.ctxWindow == nil {
+		return compact.TokenWarningState{}
+	}
+	return q.ctxWindow.TokenWarningState(-1, compact.ShouldUseAutoCompact())
+}
+
+func (q *QueryLoop) blockIfManualCompactReserveExceeded(estimate compact.ModelContextTokenEstimate, snapshot QueryConfigSnapshot, turnCount int, onEvent func(Event)) error {
+	if q.ctxWindow == nil || compact.ShouldUseAutoCompact() {
+		return nil
+	}
+	switch snapshot.QuerySource {
+	case QuerySourceCompact, QuerySourceSessionMemory:
+		return nil
+	}
+	tokenUsage := estimate.KnownTotalTokens
+	state := q.ctxWindow.TokenWarningState(tokenUsage, false)
+	if !state.IsAtBlockingLimit {
+		return nil
+	}
+	err := &types.APIError{
+		Type:    "prompt_too_long",
+		Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimePromptTooLong),
+		Status:  400,
+	}
+	onEvent(Event{
+		Type:      EventError,
+		Text:      err.Message,
+		Error:     err,
+		TurnCount: turnCount,
+		Metadata: map[string]any{
+			"reason":            "blocking_limit",
+			"used_tokens":       state.UsedTokens,
+			"blocking_limit":    state.BlockingLimitTokens,
+			"estimate_complete": estimate.Complete,
+			"unknown_overheads": append([]compact.TokenOverheadKind(nil), estimate.UnknownOverheads...),
+		},
+	})
+	return err
+}
+
+func (q *QueryLoop) publishRequestEstimate(params provider.Params, turnCount int, onEvent func(Event)) compact.ModelContextTokenEstimate {
+	estimate := q.ctxWindow.EstimateProviderRequest(params)
+	q.ctxWindow.UpdateRequestEstimate(estimate)
+	unknown := make([]string, len(estimate.UnknownOverheads))
+	for index, kind := range estimate.UnknownOverheads {
+		unknown[index] = string(kind)
+	}
+	if onEvent != nil {
+		onEvent(Event{
+			Type:      EventContextUsage,
+			TurnCount: turnCount,
+			ContextUsage: &ContextUsageEvent{
+				UsedTokens: estimate.KnownTotalTokens, CapacityTokens: max(q.ctxWindow.MaxTokens, 0),
+				Measurement: string(compact.ContextUsageLocalEstimate), EstimateComplete: estimate.Complete,
+				UnknownOverheads: unknown,
+			},
+		})
+	}
+	return estimate
+}
+
+// providerCapabilities returns the capabilities of the underlying provider,
+// delegating through RetryProvider wrappers if necessary.
+func (q *QueryLoop) providerCapabilities() provider.ProviderCapabilities {
+	if cp, ok := q.provider.(provider.CapabilityProvider); ok {
+		return cp.Capabilities()
+	}
+	return provider.ProviderCapabilities{}
+}
+
+func escalatedMaxOutputTokens(model string, current int) int {
+	target := escalatedMaxTokens
+	if maxOutput := provider.LookupMaxOutput(model); maxOutput > 0 && maxOutput < target {
+		target = maxOutput
+	}
+	if target <= current {
+		return 0
+	}
+	return target
+}
+
+func (q *QueryLoop) maxOutputTokensRecoveryMessage() types.Message {
+	message := types.UserMessage(i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopVisibleOutputTokenRecovery))
+	message.IsMeta = true
+	message.InternalKind = types.InternalMessageKindOutputTokenRecovery
+	return q.sealRuntimeControlMessage(message)
+}
+
+// Run sends a user message and runs the agentic loop until completion.
+func (q *QueryLoop) Run(ctx context.Context, userMessage string, onEvent func(Event)) error {
+	q.messages = append(q.messages, types.UserMessage(userMessage))
+	return q.runLoop(ctx, onEvent, len(q.messages)-1)
+}
+
+// RunMessage appends a pre-classified user-role message. Runtime follow-up
+// callers use it to preserve InternalKind/IsMeta without changing the content
+// sent to the model.
+func (q *QueryLoop) RunMessage(ctx context.Context, message types.Message, onEvent func(Event)) error {
+	q.messages = append(q.messages, message)
+	return q.runLoop(ctx, onEvent, len(q.messages)-1)
+}
+
+// RunPrepared runs the agentic loop using messages already present in the
+// QueryLoop. Callers use this when the initial user message has been
+// constructed as structured content before the loop starts.
+func (q *QueryLoop) RunPrepared(ctx context.Context, onEvent func(Event)) error {
+	return q.runLoop(ctx, onEvent, trailingPlainUserInputIndex(q.messages))
+}
+
+// RunWithContent sends a multimodal user message (e.g. containing image blocks)
+// and runs the agentic loop until completion.  content must have at least one
+// element; call Run for plain-text messages.
+func (q *QueryLoop) RunWithContent(ctx context.Context, content []types.ContentBlock, onEvent func(Event)) error {
+	q.messages = append(q.messages, types.Message{
+		Role:    types.RoleUser,
+		Content: content,
+	})
+	return q.runLoop(ctx, onEvent, len(q.messages)-1)
+}
+
+func (q *QueryLoop) providerParams(state *QueryState, snapshot QueryConfigSnapshot, messages []types.Message) provider.Params {
+	params := q.providerParamsBase(state, snapshot, messages)
+	fingerprint := envelopeFingerprint(params)
+	q.currentEnvelopeFingerprint = fingerprint
+	params.PreviousResponseID = q.previousResponseIDForRequest(fingerprint)
+	return params
+}
+
+func (q *QueryLoop) providerParamsBase(state *QueryState, snapshot QueryConfigSnapshot, messages []types.Message) provider.Params {
+	messages = compact.StripContentReplacementBlocks(messages)
+	messages = collapseMaxOutputTokensRecoveryMessages(messages)
+	userContext := snapshot.UserContext
+	if snapshot.GoalRuntime != nil {
+		current, err := snapshot.GoalRuntime.LoadGoal()
+		if err == nil {
+			userContext = userContext.WithGoal(current)
+		} else {
+			userContext = userContext.WithGoal(nil)
+		}
+	}
+	messages = userContext.PrependTo(messages)
+	tools := q.visibleToolDefinitions()
+	systemBlocks := snapshot.SystemContext.AppendTo(snapshot.SystemBlocks)
+	systemBlocks = prompt.ApplyCacheScopes(systemBlocks, prompt.CacheScopeOptions{
+		GlobalSafe:      q.provider.Name() == "anthropic",
+		ToolCacheMarker: len(tools) > 0,
+	})
+	system := snapshot.System
+	if len(systemBlocks) == 0 && !snapshot.SystemContext.IsZero() {
+		if block, ok := snapshot.SystemContext.Block(); ok {
+			if system == "" {
+				system = block.Text
+			} else {
+				system += "\n\n" + block.Text
+			}
+		}
+	}
+	params := provider.Params{
+		Model:                   snapshot.Model,
+		MaxTokens:               snapshot.MaxTokens,
+		MaxOutputTokensOverride: state.MaxOutputTokensOverride,
+		System:                  system,
+		SystemBlocks:            systemBlocks,
+		Messages:                messages,
+		Tools:                   tools,
+		PromptCacheKey:          snapshot.CacheLineageID,
+		UsePromptCache:          snapshot.CacheLineageID != "",
+		ReasoningEffort:         snapshot.ReasoningEffort,
+		Thinking:                snapshot.Thinking,
+	}
+	params = params.WithInternalControlScope(messagecontrol.Runtime(), q.internalControlScope, true)
+	if snapshot.TaskBudget > 0 {
+		params.TaskBudget = &provider.TaskBudget{
+			Total:     snapshot.TaskBudget,
+			Remaining: state.TaskBudgetRemaining,
+		}
+	}
+	return params
+}
+
+type providerAttemptIdentity struct {
+	provider       string
+	model          string
+	requestID      string
+	requestStarted time.Time
+	requestElapsed time.Duration
+}
+
+type firstTokenObserverContextKey struct{}
+
+func withFirstTokenObserver(ctx context.Context, observer func()) context.Context {
+	if observer == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, firstTokenObserverContextKey{}, observer)
+}
+
+func notifyFirstTokenObserver(ctx context.Context) {
+	observer, _ := ctx.Value(firstTokenObserverContextKey{}).(func())
+	if observer != nil {
+		observer()
+	}
+}
+
+type pendingProviderAttemptUsage struct {
+	identity  providerAttemptIdentity
+	usage     types.Usage
+	turnCount int
+	emit      func(Event)
+}
+
+func newProviderAttemptIdentity(p provider.Provider, model string) providerAttemptIdentity {
+	identity := providerAttemptIdentity{model: strings.TrimSpace(model)}
+	if p == nil {
+		return identity
+	}
+	identity.provider = strings.TrimSpace(p.Name())
+	if identity.model == "" {
+		identity.model = strings.TrimSpace(p.ModelID())
+	}
+	return identity
+}
+
+func withProviderAttemptMetadata(metadata map[string]any, identity providerAttemptIdentity) map[string]any {
+	result := make(map[string]any, len(metadata)+2)
+	for key, value := range metadata {
+		result[key] = value
+	}
+	if identity.provider != "" {
+		result["provider"] = identity.provider
+	}
+	if identity.model != "" {
+		result["model"] = identity.model
+	}
+	return result
+}
+
+// runLoop executes the agentic turn loop, assuming the latest user message has
+// already been appended to q.messages.
+func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(Event), currentInputIndices ...int) error {
+	currentInputIndex := -1
+	if len(currentInputIndices) > 0 {
+		currentInputIndex = currentInputIndices[0]
+	}
+	q.applyPendingWorkspaceRuntime()
+	if err := q.validateInternalControlScope(); err != nil {
+		return i18n.WrapInternalError(i18n.KeyLoopQueryControlScopeInvalid, err)
+	}
+	snapshot := newQueryConfigSnapshot(q.config, q.thinkingConfig)
+	if snapshot.SkillManager != nil {
+		generation := snapshot.SkillProjectGeneration
+		if generation == 0 {
+			binding, err := snapshot.SkillManager.SnapshotBinding(snapshot.SessionID)
+			if err != nil {
+				return i18n.WrapInternalError(i18n.KeyLoopQueryBindSkillGenerationFailed, err)
+			}
+			generation = binding.ProjectGeneration
+		} else if _, err := snapshot.SkillManager.SnapshotAtGeneration(snapshot.SessionID, generation); err != nil {
+			return i18n.WrapInternalError(i18n.KeyLoopQueryValidateSkillGenerationFailed, err)
+		}
+		snapshot.SkillProjectGeneration = generation
+		q.skillRunGenerationMu.Lock()
+		q.skillRunGeneration = generation
+		q.skillRunGenerationMu.Unlock()
+		defer func() {
+			q.skillRunGenerationMu.Lock()
+			q.skillRunGeneration = 0
+			q.skillRunGenerationMu.Unlock()
+		}()
+	}
+	lineage, _ := ToolExecutionContextFromContext(ctx)
+	state := newQueryState(q.messages)
+	queryID := uuid.NewString()
+	q.activeRunTokenMu.Lock()
+	q.activeRunToken = queryID
+	q.activeRunTokenMu.Unlock()
+	defer func() {
+		q.activeRunTokenMu.Lock()
+		if q.activeRunToken == queryID {
+			q.activeRunToken = ""
+		}
+		q.activeRunTokenMu.Unlock()
+	}()
+	var pendingUsage *pendingProviderAttemptUsage
+	var latestAttempt providerAttemptIdentity
+	flushPendingUsage := func() {
+		if pendingUsage == nil {
+			return
+		}
+		pending := pendingUsage
+		pendingUsage = nil
+		usage := pending.usage
+		pending.emit(Event{
+			Type:      EventProviderUsage,
+			Usage:     &usage,
+			TurnCount: pending.turnCount,
+			Metadata: withProviderAttemptMetadata(map[string]any{
+				"kind":        "provider_attempt",
+				"disposition": "discarded",
+			}, pending.identity),
+		})
+	}
+	defer flushPendingUsage()
+	emitTurnEvent := func(turnCount int, event Event) {
+		turnID, actorID, workUnitID := queryTurnIdentity(snapshot, queryID, turnCount)
+		if event.Type != EventSystemWarning && event.ProjectRoot == "" {
+			event.ProjectRoot = snapshot.ProjectRoot
+		}
+		if event.TurnID == "" {
+			event.TurnID = turnID
+		}
+		if event.ActorID == "" {
+			event.ActorID = actorID
+		}
+		if event.ActorType == "" {
+			event.ActorType = snapshot.AgentType
+		}
+		if event.WorkUnitID == "" {
+			event.WorkUnitID = workUnitID
+		}
+		if event.Type == EventSystemWarning {
+			warning := event.SystemWarningRuntimeEvent()
+			if warning.SessionID == "" {
+				warning.SessionID = snapshot.SessionID
+			}
+			warning.RuntimeIdentity = mergeRuntimeWarningIdentity(warning.RuntimeIdentity, event)
+			event.RuntimeEvent = &warning
+			// Warning presentation must go through RuntimeEvent. These legacy
+			// fields are diagnostic-only inputs and may never cross the loop
+			// boundary as a second, unprojected channel.
+			event.Text = ""
+			event.Error = nil
+			event.Metadata = nil
+			event.ProjectRoot = ""
+		}
+		emitEvent(event)
+	}
+	budgetTracker := NewBudgetTracker()
+	turnOutputTokens := 0
+	if snapshot.MemoryPrefetcher != nil {
+		state.PendingMemoryPrefetch = snapshot.MemoryPrefetcher.StartMemoryPrefetch(ctx, state.Messages)
+	}
+	defer func() {
+		q.messages = state.Messages
+		if snapshot.GoalRuntime == nil {
+			return
+		}
+		current, err := snapshot.GoalRuntime.LoadGoal()
+		if err != nil {
+			return
+		}
+		emitTurnEvent(state.TurnCount, newGoalStatusEvent(current, state.TurnCount))
+	}()
+
+	for state.shouldContinue(snapshot.MaxTurns) {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err := enforceMessageHistoryLimit(state.Messages); err != nil {
+			return err
+		}
+
+		catalogInsertionIndex := currentInputIndex
+		if currentInputIndex >= 0 {
+			currentInputIndex = -1
+		} else {
+			catalogInsertionIndex = skillCatalogInsertionIndexForTransition(state.Messages, state.Transition)
+		}
+		catalogInput, catalogBeforeCurrentInput := messageAt(state.Messages, catalogInsertionIndex)
+		turnCount := state.beginNextTurn()
+		turnID, actorID, workUnitID := queryTurnIdentity(snapshot, queryID, turnCount)
+		onEvent := func(event Event) {
+			if event.Type == EventTurnEnd {
+				event.Metadata = withProviderAttemptMetadata(event.Metadata, latestAttempt)
+				// The provider portion of this attempt is accounted by the
+				// backward-compatible turn_end usage payload.
+				pendingUsage = nil
+			}
+			emitTurnEvent(turnCount, event)
+		}
+		createProviderStream := func(params provider.Params) (<-chan types.StreamEvent, providerAttemptIdentity, error) {
+			// Starting another provider request means the previous response will
+			// not receive a turn_end event (retry, recovery, or continuation).
+			flushPendingUsage()
+			attempt := newProviderAttemptIdentity(q.provider, params.Model)
+			attempt.requestID = uuid.NewString()
+			attempt.requestStarted = time.Now()
+			latestAttempt = attempt
+			requestCtx := provider.WithRetryObserver(ctx, func(retry provider.RetryEvent) {
+				requestStatus := &RequestStatusEvent{
+					RequestID: attempt.requestID, Attempt: retry.Attempt, MaxRetries: retry.MaxRetries,
+					RetryDelayMilliseconds: retry.Delay.Milliseconds(),
+					TotalMilliseconds:      time.Since(attempt.requestStarted).Milliseconds(),
+				}
+				if retry.Err != nil {
+					requestStatus.Error = retry.Err.Error()
+				}
+				onEvent(Event{Type: EventRequestRetry, TurnCount: turnCount, RequestStatus: requestStatus})
+			})
+			stream, err := q.provider.CreateStream(requestCtx, params)
+			attempt.requestElapsed = time.Since(attempt.requestStarted)
+			if err == nil {
+				onEvent(Event{
+					Type: EventRequestStart, TurnCount: turnCount,
+					RequestStatus: &RequestStatusEvent{
+						RequestID:           attempt.requestID,
+						RequestMilliseconds: attempt.requestElapsed.Milliseconds(),
+						TotalMilliseconds:   attempt.requestElapsed.Milliseconds(),
+					},
+				})
+			}
+			return stream, attempt, err
+		}
+		ctx = withHookExecutionEventEmitter(ctx, onEvent)
+		ctx = hooks.WithCorrelation(ctx, hooks.HookInput{
+			SessionID:   snapshot.SessionID,
+			ProjectRoot: snapshot.ProjectRoot,
+			TurnID:      turnID,
+			WorkUnitID:  workUnitID,
+			AgentID:     actorID,
+			AgentType:   snapshot.AgentType,
+		})
+
+		state.Messages = q.injectMCPInstructionsDelta(state.Messages)
+		if snapshot.SkillPrefetcher != nil {
+			state.PendingSkillPrefetch = snapshot.SkillPrefetcher.StartSkillPrefetch(ctx, state.Messages)
+		}
+
+		epochBeforePrepare := q.SkillCatalogState().ContextEpoch
+		prepared, err := q.prepareMessagesForQuery(ctx, state, turnCount, snapshot.TaskBudget, snapshot.SessionID != "", onEvent, snapshot)
+		if err != nil {
+			return err
+		}
+		// Auto-compaction is a wholesale visible-history replacement. Task-specific
+		// compact paths may already have installed the epoch fence; the equality
+		// check keeps this sampling boundary compatible with that wiring while
+		// preventing a stale catalog cursor when they have not.
+		if state.AutoCompactTracking.Compacted && q.SkillCatalogState().ContextEpoch == epochBeforePrepare {
+			state.Messages = q.installVisibleHistory(state.Messages)
+		}
+		apiMessages := prepared.Messages
+
+		// Plan exactly one developer catalog projection after all preparation that
+		// can replace or project history. Insert that same projection into durable
+		// visible history and the provider view so "planned" cannot diverge from
+		// "actually sampled". Initial/current inputs retain immediate adjacency;
+		// later deltas append without rewriting the prior cached prefix.
+		stateInsertBefore, apiInsertBefore := -1, -1
+		if catalogBeforeCurrentInput {
+			stateInsertBefore = messageIndexFromEnd(state.Messages, catalogInput)
+			apiInsertBefore = messageIndexFromEnd(apiMessages, catalogInput)
+		}
+		var catalogMessage *types.Message
+		state.Messages, catalogMessage, err = q.prepareSkillCatalogForSampling(state.Messages, snapshot, stateInsertBefore)
+		if err != nil {
+			return err
+		}
+		if catalogMessage != nil {
+			apiMessages = insertMessageAt(apiMessages, *catalogMessage, apiInsertBefore)
+		}
+		if q.ctxWindow != nil {
+			preflightEstimate := q.ctxWindow.EstimateProviderRequest(q.providerParamsBase(state, snapshot, apiMessages))
+			if err := q.blockIfManualCompactReserveExceeded(preflightEstimate, snapshot, turnCount, onEvent); err != nil {
+				q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(err.Error()))
+				return err
+			}
+		}
+		if err := runQueryHook(ctx, snapshot.HookRunner, hooks.HookPreQuery, hooks.HookInput{
+			SessionID:   snapshot.SessionID,
+			ProjectRoot: snapshot.ProjectRoot,
+			TurnID:      turnID,
+			WorkUnitID:  workUnitID,
+			AgentID:     actorID,
+			AgentType:   snapshot.AgentType,
+			Messages:    hookMessages(apiMessages),
+		}); err != nil {
+			return err
+		}
+
+		params := q.providerParams(state, snapshot, apiMessages)
+		if q.ctxWindow != nil {
+			q.publishRequestEstimate(params, turnCount, onEvent)
+		}
+
+		// --- Recovery path 1: transient API error retry ---
+		// If the provider already handles retries internally (e.g. RetryProvider),
+		// skip the outer retry loop so one request has exactly one ten-retry policy.
+		maxStreamAttempts := maxProviderRequestRetries + 1
+		innerProvider := q.provider
+		// Unwrap ProviderRef to check the underlying provider type.
+		if pRef, ok := innerProvider.(*provider.ProviderRef); ok {
+			innerProvider = pRef.Get()
+		}
+		if _, ok := innerProvider.(*provider.RetryProvider); ok {
+			maxStreamAttempts = 1
+		}
+		var stream <-chan types.StreamEvent
+		var streamAttempt providerAttemptIdentity
+		recoveredTerminalFailure := false
+		for retry := 0; retry < maxStreamAttempts; retry++ {
+			var streamErr error
+			stream, streamAttempt, streamErr = createProviderStream(params)
+			if streamErr == nil {
+				break
+			}
+			if fallbackErr, ok := provider.AsFallbackTriggeredError(streamErr); ok && fallbackErr.FallbackModel != "" {
+				snapshot.Model = fallbackErr.FallbackModel
+				snapshot.GoalEvaluator = bindGoalEvaluatorModel(snapshot.GoalEvaluator, snapshot.Model)
+				apiMessages = stripThinkingSignatures(apiMessages)
+				params = q.providerParams(state, snapshot, apiMessages)
+				if q.ctxWindow != nil {
+					q.publishRequestEstimate(params, turnCount, onEvent)
+				}
+				onEvent(NewSystemWarningEvent(
+					i18n.KeyRuntimeModelFallback,
+					[]any{fallbackErr.OriginalModel, fallbackErr.FallbackModel},
+					fallbackErr,
+					map[string]any{
+						"original_model": fallbackErr.OriginalModel,
+						"fallback_model": fallbackErr.FallbackModel,
+					},
+					turnCount,
+				))
+				stream, streamAttempt, streamErr = createProviderStream(params)
+				if streamErr == nil {
+					break
+				}
+			}
+			// Recovery: if previous_response_id was rejected, clear it and retry
+			// with full message history (graceful degradation).
+			// This does NOT consume a retry attempt — the fallback gets its own try.
+			if q.lastResponseID != "" && isPreviousResponseNotFound(streamErr) {
+				// Silently fall back to full message history — no user-facing warning.
+				q.lastResponseID = ""
+				params.PreviousResponseID = ""
+				q.disableResponseChain = true // mirror Codex CLI: disable chaining for the rest of the session
+				// Retry immediately without consuming the retry counter
+				stream, streamAttempt, streamErr = createProviderStream(params)
+				if streamErr == nil {
+					break
+				}
+				// Fallback also failed — fall through to normal error handling
+			}
+			recovered, recoveryErr := q.recoverFromTerminalProviderFailure(ctx, state, apiMessages, streamErr, turnCount, onEvent)
+			if recoveryErr != nil {
+				onEvent(Event{Type: EventError, Text: streamErr.Error(), TurnCount: turnCount})
+				q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(streamErr.Error()))
+				return i18n.WrapError(i18n.KeyLoopQueryAPICallRecoveryFailed, streamErr, recoveryErr)
+			}
+			if recovered {
+				recoveredTerminalFailure = true
+				break
+			}
+			if !IsTransient(streamErr) || retry == maxStreamAttempts-1 {
+				onEvent(Event{Type: EventError, Text: streamErr.Error(), TurnCount: turnCount})
+				q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(streamErr.Error()))
+				return i18n.WrapError(i18n.KeyLoopQueryAPICallFailed, streamErr)
+			}
+			delay := retryDelay(retry)
+			onEvent(Event{
+				Type: EventRequestRetry, TurnCount: turnCount,
+				RequestStatus: &RequestStatusEvent{
+					RequestID: streamAttempt.requestID, Attempt: retry + 1, MaxRetries: maxStreamAttempts - 1,
+					RetryDelayMilliseconds: delay.Milliseconds(), Error: streamErr.Error(),
+				},
+			})
+			onEvent(NewSystemWarningEvent(
+				i18n.KeyRuntimeTransientAPIError,
+				[]any{retry + 1, maxStreamAttempts - 1},
+				streamErr,
+				nil,
+				turnCount,
+			))
+			retryTimer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				retryTimer.Stop()
+				return ctx.Err()
+			case <-retryTimer.C:
+			}
+		}
+		if recoveredTerminalFailure {
+			continue
+		}
+
+		// Guard against nil stream (e.g. all retries consumed by previous_response_id fallback)
+		if stream == nil {
+			q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopQueryStreamNotEstablished)))
+			return i18n.NewError(i18n.KeyLoopQueryStreamMissingAfterAttempts, maxStreamAttempts)
+		}
+
+		newStreamingExecutor := func() *StreamingToolExecutor {
+			if !snapshot.StreamingToolExecution {
+				return nil
+			}
+			toolExecContext := ToolExecutionContext{
+				Messages:               append([]types.Message(nil), state.Messages...),
+				SessionID:              snapshot.SessionID,
+				CacheLineageID:         snapshot.CacheLineageID,
+				TurnID:                 turnID,
+				ActorID:                actorID,
+				ActorType:              snapshot.AgentType,
+				WorkUnitID:             workUnitID,
+				RunID:                  lineage.RunID,
+				BatchID:                lineage.BatchID,
+				ParentRunID:            lineage.ParentRunID,
+				AgentPath:              lineage.AgentPath,
+				SessionProjectDir:      snapshot.SessionProjectDir,
+				ProjectRoot:            snapshot.ProjectRoot,
+				CWD:                    snapshot.CWD,
+				System:                 snapshot.System,
+				Model:                  snapshot.Model,
+				loadedSkillLedger:      q.skillLoadedLedgerCapability(state.Messages),
+				skillProjectGeneration: snapshot.SkillProjectGeneration,
+				owner:                  q,
+				runToken:               queryID,
+				ownedSessionID:         snapshot.SessionID,
+				ownedSessionProjectDir: snapshot.SessionProjectDir,
+				ownedProjectRoot:       snapshot.ProjectRoot,
+				ownedCWD:               snapshot.CWD,
+				readEvidenceOwnerID:    q.readEvidenceOwnerID,
+				readEvidenceEpoch:      q.currentReadEvidenceEpoch(),
+				ownedReadEvidenceActor: actorID,
+			}
+			return NewStreamingToolExecutor(ctx, q.registry, snapshot.HookRunner, snapshot.PermissionHandler, snapshot.SessionID, toolExecContext)
+		}
+		processProviderStream := func(stream <-chan types.StreamEvent, attempt providerAttemptIdentity, streamingExecutor *StreamingToolExecutor) (*types.Message, *types.Usage, *types.StopReason, error) {
+			firstTokenSeen := false
+			streamCtx := withFirstTokenObserver(ctx, func() {
+				if firstTokenSeen {
+					return
+				}
+				firstTokenSeen = true
+				total := time.Since(attempt.requestStarted)
+				onEvent(Event{
+					Type: EventRequestFirstToken, TurnCount: turnCount,
+					RequestStatus: &RequestStatusEvent{
+						RequestID:              attempt.requestID,
+						RequestMilliseconds:    attempt.requestElapsed.Milliseconds(),
+						FirstTokenMilliseconds: total.Milliseconds(),
+						TotalMilliseconds:      total.Milliseconds(),
+					},
+				})
+			})
+			assistantMsg, usage, stopReason, err := q.processStream(streamCtx, stream, turnCount, onEvent, streamingExecutor)
+			if usage != nil {
+				pendingUsage = &pendingProviderAttemptUsage{
+					identity:  attempt,
+					usage:     *usage,
+					turnCount: turnCount,
+					emit:      onEvent,
+				}
+			}
+			requestEventType := EventRequestEnd
+			requestStatus := &RequestStatusEvent{
+				RequestID:           attempt.requestID,
+				RequestMilliseconds: attempt.requestElapsed.Milliseconds(),
+				TotalMilliseconds:   time.Since(attempt.requestStarted).Milliseconds(),
+			}
+			if err != nil {
+				requestEventType = EventRequestFailed
+				requestStatus.Error = err.Error()
+			}
+			onEvent(Event{Type: requestEventType, TurnCount: turnCount, RequestStatus: requestStatus})
+			return assistantMsg, usage, stopReason, err
+		}
+		streamingExecutor := newStreamingExecutor()
+		assistantMsg, usage, stopReason, err := processProviderStream(stream, streamAttempt, streamingExecutor)
+		if err != nil {
+			if fallbackErr, ok := provider.AsFallbackTriggeredError(err); ok && fallbackErr.FallbackModel != "" {
+				emitFallbackTombstone(onEvent, assistantMsg, turnCount, fallbackErr.OriginalModel, fallbackErr.FallbackModel)
+				if streamingExecutor != nil {
+					streamingExecutor.Discard()
+				}
+				snapshot.Model = fallbackErr.FallbackModel
+				snapshot.GoalEvaluator = bindGoalEvaluatorModel(snapshot.GoalEvaluator, snapshot.Model)
+				apiMessages = stripThinkingSignatures(apiMessages)
+				params = q.providerParams(state, snapshot, apiMessages)
+				if q.ctxWindow != nil {
+					q.publishRequestEstimate(params, turnCount, onEvent)
+				}
+				onEvent(NewSystemWarningEvent(
+					i18n.KeyRuntimeModelFallback,
+					[]any{fallbackErr.OriginalModel, fallbackErr.FallbackModel},
+					fallbackErr,
+					map[string]any{
+						"original_model": fallbackErr.OriginalModel,
+						"fallback_model": fallbackErr.FallbackModel,
+					},
+					turnCount,
+				))
+				stream2, retryAttempt, retryErr := createProviderStream(params)
+				if retryErr != nil {
+					q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(retryErr.Error()))
+					return i18n.WrapError(i18n.KeyLoopQueryStreamFallbackFailed, retryErr)
+				}
+				streamingExecutor = newStreamingExecutor()
+				assistantMsg, usage, stopReason, err = processProviderStream(stream2, retryAttempt, streamingExecutor)
+				if err != nil {
+					if streamingExecutor != nil {
+						streamingExecutor.Discard()
+					}
+					q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(err.Error()))
+					return i18n.WrapError(i18n.KeyLoopQueryStreamAfterModelFallback, err)
+				}
+			} else {
+				// --- Recovery path 4: partial stream interrupt ---
+				var partialErr *PartialStreamError
+				if errors.As(err, &partialErr) && assistantMsg != nil && len(assistantMsg.Content) > 0 {
+					onEvent(NewSystemWarningEvent(
+						i18n.KeyRuntimeStreamInterruptedPartial,
+						[]any{partialErr.PartialBlocks},
+						partialErr.Cause,
+						map[string]any{"partial_blocks": partialErr.PartialBlocks},
+						turnCount,
+					))
+					// Continue with the partial message
+
+				} else if isStreamInterrupted(err) || isResponseFailedRetryable(err) {
+					// --- Recovery path 5: upstream disconnect / response.failed retry ---
+					// Aligned with Codex CLI: when an upstream disconnect or a
+					// retryable response.failed occurs during streaming, the response
+					// chain on the server is likely broken. The correct recovery is:
+					//   1. Always clear previous_response_id (the server-side response
+					//      is in an unknown state after a disconnect).
+					//   2. Retry with full message history.
+					//   3. Keep prompt_cache_key to preserve prompt cache affinity.
+
+					// Always clear the response chain on stream-level failures —
+					// the upstream state is unknown.
+					q.lastResponseID = ""
+					params.PreviousResponseID = ""
+					// Note: We do NOT set disableResponseChain here. The retry will
+					// get a new response ID which can start a fresh chain.
+
+					for streamRetry := 0; streamRetry < maxProviderRequestRetries; streamRetry++ {
+						delay := retryDelay(streamRetry)
+						onEvent(Event{
+							Type: EventRequestRetry, TurnCount: turnCount,
+							RequestStatus: &RequestStatusEvent{
+								RequestID: streamAttempt.requestID, Attempt: streamRetry + 1, MaxRetries: maxProviderRequestRetries,
+								RetryDelayMilliseconds: delay.Milliseconds(), Error: err.Error(),
+							},
+						})
+						onEvent(NewSystemWarningEvent(
+							i18n.KeyRuntimeStreamRetryFullHistory,
+							nil,
+							err,
+							nil,
+							turnCount,
+						))
+						retryTimer := time.NewTimer(delay)
+						select {
+						case <-ctx.Done():
+							retryTimer.Stop()
+							return ctx.Err()
+						case <-retryTimer.C:
+						}
+
+						stream2, retryAttempt, retryErr := createProviderStream(params)
+						if retryErr != nil {
+							if isPreviousResponseNotFound(retryErr) {
+								q.disableResponseChain = true
+							}
+							err = retryErr
+							if !IsTransient(retryErr) || streamRetry == maxProviderRequestRetries-1 {
+								break
+							}
+							continue
+						}
+						if streamingExecutor != nil {
+							streamingExecutor.Discard()
+						}
+						streamingExecutor = newStreamingExecutor()
+						streamAttempt = retryAttempt
+						assistantMsg, usage, stopReason, err = processProviderStream(stream2, retryAttempt, streamingExecutor)
+						if err == nil {
+							break
+						}
+						if !(isStreamInterrupted(err) || isResponseFailedRetryable(err)) {
+							break
+						}
+					}
+					if err != nil {
+						if streamingExecutor != nil {
+							streamingExecutor.Discard()
+						}
+						q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(err.Error()))
+						return i18n.WrapError(i18n.KeyLoopQueryStreamAfterRetry, err)
+					}
+
+				} else if isPreviousResponseNotFound(err) {
+					// --- Recovery path 5b: previous_response_id error during stream ---
+					// This can happen if the error comes through as a stream-level
+					// event (e.g. response.failed with previous_response_not_found).
+					// Silently fall back — no user-facing warning.
+					q.lastResponseID = ""
+					params.PreviousResponseID = ""
+					q.disableResponseChain = true
+
+					stream2, retryAttempt, retryErr := createProviderStream(params)
+					if retryErr != nil {
+						q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(retryErr.Error()))
+						return i18n.WrapError(i18n.KeyLoopQueryStreamFallbackFailed, retryErr)
+					}
+					if streamingExecutor != nil {
+						streamingExecutor.Discard()
+					}
+					streamingExecutor = newStreamingExecutor()
+					assistantMsg, usage, stopReason, err = processProviderStream(stream2, retryAttempt, streamingExecutor)
+					if err != nil {
+						if streamingExecutor != nil {
+							streamingExecutor.Discard()
+						}
+						q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(err.Error()))
+						return i18n.WrapError(i18n.KeyLoopQueryStreamAfterFallback, err)
+					}
+				} else {
+					recovered, recoveryErr := q.recoverFromTerminalProviderFailure(ctx, state, apiMessages, err, turnCount, onEvent)
+					if streamingExecutor != nil {
+						streamingExecutor.Discard()
+					}
+					if recoveryErr != nil {
+						onEvent(Event{Type: EventError, Text: err.Error(), TurnCount: turnCount})
+						q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(err.Error()))
+						return i18n.WrapError(i18n.KeyLoopQueryStreamRecoveryFailed, err, recoveryErr)
+					}
+					if recovered {
+						continue
+					}
+					q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(err.Error()))
+					return i18n.WrapError(i18n.KeyLoopQueryStreamFailed, err)
+				}
+			}
+		}
+
+		// --- Recovery path 2: max_output_tokens escalation/recovery ---
+		if stopReason != nil && *stopReason == types.StopReasonMaxTokens && len(assistantMsg.GetToolUses()) == 0 {
+			goalRecoveryMustStop := func() bool {
+				tracked, saveErr := saveGoalAssistantTurnUsage(snapshot.GoalRuntime, usage, time.Now())
+				if saveErr != nil {
+					emitGoalTurnSaveWarning(onEvent, turnCount, saveErr)
+					state.Messages = append(state.Messages, *assistantMsg)
+					q.startTurnSideEffects(ctx, snapshot, state.Messages)
+					onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+					return true
+				}
+				if !tracked {
+					return false
+				}
+				reached, current, loadErr := goalTokenBudgetReached(snapshot.GoalRuntime)
+				if loadErr != nil {
+					emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalLoadMaxTokens, nil, loadErr)
+					state.Messages = append(state.Messages, *assistantMsg)
+					q.startTurnSideEffects(ctx, snapshot, state.Messages)
+					onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+					return true
+				}
+				if !reached {
+					return false
+				}
+				emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalBudgetReached, []any{current.Usage, current.TokenBudget}, nil)
+				state.Messages = append(state.Messages, *assistantMsg)
+				q.startTurnSideEffects(ctx, snapshot, state.Messages)
+				onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+				return true
+			}
+			onEvent(Event{
+				Type:      EventError,
+				Text:      i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeResponseTruncated),
+				TurnCount: turnCount,
+			})
+			if target := escalatedMaxOutputTokens(snapshot.Model, snapshot.MaxTokens); state.MaxOutputTokensRecoveryCount == 0 && state.MaxOutputTokensOverride == 0 && target > snapshot.MaxTokens {
+				state.MaxOutputTokensOverride = target
+				state.Transition = QueryTransitionMaxOutputTokensEscalate
+				onEvent(NewSystemWarningEvent(i18n.KeyRuntimeResponseRetryMaxTokens, []any{target}, nil, nil, turnCount))
+				if goalRecoveryMustStop() {
+					return nil
+				}
+				continue
+			}
+
+			if state.MaxOutputTokensRecoveryCount < maxOutputTokensRecoveryLimit {
+				if goalRecoveryMustStop() {
+					return nil
+				}
+				state.Messages = append(state.Messages, *assistantMsg)
+				state.Messages = append(state.Messages, q.maxOutputTokensRecoveryMessage())
+				state.MaxOutputTokensRecoveryCount++
+				state.MaxOutputTokensOverride = 0
+				state.Transition = QueryTransitionMaxOutputTokensRecovery
+				onEvent(NewSystemWarningEvent(
+					i18n.KeyRuntimeResponseRecovery,
+					[]any{state.MaxOutputTokensRecoveryCount, maxOutputTokensRecoveryLimit},
+					nil,
+					nil,
+					turnCount,
+				))
+				continue
+			}
+		}
+
+		// --- Recovery path 3: empty response retry (once) ---
+		if assistantMsg == nil || len(assistantMsg.Content) == 0 {
+			stream2, retryAttempt, retryErr := createProviderStream(params)
+			if retryErr == nil {
+				if streamingExecutor != nil {
+					streamingExecutor.Discard()
+				}
+				streamingExecutor = newStreamingExecutor()
+				assistantMsg2, usage2, _, err2 := processProviderStream(stream2, retryAttempt, streamingExecutor)
+				if err2 == nil && assistantMsg2 != nil && len(assistantMsg2.Content) > 0 {
+					assistantMsg = assistantMsg2
+					usage = usage2
+				} else {
+					if streamingExecutor != nil {
+						streamingExecutor.Discard()
+					}
+					q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopQueryEmptyResponse)))
+					return i18n.NewError(i18n.KeyLoopQueryEmptyResponseAfterRetry)
+				}
+			} else {
+				if streamingExecutor != nil {
+					streamingExecutor.Discard()
+				}
+				q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopQueryEmptyResponse)))
+				return i18n.NewError(i18n.KeyLoopQueryEmptyResponse)
+			}
+		}
+
+		// Update context window usage for compaction decisions
+		if q.ctxWindow != nil && usage != nil {
+			q.ctxWindow.UpdateUsage(usage)
+		}
+		if usage != nil {
+			turnOutputTokens += usage.OutputTokens
+		}
+
+		// Check for prompt cache breaks (significant drop in cache_read_input_tokens).
+		// This is informational only — server-side cache eviction/routing is not
+		// actionable by the client. We still run the detector so that
+		// NotifyCompaction() keeps the baseline accurate, but we no longer surface
+		// it as an EventError in the UI (it confused users into thinking something
+		// was broken).
+		if q.cacheBreakDetector != nil && usage != nil {
+			_ = q.cacheBreakDetector.Check(usage) // update baseline; result intentionally discarded
+		}
+
+		// Record the timestamp of this completed API turn so that idle-triggered
+		// microcompact can determine when the prompt cache has expired.
+		q.microcompactCfg.LastActivity = time.Now()
+
+		// Calibrate token estimator with actual API usage
+		if q.calibratedCounter != nil && usage != nil && usage.TotalInputTokens() > 0 {
+			// Estimate chars for all messages sent in this turn
+			totalChars := 0
+			for _, msg := range apiMessages {
+				totalChars += len(msg.GetText())
+				for _, block := range msg.Content {
+					if tr, ok := block.(types.ToolResultBlock); ok {
+						totalChars += len(tr.TextContent())
+					}
+				}
+			}
+			if totalChars > 0 {
+				q.calibratedCounter.Calibrate(totalChars, usage.TotalInputTokens())
+				// Feed the updated calibrated ratio into the context window's
+				// token counter so EstimateMessages uses real-world ratios instead
+				// of the static TiktokenCounter default.
+				if q.ctxWindow != nil {
+					q.ctxWindow.Counter = q.calibratedCounter
+				}
+			}
+		}
+
+		toolUses := assistantMsg.GetToolUses()
+		if identityErr := validateToolUseIdentities(toolUses, q.seenToolUseIDs); identityErr != nil {
+			if streamingExecutor != nil {
+				streamingExecutor.Discard()
+			}
+			onEvent(toolUseIdentityErrorEvent(identityErr, turnCount))
+			return identityErr
+		}
+		for _, toolUse := range toolUses {
+			q.seenToolUseIDs[toolUse.ID] = struct{}{}
+		}
+
+		state.Messages = append(state.Messages, *assistantMsg)
+		goalTurnTracked, goalTurnSaveErr := saveGoalAssistantTurnUsage(snapshot.GoalRuntime, usage, time.Now())
+		if goalTurnSaveErr != nil {
+			emitGoalTurnSaveWarning(onEvent, turnCount, goalTurnSaveErr)
+		}
+		postQueryMessages := append([]types.Message(nil), apiMessages...)
+		postQueryMessages = append(postQueryMessages, *assistantMsg)
+		if err := runQueryHook(ctx, snapshot.HookRunner, hooks.HookPostQuery, hooks.HookInput{
+			SessionID:   snapshot.SessionID,
+			ProjectRoot: snapshot.ProjectRoot,
+			TurnID:      turnID,
+			WorkUnitID:  workUnitID,
+			AgentID:     actorID,
+			AgentType:   snapshot.AgentType,
+			Messages:    hookMessages(postQueryMessages),
+			Result:      strings.TrimSpace(assistantMsg.GetText()),
+		}); err != nil {
+			return err
+		}
+		if runner := q.postSamplingRunner(snapshot, onEvent); runner != nil {
+			messagesForHook := append([]types.Message(nil), apiMessages...)
+			messagesForHook = append(messagesForHook, *assistantMsg)
+			postSampling := runner.RunPostSampling(ctx, messagesForHook, PostSamplingOptions{
+				SessionID:  snapshot.SessionID,
+				TurnID:     turnID,
+				AgentID:    actorID,
+				AgentType:  snapshot.AgentType,
+				WorkUnitID: workUnitID,
+			})
+			if postSampling.Blocked {
+				return fmt.Errorf("%s", i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyAuxPostSamplingBlockedReason, postSampling.Reason))
+			}
+		}
+
+		if len(toolUses) == 0 {
+			stopHooks, err := runStopHooks(ctx, snapshot.HookRunner, stopHookOptions{
+				AssistantMessage:    *assistantMsg,
+				StopHookActive:      state.StopHookActive,
+				SessionID:           snapshot.SessionID,
+				AgentID:             actorID,
+				AgentType:           snapshot.AgentType,
+				TurnID:              turnID,
+				WorkUnitID:          workUnitID,
+				AgentTranscriptPath: snapshot.AgentTranscriptPath,
+				TeammateContext:     snapshot.TeammateContext,
+			})
+			if err != nil {
+				return err
+			}
+			for i := range stopHooks.ExecutionSummaries {
+				summary := stopHooks.ExecutionSummaries[i]
+				onEvent(Event{
+					Type: EventHookSummary, TurnCount: turnCount, TurnID: turnID,
+					ActorID: actorID, ActorType: snapshot.AgentType, WorkUnitID: workUnitID,
+					HookSummary: &summary,
+				})
+			}
+			if stopHooks.PreventContinuation {
+				q.startTurnSideEffects(ctx, snapshot, state.Messages)
+				onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+				return nil
+			}
+			if len(stopHooks.BlockingMessages) > 0 {
+				state.Messages = append(state.Messages, stopHooks.BlockingMessages...)
+				state.StopHookActive = true
+				state.Transition = QueryTransitionStopHookBlocking
+				if goalTurnSaveErr != nil {
+					onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+					return nil
+				}
+				if goalTurnTracked {
+					reached, current, err := goalTokenBudgetReached(snapshot.GoalRuntime)
+					if err != nil {
+						emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalLoadStopHook, nil, err)
+						q.startTurnSideEffects(ctx, snapshot, state.Messages)
+						onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+						return nil
+					}
+					if reached {
+						emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalBudgetReached, []any{current.Usage, current.TokenBudget}, nil)
+						q.startTurnSideEffects(ctx, snapshot, state.Messages)
+						onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+						return nil
+					}
+				}
+				onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+				continue
+			}
+			if goalTurnSaveErr != nil {
+				q.startTurnSideEffects(ctx, snapshot, state.Messages)
+				onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+				return nil
+			}
+			goalDecision := q.evaluateGoalContinuation(ctx, state, snapshot, postQueryMessages, budgetTracker, turnOutputTokens, turnCount, onEvent)
+			if goalDecision.Handled {
+				if !goalDecision.Continue {
+					q.startTurnSideEffects(ctx, snapshot, state.Messages)
+				}
+				onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+				if goalDecision.Continue {
+					continue
+				}
+				return nil
+			}
+			decision := CheckTokenBudget(budgetTracker, snapshot.AgentID, snapshot.TokenBudget, turnOutputTokens)
+			if decision.Continue {
+				state.Messages = append(state.Messages, types.UserMessage(decision.NudgeMessage))
+				state.MaxOutputTokensRecoveryCount = 0
+				state.MaxOutputTokensOverride = 0
+				state.Transition = QueryTransitionTokenBudgetContinuation
+				onEvent(NewSystemWarningEvent(
+					i18n.KeyRuntimeTokenBudgetContinuation,
+					[]any{decision.ContinuationCount, decision.Percent, decision.TurnTokens, decision.Budget},
+					nil,
+					nil,
+					turnCount,
+				))
+				continue
+			}
+			if decision.CompletionEvent != nil && decision.CompletionEvent.DiminishingReturns {
+				onEvent(NewSystemWarningEvent(i18n.KeyRuntimeTokenBudgetDiminishing, []any{decision.CompletionEvent.Percent}, nil, nil, turnCount))
+			}
+			q.startTurnSideEffects(ctx, snapshot, state.Messages)
+			onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+			return nil
+		}
+
+		// Execute tools (concurrent-safe tools run in parallel)
+		for i := range toolUses {
+			toolUse := toolUses[i]
+			onEvent(Event{
+				Type: EventToolUse, ToolUse: &toolUse, TurnCount: turnCount,
+				ActorID: actorID, ActorType: snapshot.AgentType, WorkUnitID: workUnitID,
+			})
+		}
+		parentMessages := state.Messages[:len(state.Messages)-1]
+		toolExecContext := ToolExecutionContext{
+			Messages:               parentMessages,
+			AssistantMessage:       *assistantMsg,
+			SessionID:              snapshot.SessionID,
+			CacheLineageID:         snapshot.CacheLineageID,
+			TurnID:                 turnID,
+			ActorID:                actorID,
+			ActorType:              snapshot.AgentType,
+			WorkUnitID:             workUnitID,
+			RunID:                  lineage.RunID,
+			BatchID:                lineage.BatchID,
+			ParentRunID:            lineage.ParentRunID,
+			AgentPath:              lineage.AgentPath,
+			SessionProjectDir:      snapshot.SessionProjectDir,
+			ProjectRoot:            snapshot.ProjectRoot,
+			CWD:                    snapshot.CWD,
+			System:                 snapshot.System,
+			Model:                  snapshot.Model,
+			loadedSkillLedger:      q.skillLoadedLedgerCapability(parentMessages),
+			skillProjectGeneration: snapshot.SkillProjectGeneration,
+			owner:                  q,
+			runToken:               queryID,
+			ownedSessionID:         snapshot.SessionID,
+			ownedSessionProjectDir: snapshot.SessionProjectDir,
+			ownedProjectRoot:       snapshot.ProjectRoot,
+			ownedCWD:               snapshot.CWD,
+			readEvidenceOwnerID:    q.readEvidenceOwnerID,
+			readEvidenceEpoch:      q.currentReadEvidenceEpoch(),
+			ownedReadEvidenceActor: actorID,
+		}
+		if streamingExecutor != nil {
+			for i := range toolUses {
+				streamingExecutor.AddTool(toolUses[i], *assistantMsg)
+			}
+		}
+		var toolExecution toolExecutionResults
+		var toolErr error
+		if streamingExecutor != nil {
+			var events []StreamingToolEvent
+			toolExecution, events, toolErr = streamingExecutor.RemainingResults(ctx)
+			for _, event := range events {
+				if event.Type != streamingToolEventResult || event.Result == nil {
+					continue
+				}
+				result := *event.Result
+				onEvent(Event{
+					Type: EventToolResult, ToolResult: &result, TurnCount: turnCount,
+					ActorID: actorID, ActorType: snapshot.AgentType, WorkUnitID: workUnitID,
+				})
+			}
+		} else {
+			toolExecution, toolErr = executeToolsConcurrentlyDetailed(ctx, q.registry, snapshot.HookRunner, snapshot.PermissionHandler, snapshot.SessionID, toolExecContext, toolUses, func(_ int, result types.ToolResultBlock) {
+				onEvent(Event{
+					Type: EventToolResult, ToolResult: &result, TurnCount: turnCount,
+					ActorID: actorID, ActorType: snapshot.AgentType, WorkUnitID: workUnitID,
+				})
+			})
+		}
+		toolResults := toolExecution.Results
+		reminders := toolExecution.Reminders
+		for index := range toolExecution.HookSummaries {
+			summary := toolExecution.HookSummaries[index]
+			onEvent(Event{
+				Type: EventHookSummary, TurnCount: turnCount, TurnID: turnID,
+				ToolUseID: summary.ToolUseID,
+				ActorID:   actorID, ActorType: snapshot.AgentType, WorkUnitID: workUnitID,
+				HookSummary: &summary,
+			})
+		}
+		usage = accountToolResultUsage(usage, toolResults, turnCount, onEvent)
+
+		// Infrastructure error (e.g. context cancelled) — preserve tool_result
+		// pairs for any transcript-visible tool_use before aborting.
+		if toolErr != nil {
+			validResults := validToolResults(toolResults)
+			if len(validResults) > 0 {
+				state.Messages = append(state.Messages, types.ToolResultMessage(validResults...))
+			}
+			state.Messages = appendMissingToolResults(state.Messages, toolErr.Error(), types.ToolOutcomeFailed, toolExecContext, onEvent, turnCount)
+			if isUserInterrupt(toolErr) {
+				emitUserInterruption(onEvent, turnCount, "interrupt")
+			}
+			return i18n.WrapError(i18n.KeyLoopQueryToolExecutionFailed, toolErr)
+		}
+		if ctx.Err() != nil {
+			validResults := validToolResults(toolResults)
+			if len(validResults) > 0 {
+				state.Messages = append(state.Messages, types.ToolResultMessage(validResults...))
+			}
+			state.Messages = appendMissingToolResults(state.Messages, ctx.Err().Error(), types.ToolOutcomeCancelled, toolExecContext, onEvent, turnCount)
+			emitUserInterruption(onEvent, turnCount, "interrupt")
+			return i18n.WrapError(i18n.KeyLoopQueryToolExecutionInterrupted, ctx.Err())
+		}
+
+		// Persist oversized tool results to disk, keeping only a preview
+		if q.resultStore != nil {
+			for i := range toolResults {
+				if !hasToolResultPersistenceMetadata(toolResults[i].Metadata) {
+					continue
+				}
+				processed, err := q.resultStore.ProcessResultForTool(toolResults[i], toolUses[i].Name)
+				if err != nil {
+					onEvent(Event{
+						Type: EventError, Text: err.Error(), TurnCount: turnCount,
+						ToolUseID: toolResults[i].ToolUseID,
+						Error:     &types.APIError{Type: "tool_result_persistence_error", Message: err.Error()},
+						Metadata: map[string]any{
+							"stage":   "tool_result_persistence",
+							"outcome": string(types.ToolOutcomeFailed),
+						},
+					})
+				}
+				toolResults[i] = processed
+			}
+		}
+		q.learnLoadedTools(toolResults)
+		goalStopAfterTool := goalTurnSaveErr != nil
+		if !goalStopAfterTool && goalTurnTracked {
+			reached, current, err := goalTokenBudgetReached(snapshot.GoalRuntime)
+			if err != nil {
+				emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalLoadToolExecution, nil, err)
+				goalStopAfterTool = true
+			}
+			if reached {
+				emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalBudgetReached, []any{current.Usage, current.TokenBudget}, nil)
+				goalStopAfterTool = true
+			}
+		}
+		if restartMessage, restart := planModeContextRestart(toolResults); restart {
+			// Clear the assistant tool_use together with the old transcript, then
+			// restart from the approved-plan prose. This avoids an orphaned
+			// tool_result while matching the TS clear-context handoff.
+			state.Messages = q.installVisibleHistory([]types.Message{types.UserMessage(restartMessage)})
+			state.Transition = QueryTransitionPlanModeContextRestart
+			onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+			if goalStopAfterTool {
+				q.startTurnSideEffects(ctx, snapshot, state.Messages)
+				return nil
+			}
+			continue
+		}
+
+		// NewMessages is an in-process attachment side channel. Append those
+		// messages below, but do not persist a second JSON copy inside the tool
+		// result: nested copies have no manifest provenance refs after restart.
+		historyToolResults := append([]types.ToolResultBlock(nil), toolResults...)
+		for index := range historyToolResults {
+			historyToolResults[index].NewMessages = nil
+		}
+		toolMsg := types.ToolResultMessage(historyToolResults...)
+		nextMessages := append(state.Messages, toolMsg)
+		var records []compact.ContentReplacementRecord
+		if q.resultStore != nil && q.contentReplacementState != nil {
+			var replacementErrs []error
+			nextMessages, records, replacementErrs = compact.ApplyToolResultBudget(nextMessages, q.contentReplacementState, q.resultStore, nil)
+			for _, err := range replacementErrs {
+				onEvent(Event{Type: EventError, Text: err.Error(), TurnCount: turnCount})
+			}
+		}
+		state.Messages = nextMessages
+		if len(records) > 0 {
+			state.Messages = q.installContentReplacementRecords(state.Messages, records)
+		}
+
+		if err := q.appendPostToolAttachments(ctx, state, snapshot, toolUses, toolResults, reminders); err != nil {
+			return err
+		}
+		if err := q.commitVisibleSkillExecutionReceipts(state.Messages, toolUses, toolResults); err != nil {
+			return err
+		}
+
+		onEvent(Event{Type: EventTurnEnd, Usage: usage, TurnCount: turnCount})
+		if goalStopAfterTool {
+			q.startTurnSideEffects(ctx, snapshot, state.Messages)
+			return nil
+		}
+		if toolExecution.PreventContinuation {
+			return nil
+		}
+
+		// Record activity time so microcompact can detect idle sessions.
+		q.microcompactCfg.LastActivity = time.Now()
+
+		// Bound the next provider request without rewriting the transcript. A
+		// semantic compaction can be requested explicitly before the retry.
+		if err := enforceMessageHistoryLimit(state.Messages); err != nil {
+			return err
+		}
+	}
+
+	maxTurnsErr := state.maxTurnsExceeded(snapshot.MaxTurns)
+	emitTurnEvent(maxTurnsErr.TurnCount, newMaxTurnsReachedEvent(maxTurnsErr.MaxTurns, maxTurnsErr.TurnCount))
+	return maxTurnsErr
+}
+
+func hasToolResultPersistenceMetadata(metadata map[string]string) bool {
+	for _, key := range []string{
+		"maxResultSizeChars",
+		"max_result_size_chars",
+		"persistenceThreshold",
+		"persistThreshold",
+		"toolResultPersistenceThreshold",
+	} {
+		if _, ok := metadata[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func collapseMaxOutputTokensRecoveryMessages(messages []types.Message) []types.Message {
+	last := -1
+	count := 0
+	for i, msg := range messages {
+		if isMaxOutputTokensRecoveryMessage(msg) {
+			last = i
+			count++
+		}
+	}
+	if count <= 1 {
+		return messages
+	}
+	out := make([]types.Message, 0, len(messages)-count+1)
+	for i, msg := range messages {
+		if isMaxOutputTokensRecoveryMessage(msg) && i != last {
+			continue
+		}
+		out = append(out, msg)
+	}
+	return out
+}
+
+func isMaxOutputTokensRecoveryMessage(msg types.Message) bool {
+	return msg.Role == types.RoleUser && msg.InternalKind == types.InternalMessageKindOutputTokenRecovery &&
+		msg.HasInternalControlProvenance()
+}
+
+// parseToolInputJSON parses the accumulated tool input JSON string into a map.
+// Some OpenAI-compatible endpoints (vLLM, proxies) emit duplicate complete JSON
+// objects after the incremental fragments, producing e.g.
+// `{"msg":"hi"}{"msg":"hi"}{"msg":"hi"}`. Standard json.Unmarshal rejects this.
+// We use json.Decoder to extract only the first valid JSON object.
+func parseToolInputJSON(raw string) (map[string]any, error) {
+	input := make(map[string]any)
+	if raw == "" {
+		return input, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader([]byte(raw)))
+	if err := dec.Decode(&input); err != nil {
+		return nil, err
+	}
+	return input, nil
+}
+
+// blockState tracks the accumulation state for a single content block
+// Phase 3: Added separate thinking accumulator to prevent mixing thinking with text
+type blockState struct {
+	blockType types.ContentType
+	toolID    string
+	toolName  string
+	signature string          // for ThinkingBlock round-trip
+	text      strings.Builder // For text content
+	thinking  strings.Builder // NEW: For thinking content (separate)
+	toolInput strings.Builder
+	toolUseID string
+	rawJSON   json.RawMessage
+}
+
+// processStream reads stream events and builds the assistant message.
+// It uses per-block state tracking to correctly handle interleaved
+// tool_calls from OpenAI-compatible providers.
+//
+// On stream interruption (EventError) after some blocks have been accumulated,
+// it returns the partial message along with a *PartialStreamError so the caller
+// can decide to keep the partial content.
+func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.StreamEvent, turnCount int, onEvent func(Event), streamingExecutors ...*StreamingToolExecutor) (*types.Message, *types.Usage, *types.StopReason, error) {
+	var contentBlocks []types.ContentBlock
+	var usage *types.Usage
+	var stopReason *types.StopReason
+	var messageID string
+	blocks := make(map[int]*blockState) // per-block accumulator keyed by index
+	// Streaming executors are intentionally not started while content blocks are
+	// still arriving. The complete batch is validated by runLoop before tools are
+	// added, so a later duplicate ID cannot race an earlier tool side effect.
+	_ = streamingExecutors
+
+	for event := range stream {
+		if ctx.Err() != nil {
+			return nil, usage, stopReason, ctx.Err()
+		}
+		// Providers may attach usage to terminal error/stop events as well as
+		// message_start/message_delta. Capture it before branching so failed
+		// attempts remain billable.
+		if event.Usage != nil {
+			if usage == nil {
+				usage = &types.Usage{}
+			}
+			mergeUsage(usage, event.Usage)
+		}
+
+		switch event.Type {
+		case types.EventMessageStart:
+			if event.Message != nil {
+				messageID = event.Message.ID
+			}
+
+		case types.EventContentBlockStart:
+			bs := &blockState{}
+			if event.ContentBlock != nil {
+				bs.blockType = event.ContentBlock.Type
+				bs.toolUseID = event.ContentBlock.ToolUseID
+				bs.rawJSON = append(json.RawMessage(nil), event.ContentBlock.RawJSON...)
+				if event.ContentBlock.Type == types.ContentTypeToolUse {
+					bs.toolID = event.ContentBlock.ID
+					bs.toolName = event.ContentBlock.Name
+				}
+				if event.ContentBlock.Type == types.ContentTypeThinking {
+					bs.signature = event.ContentBlock.Signature
+				}
+			}
+			blocks[event.Index] = bs
+
+		case types.EventContentBlockDelta:
+			if event.Delta != nil && (event.Delta.Text != "" || event.Delta.Thinking != "" || event.Delta.PartialJSON != "") {
+				notifyFirstTokenObserver(ctx)
+			}
+			bs := blocks[event.Index]
+			if bs == nil {
+				bs = &blockState{}
+				blocks[event.Index] = bs
+			}
+			if event.Delta != nil {
+				switch event.Delta.Type {
+				case "text_delta":
+					bs.text.WriteString(event.Delta.Text)
+					onEvent(Event{Type: EventText, Text: event.Delta.Text, TurnCount: turnCount})
+				case "thinking_delta":
+					// Phase 3: Fix - use separate thinking accumulator instead of bs.text
+					bs.thinking.WriteString(event.Delta.Thinking)
+					onEvent(Event{Type: EventThinking, Text: event.Delta.Thinking, TurnCount: turnCount})
+				case "input_json_delta":
+					bs.toolInput.WriteString(event.Delta.PartialJSON)
+				}
+			}
+
+		case types.EventContentBlockStop:
+			bs := blocks[event.Index]
+			if bs == nil {
+				continue
+			}
+			switch {
+			case bs.toolName != "":
+				input := make(map[string]any)
+				inputStr := bs.toolInput.String()
+				if inputStr != "" {
+					parsed, err := parseToolInputJSON(inputStr)
+					if err != nil {
+						onEvent(NewSystemWarningEvent(
+							i18n.KeyRuntimeToolInputJSONFailed,
+							[]any{bs.toolName},
+							err,
+							nil,
+							turnCount,
+						))
+						contentBlocks = append(contentBlocks, types.TextBlock{
+							Type: types.ContentTypeText,
+							Text: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolSkippedMalformed, bs.toolName),
+						})
+						delete(blocks, event.Index)
+						continue
+					}
+					input = parsed
+				}
+				toolUse := types.ToolUseBlock{
+					Type:  types.ContentTypeToolUse,
+					ID:    bs.toolID,
+					Name:  bs.toolName,
+					Input: input,
+				}
+				contentBlocks = append(contentBlocks, toolUse)
+			case bs.blockType == types.ContentTypeThinking:
+				// Phase 3: Use thinking accumulator for thinking blocks
+				if bs.thinking.Len() > 0 {
+					contentBlocks = append(contentBlocks, types.ThinkingBlock{
+						Type:      types.ContentTypeThinking,
+						Thinking:  bs.thinking.String(),
+						Signature: bs.signature,
+					})
+				}
+			case bs.blockType != "" && bs.blockType != types.ContentTypeText:
+				contentBlocks = append(contentBlocks, serverToolUnknownBlock(bs))
+			default:
+				if bs.text.Len() > 0 {
+					contentBlocks = append(contentBlocks, types.TextBlock{
+						Type: types.ContentTypeText,
+						Text: bs.text.String(),
+					})
+				}
+			}
+			delete(blocks, event.Index)
+
+		case types.EventMessageDelta:
+			if event.StopReason != nil {
+				stopReason = event.StopReason
+			}
+
+		case types.EventError:
+			if event.Error != nil {
+				// If we've already accumulated some content blocks, return them
+				// as a partial message so the caller can decide what to do.
+				if len(contentBlocks) > 0 {
+					msg := &types.Message{
+						ID:      messageID,
+						Role:    types.RoleAssistant,
+						Content: contentBlocks,
+					}
+					return msg, usage, stopReason, &PartialStreamError{
+						Cause:         event.Error,
+						PartialBlocks: len(contentBlocks),
+					}
+				}
+				return nil, usage, stopReason, event.Error
+			}
+
+		case types.EventMessageStop:
+			// Capture ResponseID for Responses API chaining (previous_response_id)
+			if event.ResponseID != "" {
+				q.lastResponseID = event.ResponseID
+				q.lastEnvelopeFingerprint = q.currentEnvelopeFingerprint
+			}
+		}
+	}
+
+	// Flush any remaining blocks that didn't get a stop event
+	remainingKeys := make([]int, 0, len(blocks))
+	for k := range blocks {
+		remainingKeys = append(remainingKeys, k)
+	}
+	sort.Ints(remainingKeys)
+	for _, k := range remainingKeys {
+		bs := blocks[k]
+		if bs.toolName != "" {
+			input := make(map[string]any)
+			if s := bs.toolInput.String(); s != "" {
+				parsed, err := parseToolInputJSON(s)
+				if err != nil {
+					onEvent(NewSystemWarningEvent(
+						i18n.KeyRuntimeToolInputJSONFlushFailed,
+						[]any{bs.toolName},
+						err,
+						nil,
+						turnCount,
+					))
+					contentBlocks = append(contentBlocks, types.TextBlock{
+						Type: types.ContentTypeText,
+						Text: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolSkippedMalformed, bs.toolName),
+					})
+					continue
+				}
+				input = parsed
+			}
+			contentBlocks = append(contentBlocks, types.ToolUseBlock{
+				Type: types.ContentTypeToolUse, ID: bs.toolID, Name: bs.toolName, Input: input,
+			})
+		} else if bs.blockType == types.ContentTypeThinking && bs.thinking.Len() > 0 {
+			// Phase 3: Use thinking accumulator for thinking blocks in flush
+			contentBlocks = append(contentBlocks, types.ThinkingBlock{
+				Type:      types.ContentTypeThinking,
+				Thinking:  bs.thinking.String(),
+				Signature: bs.signature,
+			})
+		} else if bs.blockType != "" && bs.blockType != types.ContentTypeText {
+			contentBlocks = append(contentBlocks, serverToolUnknownBlock(bs))
+		} else if bs.text.Len() > 0 {
+			contentBlocks = append(contentBlocks, types.TextBlock{
+				Type: types.ContentTypeText, Text: bs.text.String(),
+			})
+		}
+	}
+
+	msg := &types.Message{
+		ID:      messageID,
+		Role:    types.RoleAssistant,
+		Content: contentBlocks,
+	}
+
+	return msg, usage, stopReason, nil
+}
+
+func serverToolUnknownBlock(state *blockState) types.UnknownBlock {
+	if state == nil {
+		return types.UnknownBlock{}
+	}
+	raw := append(json.RawMessage(nil), state.rawJSON...)
+	if state.blockType == types.ContentTypeServerToolUse && state.toolInput.Len() > 0 {
+		var envelope map[string]any
+		var input any
+		if json.Unmarshal(raw, &envelope) == nil && json.Unmarshal([]byte(state.toolInput.String()), &input) == nil {
+			envelope["input"] = input
+			if encoded, err := json.Marshal(envelope); err == nil {
+				raw = encoded
+			}
+		}
+	}
+	return types.UnknownBlock{Type: state.blockType, Raw: raw}
+}
+
+func mergeUsage(dst, src *types.Usage) {
+	if dst == nil || src == nil {
+		return
+	}
+	if src.InputTokens > 0 {
+		dst.InputTokens = src.InputTokens
+	}
+	if src.OutputTokens > 0 {
+		dst.OutputTokens = src.OutputTokens
+	}
+	if src.CacheCreationInputTokens > 0 {
+		dst.CacheCreationInputTokens = src.CacheCreationInputTokens
+	}
+	if src.CacheReadInputTokens > 0 {
+		dst.CacheReadInputTokens = src.CacheReadInputTokens
+	}
+	if src.ServerToolUse.WebSearchRequests > 0 {
+		dst.ServerToolUse.WebSearchRequests = src.ServerToolUse.WebSearchRequests
+	}
+	if src.ServerToolUse.WebFetchRequests > 0 {
+		dst.ServerToolUse.WebFetchRequests = src.ServerToolUse.WebFetchRequests
+	}
+}
+
+func mergeToolResultUsage(outer *types.Usage, results []types.ToolResultBlock) *types.Usage {
+	for _, result := range results {
+		if result.Usage == nil {
+			continue
+		}
+		if outer == nil {
+			outer = &types.Usage{}
+		}
+		outer.InputTokens += result.Usage.InputTokens
+		outer.OutputTokens += result.Usage.OutputTokens
+		outer.CacheCreationInputTokens += result.Usage.CacheCreationInputTokens
+		outer.CacheReadInputTokens += result.Usage.CacheReadInputTokens
+		outer.ServerToolUse.WebSearchRequests += result.Usage.ServerToolUse.WebSearchRequests
+		outer.ServerToolUse.WebFetchRequests += result.Usage.ServerToolUse.WebFetchRequests
+	}
+	return outer
+}
+
+func accountToolResultUsage(outer *types.Usage, results []types.ToolResultBlock, turnCount int, onEvent func(Event)) *types.Usage {
+	for _, result := range results {
+		if result.Usage == nil {
+			continue
+		}
+		providerName := result.Metadata["usage.provider"]
+		model := result.Metadata["usage.model"]
+		if onEvent != nil && (providerName != "" || model != "") {
+			usage := *result.Usage
+			onEvent(Event{
+				Type:      EventProviderUsage,
+				Usage:     &usage,
+				TurnCount: turnCount,
+				Metadata: map[string]any{
+					"kind":     "nested_tool",
+					"provider": providerName,
+					"model":    model,
+				},
+			})
+			continue
+		}
+		outer = mergeToolResultUsage(outer, []types.ToolResultBlock{result})
+	}
+	return outer
+}

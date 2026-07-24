@@ -1,0 +1,39 @@
+# OS and editor metadata
+.DS_Store
+.idea/
+.vscode/
+
+# Local agent/runtime state
+.a3/
+.claude/
+.luban-code/
+.omc/
+.omx/
+.prc-code/
+tool-results/
+tools/.claude/
+transcript-*.txt
+/em_page.html
+/weather.jsonl
+
+# Local secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Language and test caches
+**/__pycache__/
+*.py[cod]
+coverage/
+
+# Build outputs and local binaries
+build/
+dist/
+*.exe
+*.test
+debug.test*
+/claude-code-go
+/go-claude
+/luban

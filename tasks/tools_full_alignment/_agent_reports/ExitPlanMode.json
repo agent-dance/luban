@@ -1,0 +1,429 @@
+{
+  "tool": "ExitPlanMode",
+  "summary": "Go 版本已经具备基础工具名、allowedPrompts 入参、计划文件读取、edited plan 持久化、本地 PlanState 退出、结构化 JSON 响应、部分 auto gate fallback 与 allowed prompt matcher。但与当前 TS 基准 ExitPlanModeV2Tool 相比，核心运行时仍不是同一个生命周期：TS 通过 deferred tool + permission dialog/approval UI 驱动用户批准或拒绝，按用户选择恢复/切换权限模式，必要时清空上下文并重启执行，会为 teammate 走 team-lead mailbox 审批，并把 approved/awaiting/rejected 状态映射成模型可消费的 tool_result 文本；Go 当前是在 Execute 中直接退出 PlanState 并返回自定义 JSON 信封，缺少审批前置、teammate 请求、permission context 恢复、approved-plan tool_result 映射、allowedPrompts 到权限规则的实际授权，以及若干可用性/鲁棒性/SDK 归一逻辑。",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "exitplan-gap-01-availability-and-deferred-gates",
+      "category": "runtime/lifecycle",
+      "severity": "medium",
+      "title": "Go 总是注册/可发现 ExitPlanMode，缺少 TS 的 channels 可用性门和完整工具元数据语义",
+      "ts_evidence": [
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:147-178 defines shouldDefer, searchHint, maxResultSizeChars, empty userFacingName, and disables the tool when KAIROS channel mode has allowed channels.",
+        "../src/tools.ts:193-203 includes ExitPlanModeV2Tool in the base tool list after each tool's isEnabled filtering is used by getToolsForDefaultPreset at ../src/tools.ts:173-183."
+      ],
+      "go_evidence": [
+        "registry_setup.go:239-241 unconditionally registers NewExitPlanModeTool(planState).",
+        "registry/tool_visibility.go:17-25 marks ExitPlanMode as deferred/searchable, but there is no runtime isEnabled equivalent for channel/non-TUI contexts.",
+        "tools/planmode.go:163-190 exposes name/description/schema only; the Go Tool interface in types/tools.go:24-44 has no isEnabled/requiresUserInteraction/readOnly/concurrency hooks."
+      ],
+      "impact": "Remote/channel sessions can discover and call ExitPlanMode even when there is no local approval UI to answer the plan-exit prompt. TS deliberately disables both Enter/Exit plan mode in that setting to avoid trapping the model in plan mode.",
+      "desired_behavior": "Add an availability gate for ExitPlanMode equivalent to TS isEnabled, wired into registry visibility/definition generation so channel sessions do not expose a plan-exit tool that cannot be approved."
+    },
+    {
+      "id": "exitplan-gap-02-local-approval-ui",
+      "category": "permission/runtime/output",
+      "severity": "high",
+      "title": "Go 执行时直接退出 plan mode，缺少 TS 的本地用户审批、拒绝、反馈、编辑计划和 sticky approval UI",
+      "ts_evidence": [
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:185-238 requires user interaction for non-teammates and returns checkPermissions behavior ask with message \"Exit plan mode?\".",
+        "../src/components/permissions/PermissionRequest.tsx:55-65 routes ExitPlanModeV2Tool to ExitPlanModePermissionRequest.",
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:118-218 loads plan state, allowedPrompts, editor state, image paste state, and current plan for the approval dialog.",
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:274-507 handles yes/no, feedback, images, Ctrl+G-edited plans, keep-context/clear-context choices, auto-mode choices, and rejection without approving the tool use.",
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:601-670 renders the actual Ready to code?/Exit plan mode UI and sticky footer/editor hint."
+      ],
+      "go_evidence": [
+        "tools/planmode.go:193-223 parses input, checks PlanState, persists optional plan, and calls t.State.exit() without any approval callback.",
+        "tools/planmode.go:225-279 reads the plan and returns ResponseJSON immediately after local state exit.",
+        "registry/registry.go:99-121 executes tools and converts returned ToolResult directly into a ToolResultBlock; no ExitPlanMode-specific approval/remap hook exists.",
+        "repl_tui.go:987-1002 renders EventToolResult content directly through r.ToolResult."
+      ],
+      "impact": "The model can leave plan mode without explicit human approval, cannot receive rejection feedback/images, cannot use the TS approval choices, and cannot keep the plan-mode state alive after a rejected plan.",
+      "desired_behavior": "Introduce an ExitPlanMode approval surface in Go that defers the final state transition until the user approves, supports rejection/feedback, supports edited plan content, and preserves plan mode on rejection."
+    },
+    {
+      "id": "exitplan-gap-03-teammate-leader-approval",
+      "category": "runtime/state/lifecycle",
+      "severity": "high",
+      "title": "Go 的 ExitPlanMode 没有 TS teammate plan_mode_required 的 team-lead mailbox 审批分支",
+      "ts_evidence": [
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:185-193 makes teammate ExitPlanMode not require local user interaction.",
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:221-230 lets teammates bypass the local permission UI.",
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:263-312 requires a plan for plan_mode_required teammates, generates a plan_approval request id, writes a plan_approval_request to team-lead mailbox, marks in-process teammate awaiting approval, and returns awaitingLeaderApproval/requestId.",
+        "../src/hooks/useInboxPoller.ts:156-181 consumes plan_approval_response from team-lead and transitions approved teammates out of plan mode.",
+        "../src/hooks/useInboxPoller.ts:600-650 auto-approves plan_approval_request on the team-lead side and writes plan_approval_response with inherited permission mode."
+      ],
+      "go_evidence": [
+        "tools/planmode.go:246-279 always creates a local exitplan request id, registers it for []string{\"user\"}, and returns a local exit_plan_mode_response; it does not inspect teammate/team-lead context or write a plan_approval_request mailbox message.",
+        "tools/send_message_routing.go:802-830 can route a plan_approval_response, but ExitPlanMode never creates the matching plan_approval_request.",
+        "tools/team.go:395-405 recognizes plan_approval_request as a structured message kind, but ExitPlanMode does not use that path.",
+        "tools/agent_test.go:362-395 covers plan-mode prompt injection around agents, not ExitPlanMode mailbox submission/awaiting approval."
+      ],
+      "impact": "A Go teammate that is required to plan cannot faithfully submit its plan to the leader and wait. It exits locally instead, which skips the leader approval lifecycle and can start implementation before approval.",
+      "desired_behavior": "ExitPlanMode should branch on teammate + plan_mode_required state, require non-empty plan content, send plan_approval_request to team-lead with requestId/planFilePath/planContent, mark awaiting approval for in-process teammates, and avoid local state exit until an authorized approval response arrives."
+    },
+    {
+      "id": "exitplan-gap-04-permission-mode-restoration",
+      "category": "permission/state/lifecycle",
+      "severity": "high",
+      "title": "Go 保存了 pre-plan snapshot 但 ExitPlanMode 不消费它，缺少 TS 的 prePlanMode/auto-mode/dangerous-permission 恢复逻辑",
+      "ts_evidence": [
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:318-403 restores toolPermissionContext.mode from prePlanMode, clears prePlanMode, sets hasExitedPlanMode/needsPlanModeExitAttachment, handles auto-mode gate fallback, toggles autoModeActive, and strips/restores dangerous permissions.",
+        "../src/utils/permissions/permissionSetup.ts:597-645 centralizes transitionPermissionMode for plan exit, auto exit, dangerous permission restoration, and prePlanMode clearing.",
+        "../src/utils/permissions/permissionSetup.ts:1457-1492 prepares plan mode by stashing the current mode as prePlanMode and handling auto-mode-in-plan.",
+        "../src/bootstrap/state.ts:1333-1363 tracks hasExitedPlanMode and plan_mode_exit attachment state."
+      ],
+      "go_evidence": [
+        "tools/plan_state.go:31-40 defines PrePlanModeSnapshot and InterviewPhase in persisted state.",
+        "tools/plan_state.go:195-224 exposes PrePlanState and SetPrePlanState, but no ExitPlanMode consumer restores it.",
+        "tools/planmode.go:223 calls t.State.exit(); tools/plan_state.go:340-347 only clears active/planFile/enteredAt and persists state.",
+        "repl_tui.go:182-214 manually switches the permission checker to ask mode when entering plan mode and simply PlanState.Exit() when switching out, without a pre-plan restore path.",
+        "tools/planmode.go:261-270 only handles a hidden input autoMode fallback flag; it does not inspect a stored pre-plan mode or restore checker/runtime mode."
+      ],
+      "impact": "Exiting Go plan mode cannot reliably restore the exact pre-plan permission mode, cannot preserve TS auto-mode safety semantics, can leave TUI and permission checker out of sync, and does not emit equivalent lifecycle attachments/notifications.",
+      "desired_behavior": "Wire plan-mode entry/exit through a single permission transition path that stashes and restores pre-plan mode, handles auto-mode gate fallback based on runtime state rather than model input, restores/strips dangerous permissions, updates TUI/checker state, and records plan-mode-exit lifecycle flags."
+    },
+    {
+      "id": "exitplan-gap-05-output-envelope-and-model-tool-result",
+      "category": "output/runtime",
+      "severity": "high",
+      "title": "Go 的成功输出结构和模型可见 tool_result 与 TS V2 不一致",
+      "ts_evidence": [
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:110-141 defines output data as plan, isAgent, filePath, hasTaskTool, planWasEdited, awaitingLeaderApproval, and requestId.",
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:409-417 returns those output fields after local approval/state restoration.",
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:419-491 maps output to model-visible tool_result content: awaiting-leader instructions, agent \"ok\" instruction, empty-plan approval text, or an \"Approved Plan\" block with plan path and team hint.",
+        "../src/tools/ExitPlanModeTool/UI.tsx:17-66 renders approved/awaiting/empty plan UI from the TS output fields."
+      ],
+      "go_evidence": [
+        "tools/planmode.go:146-157 defines exitPlanModeResult with plan_path, decision, allowed_prompts_count, message, request_id, kind, gate_fallback_reason, and needs_auto_mode_attachment.",
+        "tools/planmode.go:246-279 always returns ResponseJSON(res), so the model sees the Go JSON envelope directly.",
+        "registry/registry.go:114-121 passes ToolResult.Content through as the ToolResultBlock content without an ExitPlanMode-specific mapToolResultToToolResultBlockParam equivalent.",
+        "tools/exit_plan_mode_alignment_test.go:66-193 asserts Go-specific JSON fields such as decision/allowed_prompts_count/message rather than current TS V2 output fields plan/isAgent/filePath/planWasEdited/awaitingLeaderApproval."
+      ],
+      "impact": "Downstream consumers and the model receive a different contract: Go returns a machine JSON envelope where TS returns approved-plan prose or teammate-wait instructions. It also omits TS fields that drive UI rendering and plan edit labeling.",
+      "desired_behavior": "Align the internal output data with TS V2 and add a Go result-mapping layer so the model sees the same approved/awaiting/agent/empty-plan text that TS emits."
+    },
+    {
+      "id": "exitplan-gap-06-allowed-prompts-do-not-grant-permissions",
+      "category": "permission/runtime",
+      "severity": "high",
+      "title": "Go 保存/展示 allowedPrompts，但没有像 TS 一样把它们转换为会话权限规则",
+      "ts_evidence": [
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:52-75 buildPermissionUpdates converts allowedPrompts into session addRules with createPromptRuleContent when classifier permissions are enabled.",
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:374-386 carries allowedPrompts into pending initialMessage for clear-context execution.",
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:447-471 passes buildPermissionUpdates(mode, allowedPrompts) when approving keep-context or standard execution.",
+        "../src/screens/REPL.tsx:3067-3068 applies buildPermissionUpdates(initialMsg.mode, initialMsg.allowedPrompts) after plan-mode clear-context handoff."
+      ],
+      "go_evidence": [
+        "tools/planmode.go:203-207 filters and stores allowedPrompts in PlanState, and tools/planmode.go:234-250 only uses them for summary/count.",
+        "tools/plan_state.go:227-279 implements AllowedPromptMatches/matchAllowedPrompt, but this matcher is not wired into Bash execution.",
+        "tools/bash.go:319-332 checks only BashTool.PermissionRules via MatchBashRule; it does not consult PlanState.AllowedPromptMatches.",
+        "tools/plan_mode_test.go:306-340 asserts allowed prompt summary text, and tools/k_protocol_test.go:366-400 asserts matcher behavior, but no test proves allowedPrompts grant actual Bash permission after ExitPlanMode."
+      ],
+      "impact": "Plans can request semantic Bash permissions, and Go reports that count/summary, but the approved prompts do not actually unblock later Bash commands. That loses the primary TS permission effect.",
+      "desired_behavior": "On approval, translate allowedPrompts into the same session permission representation used by Bash permission checks, or make Bash/permission checker consume PlanState.AllowedPromptMatches for post-exit commands."
+    },
+    {
+      "id": "exitplan-gap-07-plan-read-write-robustness",
+      "category": "robustness/state",
+      "severity": "medium",
+      "title": "Go 在读取计划文件前就退出状态，并把读取失败静默降级为空计划",
+      "ts_evidence": [
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:246-260 resolves inputPlan/getPlan and writes edited plan before later state restoration.",
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:263-270 throws when a plan_mode_required teammate has no plan.",
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:199-212 detects missing/empty rawPlan before approval UI handling.",
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:557-589 requires an explicit empty-plan yes/no response before approving an empty plan exit."
+      ],
+      "go_evidence": [
+        "tools/planmode.go:214-221 writes an edited plan if provided, then tools/planmode.go:223 exits PlanState before reading the plan file.",
+        "tools/planmode.go:225-232 ignores os.ReadFile errors and leaves planContent empty on failure.",
+        "tools/planmode.go:236-244 reports \"No plan content found\" as success after state has already been cleared.",
+        "tools/plan_mode_test.go:342-369 only covers intentionally empty plan files, not missing/unreadable plan files or state preservation on read failure."
+      ],
+      "impact": "If the plan file is missing, unreadable, or races with persistence, Go can silently clear plan mode and proceed with no plan. TS either requires explicit approval for empty plans or throws in teammate-required flow before completing the exit.",
+      "desired_behavior": "Load and validate the plan before mutating PlanState, distinguish empty file from read error, preserve plan mode on unexpected read/persist failures, and require explicit approval semantics for empty plans."
+    },
+    {
+      "id": "exitplan-gap-08-sdk-input-normalization-and-hidden-fields",
+      "category": "schema/output",
+      "severity": "medium",
+      "title": "Go 缺少 TS 的 SDK-facing plan/planFilePath 归一，并引入了未在 schema 中声明的 autoMode 入参",
+      "ts_evidence": [
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:77-89 keeps the internal model-facing input schema to allowedPrompts with passthrough.",
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:92-108 defines _sdkInputSchema that includes injected plan and planFilePath for SDK/hooks.",
+        "../src/utils/messages/mappers.ts:254-280 normalizes assistant ExitPlanMode tool_use blocks by injecting current plan content for SDK consumers."
+      ],
+      "go_evidence": [
+        "tools/planmode.go:132-143 defines Go-only Plan and AutoMode fields in exitPlanModeToolInput.",
+        "tools/planmode.go:169-190 Schema() advertises only allowedPrompts, so Go can accept plan/autoMode but does not expose or separate SDK-only fields.",
+        "tools/parse.go:13-32 unmarshals unknown fields through encoding/json and does not provide a tool-specific SDK normalization layer.",
+        "tools/planmode.go:261-270 relies on input autoMode for auto fallback even though TS derives auto-mode behavior from permission UI/runtime state, not an ExitPlanMode schema field."
+      ],
+      "impact": "Go SDK/hook surfaces cannot rely on a TS-compatible normalized ExitPlanMode input containing plan/planFilePath, while model/runtime callers may accidentally use a hidden autoMode flag that has no TS schema equivalent.",
+      "desired_behavior": "Separate model-facing schema from SDK/hook normalized input, inject plan/plan_path for SDK consumers where needed, and replace hidden autoMode input with runtime permission-state driven behavior."
+    },
+    {
+      "id": "exitplan-gap-09-test-coverage-missing-ts-critical-branches",
+      "category": "tests",
+      "severity": "medium",
+      "title": "Go 测试覆盖集中在本地 JSON/PlanState，缺少 TS 关键分支的红测",
+      "ts_evidence": [
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:263-312 teammate approval branch is substantial behavior that needs coverage.",
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:318-403 permission/auto-mode restoration branch is substantial behavior that needs coverage.",
+        "../src/tools/ExitPlanModeTool/ExitPlanModeV2Tool.ts:419-491 result mapping has multiple model-visible output branches.",
+        "../src/components/permissions/ExitPlanModePermissionRequest/ExitPlanModePermissionRequest.tsx:274-507 approval/rejection/clear-context/keep-context branches are the main local lifecycle."
+      ],
+      "go_evidence": [
+        "tools/exit_plan_mode_alignment_test.go:66-193 covers JSON envelope fields and allowedPrompts persistence, but not approval UI, teammate mailbox, permission restoration, or TS model-facing tool_result mapping.",
+        "tools/plan_mode_test.go:223-369 covers local not-active, state clearing, plan content, allowed prompt summary, and empty plan file.",
+        "tools/k_protocol_test.go:404-459 covers edited plan persistence and gate fallback reason only."
+      ],
+      "impact": "Future changes can make the current local path pass while still missing TS parity on the actual high-risk branches: approval, mailbox, permissions, output mapping, and failure-state preservation.",
+      "desired_behavior": "Add focused red tests for each TS-critical branch before implementing behavior changes, with fixtures/mocks for permission context, mailbox, approval decisions, and result mapping."
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "exitplan-task-01-add-parity-red-tests",
+      "title": "Add focused ExitPlanMode parity red tests for TS-critical branches",
+      "covers_gaps": [
+        "exitplan-gap-02-local-approval-ui",
+        "exitplan-gap-03-teammate-leader-approval",
+        "exitplan-gap-04-permission-mode-restoration",
+        "exitplan-gap-05-output-envelope-and-model-tool-result",
+        "exitplan-gap-06-allowed-prompts-do-not-grant-permissions",
+        "exitplan-gap-07-plan-read-write-robustness",
+        "exitplan-gap-09-test-coverage-missing-ts-critical-branches"
+      ],
+      "owned_files": [
+        "tools/exit_plan_mode_alignment_test.go",
+        "tools/plan_mode_test.go",
+        "tools/k_protocol_test.go",
+        "registry/registry_test.go",
+        "loop/*_test.go",
+        "repl_tui_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "Tests fail against the current Go implementation for: approval required before local exit, rejection preserves plan mode, teammate plan_approval_request is emitted instead of local exit, approved teammate response exits to inherited mode, pre-plan permission mode is restored, model-visible result text matches TS branches, allowedPrompts unlock Bash permissions, and unreadable plan file preserves plan mode.",
+        "Existing passing tests remain in place and are not rewritten to a weaker Go-specific JSON contract.",
+        "Each red test cites the corresponding TS evidence path in a comment."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'ExitPlanMode|PlanMode|AllowedPrompt'",
+        "go test ./registry ./loop -run 'ExitPlanMode|ToolResult|Permission'"
+      ]
+    },
+    {
+      "id": "exitplan-task-02-availability-gate",
+      "title": "Implement ExitPlanMode availability/isEnabled parity for channel/non-interactive contexts",
+      "covers_gaps": [
+        "exitplan-gap-01-availability-and-deferred-gates"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "registry/tool_visibility.go",
+        "tools/planmode.go",
+        "types/tools.go",
+        "registry/*_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "ExitPlanMode remains deferred/searchable in normal local sessions.",
+        "ExitPlanMode is not exposed when the runtime is in a channel/non-local-approval context equivalent to TS KAIROS/KAIROS_CHANNELS allowed channels.",
+        "EnterPlanMode and ExitPlanMode gates remain symmetric so plan mode cannot become a trap."
+      ],
+      "verification_commands": [
+        "go test ./registry -run 'Visibility|Deferred|ExitPlanMode'",
+        "go test ./tools -run 'EnterPlanMode|ExitPlanMode'"
+      ]
+    },
+    {
+      "id": "exitplan-task-03-local-approval-lifecycle",
+      "title": "Add local ExitPlanMode approval/rejection lifecycle before state exit",
+      "covers_gaps": [
+        "exitplan-gap-02-local-approval-ui",
+        "exitplan-gap-07-plan-read-write-robustness"
+      ],
+      "owned_files": [
+        "tools/planmode.go",
+        "tools/plan_state.go",
+        "repl_tui.go",
+        "tui/*",
+        "ui/*",
+        "loop/*",
+        "registry/registry.go",
+        "tools/plan_mode_test.go",
+        "tools/exit_plan_mode_alignment_test.go"
+      ],
+      "dependencies": [
+        "exitplan-task-01-add-parity-red-tests"
+      ],
+      "acceptance": [
+        "For non-teammate local sessions, calling ExitPlanMode creates/uses an approval request and does not clear PlanState until approval is received.",
+        "Rejecting the plan returns a rejection result/feedback path and leaves PlanState active with the same plan file.",
+        "Approving can pass edited plan content through and persists it before exit.",
+        "Empty plans require an explicit approval path; unreadable/missing plan files return an error and preserve plan mode unless the user explicitly approved an empty plan case."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'ExitPlanMode|PlanMode'",
+        "go test ./loop ./registry -run 'ExitPlanMode|Approval|ToolResult'"
+      ]
+    },
+    {
+      "id": "exitplan-task-04-teammate-mailbox-approval",
+      "title": "Implement teammate plan_mode_required mailbox approval flow",
+      "covers_gaps": [
+        "exitplan-gap-03-teammate-leader-approval"
+      ],
+      "owned_files": [
+        "tools/planmode.go",
+        "tools/team.go",
+        "tools/send_message_routing.go",
+        "tools/send_message_envelope.go",
+        "tools/agent.go",
+        "tools/team_alignment_test.go",
+        "tools/send_message_routing_test.go",
+        "tools/agent_test.go"
+      ],
+      "dependencies": [
+        "exitplan-task-01-add-parity-red-tests"
+      ],
+      "acceptance": [
+        "When the current runtime is a plan_mode_required teammate, ExitPlanMode requires a non-empty plan and sends a plan_approval_request to team-lead with from, timestamp, planFilePath, planContent, and requestId.",
+        "The teammate returns an awaitingLeaderApproval-style result and does not clear local plan mode immediately.",
+        "Only team-lead plan_approval_response messages can approve/reject the pending request.",
+        "Approved responses exit plan mode and inherit the leader permission mode; rejected responses keep plan mode active and surface feedback."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'PlanApproval|ExitPlanMode|SendMessage'",
+        "go test ./tools -run 'Team|AgentToolTeammatePlanMode'"
+      ]
+    },
+    {
+      "id": "exitplan-task-05-permission-restore-and-auto-mode",
+      "title": "Restore pre-plan permission mode and auto-mode safety state on ExitPlanMode",
+      "covers_gaps": [
+        "exitplan-gap-04-permission-mode-restoration",
+        "exitplan-gap-08-sdk-input-normalization-and-hidden-fields"
+      ],
+      "owned_files": [
+        "tools/plan_state.go",
+        "tools/planmode.go",
+        "permissions/*",
+        "repl_tui.go",
+        "tui/*",
+        "main.go",
+        "registry_setup.go",
+        "permissions/*_test.go",
+        "tools/k_protocol_test.go"
+      ],
+      "dependencies": [
+        "exitplan-task-03-local-approval-lifecycle"
+      ],
+      "acceptance": [
+        "Entering plan mode records enough pre-plan permission state to restore default/ask/accept-edits/auto-like modes on approved exit.",
+        "ExitPlanMode consumes that state and clears it only after successful approval/exit.",
+        "Auto-mode gate fallback is derived from runtime permission state and gate availability, not from a model-supplied hidden autoMode flag.",
+        "Dangerous permissions stripped for auto-mode-in-plan are restored or kept stripped according to the TS restoreMode rules.",
+        "TUI mode, permission checker mode, persisted plan state, and any lifecycle attachment/notification flags stay synchronized."
+      ],
+      "verification_commands": [
+        "go test ./permissions ./tools -run 'PlanMode|Permission|AutoMode|PrePlan'",
+        "go test ./... -run 'ExitPlanMode|ModeSwitch'"
+      ]
+    },
+    {
+      "id": "exitplan-task-06-result-mapping",
+      "title": "Align ExitPlanMode output data and model-visible tool_result mapping with TS V2",
+      "covers_gaps": [
+        "exitplan-gap-05-output-envelope-and-model-tool-result"
+      ],
+      "owned_files": [
+        "tools/planmode.go",
+        "registry/registry.go",
+        "loop/*",
+        "types/tools.go",
+        "repl_tui.go",
+        "tools/exit_plan_mode_alignment_test.go",
+        "loop/*_test.go",
+        "provider/*_test.go"
+      ],
+      "dependencies": [
+        "exitplan-task-03-local-approval-lifecycle",
+        "exitplan-task-04-teammate-mailbox-approval"
+      ],
+      "acceptance": [
+        "ExitPlanMode internal output includes TS V2 fields: plan, isAgent, filePath, hasTaskTool, planWasEdited, awaitingLeaderApproval, and requestId where applicable.",
+        "The model-visible tool_result text matches TS branches for awaiting leader approval, agent invocation, empty plan, and approved plan with path/team hint.",
+        "Go-specific JSON fields decision/allowed_prompts_count/kind are removed from the TS-parity output path or confined to non-model metadata if still needed internally.",
+        "TUI rendering can use structured data without dumping raw JSON as the user-facing result."
+      ],
+      "verification_commands": [
+        "go test ./tools ./registry ./loop -run 'ExitPlanMode|ToolResult|ResultMapping'",
+        "go test ./provider -run 'ToolResults'"
+      ]
+    },
+    {
+      "id": "exitplan-task-07-allowed-prompts-permission-effect",
+      "title": "Make approved allowedPrompts grant post-exit Bash permissions",
+      "covers_gaps": [
+        "exitplan-gap-06-allowed-prompts-do-not-grant-permissions"
+      ],
+      "owned_files": [
+        "tools/planmode.go",
+        "tools/plan_state.go",
+        "tools/bash.go",
+        "tools/bash_permissions.go",
+        "permissions/*",
+        "tools/bash_permission_checks_test.go",
+        "tools/k_protocol_test.go",
+        "tools/plan_mode_test.go"
+      ],
+      "dependencies": [
+        "exitplan-task-03-local-approval-lifecycle",
+        "exitplan-task-05-permission-restore-and-auto-mode"
+      ],
+      "acceptance": [
+        "Approved allowedPrompts are converted into session allow rules or otherwise consumed by Bash permission checks after plan exit.",
+        "Prompt matching honors TS-compatible prompt: semantics, tool Bash enum, duplicate handling, and existing glob/regex/literal matching tests.",
+        "Read-only Bash behavior remains unchanged.",
+        "Rejected plan exits do not grant allowedPrompts."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'AllowedPrompt|BashPermission|ExitPlanMode'",
+        "go test ./permissions -run 'Bash|Rule|Prompt'"
+      ]
+    },
+    {
+      "id": "exitplan-task-08-sdk-normalization",
+      "title": "Add ExitPlanMode SDK/hook input normalization and remove hidden autoMode dependency",
+      "covers_gaps": [
+        "exitplan-gap-08-sdk-input-normalization-and-hidden-fields"
+      ],
+      "owned_files": [
+        "tools/planmode.go",
+        "types/tools.go",
+        "sdk/*",
+        "provider/*",
+        "loop/*",
+        "tools/exit_plan_mode_alignment_test.go",
+        "sdk/*_test.go",
+        "provider/*_test.go"
+      ],
+      "dependencies": [
+        "exitplan-task-05-permission-restore-and-auto-mode"
+      ],
+      "acceptance": [
+        "Model-facing ExitPlanMode schema remains aligned to TS allowedPrompts behavior.",
+        "SDK/hook-visible tool_use input can include normalized plan and planFilePath/plan_path equivalent when a plan exists.",
+        "ExitPlanMode no longer needs a hidden autoMode field to decide auto fallback behavior.",
+        "Unknown passthrough fields remain tolerated where the broader Go tool parser expects that behavior."
+      ],
+      "verification_commands": [
+        "go test ./sdk ./provider ./loop -run 'ExitPlanMode|Normalize|ToolUse'",
+        "go test ./tools -run 'ExitPlanMode'"
+      ]
+    }
+  ]
+}

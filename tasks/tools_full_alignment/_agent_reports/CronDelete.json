@@ -1,0 +1,345 @@
+{
+  "tool": "CronDelete",
+  "summary": "CronDelete is close at the basic delete-by-id path, but it is not fully aligned with the TS implementation. The main gaps are the Go tool's text-only success contract, collapsed not-found/storage-error handling, missing teammate ownership guard, incomplete runtime kill-switch behavior, and non-strict input parsing.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "crondelete-gap-01",
+      "title": "Success output is text-only and does not preserve the TS structured {id} result contract",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:27-31 defines outputSchema as { id: string }",
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:82-91 returns data { id } and maps it to tool_result content \"Cancelled job <id>.\"",
+        "../src/tools/ScheduleCronTool/UI.tsx:33-38 renders the structured DeleteOutput id"
+      ],
+      "evidence_go": [
+        "tools/cron.go:1130-1147 returns only Content \"Cron job deleted: id=<id>\"",
+        "types/tools.go:58-67 supports only Content/ContentBlocks/Metadata, and CronDelete does not populate Metadata",
+        "tools/cron_test.go:171-181 only asserts that the text contains the id"
+      ],
+      "description": "The TS tool has a typed DeleteOutput with id and then derives both model-facing and UI-facing messages from that output. The Go port only emits a human string, so downstream callers cannot reliably distinguish the stable result value from prose.",
+      "impact": "Consumers that expect structured tool data, UI renderers, or parity tests cannot depend on a stable id field. The visible text also differs from TS: \"Cron job deleted: id=...\" vs \"Cancelled job ...\"."
+    },
+    {
+      "id": "crondelete-gap-02",
+      "title": "Delete validation lacks TS-style existence error codes and teammate ownership protection",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:61-80 validates the id before call, returns errorCode 1 for missing jobs, and errorCode 2 when another agent owns the cron",
+        "../src/utils/teammateContext.ts:22-49 defines the current in-process teammate context and agentId",
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts:105-127 prevents durable teammate crons and attaches getTeammateContext()?.agentId to session crons",
+        "../src/bootstrap/state.ts:1280-1291 stores agentId on session-only cron tasks"
+      ],
+      "evidence_go": [
+        "tools/cron.go:144-153 defines CronJob without any AgentID/owner field",
+        "tools/cron.go:555-586 deletes by id only and has no owner check",
+        "tools/cron.go:1138-1142 returns a generic not-found string without TS errorCode semantics",
+        "tools/cron_extra_test.go:90-112 covers durable teammate creation rejection but no CronDelete owner rejection"
+      ],
+      "description": "TS separates validation from mutation and protects session-only teammate crons so a teammate can delete only its own jobs. Go has no owner metadata on CronJob and no current-agent check in CronDelete, so any caller that knows an id can delete it.",
+      "impact": "In multi-agent/in-process teammate sessions, Go can delete another agent's scheduled job, violating TS permission semantics and making deletion behavior unsafe under shared runtime state."
+    },
+    {
+      "id": "crondelete-gap-03",
+      "title": "Durable delete storage failures are collapsed into not-found results",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:82-84 calls removeCronTasks and lets mutation errors reject the tool call",
+        "../src/utils/cronTasks.ts:165-181 writeCronTasks creates .claude and writes the cron file, propagating write errors",
+        "../src/utils/cronTasks.ts:231-248 removeCronTasks only no-ops when no ids match; changed durable state is written through writeCronTasks"
+      ],
+      "evidence_go": [
+        "tools/cron.go:565-585 catches read/write errors inside CronStore.delete and returns false when err != nil",
+        "tools/cron.go:1138-1142 maps any false delete result to \"Error: cron job id=<id> not found\"",
+        "tools/cron_test.go:191-199 tests unknown id only, not read/write failure behavior"
+      ],
+      "description": "The Go store returns a bool from delete, so it cannot tell the tool whether the id was absent or durable storage failed. TS preserves that distinction: missing ids are validation errors, while write failures remain operational failures.",
+      "impact": "A permission, locking, JSON, or filesystem write problem can be reported as a harmless not-found. That makes CronDelete harder to debug and can leave jobs scheduled after the user was told deletion failed only because the id was absent."
+    },
+    {
+      "id": "crondelete-gap-04",
+      "title": "CronDelete does not enforce the TS runtime cron kill switch at execute time",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/prompt.ts:36-45 implements isKairosCronEnabled with AGENT_TRIGGERS, CLAUDE_CODE_DISABLE_CRON, and GrowthBook kill-switch checks",
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:46-48 exposes CronDelete only when isKairosCronEnabled returns true",
+        "../src/tools.ts:29-35 includes CronDelete only in the AGENT_TRIGGERS tool set"
+      ],
+      "evidence_go": [
+        "registry_setup.go:153-155 gates initial cron registration only on AGENT_TRIGGERS",
+        "registry_setup.go:266-274 registers CronDelete when AGENT_TRIGGERS is true",
+        "tools/cron.go:961-978 defines CLAUDE_CODE_DISABLE_CRON refusal helpers",
+        "tools/cron.go:1021-1023 applies the kill switch in CronCreate",
+        "tools/cron.go:1130-1147 CronDelete.Execute does not check cronDisabledByFeatureFlag"
+      ],
+      "description": "Go has a local kill-switch helper and uses it for CronCreate, but CronDelete ignores it. TS hides CronDelete when the cron feature is disabled, so Go's already-registered delete tool can remain callable after the local disable flag is set.",
+      "impact": "Runtime availability differs when the cron feature is killed mid-session. Tool lists and direct execution paths may allow deletion in Go where TS would not expose the tool."
+    },
+    {
+      "id": "crondelete-gap-05",
+      "title": "CronDelete input is not strict like the TS z.strictObject schema",
+      "priority": "P2",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:20-24 uses z.strictObject({ id: z.string() })",
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:61-80 assumes validated strict input before mutation"
+      ],
+      "evidence_go": [
+        "types/tools.go:10-15 JSONSchema has no additionalProperties field",
+        "tools/cron.go:1117-1127 defines only type/properties/required for id",
+        "tools/parse.go:13-21 parses through json.Unmarshal, which ignores unknown object fields by default",
+        "tools/parse.go:177-180 defines CronDeleteInput with only ID"
+      ],
+      "description": "TS rejects extra fields at schema validation time. Go publishes a schema that cannot express additionalProperties=false and then ignores unknown keys while parsing.",
+      "impact": "Bad or stale caller payloads can be silently accepted in Go. This is lower risk for CronDelete's single id field, but it is still an observable schema/validation parity difference."
+    },
+    {
+      "id": "crondelete-gap-06",
+      "title": "CronDelete-specific tests do not lock parity for output, ownership, feature flag, or storage-error behavior",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:27-31 defines the output shape tests should assert",
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts:61-80 defines missing-id and owner-denied validation behavior",
+        "../src/tools/ScheduleCronTool/prompt.ts:36-45 defines the runtime kill switch behavior"
+      ],
+      "evidence_go": [
+        "tools/cron_test.go:161-210 covers happy path, unknown id, and empty id only",
+        "tools/cron_test.go:597-632 covers concurrent creates/deletes without asserting delete results or durable failure semantics",
+        "tools/cron_alignment_test.go:26-69 contains feature-flag tests for Create/List but no CronDelete equivalent"
+      ],
+      "description": "Current Go tests prove that a basic session job can be deleted and then disappears from list output. They do not protect the TS-specific contracts that are currently missing.",
+      "impact": "Future changes can keep passing the existing CronDelete tests while preserving non-parity behavior in the highest-risk paths."
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "title": "Align CronDelete success output with TS structured id contract",
+      "priority": "P1",
+      "dependency_key": null,
+      "objective": "Make CronDelete expose a stable id result and model-facing text equivalent to TS: structured id plus \"Cancelled job <id>.\"",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/cron_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts",
+        "../src/tools/ScheduleCronTool/UI.tsx",
+        "tools/cron.go",
+        "types/tools.go"
+      ],
+      "implementation_steps": [
+        "Change CronDelete success rendering from \"Cron job deleted: id=<id>\" to the TS-compatible cancellation text.",
+        "Expose the deleted id in a stable machine-readable place supported by the Go result layer, such as Metadata[\"id\"], while keeping text output backward-readable.",
+        "Add a focused test that asserts success text and id metadata for a created-then-deleted job."
+      ],
+      "acceptance_criteria": [
+        "CronDelete success result includes the exact deleted id in a stable field, not only embedded prose.",
+        "CronDelete model-facing content matches the TS wording pattern \"Cancelled job <id>.\"",
+        "Existing basic delete/list behavior remains unchanged."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCronDeleteTool|TestCronDelete.*Output'"
+      ],
+      "risks": [
+        "Changing visible text can affect tests or callers that parse the old \"Cron job deleted: id=\" wording."
+      ],
+      "non_goals": [
+        "Do not change CronCreate or CronList output contracts in this task."
+      ]
+    },
+    {
+      "title": "Preserve durable delete errors instead of reporting them as not found",
+      "priority": "P0",
+      "dependency_key": null,
+      "objective": "Refactor CronStore.delete so CronDelete can distinguish absent ids from durable storage failures.",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/cron_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts",
+        "../src/utils/cronTasks.ts",
+        "tools/cron.go",
+        "tools/cron_test.go"
+      ],
+      "implementation_steps": [
+        "Change CronStore.delete from bool to a result that carries found/deleted and error separately.",
+        "Return a tool-level not-found error only when the id is absent.",
+        "Return an infrastructure error or explicit storage ToolResult error when durable read/write fails, following the repo's Tool.Execute error conventions.",
+        "Add a test that injects an unreadable/unwritable cron file path or write failure and asserts the result is not a not-found error."
+      ],
+      "acceptance_criteria": [
+        "Unknown ids still produce a not-found tool error.",
+        "Durable file read/write failures are distinguishable from not-found.",
+        "Session-only deletes still remove in-memory schedules."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCronDeleteTool|TestCronDelete.*Storage|TestCronStoreConcurrency'"
+      ],
+      "risks": [
+        "Filesystem permission tests can be platform-sensitive, especially on Windows or when running as a privileged user."
+      ],
+      "non_goals": [
+        "Do not redesign cron file locking or scheduler leadership."
+      ]
+    },
+    {
+      "title": "Add teammate owner metadata and enforce CronDelete ownership checks",
+      "priority": "P0",
+      "dependency_key": "crondelete-owner-context",
+      "objective": "Mirror TS behavior where session-only cron jobs created by an in-process teammate carry agentId and can only be deleted by that same agent.",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/parse.go",
+        "tools/cron_test.go",
+        "tools/cron_extra_test.go"
+      ],
+      "read_first": [
+        "../src/utils/teammateContext.ts",
+        "../src/tools/ScheduleCronTool/CronCreateTool.ts",
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts",
+        "../src/bootstrap/state.ts",
+        "tools/cron.go",
+        "tools/agent.go"
+      ],
+      "implementation_steps": [
+        "Identify or add the Go runtime hook that exposes the current in-process agent id to CronCreate/CronDelete.",
+        "Store owner/AgentID only on session cron jobs; do not persist it to durable cron JSON.",
+        "Reject durable teammate cron creation using the existing guard and attach owner metadata to non-durable teammate cron creation.",
+        "Make CronDelete validate ownership before deletion and return an owner-denied tool error distinct from not-found.",
+        "Add tests for owner can delete, another owner cannot delete, and leader behavior on unowned jobs."
+      ],
+      "acceptance_criteria": [
+        "Session-only teammate jobs carry owner identity in memory.",
+        "CronDelete refuses deletion when current agent id differs from the job owner.",
+        "Unowned leader-created jobs remain deletable from the leader path.",
+        "Durable cron file format remains compatible with TS scheduled_tasks.json."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCron.*Teammate|TestCronDelete.*Owner|TestGuardDurableCreation'"
+      ],
+      "risks": [
+        "Go may not yet have an exact AsyncLocalStorage equivalent for in-process teammate identity; this task may need a small runtime context provider.",
+        "Owner enforcement must not accidentally block top-level user cleanup of unowned jobs."
+      ],
+      "non_goals": [
+        "Do not add owner fields to durable scheduled_tasks.json.",
+        "Do not change team mailbox or broader agent lifecycle behavior."
+      ]
+    },
+    {
+      "title": "Apply cron feature kill-switch behavior to CronDelete",
+      "priority": "P1",
+      "dependency_key": null,
+      "objective": "Make CronDelete obey the same local disable flag behavior as the rest of the Go cron tool surface and TS isEnabled gate.",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/cron_alignment_test.go",
+        "tools/cron_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/prompt.ts",
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts",
+        "registry_setup.go",
+        "tools/cron.go",
+        "tools/cron_alignment_test.go"
+      ],
+      "implementation_steps": [
+        "Add the cronDisabledByFeatureFlag check to CronDelete.Execute before parsing/mutating input.",
+        "Return the same refusal style as CronCreate uses through cronFeatureFlagRefusal.",
+        "Add a CronDelete-specific feature-flag test with CLAUDE_CODE_DISABLE_CRON=1."
+      ],
+      "acceptance_criteria": [
+        "CronDelete refuses execution when CLAUDE_CODE_DISABLE_CRON is truthy.",
+        "CronDelete still works when the disable flag is unset and AGENT_TRIGGERS registered it.",
+        "Create/List/Delete feature-flag behavior is internally consistent in Go."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestAlignmentCronFeatureFlagGates(Create|List|Delete)|TestCronDeleteTool'"
+      ],
+      "risks": [
+        "TS hides the tool through isEnabled while Go will return a refusal from an already-registered tool; exact transport parity may require broader registry support later."
+      ],
+      "non_goals": [
+        "Do not implement GrowthBook-backed tengu_kairos_cron in this task."
+      ]
+    },
+    {
+      "title": "Make CronDelete input strict for unknown fields",
+      "priority": "P2",
+      "dependency_key": null,
+      "objective": "Reject extra CronDelete input properties to match TS z.strictObject semantics.",
+      "owned_files": [
+        "tools/cron.go",
+        "tools/parse.go",
+        "types/tools.go",
+        "tools/cron_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts",
+        "types/tools.go",
+        "tools/parse.go",
+        "tools/cron.go"
+      ],
+      "implementation_steps": [
+        "Add schema support for additionalProperties=false or add a CronDelete-local unknown-key validator.",
+        "Ensure CronDelete rejects inputs with keys other than id.",
+        "Add tests for unknown fields and wrong id type."
+      ],
+      "acceptance_criteria": [
+        "CronDelete schema or execution path rejects extra keys.",
+        "Valid {\"id\":\"...\"} input remains accepted.",
+        "The implementation does not unintentionally change other tool schemas unless explicitly covered by tests."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestCronDeleteTool|TestCronDelete.*Strict'",
+        "go test ./types -run 'Test.*Schema' || true"
+      ],
+      "risks": [
+        "Adding additionalProperties to the shared JSONSchema type can affect all tool definitions and snapshots.",
+        "A local validator is safer but leaves the advertised API schema less exact."
+      ],
+      "non_goals": [
+        "Do not make every Go tool strict in this task."
+      ]
+    },
+    {
+      "title": "Expand CronDelete parity regression tests",
+      "priority": "P1",
+      "dependency_key": "supports-gaps-01-through-05",
+      "objective": "Lock the CronDelete parity contracts with focused tests for output, owner checks, storage errors, feature gating, and strict input.",
+      "owned_files": [
+        "tools/cron_test.go",
+        "tools/cron_alignment_test.go",
+        "tools/cron_extra_test.go"
+      ],
+      "read_first": [
+        "../src/tools/ScheduleCronTool/CronDeleteTool.ts",
+        "../src/utils/cronTasks.ts",
+        "../src/utils/teammateContext.ts",
+        "tools/cron.go",
+        "tools/cron_test.go",
+        "tools/cron_alignment_test.go"
+      ],
+      "implementation_steps": [
+        "Add or update tests alongside each behavioral fix rather than creating one broad brittle fixture.",
+        "Cover success output/id metadata, unknown id, empty id, unknown fields, feature-disabled refusal, storage failure, and owner-denied deletion.",
+        "Keep durable and session-only cases separate so failures identify the affected store."
+      ],
+      "acceptance_criteria": [
+        "Each CronDelete gap has a failing-before/passing-after regression test.",
+        "Tests assert observable behavior, not private implementation details except where package-private store helpers are already used by cron tests.",
+        "Existing cron create/list scheduler tests continue passing."
+      ],
+      "verification": [
+        "go test ./tools -run 'CronDelete|Cron.*Teammate|AlignmentCronFeatureFlag'",
+        "go test ./tools"
+      ],
+      "risks": [
+        "Some tests depend on changes from other tasks; keep dependency markers clear if landing incrementally."
+      ],
+      "non_goals": [
+        "Do not broaden this to all CronCreate/CronList parity tests beyond what CronDelete needs."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+#!/bin/bash
+set -euo pipefail
+workspace_dir="${WORKSPACE_DIR:-/workspace}"
+if [ -d "$workspace_dir" ]; then cd "$workspace_dir"; fi
+tmp_patch="$(mktemp)"
+cleanup() { rm -f "$tmp_patch"; }
+trap cleanup EXIT
+cat > "$tmp_patch" <<'CODEBUDDY_PATCH'
+diff --git a/asgiref_like/bridge.py b/asgiref_like/bridge.py
+index a0eb33d..544eff7 100644
+--- a/asgiref_like/bridge.py
++++ b/asgiref_like/bridge.py
+@@ -1,11 +1,19 @@
+-import asyncio
++import asyncio, contextvars
+ 
+ def sync_to_async(func, thread_sensitive=False):
+     async def wrapper(*args, **kwargs):
+-        raise RuntimeError("TODO: sync bridge")
++        ctx = contextvars.copy_context()
++        if thread_sensitive:
++            return ctx.run(func, *args, **kwargs)
++        loop = asyncio.get_running_loop()
++        return await loop.run_in_executor(None, lambda: ctx.run(func, *args, **kwargs))
+     return wrapper
+ 
+ def async_to_sync(func):
+     def wrapper(*args, **kwargs):
+-        raise RuntimeError("TODO: async bridge")
++        try:
++            asyncio.get_running_loop()
++        except RuntimeError:
++            return asyncio.run(func(*args, **kwargs))
++        raise RuntimeError("async_to_sync cannot run inside a running event loop")
+     return wrapper
+CODEBUDDY_PATCH
+git apply "$tmp_patch"

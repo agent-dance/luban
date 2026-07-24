@@ -1,0 +1,48 @@
+{
+  "id": "task_02",
+  "title": "Add API-invariant preservation helpers",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "owner_role": "executor",
+  "parallel_group": "foundation",
+  "can_run_in_parallel": true,
+  "dependencies": [],
+  "objective": "Provide reusable helpers that prevent compaction, truncation, partial compaction, and session-memory compaction from splitting provider-required message structures.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/services/compact/sessionMemoryCompact.ts:232",
+    "/Users/blurooo/project/go-claude/src/services/compact/sessionMemoryCompact.ts:288",
+    "/Users/blurooo/project/go-claude/src/services/compact/grouping.ts:22",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go:339"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/types",
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/provider"
+  ],
+  "implementation_scope": [
+    "Implement helpers equivalent to adjustIndexToPreserveAPIInvariants for Go message types.",
+    "Preserve tool_use/tool_result pairs when selecting kept tails or truncating heads.",
+    "Preserve assistant fragments sharing the same assistant message id, including thinking blocks if represented in Go types.",
+    "Provide group-by-API-round boundaries based on assistant response identity, not human-turn heuristics.",
+    "Replace existing simple adjustForToolPairs call sites where the stronger helper applies."
+  ],
+  "out_of_scope": [
+    "Do not implement partial compaction or session memory compaction in this task.",
+    "Do not alter provider normalization unless needed to add tests for helper behavior."
+  ],
+  "acceptance_criteria": [
+    "Helper tests cover tool_result-at-tail, orphan tool_use, multiple assistant fragments with the same id, and assistant-first sliced histories.",
+    "Force truncate and HistorySnip use the stronger invariant preservation helper.",
+    "No API-invalid user/tool_result-first tail is produced by truncation helpers."
+  ],
+  "verification": [
+    "go test ./compact",
+    "go test ./loop"
+  ],
+  "risks": [
+    "Go message types may not currently expose assistant ids for all provider paths; document and preserve all available metadata.",
+    "Over-preserving can reduce token savings, so tests should include token-budget edge cases."
+  ],
+  "dispatch_prompt": "Build reusable API-invariant preservation helpers for Go compaction and truncation, matching the TS handling of tool pairs and assistant fragments."
+}

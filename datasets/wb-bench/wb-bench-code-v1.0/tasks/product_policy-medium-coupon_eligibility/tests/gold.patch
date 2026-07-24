@@ -1,0 +1,53 @@
+diff --git a/app/policy.py b/app/policy.py
+index 57a5e02..dd91004 100644
+--- a/app/policy.py
++++ b/app/policy.py
+@@ -1,24 +1,27 @@
+ #!/usr/bin/env python3
+-# Expected CLI: python app/policy.py --data data --out decisions.json
+-# Output should explain which rows are allowed/blocked and why.
+-
+-import argparse
+-import json
++import argparse,csv,json
++from datetime import date
+ from pathlib import Path
+-
+-
+-def evaluate(data_dir: Path) -> dict:
+-    # TODO: evaluate the product policy from CSV data.
+-    return {}
+-
+-
++TODAY=date(2026,6,15)
++def rows(p):
++    with p.open(newline='',encoding='utf-8') as f: return list(csv.DictReader(f))
++def evaluate(data_dir: Path):
++    suppressed={r['user_id']:r['reason'] for r in rows(data_dir/'suppression.csv')}
++    recent={r['user_id'] for r in rows(data_dir/'recent_coupons.csv') if (TODAY-date.fromisoformat(r['sent_at'])).days<=30}
++    decisions=[]; summary={'eligible':0,'blocked':0,'high_value_eligible':0}
++    for u in rows(data_dir/'users.csv'):
++        last=(TODAY-date.fromisoformat(u['last_seen'])).days; ltv=int(u['lifetime_value_cents'])
++        if u['user_id'] in suppressed: status='blocked'; reason='suppressed'
++        elif u['user_id'] in recent: status='blocked'; reason='recent_coupon'
++        elif u['segment']!='churned': status='blocked'; reason='not_churned'
++        elif last < 60: status='blocked'; reason='too_recently_active'
++        elif u['country'] not in {'US','CA'}: status='blocked'; reason='unsupported_country'
++        else: status='eligible'; reason='winback_candidate'
++        if status=='eligible': summary['eligible']+=1
++        else: summary['blocked']+=1
++        if status=='eligible' and ltv>=5000: summary['high_value_eligible']+=1
++        decisions.append({'user_id':u['user_id'],'status':status,'reason':reason,'days_since_seen':last,'coupon':'WINBACK20' if status=='eligible' else None})
++    return {'summary':summary,'decisions':decisions}
+ def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument('--data', default='data')
+-    parser.add_argument('--out', default='decisions.json')
+-    args = parser.parse_args()
+-    Path(args.out).write_text(json.dumps(evaluate(Path(args.data)), ensure_ascii=False, indent=2), encoding='utf-8')
+-
+-
+-if __name__ == '__main__':
+-    main()
++    p=argparse.ArgumentParser(); p.add_argument('--data',default='data'); p.add_argument('--out',default='decisions.json'); a=p.parse_args(); Path(a.out).write_text(json.dumps(evaluate(Path(a.data)),indent=2),encoding='utf-8')
++if __name__=='__main__': main()

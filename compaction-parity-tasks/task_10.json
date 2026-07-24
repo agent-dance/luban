@@ -1,0 +1,58 @@
+{
+  "id": "task_10",
+  "title": "Restore full post-compact context attachments",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "owner_role": "executor",
+  "parallel_group": "post_compact_recovery",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_01",
+    "task_02"
+  ],
+  "objective": "Expand Go post-compact recovery from files-only to the full TS set of context-restoring attachments supported by the Go product surface.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/services/compact/compact.ts:531",
+    "/Users/blurooo/project/go-claude/src/services/compact/compact.ts:545",
+    "/Users/blurooo/project/go-claude/src/services/compact/compact.ts:557",
+    "/Users/blurooo/project/go-claude/src/services/compact/compact.ts:563",
+    "/Users/blurooo/project/go-claude/src/services/compact/compact.ts:587",
+    "/Users/blurooo/project/go-claude/gosrc/compact/post_compact.go:146"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/compact/post_compact.go",
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/skills",
+    "/Users/blurooo/project/go-claude/gosrc/mcp",
+    "/Users/blurooo/project/go-claude/gosrc/agents"
+  ],
+  "implementation_scope": [
+    "Keep and harden existing recent file recovery, including dedup against preserved tail reads and allowed directory restrictions.",
+    "Add plan file recovery if Go has plan state.",
+    "Add plan-mode reminder recovery if Go has plan mode.",
+    "Add invoked skills attachment recovery scoped by agent/session.",
+    "Add async/background agent status attachments if Go has background agents.",
+    "Add deferred tools, agent listing, and MCP instruction delta attachments where Go has equivalent registries.",
+    "Represent every recovered item as an attachment/hook result in CompactionResult instead of appending ad hoc user messages."
+  ],
+  "out_of_scope": [
+    "Do not invent product surfaces that Go does not have; mark unsupported attachment types in code comments/tests.",
+    "Do not re-inject full skill listings if the TS behavior intentionally avoids it."
+  ],
+  "acceptance_criteria": [
+    "Post-compact message order remains boundary, summary, kept messages, attachments, hook results.",
+    "Recent files are not restored when already visible in preserved tail.",
+    "Supported plan/skill/MCP/agent state survives a compact in tests or fixture-based integration tests.",
+    "Unsupported TS attachment types are explicitly documented rather than silently ignored."
+  ],
+  "verification": [
+    "go test ./compact",
+    "go test ./loop"
+  ],
+  "risks": [
+    "Some attachment systems may live outside compact package; keep interfaces narrow to avoid cycles.",
+    "Attachments can bloat post-compact context and must respect token budgets."
+  ],
+  "dispatch_prompt": "Expand Go post-compact recovery to restore files, plans, skills, async agents, deferred tools, agent listings, and MCP instructions where supported."
+}

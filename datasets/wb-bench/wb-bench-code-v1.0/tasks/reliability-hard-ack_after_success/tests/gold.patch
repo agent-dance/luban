@@ -1,0 +1,26 @@
+diff --git a/celery_like/worker.py b/celery_like/worker.py
+index 37771a8..3a3dd73 100644
+--- a/celery_like/worker.py
++++ b/celery_like/worker.py
+@@ -10,15 +10,18 @@ class Worker:
+         task = self.broker.get()
+         if task is None:
+             return None
+-        self.broker.ack(task)
+-        handler = handlers[task["type"]]
+         try:
+-            return handler(task)
++            handler = handlers[task["type"]]
++            result = handler(task)
+         except RetryableError:
+             task["attempts"] = task.get("attempts", 0) + 1
+             if task["attempts"] <= self.max_retries:
+                 self.broker.requeue(task)
++            else:
++                self.broker.dead_letter(task, "max_retries")
+             return None
+         except Exception as exc:
+             self.broker.dead_letter(task, type(exc).__name__)
+             return None
++        self.broker.ack(task)
++        return result

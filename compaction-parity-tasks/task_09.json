@@ -1,0 +1,56 @@
+{
+  "id": "task_09",
+  "title": "Implement reactive compact recovery for context overflow",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "owner_role": "debugger",
+  "parallel_group": "recovery",
+  "can_run_in_parallel": false,
+  "dependencies": [
+    "task_01",
+    "task_08"
+  ],
+  "objective": "Recover from prompt-too-long, context-window, and media-size provider errors by compacting and retrying the same query once instead of failing immediately.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/query.ts:788",
+    "/Users/blurooo/project/go-claude/src/query.ts:1062",
+    "/Users/blurooo/project/go-claude/src/query.ts:1119",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go:597",
+    "/Users/blurooo/project/go-claude/gosrc/provider/errors.go:96"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/provider/errors.go",
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go",
+    "/Users/blurooo/project/go-claude/gosrc/compact/strip.go"
+  ],
+  "implementation_scope": [
+    "Detect recoverable prompt-too-long errors from CreateStream and stream-level provider events.",
+    "Detect recoverable media-size errors when represented by Go provider errors.",
+    "Withhold recoverable synthetic assistant errors from user output until recovery fails.",
+    "Run reactive compact against the exact messages used for the failed request, then retry the same query with post-compact messages.",
+    "Guard against repeated reactive compact attempts in the same query chain.",
+    "Bypass stop-hook or ordinary post-response logic when the model never produced a valid assistant response.",
+    "Surface the original withheld error if compaction fails or the retry still overflows."
+  ],
+  "out_of_scope": [
+    "Do not implement context-collapse drain unless task_17 is already complete.",
+    "Do not add multi-retry compaction loops beyond the TS-equivalent single-shot guard."
+  ],
+  "acceptance_criteria": [
+    "CreateStream prompt-too-long causes compact-and-retry, not immediate API call failure.",
+    "Stream-level prompt-too-long causes compact-and-retry without appending an invalid assistant response.",
+    "Second overflow surfaces a clear prompt-too-long error and does not spiral.",
+    "Media-size recoveries strip media for summary input and surface errors when preserved tail media still overflows."
+  ],
+  "verification": [
+    "go test ./loop",
+    "go test ./compact",
+    "go test ./provider"
+  ],
+  "risks": [
+    "Provider error shapes differ; keep detection centralized and covered by fixtures.",
+    "Retrying after partial stream output must not leave orphan tool_use/tool_result pairs."
+  ],
+  "dispatch_prompt": "Implement reactive context-overflow recovery in the Go query loop: detect prompt-too-long/media errors, compact, retry once, and surface only unrecoverable failures."
+}

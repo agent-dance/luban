@@ -1,0 +1,20 @@
+{
+  "id": "task_02",
+  "title": "Versioned checkpoint, migration, integrity, and evidence ownership",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Make an exact checkpoint the canonical resume source and fail closed once a session opts into the protocol.",
+  "requirements": [
+    "Content-address checkpoint files by full transcript digest and validate an envelope checksum.",
+    "Use a capability manifest, bounded private files, atomic publication, directory fsync, identity checks, and evidence manifest validation.",
+    "Materialize all reachable evidence and copy it into fork ownership.",
+    "Migrate v2 explicitly to v3 without claiming that unrecorded cursor/aggregate/action state was exact."
+  ],
+  "acceptance": [
+    "missing/corrupt/version/identity/digest checkpoints fail closed",
+    "v2 migration upgrades the manifest",
+    "fork evidence remains readable after source deletion"
+  ],
+  "cost_person_days": {"low": 2, "base": 4, "high": 7},
+  "result": "Checkpoint v3, capability manifest, checksum, secure I/O, explicit v2 bridge, evidence materialization, and independent fork evidence are implemented."
+}

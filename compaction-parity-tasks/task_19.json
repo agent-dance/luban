@@ -1,0 +1,54 @@
+{
+  "id": "task_19",
+  "title": "Add compaction telemetry and debug metrics parity",
+  "priority": "P1",
+  "status": "ready_for_dispatch",
+  "owner_role": "executor",
+  "parallel_group": "observability",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_01",
+    "task_08",
+    "task_11"
+  ],
+  "objective": "Add the metrics and debug evidence needed to diagnose compaction quality, retry loops, prompt-cache behavior, and post-compact token pressure.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/services/compact/compact.ts:650",
+    "/Users/blurooo/project/go-claude/src/query.ts:478",
+    "/Users/blurooo/project/go-claude/src/services/compact/autoCompact.ts:229",
+    "/Users/blurooo/project/go-claude/src/utils/toolResultStorage.ts:875"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/compact",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/provider",
+    "/Users/blurooo/project/go-claude/gosrc/logging"
+  ],
+  "implementation_scope": [
+    "Log preCompactTokenCount, compaction call token usage, true post-compact token estimate, and autoCompactThreshold.",
+    "Record whether post-compact context is likely to retrigger auto-compact.",
+    "Log query chain/depth or Go-equivalent turn identifiers.",
+    "Log prompt-cache read/create/drop metrics where provider usage exposes them.",
+    "Log compact PTL retries, auto-compact consecutive failures, and cache-sharing fallback/success where implemented.",
+    "Add token category breakdown hooks if Go already has context analysis utilities; otherwise add a narrow debug-only breakdown."
+  ],
+  "out_of_scope": [
+    "Do not add an external analytics dependency.",
+    "Do not make telemetry required for compaction success."
+  ],
+  "acceptance_criteria": [
+    "Compaction success and failure logs contain enough data to diagnose repeated compaction loops.",
+    "Auto-compact success logs include original and compacted message counts plus usage when available.",
+    "Telemetry calls are safe when usage fields are nil or providers do not support cache metrics.",
+    "Tests or fakes verify metrics emission for success, PTL retry, and failure paths."
+  ],
+  "verification": [
+    "go test ./compact",
+    "go test ./loop"
+  ],
+  "risks": [
+    "Metrics can accidentally log file paths or user content; keep payload metadata-only.",
+    "Over-instrumentation can introduce cycles if logging packages import compact code."
+  ],
+  "dispatch_prompt": "Add metadata-only compaction telemetry and debug logs to Go so post-compact token pressure, cache behavior, retries, and failures are diagnosable like TS."
+}

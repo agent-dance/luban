@@ -1,0 +1,607 @@
+{
+  "id": "task_07",
+  "title": "Align Bash tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all Bash improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "Bash"
+    ],
+    "problem": "Exact surface; permission checks, background handling, and output phrasing have improved, but the original full shell/runtime stack is still deeper.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/Bash.json"
+    ],
+    "ts_references": [
+      "../src/tools/BashTool/BashTool.tsx"
+    ],
+    "go_references": [
+      "gosrc/tools/bash.go",
+      "gosrc/tools/bash_security.go (new)",
+      "gosrc/tools/bash_permissions.go (new)",
+      "gosrc/tools/bash_readonly.go (new)",
+      "gosrc/tools/bash_path_validation.go (new)",
+      "gosrc/tools/bash_sed_parser.go (new)",
+      "gosrc/tools/bash_command_semantics.go (new)",
+      "gosrc/tools/bash_mode_validation.go (new)",
+      "tools/bash.go",
+      "tools/background_tasks.go",
+      "compact/resultstore.go",
+      "tools/bash_security.go (new)",
+      "tools/bash_permissions.go (new)",
+      "tools/bash_readonly.go (new)",
+      "tools/bash_path_validation.go (new)",
+      "tools/bash_sed_parser.go (new)",
+      "tools/bash_command_semantics.go (new)",
+      "tools/bash_mode_validation.go (new)"
+    ],
+    "source_note": "Synthesized because the initial early subagent report was returned in chat but not persisted by the read-only role; inputs were the current tools/reports markdown, the handoff summary, and the historical task JSON under ../tasks."
+  },
+  "owned_files": [
+    "tools/bash.go",
+    "tools/background_tasks.go",
+    "compact/resultstore.go",
+    "tools/bash_security.go (new)",
+    "tools/bash_permissions.go (new)",
+    "tools/bash_readonly.go (new)",
+    "tools/bash_path_validation.go (new)",
+    "tools/bash_sed_parser.go (new)",
+    "tools/bash_command_semantics.go (new)",
+    "tools/bash_mode_validation.go (new)"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "BASH-SYNTH-GAP-001",
+      "severity": "P0",
+      "category": "security_auth",
+      "title": "Port commandSemantics command classifier",
+      "description": "TS commandSemantics.ts:140 lines classifies a command into categories: 'read', 'write', 'network', 'process', 'destructive', 'unknown'. Used by readOnlyValidation and destructiveCommandWarning."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-002",
+      "severity": "P0",
+      "category": "permissions_visibility",
+      "title": "Port readOnlyValidation and route safe commands without confirmation",
+      "description": "TS readOnlyValidation.ts:1990 lines decides whether a command is read-only. Read-only commands skip permission prompts entirely."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-003",
+      "severity": "P0",
+      "category": "permissions_visibility",
+      "title": "Port pathValidation for boundary checking",
+      "description": "TS pathValidation.ts:1303 lines extracts every absolute/relative path referenced in a command and checks against allowed_dirs."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-004",
+      "severity": "P0",
+      "category": "permissions_visibility",
+      "title": "Port sedEditParser to recognise implicit edits",
+      "description": "TS sedEditParser.ts:322 lines parses 'sed -i s/old/new/g file.txt' into a virtual {filePath, oldString, newString} so it can run through the same readFileState/permission gate as the Edit tool."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-005",
+      "severity": "P0",
+      "category": "state_lifecycle",
+      "title": "Apply sed-edit through readFileState and Edit gating",
+      "description": "TS sedValidation.ts:684 enforces 'must Read first' on the file sed will modify, mirroring FileEditTool semantics."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-006",
+      "severity": "P0",
+      "category": "security_auth",
+      "title": "Port destructiveCommandWarning two-step confirmation",
+      "description": "TS destructiveCommandWarning.ts:102 lines surfaces an extra confirmation prompt for rm -rf, dd, mkfs, etc."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-007",
+      "severity": "P0",
+      "category": "permissions_visibility",
+      "title": "Port shouldUseSandbox per-command toggle",
+      "description": "TS shouldUseSandbox.ts:153 decides whether a command needs sandbox or can run unsandboxed (e.g. read-only commands skip sandbox for performance)."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-008",
+      "severity": "P0",
+      "category": "runtime_logic",
+      "title": "Port modeValidation for plan/yolo/safe modes",
+      "description": "TS modeValidation.ts:115 lines blocks certain commands in plan mode (writes, network) and relaxes in yolo mode."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-009",
+      "severity": "P0",
+      "category": "security_auth",
+      "title": "Port full bashSecurity command-injection detector",
+      "description": "TS bashSecurity.ts:2592 lines is the heaviest module: detects shell metacharacter injection, encoded command tricks, $() abuse, base64-decoded payloads. Current Go DetectDangerousCommand is far thinner."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-010",
+      "severity": "P0",
+      "category": "permissions_visibility",
+      "title": "Port bashPermissions rule-matching engine",
+      "description": "TS bashPermissions.ts:2621 matches a bash invocation against settings.json permission rules: 'Bash(npm test)', 'Bash(git:*)', 'Bash(rm:!)' etc."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-011",
+      "severity": "P0",
+      "category": "contract_schema_output",
+      "title": "Strengthen background task lifecycle and output protocol",
+      "description": "TS BashTool background tasks emit stdout to a tracked file; Go has BackgroundTaskManager but lacks size cap, rotation, timeout and final 'task-notification' integration."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-012",
+      "severity": "P0",
+      "category": "contract_schema_output",
+      "title": "Wire commandSemantics + readOnly into ToolResult metadata",
+      "description": "TS attaches metadata to BashTool result like {wasReadOnly:bool, semanticCategory:string} for analytics + UI."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-013",
+      "severity": "P0",
+      "category": "tests",
+      "title": "End-to-end Bash conformance test against TS golden fixtures",
+      "description": "Lock the runtime against TS behaviour with shared fixtures."
+    },
+    {
+      "id": "BASH-SYNTH-GAP-014",
+      "severity": "P1",
+      "category": "contract_schema_output",
+      "title": "Align Bash ToolResult metadata, streaming, and persisted large-output behavior",
+      "description": "Mirror TS command metadata, shell-output truncation/persistence, progress events, and background result retrieval semantics."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "bash-01",
+      "title": "Port commandSemantics command classifier",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-001"
+      ],
+      "dependencies": [],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_command_semantics.go.",
+        "Translate each classifier function 1:1: classifyTopLevel(cmd string), splitPipeline, classifyBuiltin, classifyExternal.",
+        "Build allow-list maps: readCommands (cat/ls/head/tail/grep/find/stat/git status/git diff/git log/jq/yq/wc/tree/file), networkCommands (curl/wget/nc/ssh/scp/rsync), destructiveCommands (rm/dd/mkfs/shred/format).",
+        "Expose ClassifyCommand(cmd string) CommandSemantic with stable enum values."
+      ],
+      "acceptance_criteria": [
+        "Unit tests cover representative commands per category",
+        "Pipelines and chained commands (a && b; c | d) classified by worst category"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS commandSemantics.ts:140 lines classifies a command into categories: 'read', 'write', 'network', 'process', 'destructive', 'unknown'. Used by readOnlyValidation and destructiveCommandWarning."
+    },
+    {
+      "source_id": "bash-02",
+      "title": "Port readOnlyValidation and route safe commands without confirmation",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-002"
+      ],
+      "dependencies": [
+        "bash-01"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_readonly.go.",
+        "Implement IsReadOnlyCommand(cmd string, semantics CommandSemantic) bool.",
+        "Cover edge cases: cd-only, env-only, echo-only, command substitution chains, pipelines where every element is read-only, here-string redirects to /dev/null only.",
+        "In BashTool.Execute, call IsReadOnlyCommand before any permission gate; if true, bypass permission handler.",
+        "Add tests for ~30 representative commands from TS test suite."
+      ],
+      "acceptance_criteria": [
+        "ls, git status, jq '.' file.json bypass permission",
+        "rm -rf, npm install, curl POST do NOT bypass",
+        "Pipeline 'cat a | grep b' bypasses, 'cat a | tee b' does not"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS readOnlyValidation.ts:1990 lines decides whether a command is read-only. Read-only commands skip permission prompts entirely."
+    },
+    {
+      "source_id": "bash-03",
+      "title": "Port pathValidation for boundary checking",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-003"
+      ],
+      "dependencies": [],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_path_validation.go.",
+        "Implement ExtractPathsFromCommand(cmd string) []string by tokenising the command (respecting quotes, command substitution, redirections).",
+        "Resolve relative paths against the BashTool.CWD.",
+        "Implement ValidatePathsAgainstAllowedDirs(paths []string, allowedDirs []string) error.",
+        "Wire into Execute pre-flight: if any extracted path is outside allowed_dirs, reject."
+      ],
+      "acceptance_criteria": [
+        "Command 'cat /etc/passwd' rejected when allowed_dirs is ~/work",
+        "Command 'cat ./local.txt' resolves against CWD and is accepted if CWD is allowed",
+        "Quoted paths with spaces are extracted correctly"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS pathValidation.ts:1303 lines extracts every absolute/relative path referenced in a command and checks against allowed_dirs."
+    },
+    {
+      "source_id": "bash-04",
+      "title": "Port sedEditParser to recognise implicit edits",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-004"
+      ],
+      "dependencies": [
+        "bash-01"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_sed_parser.go.",
+        "Implement ParseSedEdit(cmd string) (*SedEditPlan, bool) returning {FilePath, Edits: []{Op:'s'|'d'|'i'|'a', Pattern, Replacement, Flags}}.",
+        "Handle: in-place flag (-i with optional backup ext), multiple -e expressions, semicolon-separated programs, address ranges (e.g. '1,5d').",
+        "Add unit tests for at least 15 sed invocation variants."
+      ],
+      "acceptance_criteria": [
+        "sed -i 's/foo/bar/g' file.txt parsed",
+        "sed -i.bak '1,5d;s/x/y/' file.txt parsed",
+        "sed without -i returns nil (read-only, no edit)"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS sedEditParser.ts:322 lines parses 'sed -i s/old/new/g file.txt' into a virtual {filePath, oldString, newString} so it can run through the same readFileState/permission gate as the Edit tool."
+    },
+    {
+      "source_id": "bash-05",
+      "title": "Apply sed-edit through readFileState and Edit gating",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-005"
+      ],
+      "dependencies": [
+        "bash-04",
+        "read-02"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_sed_validation.go.",
+        "Before exec: if ParseSedEdit returns plan, look up readFileState entry for plan.FilePath.",
+        "If missing or stale (mtime mismatch), return error mirroring FileEditTool message: 'Read the file first using the Read tool. The Bash sed command will modify file <path>.'",
+        "After exec, update readFileState mtime so subsequent Edit calls succeed.",
+        "Add integration test driving a sed -i flow."
+      ],
+      "acceptance_criteria": [
+        "sed -i without prior Read is rejected",
+        "Read+sed+Edit sequence works",
+        "External modification between Read and sed is detected"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS sedValidation.ts:684 enforces 'must Read first' on the file sed will modify, mirroring FileEditTool semantics."
+    },
+    {
+      "source_id": "bash-06",
+      "title": "Port destructiveCommandWarning two-step confirmation",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-006"
+      ],
+      "dependencies": [
+        "bash-01"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_destructive_warning.go.",
+        "Implement DestructiveCommandWarning(cmd string) (warning string, requireConfirm bool).",
+        "Patterns to flag: rm -rf /, rm -rf ~, dd if=*, mkfs.*, shred -*, > /dev/sd*, find ... -exec rm.",
+        "In Execute: when warning fires and PermissionHandler is non-nil, request explicit confirmation via PermissionHandler.AskUser; in non-interactive mode return error.",
+        "Add tests."
+      ],
+      "acceptance_criteria": [
+        "'rm -rf /' triggers confirmation",
+        "'ls -la' does not",
+        "Confirmation respects PermissionHandler"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS destructiveCommandWarning.ts:102 lines surfaces an extra confirmation prompt for rm -rf, dd, mkfs, etc."
+    },
+    {
+      "source_id": "bash-07",
+      "title": "Port shouldUseSandbox per-command toggle",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-007"
+      ],
+      "dependencies": [
+        "bash-01"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Add ShouldUseSandbox(cmd string, semantics CommandSemantic, hint string) bool to bash_readonly.go or new file.",
+        "Default true; return false for confirmed read-only commands AND when no path-validation flags raised.",
+        "In buildCommand, gate sandbox usage by this function plus existing dangerouslyDisableSandbox.",
+        "Add tests."
+      ],
+      "acceptance_criteria": [
+        "Read-only commands skip sandbox by default",
+        "Network or write commands keep sandbox",
+        "dangerouslyDisableSandbox=true still wins"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS shouldUseSandbox.ts:153 decides whether a command needs sandbox or can run unsandboxed (e.g. read-only commands skip sandbox for performance)."
+    },
+    {
+      "source_id": "bash-08",
+      "title": "Port modeValidation for plan/yolo/safe modes",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-008"
+      ],
+      "dependencies": [
+        "bash-01"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_mode_validation.go.",
+        "Implement ValidateCommandForMode(cmd string, semantics CommandSemantic, mode string) error.",
+        "Modes: 'plan' (only read), 'safe' (no destructive), 'yolo' (no checks).",
+        "Wire in BashTool.Execute reading mode from PlanState/AppState."
+      ],
+      "acceptance_criteria": [
+        "Plan mode blocks any non-read command",
+        "Safe mode blocks rm -rf",
+        "Yolo mode permits everything"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS modeValidation.ts:115 lines blocks certain commands in plan mode (writes, network) and relaxes in yolo mode."
+    },
+    {
+      "source_id": "bash-09",
+      "title": "Port full bashSecurity command-injection detector",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-009"
+      ],
+      "dependencies": [],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_security.go.",
+        "Translate the rule list 1:1, organised as a slice of {Name, Pattern (regexp), Severity, Reason} entries.",
+        "Cover: $(echo cmd | base64 -d | sh), eval $arg, curl ... | sh, wget ... | bash, /dev/tcp redirection, exec </dev/tcp, perl/python -e payloads, hex/octal encoding, history -c.",
+        "Replace existing DetectDangerousCommand with the richer engine.",
+        "Add table-driven tests with at least 30 positive and 20 negative cases."
+      ],
+      "acceptance_criteria": [
+        "Pipe-to-shell variants are flagged",
+        "Common legitimate complex commands (e.g. 'find . -name foo -print0 | xargs -0 grep bar') are NOT flagged",
+        "Severity levels expose blocking vs warning policy"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS bashSecurity.ts:2592 lines is the heaviest module: detects shell metacharacter injection, encoded command tricks, $() abuse, base64-decoded payloads. Current Go DetectDangerousCommand is far thinner."
+    },
+    {
+      "source_id": "bash-10",
+      "title": "Port bashPermissions rule-matching engine",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-010"
+      ],
+      "dependencies": [
+        "bash-01",
+        "bash-03",
+        "bash-09"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Create gosrc/tools/bash_permissions.go.",
+        "Define rule grammar: 'Bash(<name>[:<args>][!])' where ! denies and absence allows.",
+        "Implement MatchBashRule(cmd string, rules []permissions.Rule) (decision Decision, matchedRule *permissions.Rule).",
+        "Decision is Allow / Deny / NeedAsk.",
+        "Wire into Execute: pre-flight rule check before invoking sandbox.",
+        "Hook into existing permissions package; reuse PermissionRule type if already present.",
+        "Add tests for rule patterns: literal match, prefix wildcard, deny override, allow-all '*'."
+      ],
+      "acceptance_criteria": [
+        "'Bash(npm test)' allows 'npm test' but not 'npm install'",
+        "'Bash(git:*)' allows 'git status', 'git push'",
+        "Deny rule overrides allow rule",
+        "No matching rule returns NeedAsk"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS bashPermissions.ts:2621 matches a bash invocation against settings.json permission rules: 'Bash(npm test)', 'Bash(git:*)', 'Bash(rm:!)' etc."
+    },
+    {
+      "source_id": "bash-11",
+      "title": "Strengthen background task lifecycle and output protocol",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-011"
+      ],
+      "dependencies": [],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Audit gosrc/tools/background_tasks.go to confirm output path lifecycle.",
+        "Cap output file at 50MB with rotation suffix .1.",
+        "Emit final-state line on completion: 'TASK_FINISHED exit=<code> duration=<ms>'.",
+        "Surface task completion through hooks Runner so harness can re-trigger model.",
+        "Add integration test: background long-running command, read output mid-flight, then read after completion."
+      ],
+      "acceptance_criteria": [
+        "Output file truncates gracefully on overflow",
+        "Final TASK_FINISHED line present",
+        "Hook receives task-completion event"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS BashTool background tasks emit stdout to a tracked file; Go has BackgroundTaskManager but lacks size cap, rotation, timeout and final 'task-notification' integration."
+    },
+    {
+      "source_id": "bash-12",
+      "title": "Wire commandSemantics + readOnly into ToolResult metadata",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-012"
+      ],
+      "dependencies": [
+        "bash-01",
+        "bash-02"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Extend ToolResult.Metadata (string-map) on Bash returns with these fields.",
+        "Ensure consumers (registry, analytics, hooks) read them without crashing if missing.",
+        "Add tests verifying metadata for at least 5 commands."
+      ],
+      "acceptance_criteria": [
+        "Bash result includes the metadata fields",
+        "Existing consumers do not break"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "TS attaches metadata to BashTool result like {wasReadOnly:bool, semanticCategory:string} for analytics + UI."
+    },
+    {
+      "source_id": "bash-13",
+      "title": "End-to-end Bash conformance test against TS golden fixtures",
+      "priority": "P0",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-013"
+      ],
+      "dependencies": [
+        "bash-01",
+        "bash-02",
+        "bash-03",
+        "bash-04",
+        "bash-05",
+        "bash-06",
+        "bash-07",
+        "bash-08",
+        "bash-09",
+        "bash-10"
+      ],
+      "owned_files": [],
+      "read_first": [],
+      "implementation_steps": [
+        "Mirror TS test cases from src/tools/BashTool/__tests__/ (or describe blocks) into gosrc/tools/bash_conformance_test.go as table-driven cases listing command+expected (decision, semantic, readOnly).",
+        "Skip cases dependent on TS-only services; document each skip with reason.",
+        "Add `go test ./tools -run TestBashConformance` and require it green."
+      ],
+      "acceptance_criteria": [
+        "\u226580 conformance cases pass",
+        "Documented skips < 10"
+      ],
+      "verification": [],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Lock the runtime against TS behaviour with shared fixtures."
+    },
+    {
+      "source_id": "bash-synth-13",
+      "title": "Align Bash ToolResult metadata, streaming, and persisted large-output behavior",
+      "priority": "P1",
+      "addresses_gaps": [
+        "BASH-SYNTH-GAP-014"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/bash.go",
+        "tools/background_tasks.go",
+        "compact/resultstore.go"
+      ],
+      "read_first": [
+        "../src/tools/BashTool/BashTool.tsx"
+      ],
+      "implementation_steps": [
+        "Mirror TS command metadata, shell-output truncation/persistence, progress events, and background result retrieval semantics."
+      ],
+      "acceptance_criteria": [
+        "Large output is persisted or truncated exactly where TS would do so.",
+        "Background and foreground Bash results expose equivalent metadata."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./loop -run 'Bash|Alignment|Parity' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Fresh-summary augmentation for early read-only subagent report."
+    }
+  ],
+  "acceptance_criteria": [
+    "Bash input validation and schema behavior match the original TS implementation for all report gaps.",
+    "Bash model-visible output and structured result data match TS golden fixtures.",
+    "Bash runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "Unit tests cover representative commands per category",
+    "Pipelines and chained commands (a && b; c | d) classified by worst category",
+    "ls, git status, jq '.' file.json bypass permission",
+    "rm -rf, npm install, curl POST do NOT bypass",
+    "Pipeline 'cat a | grep b' bypasses, 'cat a | tee b' does not",
+    "Command 'cat /etc/passwd' rejected when allowed_dirs is ~/work",
+    "Command 'cat ./local.txt' resolves against CWD and is accepted if CWD is allowed",
+    "Quoted paths with spaces are extracted correctly",
+    "sed -i 's/foo/bar/g' file.txt parsed",
+    "sed -i.bak '1,5d;s/x/y/' file.txt parsed",
+    "sed without -i returns nil (read-only, no edit)",
+    "sed -i without prior Read is rejected",
+    "Read+sed+Edit sequence works",
+    "External modification between Read and sed is detected",
+    "'rm -rf /' triggers confirmation",
+    "'ls -la' does not",
+    "Confirmation respects PermissionHandler",
+    "Read-only commands skip sandbox by default",
+    "Network or write commands keep sandbox",
+    "dangerouslyDisableSandbox=true still wins",
+    "Plan mode blocks any non-read command",
+    "Safe mode blocks rm -rf",
+    "Yolo mode permits everything",
+    "Pipe-to-shell variants are flagged"
+  ],
+  "verification": [
+    "go test ./tools ./registry ./loop -run 'Bash|Alignment|Parity' -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

@@ -1,0 +1,81 @@
+{
+  "id": "task_05",
+  "title": "Render bounded catalog snapshots and deltas",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 2,
+  "owner_role": "executor",
+  "estimated_minutes": 45,
+  "parallel_group": "catalog_components",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_01"
+  ],
+  "objective": "Render deterministic developer-role snapshot, upsert, and revoke payloads while honoring metadata budgets and visibility.",
+  "context": [
+    "Implement the accepted hybrid design: an initial developer-role catalog snapshot, append-only upsert/revoke deltas, on-demand SKILL.md bodies, and an authoritative execution registry.",
+    "The repository is a dirty shared worktree. Preserve unrelated changes and modify only owned_files."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Codex uses a bounded initial metadata catalog and loads full SKILL.md on demand."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Claude Code supports live skill discovery, visibility overrides, and on-demand skill bodies."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Append-only conversation messages preserve the previously cached prompt prefix."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "skills/catalog_contract.go",
+    "skills/prompt.go",
+    "skills/prompt_test.go"
+  ],
+  "owned_files": [
+    "skills/catalog_render.go",
+    "skills/catalog_render_task05_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Render initial snapshot and append-only delta formats with revision markers.",
+      "Preserve all visible names while dropping low-priority descriptions under budget.",
+      "Never expose descriptions for name-only/manual-only/off entries.",
+      "Use deterministic ordering independent of map iteration."
+    ],
+    "exclude": [
+      "Do not modify files owned by another task.",
+      "Do not add dependencies or perform unrelated refactors."
+    ]
+  },
+  "implementation_steps": [
+    "Implement pure renderers over precomputed contract values.",
+    "Add golden tests for snapshot, upsert, revoke, truncation, escaping, and empty delta.",
+    "Prove no-change input renders no message."
+  ],
+  "deliverables": [
+    "skills/catalog_render.go",
+    "skills/catalog_render_task05_test.go"
+  ],
+  "acceptance_criteria": [
+    "Rendered output is deterministic and bounded.",
+    "Revokes carry stable ID and reason.",
+    "Renderer does not read files or mutate catalog state."
+  ],
+  "verification": [
+    "go test ./skills -run 'CatalogRender|SnapshotRender|DeltaRender' -count=1"
+  ],
+  "risks": [],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Implement pure bounded catalog snapshot/delta renderers in new files. Take IDs/digests/revisions as inputs; do not depend on task_03 implementation.",
+  "notes_for_assignee": "Keep the diff narrow; if a dependency contract is insufficient, report the required change to the integrator instead of editing another task's files."
+}

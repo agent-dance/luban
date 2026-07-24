@@ -1,0 +1,735 @@
+{
+  "id": "task_17",
+  "title": "Align Grep tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all Grep improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "Grep"
+    ],
+    "problem": "Go Grep has converged on the broad TS surface (same public tool name, core parameters, ripgrep-backed path, default head_limit, output modes, multiline flag, and many direct Execute tests), but it is not yet a full implementation match. The largest remaining gaps are in runtime lifecycle wiring, permission/ignore integration, exact model-facing output and structured result data, rg binary resolution/fallback semantics, cwd scoping, sorting/pagination order, strict input/coercion edge cases, timeout partial-result behavior, and test coverage. A focused verification command (`go test ./tools -run 'TestGrep' -count=1`) is currently blocked before Grep tests run by unrelated tools package compile errors in MCP files.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/Grep.json"
+    ],
+    "ts_references": [
+      "../src/tools/GrepTool/GrepTool.ts:183-200",
+      "../src/tools/GrepTool/GrepTool.ts:201-240",
+      "../src/utils/permissions/filesystem.ts:1030-1063",
+      "../src/tools/GrepTool/GrepTool.ts:411-427",
+      "../src/tools/GrepTool/GrepTool.ts:429-434",
+      "../src/utils/plugins/orphanedPluginFilter.ts:25-88",
+      "../src/tools/GrepTool/GrepTool.ts:144-154",
+      "../src/tools/GrepTool/GrepTool.ts:267-303",
+      "../src/tools/GrepTool/GrepTool.ts:466-575",
+      "../src/tools/GrepTool/GrepTool.ts:160-165",
+      "../src/tools/GrepTool/GrepTool.ts:526-563",
+      "../src/utils/ripgrep.ts:31-65",
+      "../src/utils/ripgrep.ts:123-128",
+      "../src/utils/ripgrep.ts:345-355",
+      "../src/utils/ripgrep.ts:548-617",
+      "../src/utils/ripgrep.ts:619-679",
+      "../src/tools/GrepTool/GrepTool.ts:33-89",
+      "../src/utils/semanticNumber.ts:26-35",
+      "../src/utils/semanticBoolean.ts:22-28",
+      "../src/tools/GrepTool/GrepTool.ts:378-408",
+      "../src/tools/GrepTool/GrepTool.ts:362-375",
+      "../src/utils/ripgrep.ts:411-456",
+      "../src/utils/ripgrep.ts:417-429",
+      "../src/utils/ripgrep.ts:444-452",
+      "../src/utils/cwd.ts:4-20",
+      "../src/tools/GrepTool/GrepTool.ts:195-197",
+      "../src/tools/AgentTool/AgentTool.tsx:638-641",
+      "../src/tools/AgentTool/resumeAgent.ts:227-232",
+      "../src/tools/GrepTool/GrepTool.ts:386-389",
+      "../src/utils/ripgrep.ts:376-456",
+      "../src/tools/GrepTool/prompt.ts:6-17",
+      "../src/tools/GrepTool/GrepTool.ts:160-193",
+      "../src/tools/GrepTool/GrepTool.ts:244-252",
+      "../src/tools/GrepTool/UI.tsx:165-187",
+      "../src/tools/GrepTool/GrepTool.ts:411-434"
+    ],
+    "go_references": [
+      "types/tools.go:24-44",
+      "registry_setup.go:109-150",
+      "registry_setup.go:211-213",
+      "tools/glob_path_scope.go:25-70",
+      "tools/search.go:761-794",
+      "tools/search.go:623-669",
+      "tools/search_fallback.go:140-167",
+      "tools/search_fallback.go:217-225",
+      "tools/search_file_read_ignore.go:28-45",
+      "tools/search_file_read_ignore.go:121-160",
+      "types/tools.go:58-68",
+      "tools/search.go:398-428",
+      "tools/search.go:410-420",
+      "compact/resultstore.go:188-220",
+      "tools/search.go:637-642",
+      "tools/search.go:688-695",
+      "tools/search.go:383-394",
+      "tools/search_fallback.go:161-166",
+      "tools/grep_ripgrep.go:27-46",
+      "tools/grep_ripgrep.go:99-117",
+      "tools/search.go:821-829",
+      "tools/search.go:875-884",
+      "tools/search.go:671-675",
+      "tools/search_fallback.go:90-132",
+      "types/tools.go:9-15",
+      "tools/parse.go:13-21",
+      "tools/parse.go:82-97",
+      "tools/search.go:268-282",
+      "tools/search.go:291-307",
+      "tools/search.go:340-350",
+      "tools/search.go:314-319",
+      "tools/search.go:649-654",
+      "tools/search.go:541-560",
+      "tools/grep_output_modes.go:106-116",
+      "tools/search.go:831-845",
+      "tools/search.go:896-908",
+      "tools/search.go:359-379",
+      "tools/search_capped_buffer.go:1-27",
+      "tools/search.go:761-769",
+      "tools/search.go:1021-1037",
+      "tools/search.go:186-193",
+      "tools/search.go:285-289",
+      "tools/grep_type_filters.go:43-66",
+      "tools/grep_type_filters.go:68-93",
+      "tools/search_fallback.go:227-260",
+      "tools/search.go:191-193",
+      "registry/tool_visibility.go:17-44",
+      "tools/grep_alignment_test.go:1-8",
+      "tools/grep_conformance_test.go:267-575",
+      "tools/search_test.go:53-329",
+      "tools/mcp_render.go:92-159",
+      "tools/mcp_render.go:524",
+      "tools/mcp_tools.go:541",
+      "registry_setup.go",
+      "tools/search.go",
+      "tools/glob_path_scope.go",
+      "loop/concurrent.go",
+      "tools/grep_conformance_test.go",
+      "registry/registry_test.go",
+      "tools/search_fallback.go",
+      "tools/search_file_read_ignore.go",
+      "tools/grep_alignment_test.go",
+      "tools/m_search_web_ask_test.go",
+      "types/tools.go",
+      "registry/registry.go",
+      "compact/resultstore.go",
+      "tools/search_test.go",
+      "tools/grep_ripgrep.go",
+      "tools/grep_ripgrep_codesign.go",
+      "tools/grep_type_filters.go",
+      "tools/search_capped_buffer_test.go",
+      "tools/parse.go",
+      "tools/grep_output_modes.go",
+      "tools/search_capped_buffer.go",
+      "tools/search_path_helpers.go",
+      "tools/agent_cwd.go",
+      "tools/agent_test.go",
+      "registry/tool_visibility.go",
+      "tools/tool_search_alignment_test.go",
+      "tools/search_path_helpers_test.go"
+    ],
+    "source_note": ""
+  },
+  "owned_files": [
+    "registry_setup.go",
+    "tools/search.go",
+    "tools/glob_path_scope.go",
+    "loop/concurrent.go",
+    "tools/grep_conformance_test.go",
+    "registry/registry_test.go",
+    "tools/search_fallback.go",
+    "tools/search_file_read_ignore.go",
+    "tools/grep_alignment_test.go",
+    "tools/m_search_web_ask_test.go",
+    "types/tools.go",
+    "registry/registry.go",
+    "compact/resultstore.go",
+    "tools/search_test.go",
+    "tools/grep_ripgrep.go",
+    "tools/grep_ripgrep_codesign.go",
+    "tools/grep_type_filters.go",
+    "tools/search_capped_buffer_test.go",
+    "tools/parse.go",
+    "tools/grep_output_modes.go",
+    "tools/search_capped_buffer.go",
+    "tools/search_path_helpers.go",
+    "tools/agent_cwd.go",
+    "tools/agent_test.go",
+    "registry/tool_visibility.go",
+    "tools/tool_search_alignment_test.go",
+    "tools/search_path_helpers_test.go",
+    "types/tools.go:24-44",
+    "registry_setup.go:109-150",
+    "registry_setup.go:211-213",
+    "tools/glob_path_scope.go:25-70",
+    "tools/search.go:761-794",
+    "tools/search.go:623-669",
+    "tools/search_fallback.go:140-167",
+    "tools/search_fallback.go:217-225",
+    "tools/search_file_read_ignore.go:28-45",
+    "tools/search_file_read_ignore.go:121-160",
+    "types/tools.go:58-68",
+    "tools/search.go:398-428",
+    "tools/search.go:410-420",
+    "compact/resultstore.go:188-220",
+    "tools/search.go:637-642",
+    "tools/search.go:688-695",
+    "tools/search.go:383-394",
+    "tools/search_fallback.go:161-166",
+    "tools/grep_ripgrep.go:27-46",
+    "tools/grep_ripgrep.go:99-117",
+    "tools/search.go:821-829",
+    "tools/search.go:875-884",
+    "tools/search.go:671-675",
+    "tools/search_fallback.go:90-132",
+    "types/tools.go:9-15",
+    "tools/parse.go:13-21",
+    "tools/parse.go:82-97",
+    "tools/search.go:268-282",
+    "tools/search.go:291-307",
+    "tools/search.go:340-350",
+    "tools/search.go:314-319",
+    "tools/search.go:649-654",
+    "tools/search.go:541-560",
+    "tools/grep_output_modes.go:106-116",
+    "tools/search.go:831-845",
+    "tools/search.go:896-908",
+    "tools/search.go:359-379",
+    "tools/search_capped_buffer.go:1-27",
+    "tools/search.go:761-769",
+    "tools/search.go:1021-1037",
+    "tools/search.go:186-193",
+    "tools/search.go:285-289",
+    "tools/grep_type_filters.go:43-66",
+    "tools/grep_type_filters.go:68-93",
+    "tools/search_fallback.go:227-260",
+    "tools/search.go:191-193",
+    "registry/tool_visibility.go:17-44",
+    "tools/grep_alignment_test.go:1-8",
+    "tools/grep_conformance_test.go:267-575",
+    "tools/search_test.go:53-329",
+    "tools/mcp_render.go:92-159",
+    "tools/mcp_render.go:524",
+    "tools/mcp_tools.go:541"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "GREP-GAP-001",
+      "severity": "P0",
+      "category": "permissions_lifecycle",
+      "title": "Read-permission and allowed-directory lifecycle is not wired for Grep",
+      "description": "TS Grep participates in the central read permission lifecycle: it declares read-only/search behavior, derives a path with getPath, prepares a permission matcher from the pattern, validates path existence without probing UNC paths, and delegates to checkReadPermissionForTool. Go Grep is an Execute-only stateless tool. Allowed search directory helpers exist and direct tests can set them manually, but SetupRegistry/UpdateSessionContext do not populate the search allow-list, so production Grep path scoping is effectively disabled unless some other caller sets package-global state. Go also turns UNC paths into hard tool errors where TS routes them through read-permission ask behavior."
+    },
+    {
+      "id": "GREP-GAP-002",
+      "severity": "P0",
+      "category": "ignore_rules",
+      "title": "File-read deny rules and orphaned plugin-cache exclusions are not applied to Grep",
+      "description": "TS Grep converts live file-read deny rules into negative ripgrep --glob filters and also excludes orphaned plugin cache directories before search execution. Go has file-read ignore helpers, but Grep's ripgrep path does not add those patterns, Grep's fallback file collection does not filter them, and the registry does not populate the global ignore/plugin exclusion state. This can expose denied paths in Grep results and can let denied/orphaned files consume head_limit slots."
+    },
+    {
+      "id": "GREP-GAP-003",
+      "severity": "P1",
+      "category": "output_contract",
+      "title": "Structured output data and exact model-facing text do not match TS",
+      "description": "TS Grep returns a structured data object with mode, numFiles, filenames, content, numLines, numMatches, appliedLimit, and appliedOffset, then maps that object to exact tool_result text per output mode. Go Grep returns plain newline-joined text plus string metadata. It does not emit the TS data shape, lacks the exact 'Found N files' and count-mode summary text, uses punctuation-different empty messages, omits appliedLimit/appliedOffset in model-visible text, and does not set Grep's 20K maxResultSizeChars persistence threshold."
+    },
+    {
+      "id": "GREP-GAP-004",
+      "severity": "P1",
+      "category": "runtime_ordering_pagination",
+      "title": "files_with_matches ordering is opposite the TS mtime sort",
+      "description": "For default files_with_matches mode, TS stats all matching files and sorts newest-first by modification time, with filename tiebreaking (and filename-only sorting in NODE_ENV=test). Go's ripgrep path adds --sort=modified for directories and then explicitly sorts results with lower mtime first before applying pagination at Execute. This changes which files appear first and which files survive head_limit/offset."
+    },
+    {
+      "id": "GREP-GAP-005",
+      "severity": "P1",
+      "category": "ripgrep_runtime",
+      "title": "Actual ripgrep execution bypasses the TS-equivalent locator/config path",
+      "description": "TS centralizes ripgrep selection: system rg only when requested, embedded mode via argv0 with --no-config, vendored builtin fallback, first-use version testing, codesign/quarantine handling on macOS, timeout, EAGAIN retry, and partial-result behavior. Go has a richer LocateRipgrep implementation, but runRipgrep still calls a separate resolveRipgrepPath that only does exec.LookPath('rg'). It ignores CLAUDE_RG_PATH, embedded/bundled paths, version verification, codesign setup, and USE_BUILTIN_RIPGREP-style semantics. When rg is missing, Go also silently falls back to a Go regexp scanner whose ignore/regex/multiline semantics are not TS ripgrep."
+    },
+    {
+      "id": "GREP-GAP-006",
+      "severity": "P1",
+      "category": "input_schema_validation",
+      "title": "Strict schema, semantic coercion, and pattern preservation differ from TS",
+      "description": "TS uses z.strictObject and semanticNumber/semanticBoolean: unknown keys are rejected, quoted numeric/boolean literals are tolerated for numeric/boolean fields, and the search pattern is passed exactly as supplied. Go's JSONSchema cannot express additionalProperties:false, json.Unmarshal ignores unknown fields, the GrepInput struct accepts non-TS internal field names such as case_insensitive/show_line_numbers/context_before, quoted booleans/numbers fail parse, output_mode/type/glob/pattern are trimmed, and glob values starting with '-' are rejected even though TS forwards them as --glob values."
+    },
+    {
+      "id": "GREP-GAP-007",
+      "severity": "P1",
+      "category": "context_flags",
+      "title": "Context flag precedence and edge values are not TS-compatible",
+      "description": "TS treats context and -C as aliases with defined-precedence semantics: context wins whenever it is present, then -C, otherwise -B/-A. Values are passed to ripgrep whenever the key is defined, including zero and invalid/negative values that ripgrep may reject. Go collapses context/-C into a single Context float and only applies it when greater than zero; ContextBefore/ContextAfter are only emitted when greater than zero. This silently changes calls such as context:0 with -A/-B present, -C:0, negative values, and other edge cases."
+    },
+    {
+      "id": "GREP-GAP-008",
+      "severity": "P1",
+      "category": "robustness",
+      "title": "Timeout, cancellation, and stdout-cap partial-result behavior differs from TS",
+      "description": "TS ripGrep returns partial complete lines when a timeout or buffer overflow produced output, and only rejects no-output timeouts with a descriptive RipgrepTimeoutError. Go runRipgrep can capture partial stdout on context timeout, but GrepTool.Execute always returns an IsError timeout result even when partials exist. Go's cappedBuffer also drops stdout after 50MB without surfacing that dropped state to Grep, while TS handles maxBuffer overflow as a partial-result condition."
+    },
+    {
+      "id": "GREP-GAP-009",
+      "severity": "P1",
+      "category": "state_lifecycle",
+      "title": "Grep cwd/default path and display paths are process-global instead of scoped",
+      "description": "TS getCwd is async-context scoped and AgentTool uses runWithCwdOverride for explicit cwd/worktree execution, so Grep's default path and relative output follow the current agent/session context. Go Grep defaults to os.Getwd and formatSearchDisplayPath relativizes against os.Getwd. RegistryDeps.UpdateSessionContext updates RuntimeScope, plan state, background tasks, todo, cron, shell cwd, and file-tool allowed dirs, but not Grep cwd state. This can diverge during session switching, worktree isolation, or concurrent agent execution."
+    },
+    {
+      "id": "GREP-GAP-010",
+      "severity": "P2",
+      "category": "error_semantics",
+      "title": "Type-filter validation and usage-error semantics are Go-specific",
+      "description": "TS does not prevalidate the type parameter; it forwards --type to ripgrep and lets ripgrep's usage/error behavior flow through ripGrep. Go shells out to rg --type-list through LocateRipgrep, caches known type names, and rejects unknown values before the actual search with Go-generated suggestion text. This is useful but not exact: it can reject before TS would run rg, it uses a different rg locator than the actual search path, and fallback mode can accept values with only a simplified extension map."
+    },
+    {
+      "id": "GREP-GAP-011",
+      "severity": "P2",
+      "category": "schema_and_tool_metadata",
+      "title": "Tool description, discovery metadata, and UI/rendering hooks are incomplete",
+      "description": "TS Grep's prompt is a rich instruction block that tells the model to prefer Grep over Bash grep/rg, documents ripgrep regex, filters, output modes, Agent escalation, brace escaping, and multiline behavior. The tool also exposes searchHint, userFacingName, activity description, render hooks, extractSearchText, read-only/search classification, and concurrency metadata. Go Grep's Description is a short sentence and the Tool interface/registry metadata do not represent most of those affordances."
+    },
+    {
+      "id": "GREP-GAP-012",
+      "severity": "P1",
+      "category": "tests",
+      "title": "Grep parity tests miss key runtime gaps and current package verification is blocked",
+      "description": "Go has many direct Grep tests for output modes, fallback behavior, head_limit, hidden/VCS handling, dashed patterns, metadata, and type/filter helpers. However, the current tests do not cover SetupRegistry/UpdateSessionContext wiring, file-read deny/plugin cache exclusions, TS exact model text, newest-first files_with_matches ordering, rg locator/embedded override behavior, strict unknown-key rejection, semantic quoted booleans/numbers, whitespace-preserving patterns, context:0 precedence, timeout partial success, or single-file count-mode structured summary parity. A focused `go test ./tools -run 'TestGrep' -count=1` currently fails to build due unrelated MCP compile errors before Grep tests run."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "GREP-TASK-001",
+      "title": "Wire Grep into read-permission and allowed-directory lifecycle",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "registry_setup.go",
+        "tools/search.go",
+        "tools/glob_path_scope.go",
+        "loop/concurrent.go",
+        "tools/grep_conformance_test.go",
+        "registry/registry_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "SetupRegistry and UpdateSessionContext configure search allowed directories for Grep/Glob from the same allowedDirs passed to file tools.",
+        "Grep rejects or permission-denies roots outside allowedDirs through production registry wiring, not only when tests manually call SetAllowedSearchDirs.",
+        "UNC Grep paths follow the TS permission lifecycle semantics: no filesystem stat/probe and a permission-style denial/ask path rather than a raw search attempt.",
+        "Tests cover allowed and denied Grep roots through SetupRegistry or the runtime setup path."
+      ],
+      "verification": [
+        "go test ./tools ./registry -run 'TestGrep.*Allowed|TestPathScope|Test.*SearchDirs|Test.*SetupRegistry.*Grep' -count=1",
+        "go test ./... -run 'Test.*Allowed|Test.*Permission|Test.*SessionContext' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-002",
+      "title": "Apply file-read deny rules and plugin-cache exclusions to Grep",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "GREP-TASK-001 if permission context/allowed root plumbing is needed as the source of read-deny rules"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "tools/search.go",
+        "tools/search_fallback.go",
+        "tools/search_file_read_ignore.go",
+        "tools/grep_alignment_test.go",
+        "tools/m_search_web_ask_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Runtime setup populates file-read deny patterns from settings/permission context rather than relying on tests calling SetFileReadIgnorePatterns.",
+        "Runtime setup populates orphaned plugin-cache exclusions or an equivalent lazy/frozen session cache.",
+        "Grep passes deny/plugin exclusions as negative --glob args to ripgrep before result collection where possible.",
+        "Grep fallback filters denied/plugin-cache paths before matching, counting, sorting, and truncating.",
+        "Denied and orphaned paths cannot appear in files_with_matches, content, or count output and do not consume head_limit slots."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestFileReadIgnore|TestGrep.*Ignore|TestGrep.*Plugin|TestGrep.*Denied' -count=1",
+        "CLAUDE_CODE_FORCE_SEARCH_FALLBACK=1 go test ./tools -run 'TestGrep.*Ignore|TestGrep.*Denied' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-003",
+      "title": "Align Grep structured output, exact text, pagination hints, and persistence threshold",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "tools/search.go",
+        "types/tools.go",
+        "registry/registry.go",
+        "compact/resultstore.go",
+        "tools/grep_alignment_test.go",
+        "tools/grep_conformance_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Grep exposes TS-equivalent structured fields: mode, numFiles, filenames, content, numLines, numMatches, appliedLimit, and appliedOffset.",
+        "Content mode emits TS-equivalent 'No matches found' and '[Showing results with pagination = ...]' text.",
+        "Count mode appends the TS summary: 'Found N total occurrence(s) across M file(s).' with pagination text when applicable.",
+        "files_with_matches mode emits 'No files found' or 'Found N file(s)[ limit/offset]\\n...' exactly as TS.",
+        "Grep sets or otherwise enforces the TS 20,000 character maxResultSizeChars threshold for oversized result persistence.",
+        "Single-file count-mode behavior is deliberately matched to TS structured summary semantics or explicitly documented with a TS fixture if the source bug is intentionally not copied."
+      ],
+      "verification": [
+        "go test ./tools ./compact -run 'TestGrepAlignment|TestGrep.*Output|TestGrep.*Pagination|TestGrep.*Count|TestResultStore.*Grep' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-004",
+      "title": "Align files_with_matches ordering and pagination selection",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "tools/search.go",
+        "tools/search_fallback.go",
+        "tools/grep_conformance_test.go",
+        "tools/search_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Grep files_with_matches sorts all matching files newest-first by mtime, with filename tiebreaking, before head_limit/offset.",
+        "Native ripgrep and forced fallback return the same first page for a fixture with staggered mtimes.",
+        "Tests cover ordering and pagination together so head_limit returns the newest expected files.",
+        "Any test-mode deterministic sort behavior is explicitly mirrored only where TS does NODE_ENV=test filename sorting."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestGrep.*Mtime|TestGrep.*Order|TestGrep.*HeadLimit|TestGrep.*Offset' -count=1",
+        "CLAUDE_CODE_FORCE_SEARCH_FALLBACK=1 go test ./tools -run 'TestGrep.*Mtime|TestGrep.*Order|TestGrep.*HeadLimit' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-005",
+      "title": "Route Grep through the TS-equivalent ripgrep locator and revisit fallback semantics",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "tools/search.go",
+        "tools/grep_ripgrep.go",
+        "tools/grep_ripgrep_codesign.go",
+        "tools/search_fallback.go",
+        "tools/grep_type_filters.go",
+        "tools/search_capped_buffer_test.go",
+        "tools/grep_conformance_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "runRipgrep uses LocateRipgrep or a single equivalent locator, not the separate exec.LookPath-only resolveRipgrepPath cache.",
+        "The runtime honors override, embedded/bundled path, version sanity check, and macOS codesign/quarantine behavior consistently for search and --type-list.",
+        "Fallback behavior is made TS-compatible: either no silent fallback in production, or fallback is explicitly gated and documented as non-TS with tests proving no accidental downgrade.",
+        "Forced fallback tests still exist, but production missing-rg behavior matches the intended TS/bundled-rg contract.",
+        "Tests cover CLAUDE_RG_PATH, fake non-ripgrep rg, missing rg, embedded lookup, and cache reset."
+      ],
+      "verification": [
+        "go test ./tools -run 'Test.*Ripgrep|TestGrep.*Fallback|TestGrep.*Rg|TestValidateGrepType' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-006",
+      "title": "Align Grep input strictness, semantic coercion, pattern preservation, and glob handling",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "types/tools.go",
+        "tools/parse.go",
+        "tools/search.go",
+        "tools/grep_alignment_test.go",
+        "tools/grep_conformance_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Unknown Grep input keys are rejected or the API schema/runtime otherwise enforces TS z.strictObject parity.",
+        "Grep accepts quoted numeric and boolean literals exactly where TS semanticNumber/semanticBoolean would accept them.",
+        "Grep rejects non-TS internal alias keys such as case_insensitive/show_line_numbers/context_before unless a compatibility layer explicitly maps them outside the model-facing schema.",
+        "The pattern string is passed to ripgrep exactly as supplied except for the empty/whitespace validation needed to match TS behavior.",
+        "output_mode/type/glob trimming behavior is aligned with TS enum/string behavior.",
+        "Glob patterns that start with '-' are treated like TS --glob values, not rejected solely because they begin with a dash."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestGrep.*Schema|TestGrep.*Unknown|TestGrep.*Semantic|TestGrep.*Pattern|TestGrep.*Glob' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-007",
+      "title": "Align Grep context flag precedence and numeric edge cases",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "GREP-TASK-006 if semantic number coercion is changed in shared parsing"
+      ],
+      "owned_files": [
+        "tools/search.go",
+        "tools/grep_output_modes.go",
+        "tools/grep_conformance_test.go",
+        "tools/search_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "context wins over -C and -B/-A whenever the key is present, including context:0.",
+        "-C wins over -B/-A whenever -C is present, including -C:0.",
+        "-B/-A are forwarded when defined according to TS semantics, including zero and invalid values where ripgrep should surface the error.",
+        "Context flags in non-content modes are ignored as TS currently does, not rejected by unused helper-only behavior.",
+        "Tests cover context:0 with -A/-B, -C:0, negative/invalid values, and non-content mode context inputs."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestGrep.*Context|TestRipgrepFlagsForMode|TestValidateContextFlags' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-008",
+      "title": "Align Grep timeout, partial-result, and stdout-cap behavior",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "GREP-TASK-003 if partial results need TS-equivalent structured output fields"
+      ],
+      "owned_files": [
+        "tools/search.go",
+        "tools/search_capped_buffer.go",
+        "tools/search_capped_buffer_test.go",
+        "tools/grep_alignment_test.go",
+        "tools/grep_conformance_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Timeout after complete partial output returns those partial results as a successful partial result, matching TS ripGrep behavior.",
+        "Timeout with no output returns a clear timeout error, not an empty no-match result.",
+        "Stdout cap/buffer overflow drops a potentially incomplete tail and surfaces partial/truncated state instead of silently clipping.",
+        "EAGAIN retry behavior remains aligned with TS after the partial-output changes.",
+        "Tests use a fake rg or controllable helper for timeout with output, timeout without output, buffer cap overflow, and EAGAIN retry."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestGrep.*Timeout|TestGrep.*Partial|TestCappedBuffer|TestRipgrepTimeoutError|Test.*EAGAIN' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-009",
+      "title": "Give Grep per-session/per-agent cwd state instead of os.Getwd-only behavior",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "GREP-TASK-001 if cwd state and allowed-dir state are plumbed together"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "tools/search.go",
+        "tools/search_path_helpers.go",
+        "tools/agent_cwd.go",
+        "tools/agent_test.go",
+        "tools/grep_conformance_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "GrepTool can resolve omitted path and display-relative paths from an injected runtime scope/current cwd.",
+        "UpdateSessionContext updates Grep/Glob cwd state along with Bash, PowerShell, RuntimeScope, and file tools.",
+        "Concurrent or nested agent/worktree tests prove one agent's Grep default cwd does not depend on process-global os.Chdir.",
+        "formatSearchDisplayPath no longer uses os.Getwd for Grep paths when scoped cwd is available."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestGrep.*Cwd|TestAgent.*CWD|TestAgent.*Worktree|Test.*SessionContext' -count=1",
+        "go test ./... -run 'Test.*Worktree|Test.*SessionContext' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-010",
+      "title": "Align Grep type-filter validation and fallback type semantics",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "GREP-TASK-005 if type-list discovery should share the fixed ripgrep locator"
+      ],
+      "owned_files": [
+        "tools/search.go",
+        "tools/grep_type_filters.go",
+        "tools/search_fallback.go",
+        "tools/grep_conformance_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Invalid --type behavior matches TS/ripgrep error timing and message shape, or a documented compatibility decision is covered by source-backed tests.",
+        "Type-list discovery, if retained, uses the same rg binary/config path as actual searches.",
+        "Fallback type matching either uses ripgrep's full discovered type definitions or is gated so it cannot silently diverge for uncommon types.",
+        "Tests cover known type, unknown type, near-match suggestion/removal decision, missing rg, forced fallback, and uncommon ripgrep type definitions."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestValidateGrepType|TestGrep.*Type|TestParseTypeList|TestGrepToolFallbackTypeFilter' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-011",
+      "title": "Align Grep prompt, tool metadata, and search-result UI hooks",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "GREP-TASK-003 for exact summary/output text fields"
+      ],
+      "owned_files": [
+        "tools/search.go",
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "loop/concurrent.go",
+        "tools/tool_search_alignment_test.go",
+        "tools/grep_alignment_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Go Grep description/prompt includes the TS guidance to prefer Grep over Bash grep/rg, regex syntax, filter parameters, output modes, Agent escalation, brace escaping, and multiline usage.",
+        "Go exposes Grep searchHint, read-only status, concurrency-safe status, search/read classification, and auto-classifier input through the local tool metadata mechanism.",
+        "ToolSearch/discovery can rank Grep using a TS-equivalent search hint when relevant.",
+        "UI/event/result summary consumers can show line/file/match counts by mode instead of only raw content."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./loop -run 'TestGrep.*Metadata|TestGrep.*Description|TestToolSearch.*Grep|Test.*ConcurrentSafe' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "GREP-TASK-012",
+      "title": "Clean and extend the Grep parity test baseline",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "Fix unrelated tools package build blockers in tools/mcp_render.go and tools/mcp_tools.go before focused package verification can run",
+        "GREP-TASK-001 through GREP-TASK-011 for final expected assertions"
+      ],
+      "owned_files": [
+        "tools/grep_alignment_test.go",
+        "tools/grep_conformance_test.go",
+        "tools/search_test.go",
+        "tools/search_capped_buffer_test.go",
+        "tools/search_path_helpers_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Stale 'must fail' comments in Grep alignment tests are removed or rewritten as current parity assertions.",
+        "Tests cover SetupRegistry/UpdateSessionContext wiring, file-read/plugin exclusions, exact TS output text, newest-first ordering, rg locator/config, strict unknown-key rejection, quoted bool/number coercion, whitespace-preserving patterns, context precedence, timeout partials, and type-filter semantics.",
+        "Tests distinguish direct Execute helper behavior from production registry/runtime behavior.",
+        "The focused Grep test command runs cleanly after unrelated compile blockers are fixed."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestGrep|Test.*Grep|TestRipgrep|TestCappedBuffer|TestFileReadIgnore|TestPathScope' -count=1",
+        "go test ./tools -count=1",
+        "go test ./... -run 'TestGrep|Test.*Search|Test.*Permission|Test.*SessionContext' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    }
+  ],
+  "acceptance_criteria": [
+    "Grep input validation and schema behavior match the original TS implementation for all report gaps.",
+    "Grep model-visible output and structured result data match TS golden fixtures.",
+    "Grep runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "SetupRegistry and UpdateSessionContext configure search allowed directories for Grep/Glob from the same allowedDirs passed to file tools.",
+    "Grep rejects or permission-denies roots outside allowedDirs through production registry wiring, not only when tests manually call SetAllowedSearchDirs.",
+    "UNC Grep paths follow the TS permission lifecycle semantics: no filesystem stat/probe and a permission-style denial/ask path rather than a raw search attempt.",
+    "Tests cover allowed and denied Grep roots through SetupRegistry or the runtime setup path.",
+    "Runtime setup populates file-read deny patterns from settings/permission context rather than relying on tests calling SetFileReadIgnorePatterns.",
+    "Runtime setup populates orphaned plugin-cache exclusions or an equivalent lazy/frozen session cache.",
+    "Grep passes deny/plugin exclusions as negative --glob args to ripgrep before result collection where possible.",
+    "Grep fallback filters denied/plugin-cache paths before matching, counting, sorting, and truncating.",
+    "Denied and orphaned paths cannot appear in files_with_matches, content, or count output and do not consume head_limit slots.",
+    "Grep exposes TS-equivalent structured fields: mode, numFiles, filenames, content, numLines, numMatches, appliedLimit, and appliedOffset.",
+    "Content mode emits TS-equivalent 'No matches found' and '[Showing results with pagination = ...]' text.",
+    "Count mode appends the TS summary: 'Found N total occurrence(s) across M file(s).' with pagination text when applicable.",
+    "files_with_matches mode emits 'No files found' or 'Found N file(s)[ limit/offset]\\n...' exactly as TS.",
+    "Grep sets or otherwise enforces the TS 20,000 character maxResultSizeChars threshold for oversized result persistence.",
+    "Single-file count-mode behavior is deliberately matched to TS structured summary semantics or explicitly documented with a TS fixture if the source bug is intentionally not copied.",
+    "Grep files_with_matches sorts all matching files newest-first by mtime, with filename tiebreaking, before head_limit/offset.",
+    "Native ripgrep and forced fallback return the same first page for a fixture with staggered mtimes.",
+    "Tests cover ordering and pagination together so head_limit returns the newest expected files.",
+    "Any test-mode deterministic sort behavior is explicitly mirrored only where TS does NODE_ENV=test filename sorting.",
+    "runRipgrep uses LocateRipgrep or a single equivalent locator, not the separate exec.LookPath-only resolveRipgrepPath cache.",
+    "The runtime honors override, embedded/bundled path, version sanity check, and macOS codesign/quarantine behavior consistently for search and --type-list.",
+    "Fallback behavior is made TS-compatible: either no silent fallback in production, or fallback is explicitly gated and documented as non-TS with tests proving no accidental downgrade.",
+    "Forced fallback tests still exist, but production missing-rg behavior matches the intended TS/bundled-rg contract.",
+    "Tests cover CLAUDE_RG_PATH, fake non-ripgrep rg, missing rg, embedded lookup, and cache reset."
+  ],
+  "verification": [
+    "go test ./tools ./registry -run 'TestGrep.*Allowed|TestPathScope|Test.*SearchDirs|Test.*SetupRegistry.*Grep' -count=1",
+    "go test ./... -run 'Test.*Allowed|Test.*Permission|Test.*SessionContext' -count=1",
+    "go test ./tools -run 'TestFileReadIgnore|TestGrep.*Ignore|TestGrep.*Plugin|TestGrep.*Denied' -count=1",
+    "CLAUDE_CODE_FORCE_SEARCH_FALLBACK=1 go test ./tools -run 'TestGrep.*Ignore|TestGrep.*Denied' -count=1",
+    "go test ./tools ./compact -run 'TestGrepAlignment|TestGrep.*Output|TestGrep.*Pagination|TestGrep.*Count|TestResultStore.*Grep' -count=1",
+    "go test ./tools -run 'TestGrep.*Mtime|TestGrep.*Order|TestGrep.*HeadLimit|TestGrep.*Offset' -count=1",
+    "CLAUDE_CODE_FORCE_SEARCH_FALLBACK=1 go test ./tools -run 'TestGrep.*Mtime|TestGrep.*Order|TestGrep.*HeadLimit' -count=1",
+    "go test ./tools -run 'Test.*Ripgrep|TestGrep.*Fallback|TestGrep.*Rg|TestValidateGrepType' -count=1",
+    "go test ./tools -run 'TestGrep.*Schema|TestGrep.*Unknown|TestGrep.*Semantic|TestGrep.*Pattern|TestGrep.*Glob' -count=1",
+    "go test ./tools -run 'TestGrep.*Context|TestRipgrepFlagsForMode|TestValidateContextFlags' -count=1",
+    "go test ./tools -run 'TestGrep.*Timeout|TestGrep.*Partial|TestCappedBuffer|TestRipgrepTimeoutError|Test.*EAGAIN' -count=1",
+    "go test ./tools -run 'TestGrep.*Cwd|TestAgent.*CWD|TestAgent.*Worktree|Test.*SessionContext' -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

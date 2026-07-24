@@ -1,0 +1,79 @@
+{
+  "id": "task_06",
+  "title": "Implement slash goal command",
+  "priority": "P1",
+  "status": "accepted",
+  "owner_role": "executor",
+  "estimated_minutes": 5,
+  "parallel_group": "command",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_05"
+  ],
+  "objective": "Implement and register /goal using a narrow runtime interface.",
+  "context": [
+    "The slash command should not directly know about session files or the query loop.",
+    "The command should make active state visible to the user and preserve permission boundaries."
+  ],
+  "source_evidence": [
+    {
+      "source": "repo",
+      "file_or_url": "commands/commands.go:41",
+      "note": "Slash commands implement the Command interface."
+    },
+    {
+      "source": "repo",
+      "file_or_url": "commands/builtins.go:14",
+      "note": "Built-ins are registered centrally."
+    }
+  ],
+  "read_first": [
+    "commands/goal_test.go",
+    "commands/commands.go",
+    "commands/builtins.go",
+    "goal/goal.go"
+  ],
+  "owned_files": [
+    "commands/goal.go",
+    "commands/commands.go",
+    "commands/builtins.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Add a GoalRuntime interface to commands.Context.",
+      "Implement /goal with status, set, edit, pause, resume, clear and aliases.",
+      "Register /goal in RegisterBuiltins.",
+      "Return helpful errors when GoalRuntime is missing."
+    ],
+    "exclude": [
+      "No TUI lifecycle save wiring.",
+      "No model tool implementation."
+    ]
+  },
+  "implementation_steps": [
+    "Add the narrow interface in commands/commands.go.",
+    "Create commands/goal.go.",
+    "Register it in commands/builtins.go.",
+    "Run command tests."
+  ],
+  "deliverables": [
+    "Working /goal slash command in the command registry."
+  ],
+  "acceptance_criteria": [
+    "go test ./commands -run Goal passes.",
+    "/help can list /goal through the registry.",
+    "The command does not mutate permissions."
+  ],
+  "verification": [
+    "go test ./commands -count=1"
+  ],
+  "risks": [
+    "commands.Context can become a catch-all if the interface is too broad."
+  ],
+  "non_goals": [
+    "No automatic continuation.",
+    "No prompt injection."
+  ],
+  "dispatch_prompt": "Implement /goal in commands using the tests from commands/goal_test.go. Add a narrow GoalRuntime interface, register the command, and keep session/loop knowledge out of commands.",
+  "notes_for_assignee": "Keep missing-runtime behavior explicit so noninteractive tests fail clearly."
+}

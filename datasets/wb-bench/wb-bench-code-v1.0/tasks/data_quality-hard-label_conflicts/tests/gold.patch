@@ -1,0 +1,52 @@
+diff --git a/app/clean_labels.py b/app/clean_labels.py
+index e2d743b..cba7b5e 100644
+--- a/app/clean_labels.py
++++ b/app/clean_labels.py
+@@ -1,11 +1,35 @@
+ #!/usr/bin/env python3
+-import argparse
+-import json
++import argparse, csv, json
+ from pathlib import Path
+-
+ def clean(data_dir: Path) -> tuple[dict, dict]:
+-    return {}, {}
+-
++    priority = json.loads((data_dir / "source_priority.json").read_text())
++    seen = set(); groups = {}; invalid = []
++    with (data_dir / "labels.csv").open(newline="", encoding="utf-8") as f:
++        for row in csv.DictReader(f):
++            key = (row["entity_id"], row["label"], row["source"], row["event_time"])
++            if key in seen:
++                continue
++            seen.add(key)
++            if row["label"] not in {"0","1"} or row["source"] not in priority:
++                invalid.append(row)
++                continue
++            groups.setdefault(row["entity_id"], []).append(row)
++    samples = []; conflicts = []
++    for entity, rows in sorted(groups.items()):
++        by_pri = {}
++        for row in rows:
++            by_pri.setdefault(priority[row["source"]], set()).add(row["label"])
++        max_pri = max(by_pri)
++        top_rows = [r for r in rows if priority[r["source"]] == max_pri]
++        labels = {r["label"] for r in top_rows}
++        if len(labels) > 1:
++            conflicts.append({"entity_id": entity, "reason": "conflicting_top_priority_labels", "labels": sorted(labels), "rows": top_rows})
++            continue
++        chosen = sorted(top_rows, key=lambda r: r["event_time"])[-1]
++        samples.append({"entity_id": entity, "label": int(chosen["label"]), "source": chosen["source"], "event_time": chosen["event_time"], "reports": len(rows)})
++    cleaned = {"samples": samples, "summary": {"samples": len(samples), "conflicts": len(conflicts), "invalid": len(invalid), "deduped_reports": len(seen)}}
++    rejects = {"conflicts": conflicts, "invalid": invalid}
++    return cleaned, rejects
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--data", default="data")
+@@ -15,6 +39,5 @@ def main():
+     cleaned, rejects = clean(Path(args.data))
+     Path(args.out).write_text(json.dumps(cleaned, indent=2), encoding="utf-8")
+     Path(args.rejects).write_text(json.dumps(rejects, indent=2), encoding="utf-8")
+-
+ if __name__ == "__main__":
+     main()

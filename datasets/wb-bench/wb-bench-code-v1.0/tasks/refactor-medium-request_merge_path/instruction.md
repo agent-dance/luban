@@ -1,0 +1,1 @@
+httpx_like/request_model.py 里这个 RequestBuilder 只是个小版 request 组装器。现在 headers、cookies、params 和 body 的处理散在一起了，帮我把合并路径整理一下；headers 要按小写 key 合并，params 既可能是 dict 也可能是 (key, value) 列表，list/tuple value 要展开，None 值跳过。json、data、content 同时传多个要报错，最终 build 出来的内容别变。

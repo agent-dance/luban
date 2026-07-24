@@ -1,0 +1,81 @@
+#!/bin/bash
+set -euo pipefail
+workspace_dir="${WORKSPACE_DIR:-/workspace}"
+if [ -d "$workspace_dir" ]; then cd "$workspace_dir"; fi
+tmp_patch="$(mktemp)"
+cleanup() { rm -f "$tmp_patch"; }
+trap cleanup EXIT
+cat > "$tmp_patch" <<'CODEBUDDY_PATCH'
+diff --git a/tests/test_regression.py b/tests/test_regression.py
+new file mode 100644
+index 0000000..8f3d5a7
+--- /dev/null
++++ b/tests/test_regression.py
+@@ -0,0 +1,65 @@
++import unittest
++from click_like.options import resolve_option
++
++
++class OptionResolutionRegressionTests(unittest.TestCase):
++    def test_explicit_empty_string_wins_over_default(self):
++        self.assertEqual(resolve_option(value="", default="fallback"), "")
++
++    def test_explicit_false_regular_value_wins_over_default(self):
++        self.assertFalse(resolve_option(value=False, default=True))
++
++    def test_explicit_false_flag_stays_false(self):
++        self.assertFalse(resolve_option(value=False, default=True, flag=True))
++
++    def test_value_wins_over_env_for_regular_option(self):
++        self.assertEqual(resolve_option(value="from-value", env="from-env"), "from-value")
++
++    def test_env_value_wins_before_prompt_and_does_not_prompt(self):
++        calls = []
++        result = resolve_option(default="d", prompt=True, env="from-env", input_func=lambda: calls.append("prompt") or "typed")
++        self.assertEqual(result, "from-env")
++        self.assertEqual(calls, [])
++
++    def test_empty_env_for_regular_option_is_kept(self):
++        self.assertEqual(resolve_option(default="fallback", env=""), "")
++
++    def test_prompt_blank_uses_default(self):
++        self.assertEqual(resolve_option(default="fallback", prompt=True, input_func=lambda: ""), "fallback")
++
++    def test_prompt_blank_without_default_returns_empty_string(self):
++        self.assertEqual(resolve_option(prompt=True, input_func=lambda: ""), "")
++
++    def test_prompt_without_input_func_uses_default(self):
++        self.assertEqual(resolve_option(default="fallback", prompt=True), "fallback")
++
++    def test_prompt_typed_value_wins(self):
++        self.assertEqual(resolve_option(default="fallback", prompt=True, input_func=lambda: "typed"), "typed")
++
++    def test_flag_false_strings_are_false(self):
++        for value in ["", "0", "false", "no", "off", "FALSE"]:
++            with self.subTest(value=value):
++                self.assertFalse(resolve_option(env=value, flag=True))
++
++    def test_flag_false_string_with_spaces_is_false(self):
++        self.assertFalse(resolve_option(env=" OFF ", flag=True))
++
++    def test_flag_true_string_is_true(self):
++        self.assertTrue(resolve_option(env="yes", flag=True))
++
++    def test_flag_default_used_when_value_and_env_missing(self):
++        self.assertTrue(resolve_option(default=True, flag=True))
++
++    def test_callback_sees_final_value(self):
++        self.assertEqual(resolve_option(env="Ada", callback=lambda value: value.upper()), "ADA")
++
++    def test_callback_runs_once(self):
++        seen = []
++        self.assertEqual(resolve_option(value="x", callback=lambda value: seen.append(value) or value), "x")
++        self.assertEqual(seen, ["x"])
++
++    def test_callback_exception_propagates(self):
++        def boom(value):
++            raise RuntimeError(f"bad {value}")
++        with self.assertRaisesRegex(RuntimeError, "bad Ada"):
++            resolve_option(env="Ada", callback=boom)
+CODEBUDDY_PATCH
+git apply "$tmp_patch"

@@ -1,0 +1,61 @@
+{
+  "id": "task_12",
+  "title": "Bring manual /compact command to parity",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "owner_role": "executor",
+  "parallel_group": "commands",
+  "can_run_in_parallel": false,
+  "dependencies": [
+    "task_01",
+    "task_07",
+    "task_10",
+    "task_11",
+    "task_14"
+  ],
+  "objective": "Replace Go's simplified /compact command with the TS-equivalent manual compaction entry point.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/commands/compact/compact.ts:40",
+    "/Users/blurooo/project/go-claude/src/commands/compact/compact.ts:52",
+    "/Users/blurooo/project/go-claude/src/commands/compact/compact.ts:85",
+    "/Users/blurooo/project/go-claude/gosrc/commands/builtins.go:99",
+    "/Users/blurooo/project/go-claude/gosrc/engine/core.go:211"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/commands/builtins.go",
+    "/Users/blurooo/project/go-claude/gosrc/commands/context.go",
+    "/Users/blurooo/project/go-claude/gosrc/engine/core.go",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/compact"
+  ],
+  "implementation_scope": [
+    "Parse and pass custom compact instructions from /compact arguments.",
+    "Project messages after the latest compact boundary before compacting.",
+    "Try session-memory compaction first when there are no custom instructions and task_14 is available.",
+    "Route through reactive compact when a reactive-only mode equivalent is enabled.",
+    "Run microcompact before traditional compact using aligned semantics from task_07.",
+    "Return and persist CompactionResult via BuildPostCompactMessages.",
+    "Suppress compact warnings after success.",
+    "Remove ordinary last-4 truncation fallback; keep only explicit emergency fallback if product policy requires it and label it as non-parity."
+  ],
+  "out_of_scope": [
+    "Do not implement new slash-command parsing infrastructure.",
+    "Do not implement partial compaction selection UI; task_13 owns partial compaction internals."
+  ],
+  "acceptance_criteria": [
+    "/compact custom instructions affect the compact prompt.",
+    "/compact on an already compacted history does not resummarize previous summaries.",
+    "Manual compact produces boundary, summary, attachments, hook results, and session persistence.",
+    "LLM compact failure surfaces a meaningful compact error instead of silently truncating to the last four messages."
+  ],
+  "verification": [
+    "go test ./commands",
+    "go test ./engine",
+    "go test ./compact"
+  ],
+  "risks": [
+    "Task has several dependencies; if task_14 is not complete, implement session-memory call as a no-op capability check.",
+    "Changing fallback behavior may expose errors that were previously hidden."
+  ],
+  "dispatch_prompt": "Rewrite Go /compact to use the full compaction service path: boundary projection, custom instructions, optional session memory, microcompact, hooks, attachments, and structured results."
+}

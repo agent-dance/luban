@@ -1,0 +1,79 @@
+{
+  "id": "task_06",
+  "title": "Implement immutable catalog diff and coalescing",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 2,
+  "owner_role": "executor",
+  "estimated_minutes": 45,
+  "parallel_group": "catalog_components",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_01"
+  ],
+  "objective": "Compute append-only upserts and revokes between immutable snapshots, including coalescing multiple changes before one sampling boundary.",
+  "context": [
+    "Implement the accepted hybrid design: an initial developer-role catalog snapshot, append-only upsert/revoke deltas, on-demand SKILL.md bodies, and an authoritative execution registry.",
+    "The repository is a dirty shared worktree. Preserve unrelated changes and modify only owned_files."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Codex uses a bounded initial metadata catalog and loads full SKILL.md on demand."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Claude Code supports live skill discovery, visibility overrides, and on-demand skill bodies."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Append-only conversation messages preserve the previously cached prompt prefix."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "skills/catalog_contract.go"
+  ],
+  "owned_files": [
+    "skills/catalog_diff.go",
+    "skills/catalog_diff_task06_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Diff by stable SkillID and effective model-facing signature.",
+      "Emit upsert for add, description/digest/visibility updates, and re-enable.",
+      "Emit revoke for delete, disable, or permission loss.",
+      "Coalesce repeated changes into one latest-state delta."
+    ],
+    "exclude": [
+      "Do not modify files owned by another task.",
+      "Do not add dependencies or perform unrelated refactors."
+    ]
+  },
+  "implementation_steps": [
+    "Implement a pure snapshot diff.",
+    "Add exhaustive add/update/delete/disable/re-enable/coalesce tests.",
+    "Verify revision monotonicity and deterministic ordering."
+  ],
+  "deliverables": [
+    "skills/catalog_diff.go",
+    "skills/catalog_diff_task06_test.go"
+  ],
+  "acceptance_criteria": [
+    "No change yields an empty delta.",
+    "A delete followed by re-add before sampling yields one current upsert.",
+    "A revoke never depends on display name uniqueness."
+  ],
+  "verification": [
+    "go test ./skills -run 'CatalogDiff|CatalogCoalesce|Revoke' -count=1"
+  ],
+  "risks": [],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Implement pure immutable catalog diff/coalescing in new files. Do not integrate Manager or loop state.",
+  "notes_for_assignee": "Keep the diff narrow; if a dependency contract is insufficient, report the required change to the integrator instead of editing another task's files."
+}

@@ -1,0 +1,56 @@
+diff --git a/app/report.py b/app/report.py
+index 5b0798d..133ce88 100644
+--- a/app/report.py
++++ b/app/report.py
+@@ -1,25 +1,29 @@
+ #!/usr/bin/env python3
+-# Expected CLI: python app/report.py --data data --out report.json
+-# Keep the output as JSON so a dashboard can read it later.
+-
+-import argparse
+-import json
++import argparse,csv,json
++from collections import defaultdict
++from datetime import datetime
+ from pathlib import Path
+-
+-
+-def build_report(data_dir: Path) -> dict:
+-    # TODO: fill in the report from the CSV exports in data_dir.
+-    return {}
+-
+-
++STEPS=['signup','verify_email','create_project','invite_team']
++def rows(p):
++    with p.open(newline='',encoding='utf-8') as f: return list(csv.DictReader(f))
++def build_report(data_dir: Path):
++    users={u['user_id']:u for u in rows(data_dir/'users.csv')}; events=defaultdict(dict)
++    for e in rows(data_dir/'events.csv'):
++        cur=events[e['user_id']].get(e['event']); ts=datetime.fromisoformat(e['ts'])
++        if cur is None or ts<cur: events[e['user_id']][e['event']]=ts
++    def counts(ids):
++        out={s:0 for s in STEPS}
++        for uid in ids:
++            last=None; ok=True
++            for s in STEPS:
++                ts=events[uid].get(s)
++                if ok and ts is not None and (last is None or ts>=last): out[s]+=1; last=ts
++                else: ok=False
++        return out
++    all_ids=list(users); overall=counts(all_ids); channels=[]
++    for ch in sorted({u['channel'] for u in users.values()}):
++        ids=[uid for uid,u in users.items() if u['channel']==ch]; c=counts(ids); channels.append({'channel':ch,'users':len(ids),'steps':c,'activation_rate':round(c['create_project']/len(ids),4)})
++    return {'steps':STEPS,'overall':{'users':len(all_ids),'steps':overall,'activation_rate':round(overall['create_project']/len(all_ids),4),'invite_rate':round(overall['invite_team']/len(all_ids),4)},'channels':channels}
+ def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument('--data', default='data')
+-    parser.add_argument('--out', default='report.json')
+-    args = parser.parse_args()
+-    report = build_report(Path(args.data))
+-    Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+-
+-
+-if __name__ == '__main__':
+-    main()
++    p=argparse.ArgumentParser(); p.add_argument('--data',default='data'); p.add_argument('--out',default='report.json'); a=p.parse_args(); Path(a.out).write_text(json.dumps(build_report(Path(a.data)),indent=2),encoding='utf-8')
++if __name__=='__main__': main()

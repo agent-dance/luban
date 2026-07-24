@@ -1,0 +1,125 @@
+{
+  "updated_at": "2026-07-10T08:21:46Z",
+  "tasks": {
+    "task_01": {
+      "status": "verified",
+      "updated_at": "2026-07-10T05:54:09Z",
+      "evidence": [
+        "go test ./types ./registry ./loop ./provider ./tools -run \"Tool|Result|Schema|Strict|Alignment|Parity\" -count=1 passed after task_02 integration"
+      ]
+    },
+    "task_03": {
+      "status": "verified",
+      "updated_at": "2026-07-10T05:54:09Z",
+      "evidence": [
+        "go test ./hooks ./session ./compact ./tools -run \"Hook|Lifecycle|Resume|Compaction|Notification|Mailbox|State\" -count=1 passed after task_02 integration"
+      ]
+    },
+    "task_04": {
+      "status": "verified",
+      "updated_at": "2026-07-10T05:54:09Z",
+      "evidence": [
+        "go test ./tools ./registry ./provider -run \"Parity|Alignment|Golden\" -count=1 passed after task_02 integration"
+      ]
+    },
+    "task_02": {
+      "status": "verified",
+      "updated_at": "2026-07-10T05:54:09Z",
+      "evidence": [
+        "go test ./registry ./tools ./loop -run \"Permission|Visibility|Enabled|Allowed|Gate|RuntimeScope\" -count=1 passed on current worktree"
+      ]
+    },
+    "task_06": {
+      "status": "verified",
+      "updated_at": "2026-07-10T07:28:21Z",
+      "evidence": [
+        "go test ./tools ./registry ./loop -run 'AskUserQuestion|Alignment|Parity' -count=1 passed after Cron cleanup"
+      ]
+    },
+    "task_07": {
+      "status": "verified",
+      "updated_at": "2026-07-10T06:17:47Z",
+      "evidence": [
+        "go test ./tools ./registry ./loop -run 'Bash|Alignment|Parity' -count=1 passed on current worktree"
+      ]
+    },
+    "task_08": {
+      "status": "verified",
+      "updated_at": "2026-07-10T07:28:21Z",
+      "evidence": [
+        "CronCreate core/durable/max and Cron family scheduler tests passed after cleanup"
+      ]
+    },
+    "task_16": {
+      "status": "verified",
+      "updated_at": "2026-07-10T08:21:46Z",
+      "evidence": [
+        "Search/Glob regression commands passed",
+        "go test ./tools -count=1 passed after search timeout fix"
+      ]
+    },
+    "task_09": {
+      "status": "verified",
+      "updated_at": "2026-07-10T06:44:02Z",
+      "evidence": [
+        "go test ./tools -run 'TestCronDeleteTool|TestCronDelete.*Output' passed",
+        "go test ./tools -run 'TestCronDeleteTool|TestCronDelete.*Storage|TestCronStoreConcurrency' passed",
+        "go test ./tools -run 'TestCron.*Teammate|TestCronDelete.*Owner|TestGuardDurableCreation' passed",
+        "go test ./tools -run 'TestAlignmentCronFeatureFlagGates(Create|List|Delete)|TestCronDeleteTool' passed",
+        "go test ./tools -run 'TestCronDeleteTool|TestCronDelete.*Strict' passed"
+      ]
+    },
+    "task_11": {
+      "status": "verified",
+      "updated_at": "2026-07-10T06:44:02Z",
+      "evidence": [
+        "go test ./tools ./registry ./loop -run 'Edit|Alignment|Parity' -count=1 passed on current worktree"
+      ]
+    },
+    "task_19": {
+      "status": "verified",
+      "updated_at": "2026-07-10T06:44:02Z",
+      "evidence": [
+        "NotebookEdit focused result/target/readstate/strict commands passed",
+        "go test ./tools -count=1 passed after NotebookEdit integration"
+      ]
+    },
+    "task_10": {
+      "status": "verified",
+      "updated_at": "2026-07-10T07:28:21Z",
+      "evidence": [
+        "CronList and Cron family combined tests passed after cleanup"
+      ]
+    },
+    "task_17": {
+      "status": "verified",
+      "updated_at": "2026-07-10T08:21:46Z",
+      "evidence": [
+        "Grep/Glob shared search commands passed",
+        "go test ./tools -count=1 passed after search timeout fix"
+      ]
+    },
+    "task_12": {
+      "status": "verified",
+      "updated_at": "2026-07-10T08:14:44Z",
+      "evidence": [
+        "go test ./tools ./registry -run 'EnterPlanMode|Alignment|Parity' -count=1 passed after search compile fix"
+      ]
+    },
+    "task_20": {
+      "status": "verified",
+      "updated_at": "2026-07-10T08:14:44Z",
+      "evidence": [
+        "Read core contract and dedup verification commands passed after search compile fix"
+      ]
+    },
+    "task_22": {
+      "status": "verified",
+      "updated_at": "2026-07-10T08:14:44Z",
+      "evidence": [
+        "RemoteTrigger core and strict verification commands passed after search compile fix"
+      ]
+    }
+  },
+  "verification_log": []
+}

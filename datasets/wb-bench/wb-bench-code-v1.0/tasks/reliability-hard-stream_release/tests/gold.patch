@@ -1,0 +1,48 @@
+diff --git a/aiohttp_like/response.py b/aiohttp_like/response.py
+index a450404..a2bfc07 100644
+--- a/aiohttp_like/response.py
++++ b/aiohttp_like/response.py
+@@ -7,14 +7,34 @@ class ClientResponse:
+ 
+     def read(self):
+         body = []
+-        while True:
+-            chunk = self.stream.read_chunk()
+-            if not chunk:
+-                break
+-            body.append(chunk)
+-        self.close()
+-        return b"".join(body)
++        try:
++            while True:
++                chunk = self.stream.read_chunk()
++                if not chunk:
++                    break
++                body.append(chunk)
++            return b"".join(body)
++        finally:
++            self.close()
++
++    def iter_chunks(self):
++        try:
++            while True:
++                chunk = self.stream.read_chunk()
++                if not chunk:
++                    break
++                yield chunk
++        finally:
++            self.close()
+ 
+     def close(self):
+-        self.closed = True
+-        self.pool.release(self.conn)
++        if not self.closed:
++            self.closed = True
++            self.pool.release(self.conn)
++
++    def __enter__(self):
++        return self
++
++    def __exit__(self, exc_type, exc, tb):
++        self.close()
++        return False

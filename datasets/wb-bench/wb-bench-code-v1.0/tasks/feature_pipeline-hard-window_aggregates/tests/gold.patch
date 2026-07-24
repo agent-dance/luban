@@ -1,0 +1,47 @@
+diff --git a/app/window_features.py b/app/window_features.py
+index b827a75..5afdcb7 100644
+--- a/app/window_features.py
++++ b/app/window_features.py
+@@ -1,18 +1,36 @@
+ #!/usr/bin/env python3
+-import argparse
++import argparse, csv, json
++from datetime import datetime, timedelta
+ from pathlib import Path
+-
++def read(path):
++    with path.open(newline="", encoding="utf-8") as f:
++        return list(csv.DictReader(f))
++def parse(ts):
++    return datetime.fromisoformat(ts)
+ def build(data_dir: Path) -> list[dict]:
+-    return []
+-
++    events = {}
++    for row in read(data_dir / "events.csv"):
++        events.setdefault(row["user_id"], []).append((parse(row["event_time"]), float(row["amount"])))
++    out = []
++    for row in read(data_dir / "anchors.csv"):
++        anchor = parse(row["anchor_time"])
++        user_events = events.get(row["user_id"], [])
++        item = {"user_id": row["user_id"], "anchor_time": row["anchor_time"]}
++        before = [e for e in user_events if e[0] < anchor]
++        item["last_event_hours"] = round((anchor - max(t for t, _ in before)).total_seconds()/3600, 6) if before else None
++        for days in (1, 7):
++            start = anchor - timedelta(days=days)
++            vals = [amount for ts, amount in user_events if start <= ts < anchor]
++            item[f"events_{days}d"] = len(vals)
++            item[f"amount_{days}d"] = round(sum(vals), 6)
++        out.append(item)
++    return out
+ def main():
+     parser = argparse.ArgumentParser()
+     parser.add_argument("--data", default="data")
+     parser.add_argument("--out", default="window_features.jsonl")
+     args = parser.parse_args()
+     rows = build(Path(args.data))
+-    import json
+     Path(args.out).write_text("\n".join(json.dumps(r, sort_keys=True) for r in rows) + "\n", encoding="utf-8")
+-
+ if __name__ == "__main__":
+     main()

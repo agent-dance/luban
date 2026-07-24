@@ -1,0 +1,25 @@
+{
+  "name": "webfetch-basic-success",
+  "input": {
+    "url": "https://example.com",
+    "prompt": "summarize",
+    "body": "Example Domain",
+    "truncated": false,
+    "cacheHit": false
+  },
+  "expected": {
+    "input": {
+      "url": "https://example.com",
+      "prompt": "summarize"
+    },
+    "execution": {
+      "method": "local_fallback",
+      "resolvedUrl": "https://example.com",
+      "truncated": false,
+      "cacheHit": false
+    },
+    "content": {
+      "body": "Example Domain"
+    }
+  }
+}

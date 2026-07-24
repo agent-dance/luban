@@ -1,0 +1,64 @@
+{
+  "id": "information_display_strategy",
+  "status": "completed",
+  "generated_at": "2026-07-15",
+  "objective": "Analyze Claude Code and Codex information-display strategies, define a complete command and subagent presentation contract, map the current Go implementation, estimate cost, and preserve the work as independently verifiable task artifacts.",
+  "primary_report": "INFORMATION_DISPLAY_STRATEGY_REPORT.md",
+  "concurrency": {
+    "logical_max_concurrency": 6,
+    "logical_basis": [
+      "Workspace AGENTS.md allows up to 6 concurrent child agents",
+      "Current Codex documentation lists agents.max_threads default as 6"
+    ],
+    "observed_effective_child_concurrency": 3,
+    "observed_constraint": "The fourth simultaneous child-agent spawn returned the runtime thread-limit error.",
+    "execution_waves": [
+      ["task_01", "task_02", "task_03"],
+      ["task_04", "task_05", "task_06"]
+    ]
+  },
+  "tasks": [
+    {
+      "id": "task_01",
+      "status": "completed",
+      "definition": "tasks/information_display_strategy/task_01.json",
+      "report": "tasks/information_display_strategy/_agent_reports/task_01.md"
+    },
+    {
+      "id": "task_02",
+      "status": "completed",
+      "definition": "tasks/information_display_strategy/task_02.json",
+      "report": "tasks/information_display_strategy/_agent_reports/task_02.md"
+    },
+    {
+      "id": "task_03",
+      "status": "completed",
+      "definition": "tasks/information_display_strategy/task_03.json",
+      "report": "tasks/information_display_strategy/_agent_reports/task_03.md"
+    },
+    {
+      "id": "task_04",
+      "status": "completed",
+      "definition": "tasks/information_display_strategy/task_04.json",
+      "report": "tasks/information_display_strategy/_agent_reports/task_04.md"
+    },
+    {
+      "id": "task_05",
+      "status": "completed",
+      "definition": "tasks/information_display_strategy/task_05.json",
+      "report": "tasks/information_display_strategy/_agent_reports/task_05.md"
+    },
+    {
+      "id": "task_06",
+      "status": "completed",
+      "definition": "tasks/information_display_strategy/task_06.json",
+      "report": "tasks/information_display_strategy/_agent_reports/task_06.md"
+    }
+  ],
+  "cost_person_days_cumulative": {
+    "mvp": {"low": 10, "base": 18, "high": 28},
+    "full_behavioral_alignment": {"low": 24, "base": 42, "high": 67},
+    "production_hardening": {"low": 38, "base": 63, "high": 100}
+  },
+  "verification_note": "Final rerun passed go build ./..., go vet ./..., and go test ./.... Earlier task snapshots observed a transient tui signature mismatch that was subsequently fixed by concurrent user worktree changes."
+}

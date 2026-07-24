@@ -1,0 +1,51 @@
+diff --git a/app/report.py b/app/report.py
+index 5b0798d..fc1035d 100644
+--- a/app/report.py
++++ b/app/report.py
+@@ -1,25 +1,24 @@
+ #!/usr/bin/env python3
+-# Expected CLI: python app/report.py --data data --out report.json
+-# Keep the output as JSON so a dashboard can read it later.
+-
+-import argparse
+-import json
++import argparse,csv,json
++from collections import defaultdict
++from datetime import date
+ from pathlib import Path
+-
+-
+-def build_report(data_dir: Path) -> dict:
+-    # TODO: fill in the report from the CSV exports in data_dir.
+-    return {}
+-
+-
++def rows(p):
++    with p.open(newline='',encoding='utf-8') as f: return list(csv.DictReader(f))
++def build_report(data_dir: Path):
++    users=rows(data_dir/'users.csv'); acts=defaultdict(set)
++    for a in rows(data_dir/'activity.csv'): acts[a['user_id']].add(date.fromisoformat(a['active_at']))
++    cohorts=defaultdict(list)
++    for u in users: cohorts[u['signup_date']].append(u)
++    out=[]; total_users=retained=0
++    for day, us in sorted(cohorts.items()):
++        base=date.fromisoformat(day); ids=[u['user_id'] for u in us]; r=[uid for uid in ids if base.replace() and (base.fromordinal(base.toordinal()+7) in acts[uid])]
++        total_users+=len(ids); retained+=len(r)
++        plans=defaultdict(lambda:{'users':0,'retained':0})
++        for u in us:
++            plans[u['plan']]['users']+=1; plans[u['plan']]['retained']+=1 if u['user_id'] in r else 0
++        out.append({'cohort_date':day,'users':len(ids),'retained_day7':len(r),'retention_rate':round(len(r)/len(ids),4),'plans':{p:{'users':v['users'],'retained_day7':v['retained'],'retention_rate':round(v['retained']/v['users'],4)} for p,v in sorted(plans.items())}})
++    return {'summary':{'users':total_users,'retained_day7':retained,'retention_rate':round(retained/total_users,4)},'cohorts':out}
+ def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument('--data', default='data')
+-    parser.add_argument('--out', default='report.json')
+-    args = parser.parse_args()
+-    report = build_report(Path(args.data))
+-    Path(args.out).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+-
+-
+-if __name__ == '__main__':
+-    main()
++    p=argparse.ArgumentParser(); p.add_argument('--data',default='data'); p.add_argument('--out',default='report.json'); a=p.parse_args(); Path(a.out).write_text(json.dumps(build_report(Path(a.data)),indent=2),encoding='utf-8')
++if __name__=='__main__': main()

@@ -1,0 +1,55 @@
+diff --git a/rich_like/markup.py b/rich_like/markup.py
+index a05ae78..6ea4ec6 100644
+--- a/rich_like/markup.py
++++ b/rich_like/markup.py
+@@ -1,9 +1,48 @@
+ import re
++from dataclasses import dataclass
+ 
+ 
+ class MarkupError(Exception):
+-    pass
++    def __init__(self, message, code, position):
++        super().__init__(message)
++        self.code = code
++        self.position = position
++
++
++@dataclass
++class Segment:
++    text: str
++    style: str | None = None
++
++
++_TAG = re.compile(r"\[(/?)([a-z]+)\]")
++
++
++def parse_markup(text):
++    stack = []
++    pos = 0
++    segments = []
++    for match in _TAG.finditer(text):
++        if match.start() > pos:
++            segments.append(Segment(text[pos:match.start()], stack[-1] if stack else None))
++        closing, tag = match.groups()
++        if closing:
++            if not stack or stack[-1] != tag:
++                raise MarkupError(f"closing tag {tag} does not match", "unmatched_close", match.start())
++            stack.pop()
++        else:
++            stack.append(tag)
++        pos = match.end()
++    if pos < len(text):
++        segments.append(Segment(text[pos:], stack[-1] if stack else None))
++    if stack:
++        raise MarkupError(f"tag {stack[-1]} was not closed", "unclosed_tag", len(text))
++    return segments
+ 
+ 
+ def render_markup(text):
+-    return re.sub(r"\[/?[a-z]+\]", "", text)
++    return "".join(segment.text for segment in parse_markup(text))
++
++
++def escape(text):
++    return str(text).replace("[", r"\[").replace("]", r"\]")

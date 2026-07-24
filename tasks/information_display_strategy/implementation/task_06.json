@@ -1,0 +1,55 @@
+{
+  "id": "task_06",
+  "title": "Verification, terminal matrix, implementation report, and risk ledger",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Prove the implemented behavioral contract with full tests, race detection, static checks, cross-builds, PTY/tmux execution, accessibility matrices, and an honest record of untested host-specific surfaces.",
+  "requirements": [
+    "Full repository tests, full race tests, vet, build, formatting, and diff checks pass.",
+    "Linux, Windows, and x86 macOS cross-builds pass without a new dependency.",
+    "40x12, 80x24, 120x40, CJK, emoji/ZWJ/combining/ambiguous width, and dynamic resize are automated.",
+    "macOS PTY and tmux executions pass.",
+    "Native/assistive/manual gaps are recorded as Not tested rather than mislabeled as production certification."
+  ],
+  "dependencies": ["task_01", "task_02", "task_03", "task_04", "task_05"],
+  "write_scope": ["tests and implementation evidence under tasks/information_display_strategy/implementation"],
+  "changed_files": [
+    "tui/information_accessibility_test.go",
+    "tui/session_lifecycle_test.go",
+    "tasks/information_display_strategy/implementation/INDEX.json",
+    "tasks/information_display_strategy/implementation/IMPLEMENTATION_REPORT.md",
+    "tasks/information_display_strategy/implementation/TERMINAL_MATRIX.md",
+    "tasks/information_display_strategy/implementation/task_01.json",
+    "tasks/information_display_strategy/implementation/task_02.json",
+    "tasks/information_display_strategy/implementation/task_03.json",
+    "tasks/information_display_strategy/implementation/task_04.json",
+    "tasks/information_display_strategy/implementation/task_05.json",
+    "tasks/information_display_strategy/implementation/task_06.json"
+  ],
+  "cost": {
+    "forecast_person_days": {"low": 5, "base": 8, "high": 11, "source": "Full-alignment allocation from INFORMATION_DISPLAY_STRATEGY_REPORT.md"},
+    "actual_person_days": null
+  },
+  "acceptance": [
+    {"criterion": "All automated repository quality gates pass.", "evidence": ["TERMINAL_MATRIX.md#automated-quality-gates"]},
+    {"criterion": "Cross-platform compile/link gates pass.", "evidence": ["TERMINAL_MATRIX.md#platform-builds"]},
+    {"criterion": "PTY, tmux, narrow terminal, Unicode, and resize behavior are exercised.", "evidence": ["TERMINAL_MATRIX.md#terminal-and-accessibility-matrix"]},
+    {"criterion": "Manual platform gaps and shared-worktree risks are explicit.", "evidence": ["IMPLEMENTATION_REPORT.md#remaining-risks", "TERMINAL_MATRIX.md#not-tested"]}
+  ],
+  "verification": {
+    "baseline": {"git_head": "7c6eea019e6f31449149770e986face7edd4d9ec", "go_version": "go1.26.1", "platform": "darwin/arm64"},
+    "commands": [
+      {"command": "/opt/homebrew/bin/go test ./... -count=1", "exit_code": 0, "evidence": "TERMINAL_MATRIX.md"},
+      {"command": "/opt/homebrew/bin/go test -race ./... -count=1", "exit_code": 0, "evidence": "TERMINAL_MATRIX.md"},
+      {"command": "/opt/homebrew/bin/go vet ./...", "exit_code": 0, "evidence": "TERMINAL_MATRIX.md"},
+      {"command": "/opt/homebrew/bin/go build ./...", "exit_code": 0, "evidence": "TERMINAL_MATRIX.md"},
+      {"command": "git diff --check", "exit_code": 0, "evidence": "TERMINAL_MATRIX.md"}
+    ]
+  },
+  "remaining_risks": [
+    "Native Linux/Windows interaction, IDE terminal, VoiceOver, and NVDA were not available in this darwin/arm64 session.",
+    "No authoritative actual-person-day ledger exists.",
+    "The shared branch was committed and pushed by another concurrent workspace session during verification; the final audit patch remains mixed with unrelated user-owned changes and was intentionally not staged or recommitted here."
+  ],
+  "result": {"completed_at": "2026-07-15", "summary": "Behavioral alignment is fully automated and green; host-specific production certification gaps are explicitly bounded."}
+}

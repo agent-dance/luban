@@ -1,0 +1,52 @@
+diff --git a/urllib3_like/headers.py b/urllib3_like/headers.py
+index dac3e3c..0768bc4 100644
+--- a/urllib3_like/headers.py
++++ b/urllib3_like/headers.py
+@@ -1,2 +1,16 @@
++SENSITIVE = {"authorization", "cookie", "proxy-authorization"}
++
++
++def _clean_value(value):
++    value = str(value)
++    if "\r" in value or "\n" in value:
++        raise ValueError("header value contains newline")
++    return value
++
++
+ def normalize(headers):
+-    return {str(k): str(v) for k, v in dict(headers or {}).items()}
++    return {str(k): _clean_value(v) for k, v in dict(headers or {}).items()}
++
++
++def strip_sensitive(headers):
++    return {k: v for k, v in normalize(headers).items() if k.lower() not in SENSITIVE}
+diff --git a/urllib3_like/proxy.py b/urllib3_like/proxy.py
+index 337eef8..ca4c7d5 100644
+--- a/urllib3_like/proxy.py
++++ b/urllib3_like/proxy.py
+@@ -1,11 +1,22 @@
++from .headers import normalize, strip_sensitive
+ from .request import Request
+ 
+ 
+ def prepare_proxy_request(url, headers=None, proxy_headers=None):
+-    merged = dict(headers or {})
+-    merged.update(proxy_headers or {})
++    req_headers = normalize(headers)
++    proxy_only = normalize(proxy_headers)
++    if "Authorization" in proxy_only and "Proxy-Authorization" not in proxy_only:
++        proxy_only["Proxy-Authorization"] = proxy_only.pop("Authorization")
++    for key in list(proxy_only):
++        if key.lower() == "authorization":
++            proxy_only.pop(key)
++    merged = dict(req_headers)
++    merged.update(proxy_only)
+     return Request(url, merged)
+ 
+ 
+ def redirect_request(request, new_url):
+-    return Request(new_url, dict(request.headers))
++    next_request = Request(new_url, dict(request.headers))
++    if next_request.origin != request.origin:
++        return Request(new_url, strip_sensitive(request.headers))
++    return next_request

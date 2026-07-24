@@ -1,0 +1,50 @@
+{
+  "id": "task_05",
+  "title": "Bring ResultStore and large tool-result persistence to parity",
+  "priority": "P1",
+  "status": "ready_for_dispatch",
+  "owner_role": "executor",
+  "parallel_group": "tool_results",
+  "can_run_in_parallel": true,
+  "dependencies": [],
+  "objective": "Upgrade Go's oversized tool-result persistence to match TS behavior for thresholds, JSON/text content, empty results, preview stability, and error handling.",
+  "source_evidence": [
+    "/Users/blurooo/project/go-claude/src/utils/toolResultStorage.ts:55",
+    "/Users/blurooo/project/go-claude/src/utils/toolResultStorage.ts:137",
+    "/Users/blurooo/project/go-claude/src/utils/toolResultStorage.ts:250",
+    "/Users/blurooo/project/go-claude/src/utils/toolResultStorage.ts:272",
+    "/Users/blurooo/project/go-claude/gosrc/compact/resultstore.go:31"
+  ],
+  "files_to_inspect": [
+    "/Users/blurooo/project/go-claude/gosrc/compact/resultstore.go",
+    "/Users/blurooo/project/go-claude/gosrc/compact/compact.go",
+    "/Users/blurooo/project/go-claude/gosrc/loop/query.go",
+    "/Users/blurooo/project/go-claude/gosrc/types"
+  ],
+  "implementation_scope": [
+    "Support text and structured text-block content persistence with .txt and .json extensions.",
+    "Skip image and non-text structured content persistence.",
+    "Inject an explicit empty-output marker for empty or whitespace-only tool results.",
+    "Use stable create-once semantics for existing persisted files so repeated turns produce byte-identical previews.",
+    "Implement tool-specific threshold resolution with hard opt-out for infinite/max-unbounded tools where Go has the metadata.",
+    "Return useful filesystem error messages while preserving original content on persistence failure."
+  ],
+  "out_of_scope": [
+    "Do not implement stateful per-message aggregate budget in this task.",
+    "Do not change tool execution semantics beyond result block post-processing."
+  ],
+  "acceptance_criteria": [
+    "Tests cover large text result, structured text result, image result skip, empty result marker, existing file replay, and write failure fallback.",
+    "Persisted-output wrapper format stays compatible with TS summary and budget recognition.",
+    "The query loop continues to store large results before adding tool messages to history."
+  ],
+  "verification": [
+    "go test ./compact",
+    "go test ./loop"
+  ],
+  "risks": [
+    "Go type definitions may not distinguish all content block shapes currently handled by TS.",
+    "Changing preview text can affect prompt cache stability; keep exact strings stable once introduced."
+  ],
+  "dispatch_prompt": "Upgrade Go ResultStore to TS-equivalent large tool-result persistence, including JSON/text handling, empty-result markers, and stable preview replay."
+}

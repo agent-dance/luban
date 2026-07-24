@@ -1,0 +1,84 @@
+{
+  "id": "task_02",
+  "title": "实现 StreamingToolExecutor 等价执行路径",
+  "priority": "P0",
+  "can_dispatch_independently": true,
+  "depends_on": [
+    "task_01"
+  ],
+  "objective": "在 Go loop 中支持原版的流式工具执行：tool_use block 一结束即可按并发规则启动工具，而不是等整个 assistant message 完成后统一执行。",
+  "improvement_points": [
+    "新增 Go 版 StreamingToolExecutor，跟踪 queued、executing、completed、yielded 状态。",
+    "processStream 或其替代流处理器在 content_block_stop 看到 tool_use 时调用 executor.AddTool。",
+    "并发安全工具可与其他并发安全工具同时运行，非并发工具必须独占，并保持结果输出顺序。",
+    "支持 discard，用于 streaming fallback 或重试时丢弃旧 tool_use_id 的结果。",
+    "支持 progress 或中间事件立即上报，不必等工具最终结束。",
+    "Bash 类工具错误时级联取消兄弟工具，其他独立工具错误不取消兄弟工具。"
+  ],
+  "evidence": [
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "551-568",
+      "note": "TS 每轮根据 QueryConfig gate 创建 StreamingToolExecutor。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/query.ts",
+      "lines": "1366-1383",
+      "note": "TS 在工具阶段优先消费 streamingToolExecutor.getRemainingResults()。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/services/tools/StreamingToolExecutor.ts",
+      "lines": "34-151",
+      "note": "原版 executor 定义状态机、并发条件和 AddTool 行为。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/services/tools/StreamingToolExecutor.ts",
+      "lines": "153-490",
+      "note": "原版覆盖 discard、synthetic error、兄弟取消、progress 和有序结果输出。"
+    },
+    {
+      "source": "go_current",
+      "file": "loop/query.go",
+      "lines": "880-901",
+      "note": "Go 当前等 assistantMsg 完整构造后才调用 executeToolsConcurrently。"
+    }
+  ],
+  "scope": {
+    "include": [
+      "loop/streaming_tool_executor.go",
+      "loop/query.go",
+      "loop/concurrent.go",
+      "loop/streaming_tool_executor_test.go"
+    ],
+    "exclude": [
+      "PostToolUseFailure 的完整语义，交给 task_03",
+      "模型 fallback/tombstone，交给 task_13"
+    ]
+  },
+  "implementation_steps": [
+    "把工具执行核心抽成 streaming 和 non-streaming 共用的 executeOneTool。",
+    "实现 TrackedTool 队列、状态转换、非阻塞 completed result drain、剩余 result drain。",
+    "在流处理时将 assistant message 与 tool_use block 绑定到 executor。",
+    "提供 config gate，默认可关闭，确保旧行为可回退。",
+    "补充 fake slow stream + fake slow tool 测试，证明工具在 message_stop 前已经启动。"
+  ],
+  "acceptance_criteria": [
+    "两个连续 Read/Grep 类工具在流中 block stop 后即可并发执行。",
+    "Read, Bash, Read 序列中 Bash 独占，后续 Read 等 Bash 完成后再启动。",
+    "streaming fallback 或重试时旧 executor 的结果不会进入新一轮消息历史。",
+    "Bash 工具错误只取消同批或后续相关 sibling，非 Bash 工具错误不取消独立 sibling。",
+    "关闭 streamingToolExecution gate 时旧的非流式执行路径保持可用。"
+  ],
+  "tests": [
+    "go test ./loop -run 'TestStreamingToolExecutor|TestQueryLoopStreamingTools' -count=1",
+    "go test -race ./loop -run 'TestStreamingToolExecutor' -count=1"
+  ],
+  "risks": [
+    "并发工具回调可能改变 UI 事件顺序，必须用测试锁定原版要求的 result 顺序。",
+    "需要避免 goroutine 泄漏，所有 executor drain 路径必须响应 ctx cancellation。"
+  ]
+}

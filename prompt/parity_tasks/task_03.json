@@ -1,0 +1,52 @@
+{
+  "id": "task_03",
+  "title": "Implement user and system context injection",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "depends_on": [
+    "task_01"
+  ],
+  "write_scope": [
+    "prompt/context.go",
+    "loop/query.go",
+    "types/messages.go",
+    "prompt/*_test.go",
+    "loop/*_test.go"
+  ],
+  "read_first": [
+    "../src/context.ts",
+    "../src/utils/api.ts",
+    "../src/query.ts",
+    "prompt/system.go",
+    "loop/query.go",
+    "types/messages.go"
+  ],
+  "objective": "Move date, CLAUDE.md, and Git status into original-equivalent context layers instead of embedding all dynamic content inside the base system prompt.",
+  "context": [
+    "The original prepends user context as a meta user message wrapped in <system-reminder>.",
+    "The original appends system context such as gitStatus to the system prompt before API submission.",
+    "Go currently inserts date, cwd, git, and instruction files directly into the system string."
+  ],
+  "deliverables": [
+    "Add UserContext and SystemContext builder types.",
+    "Inject user context as a leading meta/system-reminder user message before model calls.",
+    "Append system context as a trailing system prompt block before provider submission.",
+    "Move currentDate into UserContext.",
+    "Prepare claudeMd and gitStatus fields even if full discovery remains implemented by later tasks."
+  ],
+  "acceptance": [
+    "Date no longer appears in the static base system prompt.",
+    "CLAUDE-style instructions can be injected through a system-reminder user message.",
+    "Git status can be appended as system context rather than included in base prompt text.",
+    "Tests prove message ordering and block ordering."
+  ],
+  "verification": [
+    "go test ./prompt ./loop"
+  ],
+  "non_goals": [
+    "Do not implement full CLAUDE.md discovery in this task.",
+    "Do not implement prompt cache scope decisions.",
+    "Do not change provider-specific serialization beyond accepting the new system block sequence."
+  ],
+  "handoff_notes": "Coordinate with task_04 and task_07 so their builders plug into this context layer rather than rebuilding request plumbing."
+}

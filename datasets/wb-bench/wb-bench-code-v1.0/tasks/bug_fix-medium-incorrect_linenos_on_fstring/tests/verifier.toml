@@ -1,0 +1,13 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "pytest_injected"
+
+[run]
+cwd = "/workspace"
+command = '''python -m pytest \
+  tests/test_tokenize.py::test_fstring \
+  tests/test_tokenize.py::test_fstring_lineno_continuation_with_text \
+  tests/test_tokenize.py::test_fstring_lineno_continuation_only \
+  tests/test_tokenize.py::test_fstring_lineno_continuation_indented \
+  tests/test_tokenize.py::test_fstring_lineno_continuation_with_format_spec \
+  tests/test_tokenize.py::test_simple \
+  -q --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

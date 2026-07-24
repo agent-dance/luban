@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "updated_at": "2026-07-10",
+  "tasks": [
+    {"task_id": "task_01", "coverage_tags": ["state.query_config_snapshot"], "fixtures": [], "status": "pending", "notes": "QueryConfig immutable snapshot fixture to be added by task_01."},
+    {"task_id": "task_02", "coverage_tags": ["tools.streaming_executor", "tools.execution"], "fixtures": ["tool_use_response"], "status": "pending", "notes": "Baseline tool execution is covered; streaming-in-flight executor parity remains pending."},
+    {"task_id": "task_03", "coverage_tags": ["tools.execution", "hooks.pre_tool_use", "hooks.post_tool_use"], "fixtures": ["tool_use_response"], "status": "pending", "notes": "Tool execution baseline is active; full hook semantics need task_03 fixtures."},
+    {"task_id": "task_04", "coverage_tags": ["hooks.stop", "hooks.subagent_stop"], "fixtures": [], "status": "pending", "notes": "Stop hook parity is not part of the fast baseline yet."},
+    {"task_id": "task_05", "coverage_tags": ["hooks.teammate_idle", "hooks.task_completed"], "fixtures": [], "status": "pending", "notes": "Lifecycle hooks pending implementation fixtures."},
+    {"task_id": "task_06", "coverage_tags": ["hooks.post_sampling", "hooks.stop_failure", "terminal.side_effects"], "fixtures": [], "status": "pending", "notes": "Post-sampling and stop-failure fixtures pending."},
+    {"task_id": "task_07", "coverage_tags": ["recovery.token_budget", "recovery.max_output_tokens"], "fixtures": [], "status": "pending", "notes": "Recovery coverage should be added without changing current fast behavior."},
+    {"task_id": "task_08", "coverage_tags": ["budget.task_budget_api"], "fixtures": [], "status": "pending", "notes": "API-side task budget pending."},
+    {"task_id": "task_09", "coverage_tags": ["recovery.reactive_compact", "recovery.context_collapse"], "fixtures": [], "status": "pending", "notes": "Reactive compact fixtures pending."},
+    {"task_id": "task_10", "coverage_tags": ["compact.boundary", "compact.force_truncate"], "fixtures": [], "status": "pending", "notes": "Compact orchestration fixtures pending."},
+    {"task_id": "task_11", "coverage_tags": ["compact.post_compact_restore", "tools.deferred_visibility"], "fixtures": ["tool_search_deferred_tool"], "status": "pending", "notes": "Deferred tool visibility is covered; post-compact restore remains pending."},
+    {"task_id": "task_12", "coverage_tags": ["tools.attachments", "messages.supplemental_new_messages", "prefetch.pipeline", "commands.queued_attachments", "mcp.refresh_tools"], "fixtures": ["tool_supplemental_attachment", "tool_search_deferred_tool"], "status": "covered", "notes": "Attachment ordering and deferred-tool baselines are fixture-covered; focused Go tests cover queued commands, nonblocking memory prefetch, skill prefetch, and refreshTools."},
+    {"task_id": "task_13", "coverage_tags": ["recovery.model_fallback", "recovery.tombstone", "tools.missing_tool_result"], "fixtures": [], "status": "pending", "notes": "Fallback/tombstone parity pending."},
+    {"task_id": "task_14", "coverage_tags": ["events.text", "events.tool_use", "events.tool_result", "events.max_turns_reached", "events.compact_boundary", "events.tombstone", "events.sdk_tui"], "fixtures": ["basic_text", "tool_use_response", "max_turns_exceeded"], "status": "covered", "notes": "Core loop events plus structured SDK/TUI-recognizable max-turn, compact-boundary, and tombstone event carriers are covered."},
+    {"task_id": "task_15", "coverage_tags": ["provider.responses_events", "provider.request_params"], "fixtures": [], "status": "pending", "notes": "Provider parameter golden fixtures pending."},
+    {"task_id": "task_16", "coverage_tags": ["parity.fixture_schema", "parity.metrics", "parity.fake_provider"], "fixtures": ["basic_text", "tool_use_response", "max_turns_exceeded", "tool_supplemental_attachment", "tool_search_deferred_tool"], "status": "covered", "notes": "Baseline fixture runner, metrics metadata, and fake helpers are covered."}
+  ]
+}

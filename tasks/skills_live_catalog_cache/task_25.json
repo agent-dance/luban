@@ -1,0 +1,91 @@
+{
+  "id": "task_25",
+  "title": "Add screen-reader skill management and explicit invocation",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 6,
+  "owner_role": "executor",
+  "estimated_minutes": 60,
+  "parallel_group": "surface_wiring",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_15",
+    "task_16"
+  ],
+  "objective": "Provide the same management and user-invocation semantics in screen-reader mode with linear, accessible output.",
+  "context": [
+    "Complete one low-conflict slice of the accepted live skill catalog and cache-preserving design.",
+    "The worktree is shared and dirty; only owned_files may be modified."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Developer-context initial catalog and progressive disclosure inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Live discovery, visibility overrides, and skill lifecycle inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Exact-prefix caching motivates append-only deltas."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "repl_screen_reader.go",
+    "i18n/skills_screen_reader_keys.go",
+    "commands/skills.go",
+    "tools/skill.go",
+    "repl_screen_reader_skills_test.go"
+  ],
+  "owned_files": [
+    "repl_screen_reader.go",
+    "i18n/skills_screen_reader_keys.go",
+    "i18n/skills_screen_reader_keys_test.go",
+    "repl_screen_reader_skill_catalog_task25_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Route /skills state/scope commands through the shared backend.",
+      "Route explicit /name skill invocation under the same ambiguity and visibility rules as TUI.",
+      "Emit stable plain text without control sequences or hidden-only data.",
+      "Put every new user-visible screen-reader string behind semantic i18n keys with translations for all supported languages.",
+      "Filter RoleDeveloper catalog metadata from the human-readable transcript."
+    ],
+    "exclude": [
+      "Do not modify production files owned by another task.",
+      "Do not add dependencies or perform unrelated refactors."
+    ]
+  },
+  "implementation_steps": [
+    "Add minimal routing using shared command/tool interfaces.",
+    "Add list/show/set/reset/invoke and failure tests.",
+    "Verify no ANSI/control artifacts."
+  ],
+  "deliverables": [
+    "repl_screen_reader.go",
+    "i18n/skills_screen_reader_keys.go",
+    "i18n/skills_screen_reader_keys_test.go",
+    "repl_screen_reader_skill_catalog_task25_test.go"
+  ],
+  "acceptance_criteria": [
+    "Screen-reader and TUI enforce identical policy.",
+    "Managed/off skills cannot be invoked.",
+    "Output remains readable and deterministic.",
+    "All new user-visible copy uses semantic i18n keys and the active runtime language."
+    ,"Developer catalog messages are not printed as user or assistant conversation text."
+  ],
+  "verification": [
+    "go test . -run 'ScreenReader.*Skill|Skill.*ScreenReader' -count=1"
+  ],
+  "risks": [],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Implement screen-reader /skills and explicit skill invocation routing with focused new tests. Do not modify shared command/tool implementations.",
+  "notes_for_assignee": "If verification exposes a defect in another owner's production file, report the exact failing test and owner task; do not patch across ownership boundaries."
+}

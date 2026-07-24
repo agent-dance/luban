@@ -1,0 +1,85 @@
+{
+  "id": "task_21",
+  "title": "Preserve developer messages through microcompaction and replacement",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 4,
+  "owner_role": "executor",
+  "estimated_minutes": 60,
+  "parallel_group": "runtime_components",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_02"
+  ],
+  "objective": "Make microcompaction, cached microcompaction, and content replacement retain developer catalog semantics and message order.",
+  "context": [
+    "Complete one low-conflict slice of the accepted live skill catalog and cache-preserving design.",
+    "The worktree is shared and dirty; only owned_files may be modified."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Developer-context initial catalog and progressive disclosure inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Live discovery, visibility overrides, and skill lifecycle inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Exact-prefix caching motivates append-only deltas."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "compact/microcompact.go",
+    "compact/cached_microcompact.go",
+    "compact/content_replacement.go",
+    "types/messages.go"
+  ],
+  "owned_files": [
+    "compact/microcompact.go",
+    "compact/cached_microcompact.go",
+    "compact/content_replacement.go",
+    "compact/developer_microcompact_task21_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Handle RoleDeveloper explicitly in every owned role switch.",
+      "Prevent content replacement from crossing or rewriting catalog instructions.",
+      "Keep cached and uncached microcompact behavior equivalent."
+    ],
+    "exclude": [
+      "Do not modify production files owned by another task.",
+      "Do not add dependencies or perform unrelated refactors."
+    ]
+  },
+  "implementation_steps": [
+    "Audit the owned compact paths.",
+    "Add catalog-before-user, replacement, cache reuse, and mixed tool-history tests.",
+    "Preserve existing size thresholds and token accounting."
+  ],
+  "deliverables": [
+    "compact/microcompact.go",
+    "compact/cached_microcompact.go",
+    "compact/content_replacement.go",
+    "compact/developer_microcompact_task21_test.go"
+  ],
+  "acceptance_criteria": [
+    "Developer catalog items retain order and content.",
+    "Content replacement never mutates catalog messages.",
+    "Cached/uncached outputs are equivalent for the same input."
+  ],
+  "verification": [
+    "go test ./compact -run 'Developer.*Microcompact|ContentReplacement|CachedMicrocompact' -count=1"
+  ],
+  "risks": [],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Update microcompact, cached microcompact, and content replacement for RoleDeveloper. Add one focused new test file and touch no other production files.",
+  "notes_for_assignee": "If verification exposes a defect in another owner's production file, report the exact failing test and owner task; do not patch across ownership boundaries."
+}

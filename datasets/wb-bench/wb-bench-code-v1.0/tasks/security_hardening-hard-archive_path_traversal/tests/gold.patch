@@ -1,0 +1,60 @@
+diff --git a/archive_like/extract.py b/archive_like/extract.py
+index f74977d..46975a6 100644
+--- a/archive_like/extract.py
++++ b/archive_like/extract.py
+@@ -1,4 +1,5 @@
+ import os
++from .errors import UnsafeArchiveError
+ from .path import target_path
+ 
+ 
+@@ -7,11 +8,17 @@ def extract_members(base, members):
+     written = []
+     for member in members:
+         path = target_path(base, member["name"])
+-        if member.get("type") == "dir":
++        kind = member.get("type", "file")
++        if kind == "symlink":
++            target_path(base, member.get("target", ""))
++            raise UnsafeArchiveError("symlinks are not extracted")
++        if kind == "dir":
+             os.makedirs(path, exist_ok=True)
+-        else:
++        elif kind == "file":
+             os.makedirs(os.path.dirname(path), exist_ok=True)
+             with open(path, "wb") as fh:
+                 fh.write(member.get("data", b""))
++        else:
++            raise UnsafeArchiveError(f"unsupported member type {kind}")
+         written.append(path)
+     return written
+diff --git a/archive_like/path.py b/archive_like/path.py
+index 90acf88..e6e4ee8 100644
+--- a/archive_like/path.py
++++ b/archive_like/path.py
+@@ -1,5 +1,24 @@
+ import os
++from urllib.parse import unquote
++
++from .errors import UnsafeArchiveError
++
++
++def _normalize_name(name):
++    value = str(name).replace("\\", "/")
++    previous = None
++    while previous != value:
++        previous = value
++        value = unquote(value)
++    return value.replace("\\", "/")
+ 
+ 
+ def target_path(base, name):
+-    return os.path.abspath(os.path.join(base, name))
++    base_real = os.path.realpath(os.path.abspath(base))
++    cleaned = _normalize_name(name)
++    if cleaned.startswith("/") or cleaned.startswith("../") or "/../" in f"/{cleaned}":
++        raise UnsafeArchiveError("archive member escapes base")
++    path = os.path.realpath(os.path.abspath(os.path.join(base_real, cleaned)))
++    if os.path.commonpath([base_real, path]) != base_real:
++        raise UnsafeArchiveError("archive member escapes base")
++    return path

@@ -1,0 +1,52 @@
+{
+  "id": "task_05",
+  "title": "Implement rules, frontmatter paths, and include expansion",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "depends_on": [
+    "task_04"
+  ],
+  "write_scope": [
+    "prompt/rules.go",
+    "prompt/include.go",
+    "prompt/frontmatter.go",
+    "prompt/memory.go",
+    "prompt/*_test.go"
+  ],
+  "read_first": [
+    "../src/utils/claudemd.ts",
+    "prompt/memory.go"
+  ],
+  "objective": "Add original-equivalent .claude/rules, frontmatter path filtering, and @include semantics to the Go memory loader.",
+  "context": [
+    "The original recursively reads .claude/rules/*.md and separates unconditional from conditional rules.",
+    "Conditional rules use frontmatter paths globs matched against target file paths.",
+    "@include syntax can pull in additional text files while avoiding code spans, code blocks, cycles, and excessive depth."
+  ],
+  "deliverables": [
+    "Recursively read .claude/rules/*.md.",
+    "Parse frontmatter and remove it from injected content.",
+    "Support paths frontmatter and glob matching for conditional rules.",
+    "Implement @path, @./path, @~/path, and @/path include expansion.",
+    "Ignore include directives inside fenced code blocks and inline code.",
+    "Enforce include depth and cycle limits.",
+    "Skip binary or unsupported file extensions.",
+    "Expose external include metadata for later approval handling."
+  ],
+  "acceptance": [
+    "Unconditional rules inject eagerly.",
+    "Conditional rules inject only when the target path matches.",
+    "Include expansion order is deterministic and tested.",
+    "External includes are skipped unless explicitly allowed.",
+    "Circular includes terminate without duplicate content."
+  ],
+  "verification": [
+    "go test ./prompt"
+  ],
+  "non_goals": [
+    "Do not implement the UI approval dialog.",
+    "Do not implement InstructionsLoaded hooks.",
+    "Do not implement full settings persistence."
+  ],
+  "handoff_notes": "Use structured parsing where feasible; avoid fragile regexp-only parsing for markdown code-block awareness."
+}

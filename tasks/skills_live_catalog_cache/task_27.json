@@ -1,0 +1,89 @@
+{
+  "id": "task_27",
+  "title": "Verify prompt-cache preservation and incremental request shape",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 9,
+  "owner_role": "performance-reviewer",
+  "estimated_minutes": 60,
+  "parallel_group": "acceptance",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_09",
+    "task_10",
+    "task_11",
+    "task_19",
+    "task_23"
+  ],
+  "objective": "Measure cacheability proxies and request diffs to prove catalog changes append at the tail rather than invalidating stable prefixes.",
+  "context": [
+    "Complete one low-conflict slice of the accepted live skill catalog and cache-preserving design.",
+    "The worktree is shared and dirty; only owned_files may be modified."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Developer-context initial catalog and progressive disclosure inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Live discovery, visibility overrides, and skill lifecycle inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Exact-prefix caching motivates append-only deltas."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "provider/anthropic.go",
+    "provider/openai.go",
+    "provider/responses.go",
+    "loop/query.go",
+    "provider/openai_usage.go"
+  ],
+  "owned_files": [
+    "loop/skill_cache_acceptance_task27_test.go",
+    "provider/skill_cache_request_shape_task27_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Compare serialized request sequences byte-for-byte up to the prior prefix.",
+      "Assert unchanged system blocks, tools, model settings, and PromptCacheKey.",
+      "Assert no-change yields zero delta and Responses incremental paths send only appended items.",
+      "Add bounded benchmarks for large catalogs."
+    ],
+    "exclude": [
+      "Do not claim real vendor cache-hit percentages from local tests.",
+      "Do not modify production code."
+    ]
+  },
+  "implementation_steps": [
+    "Capture initial, unchanged, add, update, revoke, and compact request shapes.",
+    "Calculate stable-prefix length and appended bytes.",
+    "Benchmark rendering/diffing at representative catalog sizes."
+  ],
+  "deliverables": [
+    "loop/skill_cache_acceptance_task27_test.go",
+    "provider/skill_cache_request_shape_task27_test.go"
+  ],
+  "acceptance_criteria": [
+    "Pre-compact catalog changes preserve the entire prior request prefix.",
+    "Only delta and current user content are new.",
+    "Compact is explicitly reported as a one-time prefix rebuild.",
+    "Results are labeled cacheability evidence, not provider billing evidence."
+  ],
+  "verification": [
+    "go test ./loop ./provider -run 'SkillCache|Cache.*SkillCatalog' -count=1",
+    "go test ./loop ./provider -run '^$' -bench 'SkillCatalog' -benchmem"
+  ],
+  "risks": [],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Add cacheability/request-shape acceptance tests and benchmarks only. Prove stable prefix behavior without claiming live provider cache-hit rates.",
+  "notes_for_assignee": "If verification exposes a defect in another owner's production file, report the exact failing test and owner task; do not patch across ownership boundaries."
+}

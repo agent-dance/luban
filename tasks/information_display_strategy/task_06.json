@@ -1,0 +1,48 @@
+{
+  "id": "task_06",
+  "title": "Implementation cost, sequencing, and adversarial risk estimate",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Estimate the engineering cost of bringing this project to the proposed display strategy and produce an evidence-based phased delivery plan with uncertainty ranges and pre-mortem risks.",
+  "scope": {
+    "include": [
+      "MVP, parity, and production-hardening scopes",
+      "Engineering, test, UX/accessibility, review, and stabilization effort",
+      "Dependencies, critical path, parallelizable work, regression risk, and rollback boundaries",
+      "Adversarial review of assumptions, alternatives, scale, reversibility, and likely failure modes"
+    ],
+    "exclude": [
+      "A false-precision single-point estimate",
+      "Calendar commitments without staffing assumptions",
+      "Implementation edits"
+    ]
+  },
+  "deliverables": [
+    "Low/base/high person-day estimates by workstream and phase",
+    "A dependency-aware implementation sequence and suggested ownership",
+    "Top risks, leading indicators, mitigations, and explicit estimate assumptions"
+  ],
+  "acceptance_criteria": [
+    "Estimates are tied to concrete repository touch points and test obligations",
+    "Ranges explain uncertainty rather than hiding it",
+    "Includes a do-nothing and minimal-change alternative"
+  ],
+  "owned_output": "tasks/information_display_strategy/_agent_reports/task_06.md",
+  "dependencies": [],
+  "parallelization": {
+    "independent": true,
+    "max_concurrency_group": 6,
+    "write_scope": [
+      "tasks/information_display_strategy/_agent_reports/task_06.md"
+    ]
+  },
+  "verification": [
+    "Reconcile estimates against repository size, current architecture, and existing test coverage",
+    "No edits outside owned_output"
+  ],
+  "result": {
+    "report": "tasks/information_display_strategy/_agent_reports/task_06.md",
+    "completed_at": "2026-07-15",
+    "summary": "Cumulative low/base/high cost model, dependency-aware lanes, critical path, alternatives, risks, and rollback boundaries."
+  }
+}

@@ -1,0 +1,9 @@
+[tool.poetry]
+name = "my-package"
+version = "1.0.0"
+description = "A package with invalid plugin spec"
+authors = ["Test Author <test@example.com>"]
+
+[tool.poetry.requires-plugins.foo]
+version = 123
+markers = 456

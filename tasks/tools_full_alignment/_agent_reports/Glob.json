@@ -1,0 +1,513 @@
+{
+  "tool": "Glob",
+  "summary": "Go Glob is close on the basic pattern/path surface and now uses ripgrep/doublestar-backed discovery, but it is not fully aligned with the TS reference in permission lifecycle wiring, file-read/plugin ignore integration, structured output shape and exact result text, cwd/session scoping, native/fallback sorting plus truncation order, strict schema/tool metadata, and timeout/buffer partial-result robustness. Existing Go tests cover many local helpers, but the Glob test baseline is stale in places and the current focused go test command is blocked before Glob execution by an unrelated compile error in prompt/context.go:82.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "GLOB-GAP-001",
+      "category": "permissions_lifecycle",
+      "severity": "P0",
+      "title": "Tool-level read permission and allowed-directory wiring are incomplete for Glob",
+      "description": "The TS Glob tool participates in the central permission lifecycle: it exposes getPath, validates the path, prepares permission matchers from the pattern, and delegates to checkReadPermissionForTool. The Go Glob tool is a stateless Execute-only tool; allowed search directory helpers exist, but SetupRegistry and UpdateSessionContext do not wire allowedDirs into search tools, and the generic Tool interface has no permission hook equivalent. In default runtime wiring, Glob can therefore search any os.Getwd-relative path unless tests manually set package globals.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:76-92",
+          "note": "Glob declares isConcurrencySafe, isReadOnly, getPath, and preparePermissionMatcher."
+        },
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:135-141",
+          "note": "Glob delegates permission decisions to checkReadPermissionForTool with appState.toolPermissionContext."
+        },
+        {
+          "path": "../src/utils/permissions/filesystem.ts:1030-1182",
+          "note": "Read permission checks enforce deny/ask/allow rules, working directories, and UNC/suspicious path gates."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "types/tools.go:24-44",
+          "note": "Go Tool only exposes Name, Description, Schema, and Execute; there is no permission lifecycle method."
+        },
+        {
+          "path": "registry_setup.go:135-142",
+          "note": "UpdateSessionContext applies allowedDirs only to FileRead/FileWrite/FileEdit, not Glob or Grep."
+        },
+        {
+          "path": "registry_setup.go:211-213",
+          "note": "SetupRegistry registers a bare &tools.GlobTool{} with no injected permission or allowed-dir state."
+        },
+        {
+          "path": "tools/glob_path_scope.go:25-29",
+          "note": "Allowed search dirs are package global state, but production wiring does not call SetAllowedSearchDirs."
+        }
+      ],
+      "impact": "Security and lifecycle parity gap: Glob may enumerate paths outside the intended working directory policy, and permission rule matching for Glob(pattern) is not represented.",
+      "candidate_task_ids": [
+        "GLOB-TASK-001"
+      ]
+    },
+    {
+      "id": "GLOB-GAP-002",
+      "category": "ignore_rules",
+      "severity": "P0",
+      "title": "File-read deny rules and orphaned plugin-cache exclusions are not wired like TS",
+      "description": "TS derives read-deny ignore patterns from the live tool permission context for every Glob invocation, normalizes them to the current searchDir, and adds them to ripgrep as negative --glob filters before results are collected. TS also computes session-scoped orphaned plugin-cache exclusions and adds them before running ripgrep. Go has filtering helpers and setters, but the setters are only used by tests in the searched code, and the main ripgrep path filters after collecting all results instead of passing exclusions into ripgrep.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/glob.ts:86-117",
+          "note": "TS normalizes file-read ignore patterns to searchDir and appends both read-deny and plugin-cache exclusions as --glob negatives before ripgrep runs."
+        },
+        {
+          "path": "../src/utils/permissions/filesystem.ts:800-851",
+          "note": "TS builds read-deny ignore patterns from ToolPermissionContext roots and normalizes them per search root."
+        },
+        {
+          "path": "../src/utils/plugins/orphanedPluginFilter.ts:25-88",
+          "note": "Plugin-cache exclusions are session-scoped, overlap-aware, and best-effort."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/search.go:606-614",
+          "note": "Go filters file-read ignored absolutePaths after ripgrep has already returned all paths, then truncates."
+        },
+        {
+          "path": "tools/search_file_read_ignore.go:28-45",
+          "note": "SetFileReadIgnorePatterns exists as package-global state, but rg shows only tests call it."
+        },
+        {
+          "path": "tools/search_file_read_ignore.go:121-135",
+          "note": "SetOrphanedPluginCacheExclusions exists, but rg found no production call site."
+        },
+        {
+          "path": "registry_setup.go:168-213",
+          "note": "SetupRegistry constructs and registers Glob without loading file-read deny patterns or plugin-cache exclusions."
+        }
+      ],
+      "impact": "Denied or orphaned paths can be enumerated in normal runtime wiring and can consume result slots/buffer before post-filtering.",
+      "candidate_task_ids": [
+        "GLOB-TASK-002"
+      ]
+    },
+    {
+      "id": "GLOB-GAP-003",
+      "category": "output_contract",
+      "severity": "P1",
+      "title": "Structured output data and exact tool_result text do not match TS",
+      "description": "TS Glob has an explicit output schema with durationMs, numFiles, filenames, and truncated, and call() returns that object as data. The mapper then emits exact model-facing text: 'No files found' for empty results, or filenames plus a fixed truncation sentence. Go returns a plain ToolResult.Content string plus string Metadata keys with different names, and its empty/truncation text differs from TS.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:39-51",
+          "note": "TS outputSchema defines durationMs, numFiles, filenames, and truncated."
+        },
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:167-175",
+          "note": "TS call returns { data: output } with the structured output object."
+        },
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:177-195",
+          "note": "TS maps empty results to 'No files found' and truncated results to a fixed sentence without the numeric limit."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "types/tools.go:58-68",
+          "note": "Go ToolResult has string Content plus optional ContentBlocks and string Metadata, not a typed Glob output data object."
+        },
+        {
+          "path": "tools/search.go:117-138",
+          "note": "Go writes metadata keys matched_count/truncated/max_results/duration_ms, emits 'No files found matching pattern.', and appends a numeric truncation sentence after a blank line."
+        },
+        {
+          "path": "tools/file_read_blocks.go:21-26",
+          "note": "Glob ContentBlocks currently use generic text blocks, so the block is structured transport but not TS Glob's structured output data."
+        }
+      ],
+      "impact": "Downstream renderers, tests, replay fixtures, and model-visible text cannot rely on the same field names or exact content as TS.",
+      "candidate_task_ids": [
+        "GLOB-TASK-003"
+      ]
+    },
+    {
+      "id": "GLOB-GAP-004",
+      "category": "runtime_ordering_truncation",
+      "severity": "P1",
+      "title": "Native/fallback paths do not sort the full candidate set before truncation",
+      "description": "TS relies on ripgrep --sort=modified, converts all returned paths to absolute paths, then applies offset/limit slicing. Go's normal ripgrep path mostly follows this, but the doublestar native path walks in filesystem order, filters, and truncates before Execute sorts the already-capped display paths. The explicit fallback path sorts newest-first and truncates before the final Execute sort. This changes which 100 files are returned when the native/fallback path has more than defaultGlobLimit matches.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/glob.ts:91-107",
+          "note": "TS calls ripgrep with --files, --glob, --sort=modified, --no-ignore, and --hidden."
+        },
+        {
+          "path": "../src/utils/glob.ts:119-128",
+          "note": "TS converts all ripgrep results to absolute paths, computes truncated, then slices offset..offset+limit."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/glob_pattern_compat.go:156-198",
+          "note": "Doublestar native matching appends walk-order matches and truncates before formatting; no full mtime sort happens before the cap."
+        },
+        {
+          "path": "tools/search_fallback.go:71-80",
+          "note": "Fallback sorts by ModTime descending and truncates before returning to GlobTool.Execute."
+        },
+        {
+          "path": "tools/search.go:111-115",
+          "note": "Execute sorts only the already-returned slice, after native/fallback truncation has already selected the subset."
+        }
+      ],
+      "impact": "Large char-class searches or rg-unavailable fallback searches can return the wrong limited result set and unstable ordering relative to TS.",
+      "candidate_task_ids": [
+        "GLOB-TASK-004"
+      ]
+    },
+    {
+      "id": "GLOB-GAP-005",
+      "category": "state_lifecycle",
+      "severity": "P1",
+      "title": "CWD scoping is process-global in Go but async-context-scoped in TS",
+      "description": "TS getCwd is backed by AsyncLocalStorage and AgentTool wraps worktree/explicit-cwd execution with runWithCwdOverride, so Glob's default path and output relativization follow the current agent context. Go Glob resolves the default search root and display paths with os.Getwd. SetupRegistry has RuntimeScope and UpdateSessionContext, but GlobTool receives neither, so concurrent agent/worktree execution cannot provide a per-invocation cwd without changing the whole process directory.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/cwd.ts:4-20",
+          "note": "getCwd uses AsyncLocalStorage overrides before falling back to global cwd state."
+        },
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:88-90",
+          "note": "GlobTool.getPath defaults to getCwd when path is omitted."
+        },
+        {
+          "path": "../src/tools/AgentTool/AgentTool.tsx:638-641",
+          "note": "AgentTool wraps execution in runWithCwdOverride for explicit cwd or worktree isolation."
+        },
+        {
+          "path": "../src/tools/AgentTool/resumeAgent.ts:227-232",
+          "note": "Resumed worktree agents also run inside runWithCwdOverride."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/search.go:718-759",
+          "note": "resolveGlobSearchRoot uses os.Getwd for omitted path and path-not-found messages."
+        },
+        {
+          "path": "tools/search.go:1021-1037",
+          "note": "formatSearchDisplayPath relativizes results against os.Getwd."
+        },
+        {
+          "path": "registry_setup.go:109-150",
+          "note": "UpdateSessionContext updates RuntimeScope, shell CWD, file allowed dirs, and managers, but has no Glob/Grep cwd state to update."
+        },
+        {
+          "path": "tools/search.go:41-67",
+          "note": "GlobTool is an empty struct with no CWD or scope resolver dependency."
+        }
+      ],
+      "impact": "Default Glob searches and relative output can point at the wrong root during session switches, worktree isolation, or concurrent agents.",
+      "candidate_task_ids": [
+        "GLOB-TASK-005"
+      ]
+    },
+    {
+      "id": "GLOB-GAP-006",
+      "category": "schema_and_tool_metadata",
+      "severity": "P2",
+      "title": "Strict input validation and TS tool metadata are not represented",
+      "description": "TS uses z.strictObject for Glob input and exposes searchHint, maxResultSizeChars, read-only, concurrency-safe, auto-classifier input, and search/read classification. Go's schema has matching top-level parameter names but no strict additional-properties behavior, parseInputOrError ignores unknown JSON fields, and the Tool interface/Glob implementation do not expose read-only/concurrency/search classifier metadata. registry/tool_visibility.go also does not provide a Glob searchHint fallback.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:26-35",
+          "note": "TS input is z.strictObject with pattern and optional path only."
+        },
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:57-87",
+          "note": "TS Glob declares searchHint, maxResultSizeChars, read-only, concurrency, auto-classifier input, and search/read classification."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/search.go:50-64",
+          "note": "Go Schema lists pattern and path but cannot express additionalProperties:false in the current JSONSchema type."
+        },
+        {
+          "path": "tools/helpers.go:22-39",
+          "note": "parseInputOrError uses json.Unmarshal into GlobInput, which ignores unknown fields by default."
+        },
+        {
+          "path": "types/tools.go:9-15",
+          "note": "Go JSONSchema has Type, Properties, Required, Description only."
+        },
+        {
+          "path": "registry/tool_visibility.go:17-44",
+          "note": "Builtin discovery metadata has entries for deferred tools, but no Glob searchHint equivalent."
+        }
+      ],
+      "impact": "Go accepts unsupported extra inputs and does not expose the same scheduling, classifier, discovery, or safety metadata as TS.",
+      "candidate_task_ids": [
+        "GLOB-TASK-006"
+      ]
+    },
+    {
+      "id": "GLOB-GAP-007",
+      "category": "robustness",
+      "severity": "P1",
+      "title": "Glob does not align ripgrep timeout and buffer-overflow partial-result behavior",
+      "description": "TS ripGrep returns partial lines when timeout or buffer overflow produced output, and only rejects no-output timeouts with a descriptive RipgrepTimeoutError. Go runRipgrep captures partial output in RipgrepTimeoutError, but GlobTool.Execute treats every returned error as a plain error response, discarding partials. Go's cappedBuffer also records dropped output, but runRipgrep and Glob do not propagate that as a truncation/partial condition.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/ripgrep.ts:411-456",
+          "note": "TS derives partial lines on timeout/buffer overflow, drops the possibly incomplete tail, rejects only empty timeouts, and otherwise resolves partial results."
+        },
+        {
+          "path": "../src/utils/ripgrep.ts:80-106",
+          "note": "TS defines max buffer size and a RipgrepTimeoutError carrying partialResults."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/search.go:831-845",
+          "note": "Go RipgrepTimeoutError carries Partial results."
+        },
+        {
+          "path": "tools/search.go:904-908",
+          "note": "runRipgrep fills Partial on context timeout."
+        },
+        {
+          "path": "tools/search.go:107-109",
+          "note": "GlobTool.Execute returns ErrorResponse(err) for all search errors, losing timeout partials."
+        },
+        {
+          "path": "tools/search_capped_buffer.go:16-27",
+          "note": "cappedBuffer records dropped writes, but runRipgrep returns only []string/error and does not expose dropped state to Glob."
+        }
+      ],
+      "impact": "Large or slow Glob searches can report a hard error or silently clipped output where TS would return usable partial matches or a clear timeout distinction.",
+      "candidate_task_ids": [
+        "GLOB-TASK-007"
+      ]
+    },
+    {
+      "id": "GLOB-GAP-008",
+      "category": "tests",
+      "severity": "P2",
+      "title": "Go Glob tests are stale/conflicting and current package verification is blocked",
+      "description": "The current test files contain stale comments claiming now-passing behavior must fail, and two Glob mtime tests assert opposite directions. The intended TS behavior is the source-level ripgrep --sort=modified plus post-ripgrep slicing path, so the Go tests need a single TS-replay expectation, plus coverage for native/fallback over-limit selection, permission wiring through SetupRegistry, structured output, and partial timeout behavior. A focused go test command for Glob currently fails before running tests because prompt/context.go refers to types.Message.IsMeta, which is absent from the current types.Message.",
+      "ts_evidence": [
+        {
+          "path": "../src/utils/glob.ts:91-128",
+          "note": "TS source establishes the reference ordering/truncation behavior for test assertions."
+        },
+        {
+          "path": "../src/tools/GlobTool/GlobTool.ts:39-51",
+          "note": "TS output schema establishes the reference structured output fields for tests."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/glob_alignment_test.go:1-11",
+          "note": "File header still says tests must fail and describes no metadata, but current GlobTool sets Metadata and ContentBlocks."
+        },
+        {
+          "path": "tools/glob_alignment_test.go:123-155",
+          "note": "One test expects oldest-first ordering."
+        },
+        {
+          "path": "tools/glob_conformance_test.go:288-330",
+          "note": "Another test expects newer-before-older ordering."
+        },
+        {
+          "path": "prompt/context.go:79-83",
+          "note": "Current go test ./tools build fails at msg.IsMeta before Glob tests can run."
+        }
+      ],
+      "impact": "Verification can give false confidence or fail before exercising Glob parity; implementation tasks need a cleaned test baseline to prove alignment.",
+      "candidate_task_ids": [
+        "GLOB-TASK-008"
+      ]
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "GLOB-TASK-001",
+      "title": "Wire Glob into read-permission and allowed-directory lifecycle",
+      "owned_files": [
+        "registry_setup.go",
+        "tools/search.go",
+        "tools/glob_path_scope.go",
+        "tools/glob_conformance_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "SetupRegistry and UpdateSessionContext configure search allowed directories for Glob/Grep from the same allowedDirs passed to file tools.",
+        "Glob rejects or permission-denies path roots outside allowedDirs in production registry wiring, not only when tests manually call SetAllowedSearchDirs.",
+        "Absolute-pattern base directories are checked against the same allowed root policy before ripgrep/native matching runs.",
+        "Tests cover allowed and denied roots via SetupRegistry or the runtime setup path."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestGlob.*Allowed|TestPathScope|TestGlob.*Permission' -count=1",
+        "go test ./... -run 'Test.*Allowed|Test.*Permission' -count=1"
+      ]
+    },
+    {
+      "id": "GLOB-TASK-002",
+      "title": "Wire file-read deny rules and plugin-cache exclusions into Glob searches",
+      "owned_files": [
+        "registry_setup.go",
+        "tools/search.go",
+        "tools/search_file_read_ignore.go",
+        "tools/m_search_web_ask_test.go",
+        "tools/glob_alignment_test.go"
+      ],
+      "dependencies": [
+        "GLOB-TASK-001 if permission context/allowed root plumbing is needed as the source of read deny rules"
+      ],
+      "acceptance": [
+        "Runtime setup populates file-read deny patterns from settings/permission context rather than relying on tests calling SetFileReadIgnorePatterns.",
+        "Runtime setup populates orphaned plugin-cache exclusions or an equivalent lazy/frozen session cache.",
+        "Ripgrep receives deny/plugin exclusions as negative --glob args before result collection where possible; post-filtering remains only as defense-in-depth.",
+        "Denied and orphaned paths do not consume the first 100 user-visible result slots."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestFileReadIgnore|TestGlob.*Ignore|TestGlob.*Plugin|TestGlobAlignment_TruncationSentinelInMetadata' -count=1"
+      ]
+    },
+    {
+      "id": "GLOB-TASK-003",
+      "title": "Align Glob structured output and exact model-facing result text",
+      "owned_files": [
+        "tools/search.go",
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/glob_alignment_test.go",
+        "tools/web_alignment_src_harness_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "Glob exposes TS-equivalent fields: filenames, durationMs, numFiles, and truncated, with TS names and types available to downstream consumers.",
+        "Empty result model text is exactly 'No files found'.",
+        "Truncation suffix is exactly '(Results are truncated. Consider using a more specific path or pattern.)'.",
+        "Metadata, if retained for Go internals, does not replace or rename the TS output contract."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestGlobAlignment_StructuredContentBlocks|TestGlobAlignment_MetadataMatchedCount|TestGlobAlignment_TruncationSentinelInMetadata|TestGlobToolNoMatches' -count=1"
+      ]
+    },
+    {
+      "id": "GLOB-TASK-004",
+      "title": "Normalize Glob ordering and limit selection across ripgrep, doublestar, and fallback",
+      "owned_files": [
+        "tools/search.go",
+        "tools/glob_pattern_compat.go",
+        "tools/search_fallback.go",
+        "tools/glob_sort_mtime.go",
+        "tools/glob_alignment_test.go",
+        "tools/glob_conformance_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "All Glob execution paths sort the full candidate set according to the TS reference before applying defaultGlobLimit.",
+        "The doublestar/native path for bracket patterns returns the same first 100 files as a TS/ripgrep reference fixture.",
+        "The rg-unavailable fallback path uses the same ordering direction and truncation point as TS reference behavior.",
+        "Conflicting mtime tests are replaced with one TS-backed expectation."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestGlob.*Mtime|TestGlob.*Bracket|TestGlob.*Fallback|TestGlob.*Limit' -count=1",
+        "CLAUDE_CODE_FORCE_SEARCH_FALLBACK=1 go test ./tools -run 'TestGlob.*Fallback|TestGlob.*Mtime' -count=1"
+      ]
+    },
+    {
+      "id": "GLOB-TASK-005",
+      "title": "Give Glob per-session/per-agent cwd state instead of os.Getwd-only behavior",
+      "owned_files": [
+        "registry_setup.go",
+        "tools/search.go",
+        "tools/search_path_helpers.go",
+        "tools/agent_cwd.go",
+        "tools/agent_test.go",
+        "tools/glob_conformance_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "GlobTool can resolve omitted path and display-relative paths from an injected runtime scope/current cwd.",
+        "UpdateSessionContext updates Glob/Grep cwd state along with Bash, PowerShell, and RuntimeScope.",
+        "Concurrent or nested agent/worktree tests prove one agent's Glob default cwd does not depend on process-global os.Chdir.",
+        "formatSearchDisplayPath no longer uses os.Getwd for Glob/Grep paths when a scoped cwd is available."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestGlob.*Cwd|TestAgent.*CWD|TestAgent.*Worktree' -count=1",
+        "go test ./... -run 'Test.*SessionContext|Test.*Worktree' -count=1"
+      ]
+    },
+    {
+      "id": "GLOB-TASK-006",
+      "title": "Align Glob input strictness and tool metadata",
+      "owned_files": [
+        "types/tools.go",
+        "tools/helpers.go",
+        "tools/search.go",
+        "registry/tool_visibility.go",
+        "tools/tool_search_alignment_test.go",
+        "tools/glob_alignment_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "Glob input rejects unknown fields or the Go schema/runtime provides the equivalent of TS z.strictObject.",
+        "Glob exposes read-only, concurrency-safe, search/read classification, auto-classifier input, max result size, and searchHint metadata through Go's tool metadata mechanism.",
+        "ToolSearch/discovery can rank Glob using the TS searchHint equivalent when relevant.",
+        "Tests cover unknown-field rejection and metadata discovery for Glob."
+      ],
+      "verification_commands": [
+        "go test ./tools ./registry -run 'TestGlob.*Schema|TestGlob.*Metadata|TestToolSearch.*Glob|Test.*UnknownField' -count=1"
+      ]
+    },
+    {
+      "id": "GLOB-TASK-007",
+      "title": "Align Glob timeout, partial-result, and stdout-cap behavior with TS ripGrep",
+      "owned_files": [
+        "tools/search.go",
+        "tools/search_capped_buffer.go",
+        "tools/search_capped_buffer_test.go",
+        "tools/glob_alignment_test.go",
+        "tools/search_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "When ripgrep times out after producing complete lines, Glob returns those partial lines instead of a hard error, matching TS ripGrep behavior.",
+        "When ripgrep times out with no output, Glob surfaces a clear timeout error rather than 'no files found'.",
+        "When stdout is capped/dropped, Glob drops incomplete trailing output and surfaces truncation/partial metadata instead of silently returning a clipped line.",
+        "Tests use a fake rg or controllable helper to cover timeout with output, timeout without output, and capped stdout."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestGlob.*Timeout|TestGlob.*Partial|TestCappedBuffer|TestRipgrepTimeoutError' -count=1"
+      ]
+    },
+    {
+      "id": "GLOB-TASK-008",
+      "title": "Clean and extend the Glob parity test baseline",
+      "owned_files": [
+        "tools/glob_alignment_test.go",
+        "tools/glob_conformance_test.go",
+        "tools/search_test.go",
+        "tools/search_path_helpers_test.go",
+        "tools/search_capped_buffer_test.go"
+      ],
+      "dependencies": [
+        "Fix the unrelated prompt/context.go:82 build blocker before package-level verification can run",
+        "GLOB-TASK-003 for final structured-output assertions",
+        "GLOB-TASK-004 for final mtime/order assertions"
+      ],
+      "acceptance": [
+        "Stale 'must fail' comments are removed or rewritten as current parity assertions.",
+        "Mtime expectations are unified against the TS reference behavior.",
+        "Tests cover SetupRegistry wiring, file-read/plugin exclusions, native bracket/extglob paths, over-limit truncation selection, empty/truncated exact text, strict input, cwd scoping, and timeout partials.",
+        "The focused Glob test command runs cleanly after the unrelated compile blocker is resolved."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestGlob|Test.*Glob|TestPathScope|TestFileReadIgnore|TestExpandTildePath|TestIsUNCPath|TestEnvFlagDefaultTrue|TestCappedBuffer' -count=1",
+        "go test ./tools -count=1"
+      ]
+    }
+  ]
+}

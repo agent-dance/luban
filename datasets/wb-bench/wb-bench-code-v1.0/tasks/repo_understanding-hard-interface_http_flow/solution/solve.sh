@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cat > analysis.json <<'JSON'
+{
+  "summary": "Feign 将带注解的 Java 接口解析为 MethodMetadata 和 RequestTemplate，通过 JDK Proxy 分派调用。同步链路由参数生成模板，应用拦截器和 Target 后交给 Client.execute，再由解码、错误解码和重试处理响应。",
+  "facts": [
+    {
+      "id": "builder_target",
+      "claim": "Feign.Builder.target(...) 会 build 出 Feign 实例并调用 newInstance；internalBuild 装好 ResponseHandler、SynchronousMethodHandler.Factory、RequestTemplateFactoryResolver，最后创建 ReflectiveFeign。",
+      "details": "这个阶段把 client、retryer、requestInterceptors、encoder/queryMapEncoder、decoder/errorDecoder 等运行时扩展点都塞进同步 method handler 工厂。",
+      "evidence": [
+        {"path": "core/src/main/java/feign/Feign.java", "line": 208},
+        {"path": "core/src/main/java/feign/Feign.java", "line": 217}
+      ]
+    },
+    {
+      "id": "contract_metadata",
+      "claim": "Contract.parseAndValidateMetadata 负责扫描目标接口方法，产出 MethodMetadata，其中包含 configKey、返回类型和 RequestTemplate；ReflectiveFeign 先对 target.type() 调用这个解析结果。",
+      "details": "BaseContract 会跳过 Object/static/default/FeignIgnore 方法，再解析方法注解和参数注解，写入 MethodMetadata。",
+      "evidence": [
+        {"path": "core/src/main/java/feign/Contract.java", "line": 49},
+        {"path": "core/src/main/java/feign/Contract.java", "line": 91},
+        {"path": "core/src/main/java/feign/ReflectiveFeign.java", "line": 140}
+      ]
+    },
+    {
+      "id": "proxy_dispatch",
+      "claim": "ReflectiveFeign.newInstance 使用 Proxy.newProxyInstance 创建接口 proxy，并用 FeignInvocationHandler 的 dispatch 表把普通接口方法转给对应 MethodHandler.invoke。",
+      "details": "equals/hashCode/toString 被特殊处理，其他没有在 dispatch 中的接口方法会抛 UnsupportedOperationException。",
+      "evidence": [
+        {"path": "core/src/main/java/feign/ReflectiveFeign.java", "line": 55},
+        {"path": "core/src/main/java/feign/ReflectiveFeign.java", "line": 75},
+        {"path": "core/src/main/java/feign/ReflectiveFeign.java", "line": 86}
+      ]
+    },
+    {
+      "id": "template_from_args",
+      "claim": "RequestTemplateFactoryResolver 根据 MethodMetadata 选择普通模板、form 编码模板或 body 编码模板；create(argv) 会复制元数据模板、绑定 Target、解析参数名、queryMap/headerMap/bodyIndex 并 resolve 成 RequestTemplate。",
+      "details": "带 body 或 alwaysEncodeBody 的方法会走 BuildEncodedTemplateFromArgs，并通过 Encoder.encode 把 body 写入模板。",
+      "evidence": [
+        {"path": "core/src/main/java/feign/RequestTemplateFactoryResolver.java", "line": 40},
+        {"path": "core/src/main/java/feign/RequestTemplateFactoryResolver.java", "line": 85},
+        {"path": "core/src/main/java/feign/RequestTemplateFactoryResolver.java", "line": 256}
+      ]
+    },
+    {
+      "id": "interceptor_and_target",
+      "claim": "SynchronousMethodHandler.targetRequest 先逐个调用 RequestInterceptor.apply 修改 RequestTemplate，再调用 Target.apply 把模板变成最终 Request；HardCodedTarget 会在需要时补目标 URL。",
+      "details": "这说明请求拦截器运行在参数模板已生成之后、Client.execute 之前。",
+      "evidence": [
+        {"path": "core/src/main/java/feign/SynchronousMethodHandler.java", "line": 147},
+        {"path": "core/src/main/java/feign/Target.java", "line": 64},
+        {"path": "core/src/main/java/feign/Target.java", "line": 99}
+      ]
+    },
+    {
+      "id": "client_execute",
+      "claim": "同步执行阶段由 SynchronousMethodHandler.executeAndDecode 调 Client.execute(request, options) 发送 Request 并拿到 Response；Client 接口定义 execute 负责按 Request.url 和 Options 执行。",
+      "details": "返回的 Response 会补上 request 和 requestTemplate 后再交给响应处理链。",
+      "evidence": [
+        {"path": "core/src/main/java/feign/SynchronousMethodHandler.java", "line": 103},
+        {"path": "core/src/main/java/feign/SynchronousMethodHandler.java", "line": 119},
+        {"path": "core/src/main/java/feign/Client.java", "line": 33}
+      ]
+    },
+    {
+      "id": "decode_error_retry",
+      "claim": "SynchronousMethodHandler.runWithRetry 会 clone Retryer 并捕获 RetryableException 决定是否继续；成功拿到 Response 后由 ResponseHandler 携带 Decoder 和 ErrorDecoder 处理返回值或错误。",
+      "details": "Decoder 处理 2xx 且非 void/Response 的返回类型，ErrorDecoder 处理非 2xx，并可返回 RetryableException 参与重试。",
+      "evidence": [
+        {"path": "core/src/main/java/feign/SynchronousMethodHandler.java", "line": 68},
+        {"path": "core/src/main/java/feign/ResponseHandler.java", "line": 65},
+        {"path": "core/src/main/java/feign/codec/Decoder.java", "line": 70},
+        {"path": "core/src/main/java/feign/codec/ErrorDecoder.java", "line": 61},
+        {"path": "core/src/main/java/feign/Retryer.java", "line": 27}
+      ]
+    }
+  ],
+  "request_flow": [
+    "Feign.builder().target(api, url)",
+    "Builder.internalBuild 创建 ReflectiveFeign 和同步 MethodHandler.Factory",
+    "ReflectiveFeign 用 Contract 解析接口为 MethodMetadata，再为每个方法建 MethodHandler",
+    "JDK Proxy 收到接口方法调用后由 InvocationHandler 查 dispatch 并调用 MethodHandler",
+    "SynchronousMethodHandler 从 argv 构造 RequestTemplate，应用方法拦截器和请求拦截器",
+    "Target.apply 把模板变成 Request，Client.execute 发送请求",
+    "ResponseHandler 使用 Decoder/ErrorDecoder 处理响应，Retryer 处理 RetryableException"
+  ],
+  "extension_points": [
+    "Contract",
+    "Client",
+    "Encoder",
+    "Decoder",
+    "ErrorDecoder",
+    "Retryer",
+    "RequestInterceptor",
+    "MethodInterceptor",
+    "ResponseInterceptor",
+    "Capability",
+    "Logger"
+  ]
+}
+JSON

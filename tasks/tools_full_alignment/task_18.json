@@ -1,0 +1,443 @@
+{
+  "id": "task_18",
+  "title": "Align ListMcpResourcesTool tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all ListMcpResourcesTool improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "ListMcpResourcesTool"
+    ],
+    "problem": "Go ListMcpResourcesTool has the same canonical name, a compatible visible server parameter, concurrency-safe marking, and deferred-discovery metadata, but it is not behaviorally aligned with the TS reference. The largest gaps are runtime logic and output contract: Go's all-server path lists configured servers and cached tools instead of resources, the cached connected-server path can return tools without calling resources/list, and the real resources/list path returns a raw MCP envelope rather than the TS flat resource array with an injected server field. Go also lacks TS-equivalent capabilities gating, non-connected client-state semantics, per-server failure isolation, resource cache/reconnect/list_changed lifecycle, read-only/result-size metadata, and focused parity tests.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/ListMcpResourcesTool.json"
+    ],
+    "ts_references": [
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:66-100",
+      "../src/tools/ListMcpResourcesTool/prompt.ts:17-19",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:25-35",
+      "../src/services/mcp/client.ts:2009-2020",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:108-121",
+      "../src/tools/ListMcpResourcesTool/UI.tsx:25-27",
+      "../src/services/mcp/types.ts:180-229",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:84-93",
+      "../src/services/mcp/useManageMCPConnections.ts:293-315",
+      "../src/services/mcp/client.ts:2000-2027",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:84-95",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:79-83",
+      "../src/services/mcp/client.ts:1373-1397",
+      "../src/services/mcp/client.ts:1675-1704",
+      "../src/services/mcp/useManageMCPConnections.ts:705-742",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:40-53",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:60-65",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:105-107",
+      "../src/Tool.ts:400-466",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:15-21",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:66-70",
+      "../src/tools/ListMcpResourcesTool/ListMcpResourcesTool.ts:79-99"
+    ],
+    "go_references": [
+      "tools/mcp_tools.go:752-772",
+      "tools/mcp_tools.go:781-794",
+      "tools/mcp_tools.go:418-430",
+      "tools/mcp_tools_test.go:539-558",
+      "types/tools.go:58-68",
+      "tools/mcp_tools.go:761-772",
+      "tools/mcp_tools.go:822-837",
+      "tools/mcp_parity_contract_test.go:230-239",
+      "tools/mcp_tools.go:184-190",
+      "tools/mcp_tools.go:388-421",
+      "tools/mcp_tools.go:797-805",
+      "registry_setup.go:289-295",
+      "tools/mcp_tools.go:822-832",
+      "mcp/mcp.go:158-170",
+      "mcp/mcp.go:265-276",
+      "services/mcp/client.go:434-441",
+      "services/mcp/client.go:535-553",
+      "tools/mcp_notifications.go:22-24",
+      "tools/mcp_notifications.go:68-90",
+      "tools/mcp_notifications.go:99-120",
+      "tools/mcp_tools.go:736-837",
+      "tools/mcp_tools.go:717-733",
+      "types/tools.go:24-44",
+      "registry/tool_visibility.go:27-30",
+      "tools/tools-architecture.md:518-527",
+      "tools/tools-architecture.md:562-566",
+      "tools/mcp_tools.go:724-733",
+      "tools/parse.go:300-304",
+      "tools/mcp_tools.go:742-745",
+      "tools/mcp_tools_test.go:811-818",
+      "tools/mcp_tools_test.go:525-587",
+      "tools/mcp_tools_test.go:589-624",
+      "tools/mcp_parity_contract_test.go:206-253",
+      "tools/mcp_tools_alignment_test.go:153-210",
+      "tools/mcp_tools.go",
+      "tools/mcp_tools_test.go",
+      "tools/mcp_parity_contract_test.go",
+      "mcp/mcp.go",
+      "mcp/sse.go",
+      "services/mcp/client.go",
+      "tools/mcp_notifications.go",
+      "tools/mcp_notifications_test.go",
+      "mcp/reconnect.go",
+      "mcp/lifecycle.go",
+      "types/tools.go",
+      "registry/tool_visibility.go",
+      "loop/query.go",
+      "tools/tools-architecture.md",
+      "tools/parse.go",
+      "tools/mcp_tools_alignment_test.go"
+    ],
+    "source_note": ""
+  },
+  "owned_files": [
+    "tools/mcp_tools.go",
+    "tools/mcp_tools_test.go",
+    "tools/mcp_parity_contract_test.go",
+    "mcp/mcp.go",
+    "mcp/sse.go",
+    "services/mcp/client.go",
+    "tools/mcp_notifications.go",
+    "tools/mcp_notifications_test.go",
+    "mcp/reconnect.go",
+    "mcp/lifecycle.go",
+    "types/tools.go",
+    "registry/tool_visibility.go",
+    "loop/query.go",
+    "tools/tools-architecture.md",
+    "tools/parse.go",
+    "tools/mcp_tools_alignment_test.go",
+    "tools/mcp_tools.go:752-772",
+    "tools/mcp_tools.go:781-794",
+    "tools/mcp_tools.go:418-430",
+    "tools/mcp_tools_test.go:539-558",
+    "types/tools.go:58-68",
+    "tools/mcp_tools.go:761-772",
+    "tools/mcp_tools.go:822-837",
+    "tools/mcp_parity_contract_test.go:230-239",
+    "tools/mcp_tools.go:184-190",
+    "tools/mcp_tools.go:388-421",
+    "tools/mcp_tools.go:797-805",
+    "registry_setup.go:289-295",
+    "tools/mcp_tools.go:822-832",
+    "mcp/mcp.go:158-170",
+    "mcp/mcp.go:265-276",
+    "services/mcp/client.go:434-441",
+    "services/mcp/client.go:535-553",
+    "tools/mcp_notifications.go:22-24",
+    "tools/mcp_notifications.go:68-90",
+    "tools/mcp_notifications.go:99-120",
+    "tools/mcp_tools.go:736-837",
+    "tools/mcp_tools.go:717-733",
+    "types/tools.go:24-44",
+    "registry/tool_visibility.go:27-30",
+    "tools/tools-architecture.md:518-527",
+    "tools/tools-architecture.md:562-566",
+    "tools/mcp_tools.go:724-733",
+    "tools/parse.go:300-304",
+    "tools/mcp_tools.go:742-745",
+    "tools/mcp_tools_test.go:811-818",
+    "tools/mcp_tools_test.go:525-587",
+    "tools/mcp_tools_test.go:589-624",
+    "tools/mcp_parity_contract_test.go:206-253",
+    "tools/mcp_tools_alignment_test.go:153-210"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "LMR-GAP-001",
+      "severity": "P0",
+      "category": "runtime_logic",
+      "title": "All-server and cached-connected paths list tools/configs instead of MCP resources",
+      "description": "TS ListMcpResourcesTool always works in terms of MCP resources: without a server it processes all current MCP clients and returns resources from all connected clients; with a server it filters to that server and fetches its resources. Go's no-server path only prints configured server names and cached tools. Go's specific-server path also returns cached tools whenever a ready connection has any tool cache, which is the normal production state after Connect() calls tools/list, so a server with both tools and resources can never reach resources/list through that branch."
+    },
+    {
+      "id": "LMR-GAP-002",
+      "severity": "P0",
+      "category": "output_contract",
+      "title": "Go returns prose or a raw resources envelope instead of the TS flat resource array with server fields",
+      "description": "TS declares the output as an array of resource objects containing uri, name, optional mimeType, optional description, and required server. fetchResourcesForClient injects server into each resource, and mapToolResultToToolResultBlockParam serializes the array itself. Go returns plain prose for listAll/cached paths and returns the raw MCP result object {\"resources\":[...]} for real resources/list. The raw envelope omits the TS-injected server field and changes the top-level JSON shape from array to object."
+    },
+    {
+      "id": "LMR-GAP-003",
+      "severity": "P1",
+      "category": "state_lifecycle",
+      "title": "Go does not model TS connected/failed/needs-auth/pending/disabled client states for resource listing",
+      "description": "TS receives a runtime mcpClients array whose union type includes connected, failed, needs-auth, pending, and disabled clients. ListMcpResourcesTool only fetches from connected clients; non-connected clients contribute an empty list, and a target server that exists but is not connected does not force a fresh spawn from config inside the tool. Go MCPManager tracks only configs plus ready connections, so listOne attempts Connect() for a configured server and returns IsError when connection or tools/list fails. That is a broader lifecycle side effect and a different model-visible result."
+    },
+    {
+      "id": "LMR-GAP-004",
+      "severity": "P1",
+      "category": "robustness",
+      "title": "Capabilities gating and per-server failure isolation are incomplete",
+      "description": "TS only calls resources/list when a connected client advertises capabilities.resources, and any resources/list error is logged and converted to an empty result so one bad server does not sink the whole list. Go's tool-layer path has no resource capability check; it calls resources/list directly and returns IsError on failure. The lower-level Go services/mcp client has structured capabilities and resource types, but ListMcpResourcesTool uses the older mcp.Client surface that does not retain initialize capabilities."
+    },
+    {
+      "id": "LMR-GAP-005",
+      "severity": "P1",
+      "category": "state_lifecycle",
+      "title": "Resource cache, reconnect, and resources/list_changed semantics do not match TS",
+      "description": "TS documents and implements an LRU resource cache keyed by server name, warmed during MCP startup, invalidated on connection close and resources/list_changed notifications, and refreshed via ensureConnectedClient before listing. Go currently has no resource cache for ListMcpResourcesTool, and the resources/list_changed handler only sets an informational dirty flag that the tool does not consume. Go also lacks an onclose-driven resource cache invalidation path equivalent to TS because the tool path is not backed by the same cached resource fetch layer."
+    },
+    {
+      "id": "LMR-GAP-006",
+      "severity": "P1",
+      "category": "schema_and_metadata",
+      "title": "Read-only, result-size, output-schema, and classifier metadata are not represented at the Go tool boundary",
+      "description": "The TS tool declares isReadOnly=true, shouldDefer=true, a searchHint, maxResultSizeChars=100000, outputSchema, toAutoClassifierInput, and isResultTruncated. Go marks concurrency safe and has registry-level deferred metadata, but the core Tool interface has no read-only hook, output schema, per-tool max result size, result truncation predicate, or auto-classifier input. This is partly framework-wide, but it directly affects ListMcpResourcesTool parity because TS treats this as a read-only, bounded, structured-output discovery tool."
+    },
+    {
+      "id": "LMR-GAP-007",
+      "severity": "P2",
+      "category": "schema",
+      "title": "Go accepts a non-TS server_name alias that is not advertised in the schema",
+      "description": "TS exposes and consumes only the optional server field. Go's JSON schema also advertises only server, but parseInput accepts server_name and Execute falls back to it. This may be intentional backward compatibility with older Go tests, but it is not a TS surface and the alias is hidden from the schema, making behavior harder to reason about."
+    },
+    {
+      "id": "LMR-GAP-008",
+      "severity": "P1",
+      "category": "testing",
+      "title": "Current Go tests miss the TS-critical ListMcpResources behaviors and lock in Go-specific behavior",
+      "description": "The existing Go tests cover metadata, no-server text, server-name listing, a single-server resources/list happy path only when no tools are cached, and unknown-server IsError. They do not assert all-server resource aggregation, flat array output, injected server fields, the production cached-tools branch, capabilities gating, per-server failure isolation, TS empty-state tool result content, or absence/handling of the server_name alias. The current parity contract also asserts a raw resources envelope, which conflicts with the TS output schema."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "LMR-TASK-001",
+      "title": "Align ListMcpResourcesTool resource enumeration and output contract",
+      "priority": "P0",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "tools/mcp_tools.go",
+        "tools/mcp_tools_test.go",
+        "tools/mcp_parity_contract_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Calling ListMcpResourcesTool with no server aggregates resources from all applicable connected/resource-capable servers instead of printing configured server names or tool caches.",
+        "Calling it with a specific server calls resources/list even when conn.tools is populated.",
+        "Model-facing Content is a JSON array matching TS output shape: each item has uri, name, optional mimeType, optional description, and server.",
+        "Empty resource results map to the TS no-resources semantics rather than 'No MCP servers registered.' or '(no tools cached)'.",
+        "Existing ReadMcpResourceTool behavior is not regressed."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestListMcpResourcesTool|TestMCPParityContractTSResourcesListAndReadPreserveEnvelopes' -count=1",
+        "go test ./mcp ./services/mcp -run 'Test.*ListResources|TestMCPParityContract' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "LMR-TASK-002",
+      "title": "Add TS-equivalent MCP resource capability and client-state handling",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [
+        "LMR-TASK-001"
+      ],
+      "owned_files": [
+        "tools/mcp_tools.go",
+        "mcp/mcp.go",
+        "mcp/sse.go",
+        "services/mcp/client.go",
+        "tools/mcp_tools_test.go",
+        "tools/mcp_parity_contract_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "MCPServerConn or the client layer retains initialize server capabilities needed to determine resources support.",
+        "Servers without capabilities.resources contribute [] instead of receiving a resources/list call.",
+        "All-server listing isolates failures per server and still returns resources from healthy servers.",
+        "A target server that exists but is failed/needs-auth/pending/disabled does not cause an opportunistic process start from ListMcpResourcesTool; behavior is documented and tested against the TS state model.",
+        "Unknown target server still returns a clear error with available server names."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestListMcpResourcesTool_(Capabilities|NonConnected|FailureIsolation|UnknownServer)' -count=1",
+        "go test ./mcp ./services/mcp -run 'Test.*Initialize.*Capabilities|Test.*ListResources' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "LMR-TASK-003",
+      "title": "Implement resource cache, reconnect, and resources/list_changed lifecycle parity",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [
+        "LMR-TASK-001",
+        "LMR-TASK-002"
+      ],
+      "owned_files": [
+        "tools/mcp_tools.go",
+        "tools/mcp_notifications.go",
+        "tools/mcp_notifications_test.go",
+        "tools/mcp_parity_contract_test.go",
+        "mcp/reconnect.go",
+        "mcp/lifecycle.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Resource listings are cached per server only when that preserves TS freshness semantics.",
+        "notifications/resources/list_changed invalidates or refreshes the affected server resource cache and the tool consumes that invalidation.",
+        "Closed or unhealthy connections trigger reconnect/refetch before returning cached resource data.",
+        "One server's reconnect or refresh failure logs/returns empty for that server without failing aggregate listing.",
+        "No stale resource list is returned after a tested resources/list_changed notification."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestMCPNotificationResourcesListChanged|TestMCPParityContractTSListChangedInvalidatesToolAndResourceCatalogs|TestListMcpResourcesTool_.*(Cache|Changed|Reconnect)' -count=1",
+        "go test ./mcp -run 'Test.*Reconnect|Test.*Lifecycle' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "LMR-TASK-004",
+      "title": "Expose ListMcpResourcesTool read-only and result-budget metadata",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "loop/query.go",
+        "tools/mcp_tools.go",
+        "tools/mcp_tools_test.go",
+        "tools/tools-architecture.md"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "ListMcpResourcesTool can be identified as read-only by the Go permission/risk layer.",
+        "ListMcpResourcesTool has a per-tool result-size cap equivalent to TS maxResultSizeChars=100000, or the framework has an explicit documented equivalent.",
+        "The tool exposes enough output metadata/tests to assert the TS flat resource-array shape.",
+        "Deferred discovery metadata remains present with a search hint at least as specific as the TS hint.",
+        "Existing concurrency behavior remains true."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./loop -run 'TestListMcpResourcesTool_Metadata|TestToolSearch.*ListMcpResources|Test.*ReadOnly|Test.*Result.*Budget' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "LMR-TASK-005",
+      "title": "Resolve the non-TS server_name input alias",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "LMR-TASK-001"
+      ],
+      "owned_files": [
+        "tools/mcp_tools.go",
+        "tools/parse.go",
+        "tools/mcp_tools_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "The JSON schema remains TS-compatible with optional server only.",
+        "If server_name is removed, parsing/tests no longer encourage it.",
+        "If server_name is retained, tests document it as a legacy hidden alias and all model-facing examples use server.",
+        "Invalid non-string server inputs produce stable tool-level errors."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestListMcpResourcesInput|TestListMcpResourcesTool_Metadata|TestListMcpResourcesTool_InvalidInput' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "LMR-TASK-006",
+      "title": "Add focused TS parity tests for ListMcpResourcesTool",
+      "priority": "P1",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "tools/mcp_tools_test.go",
+        "tools/mcp_parity_contract_test.go",
+        "tools/mcp_tools_alignment_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Tests assert all-server resource aggregation from at least two servers.",
+        "Tests assert specific-server listing calls resources/list even when tools are cached.",
+        "Tests assert top-level output is a JSON array and every resource includes server.",
+        "Tests assert servers without resources capability contribute [] without resources/list calls.",
+        "Tests assert one failing server does not fail aggregate listing.",
+        "Tests assert empty output and unknown-server behavior match the chosen TS-compatible contract.",
+        "Tests cover the server vs server_name input-surface decision."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestListMcpResourcesTool|TestMCPParityContractTSResourcesListAndReadPreserveEnvelopes' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    }
+  ],
+  "acceptance_criteria": [
+    "ListMcpResourcesTool input validation and schema behavior match the original TS implementation for all report gaps.",
+    "ListMcpResourcesTool model-visible output and structured result data match TS golden fixtures.",
+    "ListMcpResourcesTool runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "Calling ListMcpResourcesTool with no server aggregates resources from all applicable connected/resource-capable servers instead of printing configured server names or tool caches.",
+    "Calling it with a specific server calls resources/list even when conn.tools is populated.",
+    "Model-facing Content is a JSON array matching TS output shape: each item has uri, name, optional mimeType, optional description, and server.",
+    "Empty resource results map to the TS no-resources semantics rather than 'No MCP servers registered.' or '(no tools cached)'.",
+    "Existing ReadMcpResourceTool behavior is not regressed.",
+    "MCPServerConn or the client layer retains initialize server capabilities needed to determine resources support.",
+    "Servers without capabilities.resources contribute [] instead of receiving a resources/list call.",
+    "All-server listing isolates failures per server and still returns resources from healthy servers.",
+    "A target server that exists but is failed/needs-auth/pending/disabled does not cause an opportunistic process start from ListMcpResourcesTool; behavior is documented and tested against the TS state model.",
+    "Unknown target server still returns a clear error with available server names.",
+    "Resource listings are cached per server only when that preserves TS freshness semantics.",
+    "notifications/resources/list_changed invalidates or refreshes the affected server resource cache and the tool consumes that invalidation.",
+    "Closed or unhealthy connections trigger reconnect/refetch before returning cached resource data.",
+    "One server's reconnect or refresh failure logs/returns empty for that server without failing aggregate listing.",
+    "No stale resource list is returned after a tested resources/list_changed notification.",
+    "ListMcpResourcesTool can be identified as read-only by the Go permission/risk layer.",
+    "ListMcpResourcesTool has a per-tool result-size cap equivalent to TS maxResultSizeChars=100000, or the framework has an explicit documented equivalent.",
+    "The tool exposes enough output metadata/tests to assert the TS flat resource-array shape.",
+    "Deferred discovery metadata remains present with a search hint at least as specific as the TS hint.",
+    "Existing concurrency behavior remains true.",
+    "The JSON schema remains TS-compatible with optional server only.",
+    "If server_name is removed, parsing/tests no longer encourage it.",
+    "If server_name is retained, tests document it as a legacy hidden alias and all model-facing examples use server.",
+    "Invalid non-string server inputs produce stable tool-level errors."
+  ],
+  "verification": [
+    "go test ./tools -run 'TestListMcpResourcesTool|TestMCPParityContractTSResourcesListAndReadPreserveEnvelopes' -count=1",
+    "go test ./mcp ./services/mcp -run 'Test.*ListResources|TestMCPParityContract' -count=1",
+    "go test ./tools -run 'TestListMcpResourcesTool_(Capabilities|NonConnected|FailureIsolation|UnknownServer)' -count=1",
+    "go test ./mcp ./services/mcp -run 'Test.*Initialize.*Capabilities|Test.*ListResources' -count=1",
+    "go test ./tools -run 'TestMCPNotificationResourcesListChanged|TestMCPParityContractTSListChangedInvalidatesToolAndResourceCatalogs|TestListMcpResourcesTool_.*(Cache|Changed|Reconnect)' -count=1",
+    "go test ./mcp -run 'Test.*Reconnect|Test.*Lifecycle' -count=1",
+    "go test ./tools ./registry ./loop -run 'TestListMcpResourcesTool_Metadata|TestToolSearch.*ListMcpResources|Test.*ReadOnly|Test.*Result.*Budget' -count=1",
+    "go test ./tools -run 'TestListMcpResourcesInput|TestListMcpResourcesTool_Metadata|TestListMcpResourcesTool_InvalidInput' -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

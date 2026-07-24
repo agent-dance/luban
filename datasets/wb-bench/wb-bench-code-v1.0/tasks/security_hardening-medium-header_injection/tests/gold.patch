@@ -1,0 +1,49 @@
+diff --git a/tornado_like/headers.py b/tornado_like/headers.py
+index 40af2d8..82c51c7 100644
+--- a/tornado_like/headers.py
++++ b/tornado_like/headers.py
+@@ -1,3 +1,8 @@
++import re
++
++_TOKEN = re.compile(r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$")
++
++
+ class HTTPHeaders:
+     """Small header container used before writing responses.
+ 
+@@ -7,15 +12,31 @@ class HTTPHeaders:
+     def __init__(self):
+         self._items = {}
+ 
++    def _validate_name(self, name):
++        name = str(name)
++        if not name or not _TOKEN.match(name):
++            raise ValueError(f"invalid header name: {name!r}")
++        return name
++
++    def _validate_value(self, name, value):
++        value = str(value)
++        if "\r" in value or "\n" in value or "\x00" in value:
++            raise ValueError(f"invalid header value for {name}")
++        return value
++
+     def add(self, name, value):
+-        key = name
+-        self._items.setdefault(key, (name.lower(), []))[1].append(str(value))
++        name = self._validate_name(name)
++        value = self._validate_value(name, value)
++        key = name.lower()
++        self._items.setdefault(key, (name, []))[1].append(value)
+ 
+     def set(self, name, value):
+-        self._items[name] = (name.lower(), [str(value)])
++        name = self._validate_name(name)
++        value = self._validate_value(name, value)
++        self._items[name.lower()] = (name, [value])
+ 
+     def get_list(self, name):
+-        return list(self._items.get(name, (name, []))[1])
++        return list(self._items.get(str(name).lower(), (name, []))[1])
+ 
+     def to_wsgi_list(self):
+         result = []

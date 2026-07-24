@@ -1,0 +1,77 @@
+{
+  "id": "task_05",
+  "title": "补齐 TeammateIdle 与 TaskCompleted Hooks",
+  "priority": "P1",
+  "can_dispatch_independently": true,
+  "depends_on": [
+    "task_04"
+  ],
+  "objective": "在 Stop hooks 成功通过后，为团队/多代理场景执行 TeammateIdle 和 TaskCompleted hooks，并按原版支持阻塞、阻止继续和 hook_stopped_continuation。",
+  "improvement_points": [
+    "hooks 包新增 HookTeammateIdle 与 HookTaskCompleted 类型及配置解析。",
+    "loop 在 teammate 环境下查询当前 teammate、team 和任务列表状态。",
+    "对当前 teammate 处于 in_progress 的任务运行 TaskCompleted hooks。",
+    "随后运行 TeammateIdle hooks。",
+    "两类 hook 的 blocking error 和 preventContinuation 与 Stop hook 一致。"
+  ],
+  "evidence": [
+    {
+      "source": "ts_original",
+      "file": "../src/query/stopHooks.ts",
+      "lines": "334-453",
+      "note": "TS 在 Stop hooks 通过后，对 teammate 运行 TaskCompleted 与 TeammateIdle。"
+    },
+    {
+      "source": "ts_original",
+      "file": "../src/utils/settings/settings.ts",
+      "lines": "595-607",
+      "note": "TS settings 支持 TeammateIdle 和 TaskCompleted hook 类型。"
+    },
+    {
+      "source": "go_current",
+      "file": "hooks/hooks.go",
+      "lines": "20-32",
+      "note": "Go 当前 HookType 没有 TeammateIdle 和 TaskCompleted。"
+    },
+    {
+      "source": "go_current",
+      "file": "swarm/team.go",
+      "lines": "1-240",
+      "note": "Go 已有 swarm/team 模块，可作为 teammate/task 状态集成入口。"
+    }
+  ],
+  "scope": {
+    "include": [
+      "hooks/hooks.go",
+      "hooks/config.go",
+      "loop/stop_hooks.go",
+      "swarm",
+      "loop/teammate_hooks_test.go",
+      "hooks/config_test.go"
+    ],
+    "exclude": [
+      "创建完整 team runtime",
+      "修改非 loop 的团队调度策略"
+    ]
+  },
+  "implementation_steps": [
+    "扩展 HookType、filename inference、settings loader 和 tests。",
+    "定义 loop 可注入的 TeammateContextProvider，避免 loop 直接硬耦合 swarm 存储细节。",
+    "Stop hook 成功后按 TaskCompleted 再 TeammateIdle 的顺序执行。",
+    "把阻塞结果转为 meta user message 并进入下一轮，防止静默丢失。"
+  ],
+  "acceptance_criteria": [
+    "配置文件中的 TeammateIdle 和 TaskCompleted hook 能被加载。",
+    "当前 teammate 有 in_progress task 时，TaskCompleted hook 获得 task id、subject、description、owner、team 信息。",
+    "TeammateIdle hook 在 TaskCompleted 之后运行。",
+    "任一 hook preventContinuation 会停止 loop。",
+    "任一 hook blockingError 会触发下一轮，而不是吞掉错误。"
+  ],
+  "tests": [
+    "go test ./hooks ./loop ./swarm -run 'Test.*Teammate|Test.*TaskCompleted|TestHookConfig' -count=1"
+  ],
+  "risks": [
+    "team/swarm 状态来源可能尚未稳定，建议通过接口注入，先用 fake provider 锁语义。",
+    "不要让 subagent 的 cleanup 释放 main thread 的资源锁。"
+  ]
+}

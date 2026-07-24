@@ -1,0 +1,86 @@
+{
+  "id": "task_18",
+  "title": "Final goal integration docs and verification",
+  "priority": "P2",
+  "status": "accepted",
+  "owner_role": "verifier",
+  "estimated_minutes": 5,
+  "parallel_group": "verification",
+  "can_run_in_parallel": false,
+  "dependencies": [
+    "task_11",
+    "task_13",
+    "task_15",
+    "task_17"
+  ],
+  "objective": "Verify the complete /goal feature, document user behavior, and report residual risks.",
+  "context": [
+    "This task should run after implementation surfaces are complete.",
+    "It owns final evidence, not broad refactoring."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/goal",
+      "note": "Document transcript-only evaluator and permission boundary."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/codex-manual.md",
+      "note": "Document set/view/edit/pause/resume/clear controls and 4000-char objective limit."
+    }
+  ],
+  "read_first": [
+    "goal/",
+    "commands/goal.go",
+    "loop/goal_evaluator.go",
+    "loop/query.go",
+    "tools/goal_tools.go",
+    "tui/",
+    "session/session.go"
+  ],
+  "owned_files": [
+    "docs/goal.md"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Add docs/goal.md with user-facing command and tool behavior.",
+      "Document evaluator limitations and permission boundaries.",
+      "Run focused Goal tests across changed packages.",
+      "Run broader related package tests.",
+      "Record remaining risks and any disabled paths."
+    ],
+    "exclude": [
+      "No new feature work unless a failing test reveals a tiny wiring miss.",
+      "No unrelated cleanup."
+    ]
+  },
+  "implementation_steps": [
+    "Write docs/goal.md.",
+    "Run focused Goal tests.",
+    "Run related package tests.",
+    "Summarize evidence, failures, and residual risks."
+  ],
+  "deliverables": [
+    "docs/goal.md",
+    "Verification evidence for the complete feature."
+  ],
+  "acceptance_criteria": [
+    "Docs describe /goal set, status, edit, pause, resume, clear, evaluator behavior, and permissions.",
+    "Focused Goal tests pass.",
+    "Related package tests pass or failures are clearly unrelated and documented."
+  ],
+  "verification": [
+    "go test ./goal ./commands ./session ./loop ./prompt ./tools ./registry ./tui -run Goal -count=1",
+    "go test ./commands ./session ./loop ./prompt ./tools ./registry ./tui -count=1"
+  ],
+  "risks": [
+    "Full go test ./... may be slower than the 5-minute task budget; run focused tests first and broaden only as time allows."
+  ],
+  "non_goals": [
+    "No unrelated refactor.",
+    "No provider catalog migration."
+  ],
+  "dispatch_prompt": "Write docs/goal.md and run final focused verification for the /goal feature. Summarize changed files, test evidence, and residual risks without broad refactoring.",
+  "notes_for_assignee": "If a critical wiring miss appears, fix only the smallest local issue and record it."
+}

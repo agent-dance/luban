@@ -1,0 +1,431 @@
+{
+  "tool": "TeamDelete",
+  "summary": "TeamDelete 的 Go 版已经具备基础入口、当前 team map 清理、持久化 team.json 删除，以及 active non-lead 成员拒绝清理的核心护栏。但对照 TS 基准 ../src/tools/TeamDeleteTool/TeamDeleteTool.ts 和 ../src/utils/swarm/teamHelpers.ts，Go 仍不是完整生命周期等价：TS TeamDelete 是严格空输入、只作用于 appState 中的当前 team，并在清理成功后做 best-effort 的 team 目录、inbox、task 目录、worktree、session-cleanup 注册、颜色、leader task-list 和 AppState inbox/teamContext 清理。Go 当前实现隐藏接受 team_id，no-op 输出包含 null team_name，删除深度基本限于 team.json，未清 task/worktree/session cleanup/coordinator bus/registered agents，并且 active-member 与损坏 config 的鲁棒性和 TS 的 optional isActive 语义不完全一致。",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "TD-GAP-001",
+      "category": "schema_output_runtime",
+      "severity": "P1",
+      "title": "Go 隐藏接受 team_id，偏离 TS 严格空输入和 current-team-only 语义",
+      "description": "TS TeamDelete 的输入是 z.strictObject({})，并且 call() 只从 appState.teamContext.teamName 读取当前 team。Go Schema 暴露为空对象，但 TeamDeleteInput 仍接受 team_id，Execute 会优先删除该 ID 对应的 manager team；Go 测试也依赖显式 team_id。no-team/no-op 输出也不同：TS data 中 team_name 为 undefined，模型侧 JSON.stringify 会省略该字段；Go 显式返回 team_name:null。",
+      "ts_evidence": [
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:21",
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:71-75",
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:126-133",
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:58-66"
+      ],
+      "go_evidence": [
+        "tools/parse.go:263-266",
+        "tools/team.go:632-647",
+        "tools/team.go:653-658",
+        "tools/team_test.go:397-408",
+        "tools/team_test.go:461-479"
+      ],
+      "impact": "Go 可以执行 TS schema 不允许的删除请求，并可能删除非当前 team；输出 JSON 也会在 no-op 场景多出 null 字段，影响精确 parity fixture。",
+      "candidate_task_ids": [
+        "TD-TASK-001"
+      ]
+    },
+    {
+      "id": "TD-GAP-002",
+      "category": "filesystem_lifecycle",
+      "severity": "P0",
+      "title": "Go 只删除 team.json，未递归清理 team 目录和 mailbox/inbox 状态",
+      "description": "TS cleanupTeamDirectories 对 ~/.claude/teams/{team} 递归 rm -rf，因此 config、inboxes、lock 文件和其他 team-local 状态都会被删除。Go TeamDelete 只调用 swarm.DeleteTeamConfig；该函数删除 team.json 和 team.json.lock，只有目录为空时才删除目录。Go mailbox 文件位于同一 team 目录的成员子目录下，所以只要存在 inbox，TeamDelete 后目录会保留。",
+      "ts_evidence": [
+        "../src/utils/swarm/teamHelpers.ts:641-664",
+        "../src/utils/teammateMailbox.ts:52-61"
+      ],
+      "go_evidence": [
+        "tools/team.go:677-681",
+        "swarm/team.go:112-139",
+        "swarm/mailbox.go:44-70",
+        "swarm/team_test.go:169-185"
+      ],
+      "impact": "显式 TeamDelete 后可能留下旧 inbox、lock 和 team-local 文件；后续同名 team 或 mailbox 路由可能遇到残留状态，而 TS 会清空整个 team 目录。",
+      "candidate_task_ids": [
+        "TD-TASK-002"
+      ]
+    },
+    {
+      "id": "TD-GAP-003",
+      "category": "task_state_lifecycle",
+      "severity": "P0",
+      "title": "Go 没有删除 team-scoped task 目录，也没有对 task-list 切换发出等价状态更新",
+      "description": "TS TeamCreate 为 team 创建/重置 task list，把 leader task-list 解析切到 sanitized team name；TeamDelete cleanupTeamDirectories 删除 ~/.claude/tasks/{team} 并 notifyTasksUpdated，随后 clearLeaderTeamName 再次通知订阅者切回 session 作用域。Go RuntimeScope 可通过 TeamManager.CurrentTeamName 解析当前 task list，但 TeamManager 没有 TaskStore/cleanup callback，TeamDelete 只清 activeTeamID 和 team.json，没有删除 ~/.claude/tasks/{team} 或等价通知。",
+      "ts_evidence": [
+        "../src/tools/TeamCreateTool/TeamCreateTool.ts:182-191",
+        "../src/utils/swarm/teamHelpers.ts:671-678",
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:108-109",
+        "../src/utils/tasks.ts:31-47",
+        "../src/utils/tasks.ts:190-210"
+      ],
+      "go_evidence": [
+        "registry_setup.go:236-239",
+        "registry_setup.go:322-333",
+        "main.go:315-317",
+        "tools/runtime_scope.go:68-90",
+        "tools/tasks.go:56-72",
+        "tools/tasks.go:130-143",
+        "tools/team.go:671-681"
+      ],
+      "impact": "TeamDelete 后旧 team task 文件仍留在磁盘；UI/任务消费者也缺少 TS 的 task-list 变更信号，可能继续展示或恢复已删除 team 的任务状态。",
+      "candidate_task_ids": [
+        "TD-TASK-003"
+      ]
+    },
+    {
+      "id": "TD-GAP-004",
+      "category": "worktree_lifecycle",
+      "severity": "P0",
+      "title": "Go team config 不持久化 teammate worktreePath，TeamDelete 也不销毁 team worktrees",
+      "description": "TS TeamFile member 支持 worktreePath；TeamDelete 清理时先读取所有 member.worktreePath，逐个 git worktree remove --force，失败再 rm -rf，然后才删除 team/task 目录。Go swarm.TeamMember 没有 WorktreePath 字段；Agent spawnTeammate 的响应会返回 worktree_path，但写入 team config 的 TeamMember 不保存该路径，TeamDelete 也没有 worktree cleanup。",
+      "ts_evidence": [
+        "../src/utils/swarm/teamHelpers.ts:72-89",
+        "../src/utils/swarm/teamHelpers.ts:487-542",
+        "../src/utils/swarm/teamHelpers.ts:644-658"
+      ],
+      "go_evidence": [
+        "swarm/team.go:23-31",
+        "tools/agent.go:4497-4504",
+        "tools/agent.go:4522-4527",
+        "tools/agent.go:4380-4408",
+        "tools/team.go:671-681"
+      ],
+      "impact": "TeamDelete 无法清理由 team teammates 创建或复用的 worktree，容易留下 git worktree、分支和工作目录残留；这正是已有 TeamDelete.md 所说的主要 cleanup-depth 差距之一。",
+      "candidate_task_ids": [
+        "TD-TASK-004"
+      ]
+    },
+    {
+      "id": "TD-GAP-005",
+      "category": "session_lifecycle",
+      "severity": "P0",
+      "title": "Go 缺少 session-created team 跟踪、TeamDelete unregister、以及退出时孤儿 team 清理",
+      "description": "TS TeamCreate 在成功写 team file 后 registerTeamForSessionCleanup；TeamDelete 成功清理后 unregister，避免 gracefulShutdown 重复清理；如果进程退出而 team 未显式删除，cleanupSessionTeams 会杀 orphan pane 并清理所有本 session 创建的 team 目录。Go TeamManager 没有 session-created set 或 cleanup hook；TeamCreate 只保存 config、注册 coordinator agents、写入 manager map；TeamDelete 没有 unregister 等价逻辑。",
+      "ts_evidence": [
+        "../src/tools/TeamCreateTool/TeamCreateTool.ts:177-180",
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:101-104",
+        "../src/utils/swarm/teamHelpers.ts:553-590",
+        "../src/bootstrap/state.ts:1472-1474"
+      ],
+      "go_evidence": [
+        "tools/team.go:32-53",
+        "tools/team.go:592-613",
+        "tools/team.go:671-681",
+        "signals.go:39-54",
+        "main.go:282",
+        "main.go:337"
+      ],
+      "impact": "显式删除不会从 session cleanup tracking 中注销，因为 Go 没有该 tracking；非显式退出时也不会自动清理 Go 创建的 team 目录、mailboxes、tasks 或 worktrees。",
+      "candidate_task_ids": [
+        "TD-TASK-005"
+      ]
+    },
+    {
+      "id": "TD-GAP-006",
+      "category": "in_memory_lifecycle",
+      "severity": "P0",
+      "title": "Go TeamDelete 没有拆除 coordinator agents、MessageBus subscriptions 或后台 teammate sessions",
+      "description": "TS TeamDelete 清空 appState.teamContext 和 inbox，移除 UI/运行时对 teammates 的可见引用；在 TS 设计里清理前 active member 必须已 graceful shutdown。Go TeamCreate 会把 agents 注册到 coordinator，并在 MessageBus 订阅；TeamDelete 只删 TeamManager.teams 和 activeTeamID，不从 coordinator.agents 移除、不 Unsubscribe、不 abort/cleanup BackgroundTaskManager 中的 spawned teammates。Go 还存在 no-team MessageBus fallback，旧订阅者在 team 删除后仍可能被 SendMessage 命中。",
+      "ts_evidence": [
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:117-124",
+        "../src/state/AppStateStore.ts:323-345",
+        "../src/state/AppStateStore.ts:351-360"
+      ],
+      "go_evidence": [
+        "tools/team.go:596-598",
+        "tools/team.go:671-681",
+        "coordinator/coordinator.go:152-158",
+        "coordinator/coordinator.go:397-444",
+        "tools/team.go:273-340",
+        "tools/agent_sessions.go:181-187"
+      ],
+      "impact": "删除 team 后，Go 内存态仍可能保留可调度 agent、可投递 channel 和后台 teammate；后续 SendMessage/TeamDispatch/新 team 可能受到旧状态污染。",
+      "candidate_task_ids": [
+        "TD-TASK-006"
+      ]
+    },
+    {
+      "id": "TD-GAP-007",
+      "category": "active_member_semantics",
+      "severity": "P1",
+      "title": "Go bool isActive 无法表达 TS 的 optional isActive，缺字段成员会被当作 idle",
+      "description": "TS TeamFile 中 member.isActive 是 optional；TeamDelete 把 isActive !== false 的 non-lead 成员视为 active，因此旧 team file 或未标记 isActive 的成员会阻止清理。Go TeamMember.IsActive 是 bool，JSON 缺字段会反序列化为 false；activeNonLeadTeamMembers 跳过 IsActive == false 的成员，因此缺 isActive 的成员会被当作 idle 并允许清理。",
+      "ts_evidence": [
+        "../src/utils/swarm/teamHelpers.ts:72-89",
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:80-98"
+      ],
+      "go_evidence": [
+        "swarm/team.go:23-31",
+        "tools/send_message_routing.go:308-329",
+        "tools/team.go:660-670",
+        "tools/team_test.go:430-459"
+      ],
+      "impact": "Go 对旧格式/外部写入的 team config 更宽松，可能在 TS 会拒绝的 active-member 场景下删除 team。",
+      "candidate_task_ids": [
+        "TD-TASK-007"
+      ]
+    },
+    {
+      "id": "TD-GAP-008",
+      "category": "robustness_error_semantics",
+      "severity": "P1",
+      "title": "Go 对损坏/不可读 team config 和删除错误的处理比 TS 更硬，且状态更新顺序可能留下不一致",
+      "description": "TS readTeamFile 对 ENOENT 返回 null，对其他读取/解析错误记录 debug 并返回 null；cleanupTeamDirectories 对 rm team/task 目录错误只记录日志，整体路径仍清 AppState。Go activeNonLeadTeamMembers 对非 not-found 的 LoadTeamConfig 错误直接返回工具错误；TeamDelete 先从 manager 删除 team，再调用 DeleteTeamConfig，若磁盘删除失败则返回 IsError，但内存态已经清掉。",
+      "ts_evidence": [
+        "../src/utils/swarm/teamHelpers.ts:131-141",
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:76-101",
+        "../src/utils/swarm/teamHelpers.ts:660-682",
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:117-124"
+      ],
+      "go_evidence": [
+        "swarm/team.go:52-80",
+        "tools/send_message_routing.go:312-326",
+        "tools/team.go:660-681",
+        "tools/helpers.go:84-101"
+      ],
+      "impact": "损坏 team.json 会阻止 Go TeamDelete 完成，而 TS 会继续 best-effort cleanup；磁盘删除失败时 Go 可能已经清空 manager 状态，造成内存/磁盘不一致且难以重试。",
+      "candidate_task_ids": [
+        "TD-TASK-008"
+      ]
+    },
+    {
+      "id": "TD-GAP-009",
+      "category": "telemetry_lifecycle",
+      "severity": "P3",
+      "title": "Go 没有 TeamDelete 的 tengu_team_deleted 生命周期 analytics hook",
+      "description": "TS TeamDelete 在有 teamName 且清理路径执行后发出 tengu_team_deleted，并携带 team_name。Go 现有 TeamDelete 实现没有等价 analytics hook 或 pluggable event sink；代码库已有 agent/tool analytics hook 模式，但 TeamDelete 没接入。",
+      "ts_evidence": [
+        "../src/tools/TeamDeleteTool/TeamDeleteTool.ts:111-114"
+      ],
+      "go_evidence": [
+        "tools/team.go:622-687",
+        "tools/agent_cache_eviction.go:18-43",
+        "tools/agent_cache_eviction.go:58-72"
+      ],
+      "impact": "团队删除生命周期事件在 Go 运行时缺失，影响行为观测、产品统计和与 TS telemetry 的一致性。",
+      "candidate_task_ids": [
+        "TD-TASK-009"
+      ]
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "TD-TASK-001",
+      "title": "Align TeamDelete input and no-op output with TS current-team contract",
+      "priority": "P1",
+      "owned_files": [
+        "tools/team.go",
+        "tools/parse.go",
+        "tools/team_test.go"
+      ],
+      "dependencies": [],
+      "description": "Remove or reject the hidden team_id path for TeamDelete so execution always uses TeamManager.currentTeamID/current team, and adjust no-team JSON output so team_name is omitted instead of encoded as null.",
+      "acceptance": [
+        "TeamDelete Execute with any unexpected input key, including team_id, follows TS strict-object behavior by returning a validation/tool error before cleanup, or the shared validator rejects it consistently with other strict tools.",
+        "TeamDelete no-team/no-op response serializes success/message and does not include team_name:null.",
+        "Existing tests that pass team_id are rewritten around current-team behavior.",
+        "Schema remains an empty object and no Go-only TeamDelete parameter is documented or accepted."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestTeamDelete_(StrictInput|Success|NotFound|MissingTeamID|NoTeamOutput)' -count=1"
+      ]
+    },
+    {
+      "id": "TD-TASK-002",
+      "title": "Recursively clean team directory and mailbox files on TeamDelete",
+      "priority": "P0",
+      "owned_files": [
+        "swarm/team.go",
+        "swarm/mailbox.go",
+        "swarm/team_test.go",
+        "tools/team.go",
+        "tools/team_test.go"
+      ],
+      "dependencies": [],
+      "description": "Replace the config-file-only deletion path with a TS-equivalent team directory cleanup helper that removes the whole sanitized team directory, including inbox subdirectories and lock files, while preserving path validation and no-op behavior for missing teams.",
+      "acceptance": [
+        "A team directory containing team.json, team.json.lock, mailbox inbox files, inbox locks, and arbitrary team-local files is gone after successful TeamDelete.",
+        "Deleting a missing team directory remains a no-op success.",
+        "Cleanup cannot escape the configured teams root even with unusual team names.",
+        "Mailbox tests cover that TeamDelete removes mailbox remnants written by SendMessage."
+      ],
+      "verification_commands": [
+        "go test ./swarm ./tools -run 'Test(Delete|TeamDelete).*Team.*(Dir|Mailbox|Inbox|Config)' -count=1"
+      ]
+    },
+    {
+      "id": "TD-TASK-003",
+      "title": "Delete team-scoped TaskStore directories and refresh task scope on cleanup",
+      "priority": "P0",
+      "owned_files": [
+        "registry_setup.go",
+        "tools/team.go",
+        "tools/tasks.go",
+        "tools/runtime_scope.go",
+        "tools/team_test.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [
+        "TD-TASK-001"
+      ],
+      "description": "Wire a task-list cleanup callback or TaskStore reference into TeamManager so TeamDelete removes ~/.claude/tasks/{sanitized-team-name}, and add an internal notification/hook surface if needed to mirror TS task-list change notifications after clearing the current team.",
+      "acceptance": [
+        "When a team is active, TeamDelete removes the task directory for the sanitized team name without deleting explicit CLAUDE_CODE_TASK_LIST_ID or unrelated session task dirs.",
+        "After TeamDelete, RuntimeScope.TaskListID falls back to session ID/default because TeamManager.CurrentTeamName is empty.",
+        "Task cleanup is best-effort like TS and does not leave TeamManager active solely because the task dir is absent.",
+        "Tests create fake team task files and verify they are removed during TeamDelete."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestTeamDelete.*Task|TestRuntimeScope.*Team|TestTaskStore.*Team' -count=1"
+      ]
+    },
+    {
+      "id": "TD-TASK-004",
+      "title": "Persist teammate worktree metadata and destroy team worktrees during TeamDelete",
+      "priority": "P0",
+      "owned_files": [
+        "swarm/team.go",
+        "tools/agent.go",
+        "tools/team.go",
+        "tools/agent_test.go",
+        "tools/team_test.go"
+      ],
+      "dependencies": [
+        "TD-TASK-002"
+      ],
+      "description": "Extend persisted TeamMember metadata with worktreePath and any repo/branch data needed for safe cleanup, write it when spawning team teammates, and add a TeamDelete cleanup step that mirrors TS destroyWorktree: git worktree remove --force first, then filesystem fallback.",
+      "acceptance": [
+        "Team members spawned with worktree isolation persist enough metadata for TeamDelete to find their worktree paths.",
+        "TeamDelete removes clean team worktrees via git worktree remove --force and falls back to removing missing/non-worktree directories without failing hard.",
+        "Changed worktree safety policy is explicitly chosen and documented to match TS, which force-removes team worktrees.",
+        "Tests cover existing path, missing path, and git worktree removal behavior."
+      ],
+      "verification_commands": [
+        "go test ./tools ./swarm -run 'TestTeamDelete.*Worktree|TestAgent.*Team.*Worktree|TestAgentWorktreeCleanup' -count=1"
+      ]
+    },
+    {
+      "id": "TD-TASK-005",
+      "title": "Add session-created team cleanup tracking and shutdown cleanup",
+      "priority": "P0",
+      "owned_files": [
+        "tools/team.go",
+        "registry_setup.go",
+        "main.go",
+        "signals.go",
+        "tools/team_test.go"
+      ],
+      "dependencies": [
+        "TD-TASK-002",
+        "TD-TASK-003",
+        "TD-TASK-004"
+      ],
+      "description": "Introduce TeamManager-owned session-created team tracking. TeamCreate should register newly created teams, TeamDelete should unregister after explicit cleanup, and process shutdown/global cancellation should invoke a best-effort cleanupSessionTeams equivalent for teams still registered.",
+      "acceptance": [
+        "TeamCreate registers each successfully persisted team for session cleanup only after the config write succeeds.",
+        "TeamDelete unregisters cleaned teams so shutdown does not double-clean them.",
+        "A TeamManager cleanup method removes all still-registered teams and clears the registry; signal/main shutdown calls it best-effort.",
+        "Tests can call the cleanup method directly to prove orphan team dirs are removed and explicitly deleted teams are not reprocessed."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestTeam(SessionCleanup|Create.*Registers|Delete.*Unregisters|CleanupSessionTeams)' -count=1",
+        "go test ./... -run 'Test.*Signal|Test.*Shutdown|TestTeam' -count=1"
+      ]
+    },
+    {
+      "id": "TD-TASK-006",
+      "title": "Tear down coordinator agents, MessageBus subscriptions, and background teammates",
+      "priority": "P0",
+      "owned_files": [
+        "coordinator/coordinator.go",
+        "tools/team.go",
+        "tools/agent_sessions.go",
+        "tools/team_test.go",
+        "tools/team_dispatch_test.go",
+        "tools/send_message_routing_test.go"
+      ],
+      "dependencies": [],
+      "description": "Add coordinator unregister/reset primitives and call them from TeamDelete for every agent recorded in TeamInfo and persisted team config; abort or detach corresponding background teammate sessions so deleted teams cannot receive messages or execute dispatch work.",
+      "acceptance": [
+        "TeamDelete removes all team agent IDs from coordinator.agents and unsubscribes their MessageBus channels.",
+        "SendMessage after TeamDelete cannot route to old team members through the no-team MessageBus fallback.",
+        "TeamDispatch after TeamDelete fails because the team is gone and cannot execute against stale coordinator agents.",
+        "Background teammates associated with the deleted team are aborted or otherwise marked inactive/cleaned according to existing BackgroundTaskManager lifecycle."
+      ],
+      "verification_commands": [
+        "go test ./coordinator ./tools -run 'Test(MessageBus.*Unsubscribe|TeamDelete.*(Coordinator|MessageBus|Background|Dispatch|SendMessage))' -count=1"
+      ]
+    },
+    {
+      "id": "TD-TASK-007",
+      "title": "Match TS optional isActive semantics in active-member guard",
+      "priority": "P1",
+      "owned_files": [
+        "swarm/team.go",
+        "tools/send_message_routing.go",
+        "tools/team.go",
+        "swarm/team_test.go",
+        "tools/team_test.go"
+      ],
+      "dependencies": [],
+      "description": "Represent persisted TeamMember.isActive as tri-state or add custom decode/predicate logic so absent isActive is treated as active unless explicitly false, matching TS m.isActive !== false.",
+      "acceptance": [
+        "A non-lead member with isActive:true blocks TeamDelete.",
+        "A non-lead member with isActive:false does not block TeamDelete.",
+        "A non-lead member with no isActive field blocks TeamDelete, matching TS optional-field behavior.",
+        "SaveTeamConfig still writes current Go-created members with explicit isActive values."
+      ],
+      "verification_commands": [
+        "go test ./swarm ./tools -run 'TestTeam(Delete|Member).*Active|TestTeamDelete.*MissingIsActive' -count=1"
+      ]
+    },
+    {
+      "id": "TD-TASK-008",
+      "title": "Make TeamDelete cleanup best-effort and recoverable like TS",
+      "priority": "P1",
+      "owned_files": [
+        "tools/team.go",
+        "tools/send_message_routing.go",
+        "swarm/team.go",
+        "tools/team_test.go",
+        "swarm/team_test.go"
+      ],
+      "dependencies": [
+        "TD-TASK-002"
+      ],
+      "description": "Change TeamDelete cleanup so unreadable/corrupt team config and filesystem cleanup failures are handled in TS style: log/collect cleanup diagnostics, continue clearing current runtime state, and avoid leaving manager state half-cleared in ways that prevent retry.",
+      "acceptance": [
+        "Corrupt team.json does not prevent TeamDelete from clearing current team state and attempting directory cleanup.",
+        "Missing team config remains a no-op cleanup path.",
+        "If a cleanup sub-step fails, state ordering is deterministic and retry behavior is documented/tested.",
+        "Active-member refusal remains strict when the team config is readable and active members are present."
+      ],
+      "verification_commands": [
+        "go test ./tools ./swarm -run 'TestTeamDelete.*(Corrupt|Unreadable|BestEffort|Retry|ActiveMembers)' -count=1"
+      ]
+    },
+    {
+      "id": "TD-TASK-009",
+      "title": "Add TeamDelete lifecycle analytics hook",
+      "priority": "P3",
+      "owned_files": [
+        "tools/team.go",
+        "tools/team_test.go",
+        "registry_setup.go"
+      ],
+      "dependencies": [],
+      "description": "Add a small pluggable analytics/event hook for TeamDelete and emit tengu_team_deleted with team_name only when a concrete team was cleaned, matching the TS lifecycle event without coupling the tool to a concrete analytics backend.",
+      "acceptance": [
+        "Successful cleanup of an existing team emits exactly one tengu_team_deleted event with team_name.",
+        "No-team no-op and active-member refusal do not emit the delete event.",
+        "Tests can install/reset the hook without cross-test leakage."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestTeamDelete.*Analytics|TestTeamDelete.*NoAnalytics' -count=1"
+      ]
+    }
+  ]
+}

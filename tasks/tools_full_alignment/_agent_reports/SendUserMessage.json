@@ -1,0 +1,513 @@
+{
+  "tool": "SendUserMessage",
+  "summary": "TS mapping to ../src/tools/BriefTool/BriefTool.ts is correct: the exported tool name is SendUserMessage and the alias is Brief. The Go mapping is not singular today. There is a richer tools/send_user_message.go implementation, but SetupRegistry registers NewSendUserMessageTool() and later registers tools.BriefTool{} with the same name; registry.Register silently replaces duplicate names, so the actual default registry exposes the old tools/misc.go BriefTool passthrough. As a result, Go runtime behavior is farther from TS than direct NewSendUserMessageTool tests suggest. Major parity gaps are registration ownership, strict input schema, output/tool_result shape, attachment resolution, lifecycle/tool metadata, validation robustness, and stale/inconsistent tests. Focused verification run: go test ./tools -run 'TestSendUserMessage|TestSendUserMessageAlignment|TestSanitiseUserMessageBody' currently fails in TestSendUserMessage_PlainMessageDelivers and TestSendUserMessage_ImageRejectsBadBase64.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "SUM-GAP-001",
+      "category": "runtime_mapping_registration",
+      "severity": "P0",
+      "title": "Default Go registry overwrites the richer SendUserMessage implementation with the old BriefTool passthrough",
+      "description": "The TS baseline is definitely BriefTool with model-facing name SendUserMessage and alias Brief. Go has two implementations with the same Name(): NewSendUserMessageTool in tools/send_user_message.go and BriefTool in tools/misc.go. SetupRegistry registers the richer tool first and then registers BriefTool later. The registry silently replaces tools with duplicate names, so the actual default runtime uses the old passthrough implementation, while many SendUserMessage tests instantiate NewSendUserMessageTool directly and do not cover the registered tool.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/BriefTool/prompt.ts:1-4",
+          "note": "Defines BRIEF_TOOL_NAME as SendUserMessage and LEGACY_BRIEF_TOOL_NAME as Brief."
+        },
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:136-140",
+          "note": "BriefTool is built with name SendUserMessage, alias Brief, and a SendUserMessage search hint."
+        },
+        {
+          "path": "../src/tools.ts:238",
+          "note": "The original tool list includes BriefTool."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "registry_setup.go:244-247",
+          "note": "SetupRegistry registers tools.NewSendUserMessageTool() under user interaction tools."
+        },
+        {
+          "path": "registry_setup.go:331-332",
+          "note": "SetupRegistry later registers &tools.BriefTool{} under misc tools."
+        },
+        {
+          "path": "registry/registry.go:27-37",
+          "note": "Register silently replaces an existing tool with the same name."
+        },
+        {
+          "path": "tools/misc.go:21-23",
+          "note": "BriefTool exposes the same name SendUserMessage and alias Brief."
+        },
+        {
+          "path": "tools/send_user_message.go:179-185",
+          "note": "SendUserMessageTool also exposes Name() == SendUserMessage, creating the duplicate."
+        }
+      ],
+      "impact": "Runtime parity analysis and tests can be misleading: direct unit tests exercise one implementation, while the default registry uses another. Users get a plain string passthrough instead of either the TS output contract or the richer Go structured result.",
+      "candidate_task_ids": [
+        "SUM-TASK-001"
+      ]
+    },
+    {
+      "id": "SUM-GAP-002",
+      "category": "schema_input_contract",
+      "severity": "P0",
+      "title": "Go input schema does not match TS strict object, attachment path array, or status enum",
+      "description": "TS declares a strict object with message, optional attachments as string file paths, and required status enum normal|proactive. The richer Go implementation declares optional status info|success|warning|error and attachments as objects with kind/path/content/media_type/name. The old registered BriefTool is closer on attachment string paths and normal|proactive status, but it makes status optional and only requires message. Generic parseInput uses json.Unmarshal and does not reject unknown keys like TS z.strictObject.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:20-36",
+          "note": "inputSchema is z.strictObject with message string, attachments array of strings optional, and status enum normal/proactive."
+        },
+        {
+          "path": "../src/tools/BriefTool/prompt.ts:6-10",
+          "note": "Prompt documents attachments as file paths and status as normal/proactive intent."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/send_user_message.go:116-133",
+          "note": "Richer Go input uses attachment objects and an optional string status field."
+        },
+        {
+          "path": "tools/send_user_message.go:187-220",
+          "note": "Richer Go schema publishes status enum info/success/warning/error and attachment item objects."
+        },
+        {
+          "path": "tools/misc.go:25-47",
+          "note": "Old registered BriefTool schema uses attachment string paths and normal/proactive status but only requires message."
+        },
+        {
+          "path": "tools/parse.go:13-20",
+          "note": "Generic json.Unmarshal parsing ignores unknown object keys, unlike TS z.strictObject."
+        }
+      ],
+      "impact": "Model-visible tool usage differs between TS and Go. TS-valid calls with status=normal/proactive fail against the richer Go implementation, while Go-valid calls with status=success or object attachments have no TS equivalent. Extra keys accepted by Go can hide contract drift.",
+      "candidate_task_ids": [
+        "SUM-TASK-002"
+      ]
+    },
+    {
+      "id": "SUM-GAP-003",
+      "category": "output_contract",
+      "severity": "P0",
+      "title": "Go result content and model-facing tool_result text do not match TS",
+      "description": "TS call returns structured output data containing message, optional resolved attachment metadata, and sentAt. The model-facing tool_result block is a compact acknowledgement, not the user message itself. The richer Go implementation returns JSON containing delivered, messageId, status, message, and attachments, and also adds ContentBlocks. The actual registered old BriefTool returns the raw message string. Neither path matches the TS output schema or mapToolResultToToolResultBlockParam behavior.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:40-62",
+          "note": "Output schema contains message, optional attachments with path/size/isImage/file_uuid, and optional sentAt."
+        },
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:175-182",
+          "note": "mapToolResultToToolResultBlockParam emits 'Message delivered to user.' plus an attachment count suffix."
+        },
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:186-203",
+          "note": "call returns data {message, sentAt} or {message, attachments, sentAt}."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/send_user_message.go:146-153",
+          "note": "Richer Go result struct includes delivered, messageId, status, message, and normalised attachments."
+        },
+        {
+          "path": "tools/send_user_message.go:279-321",
+          "note": "Richer Go Execute serializes that result as JSON and adds ContentBlocks."
+        },
+        {
+          "path": "tools/misc.go:50-60",
+          "note": "Actual registered BriefTool returns only the raw message as ToolResult.Content."
+        },
+        {
+          "path": "types/tools.go:58-68",
+          "note": "Go ToolResult is string Content plus optional ContentBlocks/Metadata, not TS buildTool data plus mapper semantics."
+        }
+      ],
+      "impact": "Conversation history and UI consumers receive a different shape. Go can leak the user-facing message into the model-visible tool result or expose Go-only delivery fields, while TS only acknowledges delivery to the model and renders the actual message through the tool UI.",
+      "candidate_task_ids": [
+        "SUM-TASK-003"
+      ]
+    },
+    {
+      "id": "SUM-GAP-004",
+      "category": "attachments_runtime",
+      "severity": "P1",
+      "title": "Attachment validation and resolution semantics diverge substantially",
+      "description": "TS attachments are file paths. It validates each path as an existing regular accessible file, then resolves to metadata with absolute path, size, isImage, and optionally file_uuid via best-effort bridge upload. It does not inline arbitrary file text or base64 image content into the tool result. The richer Go implementation accepts text/file/image attachment objects, reads and inlines file content, base64-encodes images, applies an AllowedDirs gate, truncates text/file payloads, and rejects images by media_type rules. The actual registered old BriefTool ignores attachments entirely.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:25-30",
+          "note": "Input attachments are optional file paths."
+        },
+        {
+          "path": "../src/tools/BriefTool/attachments.ts:26-60",
+          "note": "validateAttachmentPaths stats each path and returns explicit not-file, missing, and permission-denied validation errors."
+        },
+        {
+          "path": "../src/tools/BriefTool/attachments.ts:63-110",
+          "note": "resolveAttachments returns path/size/isImage metadata and optional file_uuid, preserving order."
+        },
+        {
+          "path": "../src/tools/BriefTool/upload.ts:88-155",
+          "note": "Bridge uploads are best-effort and return undefined on disabled bridge, missing token, oversize, network, or response errors."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/send_user_message.go:327-375",
+          "note": "Richer Go accepts text and file attachment objects and inlines text/file content into the result."
+        },
+        {
+          "path": "tools/send_user_message.go:376-455",
+          "note": "Richer Go accepts image attachment objects and base64 content/path handling with media_type validation."
+        },
+        {
+          "path": "tools/send_user_message.go:245-276",
+          "note": "Richer Go enforces a Go-only attachment count and payload byte cap with truncation for text/file attachments."
+        },
+        {
+          "path": "tools/misc.go:50-60",
+          "note": "Actual registered BriefTool parses attachments but does not validate, resolve, render, or return them."
+        }
+      ],
+      "impact": "File attachments either disappear in the default Go runtime or become model-visible inline data in the richer implementation, neither of which matches TS local/bridge renderer metadata semantics.",
+      "candidate_task_ids": [
+        "SUM-TASK-004"
+      ]
+    },
+    {
+      "id": "SUM-GAP-005",
+      "category": "state_lifecycle_tool_metadata",
+      "severity": "P1",
+      "title": "Go lacks TS Brief activation gates and tool metadata semantics",
+      "description": "TS gates SendUserMessage through build-time KAIROS/KAIROS_BRIEF, runtime entitlement, explicit user opt-in, assistant-mode bypass, GrowthBook kill-switch refresh, and CLAUDE_CODE_BRIEF. The same tool definition also declares searchHint, maxResultSizeChars, userFacingName empty, isConcurrencySafe true, isReadOnly true, and toAutoClassifierInput. Go registers SendUserMessage unconditionally, has no isEnabled equivalent, the visible registry metadata list does not include SendUserMessage, and neither SendUserMessageTool nor BriefTool implements the existing IsConcurrentSafe optional interface. Go also has no per-tool read-only hook in the core Tool interface.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:67-134",
+          "note": "isBriefEntitled/isBriefEnabled combine feature flags, env, GrowthBook, opt-in, and assistant-mode state."
+        },
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:136-162",
+          "note": "BriefTool declares searchHint, maxResultSizeChars, empty userFacingName, isEnabled, isConcurrencySafe, isReadOnly, and toAutoClassifierInput."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "registry_setup.go:244-247",
+          "note": "SetupRegistry unconditionally registers NewSendUserMessageTool."
+        },
+        {
+          "path": "registry_setup.go:331-332",
+          "note": "SetupRegistry unconditionally registers BriefTool later."
+        },
+        {
+          "path": "registry/tool_visibility.go:17-44",
+          "note": "Builtin discovery metadata does not include SendUserMessage."
+        },
+        {
+          "path": "loop/concurrent.go:16-44",
+          "note": "Go has an optional IsConcurrentSafe interface and defaults only Read/Glob/Grep to concurrent safe."
+        },
+        {
+          "path": "tools/tools-architecture.md:78-104",
+          "note": "Repo architecture notes identify TS metadata including isReadOnly and isConcurrencySafe, and note default behavior."
+        }
+      ],
+      "impact": "Go can expose the tool when TS would hide it, cannot model TS kill-switch/opt-in lifecycle, and may serialize independent SendUserMessage calls that TS would treat as concurrency-safe. Permission/read-only classification is also not represented.",
+      "candidate_task_ids": [
+        "SUM-TASK-005"
+      ]
+    },
+    {
+      "id": "SUM-GAP-006",
+      "category": "ui_rendering_lifecycle",
+      "severity": "P1",
+      "title": "Go does not reproduce TS Brief rendering modes and assistant-text suppression semantics",
+      "description": "TS renders SendUserMessage as the primary user-visible assistant channel: tool use chrome is empty, transcript mode has a distinct bullet, brief-only mode has a Claude label and sentAt timestamp, default mode renders plain assistant-like text, and comments document that redundant assistant text is dropped in brief turns. Go has no equivalent renderer for SendUserMessage output in the inspected tool path. The richer implementation only adds text/image ContentBlocks to a JSON result, and the default registered BriefTool returns plain text.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/BriefTool/UI.tsx:12-18",
+          "note": "renderToolUseMessage returns an empty string and renderToolResultMessage owns display."
+        },
+        {
+          "path": "../src/tools/BriefTool/UI.tsx:24-67",
+          "note": "TS has distinct transcript, brief-only, and default rendering paths."
+        },
+        {
+          "path": "../src/tools/BriefTool/UI.tsx:55-60",
+          "note": "Comments document dropTextInBriefTurns hiding redundant assistant text and no tool chrome."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/send_user_message.go:305-321",
+          "note": "Richer Go returns JSON plus generic ContentBlocks instead of a SendUserMessage-specific renderer."
+        },
+        {
+          "path": "tools/misc.go:58-60",
+          "note": "Actual registered BriefTool says the REPL event handler will display the plain message, with no attachment/timestamp/view-mode payload."
+        },
+        {
+          "path": "types/tools.go:58-68",
+          "note": "Go ToolResult has generic ContentBlocks but no renderToolUseMessage/renderToolResultMessage contract."
+        }
+      ],
+      "impact": "The Go UI cannot reliably match TS brief/chat/transcript presentation or prevent duplicate assistant prose versus SendUserMessage content.",
+      "candidate_task_ids": [
+        "SUM-TASK-006"
+      ]
+    },
+    {
+      "id": "SUM-GAP-007",
+      "category": "tests_coverage",
+      "severity": "P1",
+      "title": "SendUserMessage tests are stale, internally inconsistent, and miss registry parity",
+      "description": "Current Go tests exercise NewSendUserMessageTool directly even though SetupRegistry currently exposes BriefTool. Some tests assert Go-only behavior that conflicts with TS and with newer alignment assertions. The focused test command fails: TestSendUserMessage_PlainMessageDelivers expects delivered=true with no sink, while the implementation and alignment test expect delivered=false; TestSendUserMessage_ImageRejectsBadBase64 expects a base64 error but the implementation now rejects missing media_type first. Alignment test comments also describe old production gaps that have already been changed in tools/send_user_message.go.",
+      "ts_evidence": [
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:20-62",
+          "note": "TS schema/output gives the baseline tests should pin: strict input, path attachments, normal/proactive status, message/attachments/sentAt output."
+        },
+        {
+          "path": "../src/tools/BriefTool/BriefTool.ts:175-203",
+          "note": "TS model-facing mapper and call output provide expected runtime contract."
+        }
+      ],
+      "go_evidence": [
+        {
+          "path": "tools/send_user_message_test.go:59-87",
+          "note": "PlainMessageDelivers expects delivered=true with a nil sink, conflicting with current implementation lines 279-303."
+        },
+        {
+          "path": "tools/send_user_message_alignment_test.go:36-49",
+          "note": "Alignment test expects delivered=false without a sink."
+        },
+        {
+          "path": "tools/send_user_message_test.go:272-282",
+          "note": "Bad-base64 test omits media_type, so current implementation returns the earlier media_type error."
+        },
+        {
+          "path": "tools/send_user_message_alignment_test.go:1-12",
+          "note": "File header still says these cases MUST FAIL and lists missing Sink/permissive validation, although several are now implemented."
+        },
+        {
+          "path": "registry_setup_test.go:1-47",
+          "note": "Existing registry setup tests cover trigger tools and PowerShell gating, but not which SendUserMessage implementation is registered."
+        }
+      ],
+      "impact": "The suite does not currently protect TS parity. It can fail for stale expectations while still missing the production registry overwrite and TS contract mismatches.",
+      "candidate_task_ids": [
+        "SUM-TASK-007"
+      ]
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "id": "SUM-TASK-001",
+      "title": "Consolidate SendUserMessage registration to one canonical implementation",
+      "gap_ids": [
+        "SUM-GAP-001"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "registry_setup_test.go",
+        "tools/misc.go",
+        "tools/send_user_message.go",
+        "tools/send_user_message_test.go",
+        "tools/send_user_message_alignment_test.go"
+      ],
+      "dependencies": [],
+      "acceptance": [
+        "SetupRegistry exposes exactly one SendUserMessage implementation.",
+        "The registered implementation has alias Brief.",
+        "A registry test proves deps.Registry.Get(\"SendUserMessage\") resolves to the canonical aligned type, and deps.Registry.Get(\"Brief\") resolves to the same tool.",
+        "The stale passthrough path in tools/misc.go no longer overwrites the canonical implementation."
+      ],
+      "verification_commands": [
+        "go test ./registry ./tools -run 'TestRegistry|TestSetupRegistry.*SendUserMessage|TestSendUserMessage' -count=1",
+        "go test . -run 'TestSetupRegistry.*SendUserMessage' -count=1"
+      ]
+    },
+    {
+      "id": "SUM-TASK-002",
+      "title": "Align SendUserMessage input schema with TS BriefTool",
+      "gap_ids": [
+        "SUM-GAP-002"
+      ],
+      "owned_files": [
+        "tools/send_user_message.go",
+        "tools/misc.go",
+        "tools/send_user_message_test.go",
+        "tools/send_user_message_alignment_test.go",
+        "types/tools.go",
+        "tools/parse.go"
+      ],
+      "dependencies": [
+        "SUM-TASK-001"
+      ],
+      "acceptance": [
+        "Published schema is a strict object equivalent to TS: message string, attachments optional array of string paths, status required enum normal|proactive.",
+        "Go rejects status values outside normal|proactive and rejects object-shaped attachments for this tool.",
+        "Go rejects unknown top-level keys for SendUserMessage, matching z.strictObject.",
+        "Compatibility tests cover TS-valid normal/proactive calls and TS-invalid info/success/warning/error calls."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestSendUserMessage.*Schema|TestSendUserMessage.*Status|TestSendUserMessage.*Strict|TestSendUserMessage.*Attachment.*Shape' -count=1",
+        "go test ./tools -run 'TestSendUserMessageAlignment' -count=1"
+      ]
+    },
+    {
+      "id": "SUM-TASK-003",
+      "title": "Align SendUserMessage output and model-facing tool_result mapping",
+      "gap_ids": [
+        "SUM-GAP-003"
+      ],
+      "owned_files": [
+        "tools/send_user_message.go",
+        "types/tools.go",
+        "registry/registry.go",
+        "loop/query.go",
+        "loop/concurrent.go",
+        "tools/send_user_message_test.go",
+        "tools/send_user_message_alignment_test.go"
+      ],
+      "dependencies": [
+        "SUM-TASK-001",
+        "SUM-TASK-002"
+      ],
+      "acceptance": [
+        "Successful execution captures output data with message, sentAt, and optional attachments metadata only.",
+        "The model-visible tool_result content is exactly 'Message delivered to user.' or includes the TS-style attachment count suffix.",
+        "Go-only delivered/messageId/status fields are removed from the TS-compatible model-visible output path.",
+        "Plain message content is available to the renderer without being exposed as the tool_result acknowledgement."
+      ],
+      "verification_commands": [
+        "go test ./tools ./loop ./registry -run 'TestSendUserMessage.*Output|TestSendUserMessage.*ToolResult|TestSendUserMessage.*SentAt|TestSendUserMessage.*AttachmentCount' -count=1"
+      ]
+    },
+    {
+      "id": "SUM-TASK-004",
+      "title": "Implement TS-style attachment path validation and metadata resolution",
+      "gap_ids": [
+        "SUM-GAP-004"
+      ],
+      "owned_files": [
+        "tools/send_user_message.go",
+        "tools/send_user_message_truncate.go",
+        "tools/send_user_message_image_stream.go",
+        "tools/send_user_message_test.go",
+        "tools/send_user_message_alignment_test.go"
+      ],
+      "dependencies": [
+        "SUM-TASK-002"
+      ],
+      "acceptance": [
+        "attachments is handled as []string of absolute or cwd-relative paths.",
+        "Each attachment is validated as an existing regular accessible file before execution proceeds.",
+        "Resolved attachment output contains path, size, isImage, and optional file_uuid only.",
+        "File and image contents are not inlined into the tool result.",
+        "Bridge upload, if implemented, is best-effort and preserves local metadata when upload fails; otherwise the missing upload capability is explicitly tested as a no-op until bridge runtime exists."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestSendUserMessage.*Attachment|TestSendUserMessage.*File|TestSendUserMessage.*Image|TestSendUserMessage.*Permission|TestSendUserMessage.*Upload' -count=1"
+      ]
+    },
+    {
+      "id": "SUM-TASK-005",
+      "title": "Add SendUserMessage lifecycle gates and tool metadata parity",
+      "gap_ids": [
+        "SUM-GAP-005"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "registry/tool_visibility.go",
+        "loop/concurrent.go",
+        "types/tools.go",
+        "tools/send_user_message.go",
+        "tools/send_user_message_test.go",
+        "registry_setup_test.go"
+      ],
+      "dependencies": [
+        "SUM-TASK-001"
+      ],
+      "acceptance": [
+        "Go has an explicit SendUserMessage enabled/disabled decision point equivalent to TS isBriefEnabled for the available Go runtime configuration.",
+        "Environment opt-in behavior for CLAUDE_CODE_BRIEF is covered; unsupported GrowthBook/build-flag behavior is represented by injectable gate functions or documented no-op seams with tests.",
+        "SendUserMessage implements IsConcurrentSafe() true.",
+        "Read-only/tool metadata needed by the Go permission/rendering stack is surfaced consistently.",
+        "Visible tool metadata includes the TS search hint or equivalent always-loaded visibility behavior."
+      ],
+      "verification_commands": [
+        "go test ./tools ./registry ./loop . -run 'TestSendUserMessage.*Enabled|TestSendUserMessage.*Concurrent|TestSendUserMessage.*ReadOnly|TestSetupRegistry.*SendUserMessage|TestToolVisibility.*SendUserMessage' -count=1"
+      ]
+    },
+    {
+      "id": "SUM-TASK-006",
+      "title": "Wire SendUserMessage renderer semantics into Go UI/runtime",
+      "gap_ids": [
+        "SUM-GAP-006"
+      ],
+      "owned_files": [
+        "tools/send_user_message.go",
+        "ui/term_renderer.go",
+        "ui/json_renderer.go",
+        "tui/stream_renderer.go",
+        "loop/events.go",
+        "loop/query.go",
+        "tools/send_user_message_test.go",
+        "ui/term_renderer_test.go",
+        "tui/stream_renderer_test.go",
+        "loop/events_test.go"
+      ],
+      "dependencies": [
+        "SUM-TASK-003",
+        "SUM-TASK-004"
+      ],
+      "acceptance": [
+        "Go renders SendUserMessage without generic tool chrome in the normal user-visible path.",
+        "Brief/chat mode can show a Claude label and sentAt timestamp when those modes exist in Go.",
+        "Transcript/detail mode remains distinguishable from plain assistant text.",
+        "Attachment metadata renders as file/image rows with path and size.",
+        "Tests prove assistant text is not duplicated with SendUserMessage content in the same turn."
+      ],
+      "verification_commands": [
+        "go test ./ui ./tui ./loop ./tools -run 'Test.*SendUserMessage.*Render|Test.*Brief.*Render|Test.*Transcript.*SendUserMessage|Test.*DropText.*Brief' -count=1"
+      ]
+    },
+    {
+      "id": "SUM-TASK-007",
+      "title": "Replace stale SendUserMessage tests with TS-parity regression coverage",
+      "gap_ids": [
+        "SUM-GAP-007"
+      ],
+      "owned_files": [
+        "tools/send_user_message_test.go",
+        "tools/send_user_message_alignment_test.go",
+        "registry_setup_test.go",
+        "loop/concurrent_test.go",
+        "ui/term_renderer_test.go",
+        "tui/stream_renderer_test.go"
+      ],
+      "dependencies": [
+        "SUM-TASK-001",
+        "SUM-TASK-002",
+        "SUM-TASK-003",
+        "SUM-TASK-004"
+      ],
+      "acceptance": [
+        "Tests instantiate the default SetupRegistry path as well as the canonical tool constructor.",
+        "No test expects Go-only status values, object attachments, delivered/messageId output, or nil-sink delivery semantics unless explicitly behind a non-TS extension.",
+        "Alignment test comments describe current expected behavior and do not say passing tests MUST FAIL.",
+        "The focused SendUserMessage test command passes."
+      ],
+      "verification_commands": [
+        "go test ./tools -run 'TestSendUserMessage|TestSendUserMessageAlignment|TestSanitiseUserMessageBody' -count=1",
+        "go test . ./tools ./registry ./loop ./ui ./tui -run 'SendUserMessage|Brief' -count=1"
+      ]
+    }
+  ]
+}

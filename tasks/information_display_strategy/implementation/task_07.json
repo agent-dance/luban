@@ -1,0 +1,65 @@
+{
+  "id": "task_07",
+  "title": "Transcript tool-segment grouping and terminal-canvas containment",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Render consecutive heterogeneous tool calls between visible LLM/user text as one reversible container while keeping exact member order, abnormal attention, retained evidence, and terminal-safe output.",
+  "requirements": [
+    "Build transcript segments independently from same-family ObservationAggregate state and before PresentationHidden or viewport filtering.",
+    "Use visible transcript text and session/actor/work-unit changes as boundaries; invisible internal tool-round TurnID changes do not split a segment.",
+    "Preserve call-anchor order when concurrent results complete out of order and reveal every older D0-hidden member when the segment opens.",
+    "Keep single tools unwrapped; group every consecutive non-Agent multi-tool run regardless of disclosure level or outcome; keep live work open and default settled segments collapsed; reveal each member's structured detail and retained diff when the group opens; support mouse and keyboard group toggles.",
+    "Treat narrow literal HTTP GET/HEAD shell commands as read-only for display without weakening execution permissions; retain conservative structured display for mutation or ambiguity.",
+    "Strip terminal controls before width bounding, suppress cursor-oriented terminal canvases from default details, retain exact evidence, and render the root on an opaque background.",
+    "Resolve every new visible label through semantic i18n keys for all runtime languages."
+  ],
+  "dependencies": ["task_01", "task_02", "task_03", "task_04"],
+  "write_scope": ["TUI transcript projection, shell presentation projection, bundled go-tui background inheritance, focused tests, and verification evidence"],
+  "changed_files": [
+    "tui/tool_segment.go",
+    "tui/transcript_tool_segment_test.go",
+    "tui/root.go",
+    "tui/root_home_test.go",
+    "tui/state.go",
+    "tui/presentation_formatter.go",
+    "tui/shell_display_regression_test.go",
+    "i18n/keys.go",
+    "i18n/tool_segment_keys.go",
+    "i18n/tool_segment_keys_test.go",
+    "pkg/go-tui/element_render.go",
+    "pkg/go-tui/element_render_background_test.go"
+  ],
+  "cost": {
+    "forecast_person_days_incremental": {"low": 2, "base": 4, "high": 6},
+    "actual_person_days": null,
+    "note": "Actual human time is not inferred from agent runtime telemetry."
+  },
+  "acceptance": [
+    {"criterion": "A real tool-call/result sequence renders one mixed container and remains in invocation order after reverse result completion.", "evidence": ["TestTranscriptToolSegmentRealEventSequenceRendersOneMixedContainer", "TestTranscriptToolSegmentPreservesCallOrderWhenResultsFinishOutOfOrder"]},
+    {"criterion": "Visible text and identity form correct boundaries while invisible internal turns do not.", "evidence": ["TestTranscriptToolSegmentAssistantTextClosesCurrentSegment", "TestTranscriptToolSegmentDoesNotCrossActorOrWorkUnit", "TestTranscriptToolSegmentCrossesInvisibleToolRoundTurnIDs"]},
+    {"criterion": "Expansion restores every D0-hidden call and every structured member detail, including retained edit diffs; long segments are not viewport-truncated; settled alert and side-effect groups default collapsed.", "evidence": ["TestTranscriptToolSegmentRetainsD0HiddenMembersForExpansionAndAudit", "TestBoundedTranscriptRenderItemsKeepsWholeLongSegment", "TestTranscriptToolSegmentFailureIsAlertAndCollapsedAfterSettlement", "TestTranscriptToolSegmentStructuredSuccessStaysInGroupButDefaultsCollapsed", "TestTranscriptToolSegmentExpandedStructuredMembersRenderEditDiff"]},
+    {"criterion": "Mouse and keyboard group controls are reversible and localized headers update at render time.", "evidence": ["TestTranscriptToolSegmentMouseHeaderWinsOverDragSelection", "TestTranscriptToolSegmentKeyboardTogglesLatestGroup", "TestTranscriptToolSegmentHeaderUsesActiveLanguageAtRenderTime", "i18n/tool_segment_keys_test.go"]},
+    {"criterion": "Read-only weather curl folds, mutation remains structured, terminal art is suppressed, plain colored output is retained safely, and background cells are opaque.", "evidence": ["tui/shell_display_regression_test.go", "TestRootRenderFillsOpaqueBackground", "pkg/go-tui/element_render_background_test.go"]}
+  ],
+  "verification": {
+    "status": "scoped_gates_passed_shared_root_not_green",
+    "commands": [
+      {"command": "/opt/homebrew/bin/go test ./tui ./i18n -count=1", "exit_code": 0},
+      {"command": "/opt/homebrew/bin/go test -race ./tui ./i18n -count=1", "exit_code": 0},
+      {"command": "(cd pkg/go-tui && /opt/homebrew/bin/go test ./... -count=1)", "exit_code": 0},
+      {"command": "(cd pkg/go-tui && /opt/homebrew/bin/go test -race ./... -count=1)", "exit_code": 0},
+      {"command": "/opt/homebrew/bin/go vet ./tui ./i18n", "exit_code": 0},
+      {"command": "GOOS={linux,windows,darwin} GOARCH={amd64,amd64,amd64} /opt/homebrew/bin/go build ./tui", "exit_code": 0},
+      {"command": "/usr/bin/script -q /dev/null /opt/homebrew/bin/go test ./tui -run <task_07_tests> -count=1", "exit_code": 0},
+      {"command": "tmux 80x24 TERM=xterm-256color: go test ./tui -run <task_07_tests> -count=1", "exit_code": 0},
+      {"command": "git diff --check", "exit_code": 0}
+    ],
+    "note": "Fresh full-root runs compiled and passed task-owned packages but failed unrelated exact-string/runtime/session tests from concurrent shared-worktree migrations; see TERMINAL_MATRIX.md."
+  },
+  "remaining_risks": [
+    "Manual fullscreen validation in the user's exact terminal/tmux theme remains separate from automated buffer and event-sequence tests.",
+    "Non-tool operational transcript rows intentionally remain hard visual boundaries.",
+    "The current full-root suite is not release-green because unrelated concurrent shared-worktree changes have failing tests."
+  ],
+  "result": {"completed_at": "2026-07-16", "summary": "Heterogeneous consecutive calls now form one reversible transcript segment, settled runs stay compact with alert-bearing headers, abnormal and structured member details remain available on expansion, terminal canvases cannot leak into default prose, and the root background is opaque."}
+}

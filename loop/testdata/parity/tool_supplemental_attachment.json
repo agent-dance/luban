@@ -1,0 +1,51 @@
+{
+  "schema_version": "1",
+  "id": "tool_supplemental_attachment",
+  "title": "appends supplemental image messages returned by a tool",
+  "status": "active",
+  "updated_at": "2026-07-10",
+  "source_tests": ["loop/integration_test.go:TestIntegrationToolSupplementalMessagesAreAppended"],
+  "coverage_tags": ["tools.attachments", "messages.supplemental_new_messages", "stream.tool_use"],
+  "parity_tasks": ["task_12", "task_16"],
+  "input": {
+    "user_message": "attach",
+    "max_turns": 10,
+    "max_tokens": 1024
+  },
+  "tools": [
+    {"name": "Attach", "kind": "attachment", "content": "attached"}
+  ],
+  "turns": [
+    {
+      "events": [
+        {"type": "message_start", "message": {"role": "assistant"}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "tool_use", "id": "call_attach", "name": "Attach"}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "input_json_delta", "partial_json": "{}"}},
+        {"type": "content_block_stop", "index": 0},
+        {"type": "message_delta", "stop_reason": "tool_use"},
+        {"type": "message_stop"}
+      ]
+    },
+    {
+      "events": [
+        {"type": "message_start", "message": {"role": "assistant"}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "text"}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "done"}},
+        {"type": "content_block_stop", "index": 0},
+        {"type": "message_delta", "stop_reason": "end_turn"},
+        {"type": "message_stop"}
+      ]
+    }
+  ],
+  "expected": {
+    "terminal_reason": "end_turn",
+    "final_text": "done",
+    "provider_call_count": 2,
+    "supplemental_image": true,
+    "events": [
+      {"type": "tool_use", "tool_name": "Attach"},
+      {"type": "tool_result", "tool_result_contains": "attached"},
+      {"type": "text", "text": "done"}
+    ]
+  }
+}

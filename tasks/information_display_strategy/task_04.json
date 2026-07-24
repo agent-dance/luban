@@ -1,0 +1,48 @@
+{
+  "id": "task_04",
+  "title": "Subagent and parallel-activity presentation strategy",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Define how parent-agent, subagent, team, background, and parallel tool activity should be grouped, summarized, expanded, navigated, and attributed without flooding or hiding failures.",
+  "scope": {
+    "include": [
+      "Spawn, queued, running, waiting, blocked, failed, cancelled, and completed states",
+      "Actor identity, assigned objective, progress, latest meaningful event, duration, tools, token/cost, and result preview",
+      "Nested-agent limits, aggregation, event ordering, late-arriving output, and focus behavior",
+      "Permission prompts and failures originating in child agents"
+    ],
+    "exclude": [
+      "Agent scheduling algorithms unrelated to presentation",
+      "Full child transcript streaming as the default view",
+      "Conflating work-unit state with individual tool-call state"
+    ]
+  },
+  "deliverables": [
+    "A subagent card/row information contract by lifecycle state",
+    "Rules for grouping parallel work and surfacing the critical path",
+    "Accessibility, determinism, failure-escalation, and evidence-retention requirements"
+  ],
+  "acceptance_criteria": [
+    "The user can answer who is doing what, what changed, what failed, and how to inspect it",
+    "A single noisy subagent cannot monopolize the transcript",
+    "Errors and permission requests are promoted even when the parent group is collapsed"
+  ],
+  "owned_output": "tasks/information_display_strategy/_agent_reports/task_04.md",
+  "dependencies": [],
+  "parallelization": {
+    "independent": true,
+    "max_concurrency_group": 6,
+    "write_scope": [
+      "tasks/information_display_strategy/_agent_reports/task_04.md"
+    ]
+  },
+  "verification": [
+    "Walk through at least one six-agent concurrent scenario with mixed outcomes",
+    "No edits outside owned_output"
+  ],
+  "result": {
+    "report": "tasks/information_display_strategy/_agent_reports/task_04.md",
+    "completed_at": "2026-07-15",
+    "summary": "Lifecycle, identity, attention, grouping, escalation, accessibility, and evidence contract for parallel subagent work, including a six-agent scenario."
+  }
+}

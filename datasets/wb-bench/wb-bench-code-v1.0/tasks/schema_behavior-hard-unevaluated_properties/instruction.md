@@ -1,0 +1,1 @@
+我这边 schema 里用了 allOf/anyOf 后，unevaluatedProperties 的报错不太对：已经被分支 properties 校验过的字段还会被当成多余字段。麻烦让 object 校验时能跟踪哪些字段已经被 evaluated，allOf 要合并各分支，anyOf 只合并成功分支；失败分支原本的错误还要保留。additionalProperties 原来的行为别被顺手改掉。

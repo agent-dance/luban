@@ -1,0 +1,712 @@
+{
+  "id": "task_31",
+  "title": "Align TaskUpdate tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all TaskUpdate improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "TaskUpdate"
+    ],
+    "problem": "Go TaskUpdate matches the public name, most visible input fields, persistent task storage, basic field mutation, deletion cleanup, dependency edge mutation, and the model-facing happy-path text. It is not exact parity with the TS baseline. The largest remaining gaps are task-v2 exposure gating, strict input/presence semantics, structured output data, TaskCompleted hook blocking, teammate owner/mailbox lifecycle, app-state/update notifications, verification-nudge gating, Go-only dependency/status behavior, tool metadata, and parity test coverage.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/TaskUpdate.json"
+    ],
+    "ts_references": [
+      "../src/utils/tasks.ts:133-139",
+      "../src/tools.ts:218-220",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:107-110",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:33-65",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:169-183",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:212-230",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:69-83",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:147-155",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:351-362",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:364-405",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:231-265",
+      "../src/utils/hooks.ts:3775-3817",
+      "../src/utils/hooks.ts:1921-1928",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:185-199",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:276-298",
+      "../src/utils/teammateMailbox.ts:950-977",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:386-394",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:139-143",
+      "../src/utils/tasks.ts:41-63",
+      "../src/utils/tasks.ts:363-367",
+      "../src/utils/tasks.ts:420-437",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:326-349",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:351-360",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:396-398",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:229-269",
+      "../src/utils/tasks.ts:458-485",
+      "../src/utils/tasks.ts:370-391",
+      "../src/utils/tasks.ts:393-437",
+      "../src/utils/tasks.ts:69-86",
+      "../src/utils/tasks.ts:310-340",
+      "../src/utils/tasks.ts:443-455",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:88-121",
+      "../src/tools/TaskUpdateTool/prompt.ts:1-70",
+      "../src/tools/TaskUpdateTool/TaskUpdateTool.ts:185-298"
+    ],
+    "go_references": [
+      "tools/runtime_scope.go:150-158",
+      "registry_setup.go:235-243",
+      "registry/tool_visibility.go:38-46",
+      "tools/parse.go:122-134",
+      "tools/tasks.go:858-903",
+      "tools/tasks.go:912-918",
+      "tools/tasks.go:925-930",
+      "tools/tasks.go:958-986",
+      "types/tools.go:53-68",
+      "registry/registry.go:109-116",
+      "tools/tasks.go:920-923",
+      "tools/tasks.go:951-955",
+      "tools/tasks.go:1038-1055",
+      "hooks/hooks.go:33-40",
+      "hooks/hooks.go:69-96",
+      "tools/tasks.go:848-856",
+      "tools/tasks.go:971-989",
+      "registry_setup.go:240-243",
+      "main.go:181-184",
+      "session_switcher.go:93-100",
+      "tools/tasks.go:958-972",
+      "tools/send_message_routing.go:576-640",
+      "tools/send_message_envelope.go:23-42",
+      "types/tools.go:24-44",
+      "tools/tasks.go:392-458",
+      "tools/tasks.go:340-390",
+      "tools/tasks.go:496-542",
+      "tui/state.go:146-238",
+      "tools/tasks.go:636-648",
+      "tools/tasks.go:1038-1042",
+      "tools/verification_nudge.go:8-12",
+      "tools/tasks_test.go:325-358",
+      "tools/tasks.go:933-949",
+      "tools/tasks.go:545-568",
+      "tools/tasks.go:449-493",
+      "tools/tasks.go:1046-1053",
+      "tools/k_protocol_test.go:480-497",
+      "tools/tasks.go:18-33",
+      "tools/tasks.go:249-259",
+      "tools/tasks.go:576-584",
+      "registry/tool_visibility.go:5-15",
+      "registry/tool_visibility.go:38-43",
+      "tools/tasks.go:848-906",
+      "loop/concurrent.go:19-22",
+      "tools/tasks_test.go:150-190",
+      "tools/tasks_test.go:194-222",
+      "tools/tasks_hook_test.go:1-75",
+      "registry_setup.go",
+      "tools/runtime_scope.go",
+      "registry/registry_test.go",
+      "tools/tool_search_test.go",
+      "tools/parse.go",
+      "tools/tasks.go",
+      "types/tools.go",
+      "tools/tasks_test.go",
+      "registry/registry.go",
+      "tools/helpers.go",
+      "tools/tasks_hook_test.go",
+      "main.go",
+      "session_switcher.go",
+      "hooks/hooks.go",
+      "tools/send_message_routing.go",
+      "tools/send_message_envelope.go",
+      "tools/team.go",
+      "tools/send_message_routing_test.go",
+      "tui/state.go",
+      "tui/root.go",
+      "tui/state_test.go",
+      "tui/root_status_bar_test.go",
+      "tools/verification_nudge.go",
+      "tools/agent_feature_gates.go",
+      "tools/agent_feature_gates_test.go",
+      "tools/k_protocol_test.go",
+      "tools/reports/TaskUpdate.md",
+      "registry/tool_visibility.go",
+      "loop/concurrent.go",
+      "prompt/static_sections.go",
+      "loop/concurrent_test.go"
+    ],
+    "source_note": ""
+  },
+  "owned_files": [
+    "registry_setup.go",
+    "tools/runtime_scope.go",
+    "registry/registry_test.go",
+    "tools/tool_search_test.go",
+    "tools/parse.go",
+    "tools/tasks.go",
+    "types/tools.go",
+    "tools/tasks_test.go",
+    "registry/registry.go",
+    "tools/helpers.go",
+    "tools/tasks_hook_test.go",
+    "main.go",
+    "session_switcher.go",
+    "hooks/hooks.go",
+    "tools/send_message_routing.go",
+    "tools/send_message_envelope.go",
+    "tools/team.go",
+    "tools/send_message_routing_test.go",
+    "tui/state.go",
+    "tui/root.go",
+    "tui/state_test.go",
+    "tui/root_status_bar_test.go",
+    "tools/verification_nudge.go",
+    "tools/agent_feature_gates.go",
+    "tools/agent_feature_gates_test.go",
+    "tools/k_protocol_test.go",
+    "tools/reports/TaskUpdate.md",
+    "registry/tool_visibility.go",
+    "loop/concurrent.go",
+    "prompt/static_sections.go",
+    "loop/concurrent_test.go",
+    "tools/runtime_scope.go:150-158",
+    "registry_setup.go:235-243",
+    "registry/tool_visibility.go:38-46",
+    "tools/parse.go:122-134",
+    "tools/tasks.go:858-903",
+    "tools/tasks.go:912-918",
+    "tools/tasks.go:925-930",
+    "tools/tasks.go:958-986",
+    "types/tools.go:53-68",
+    "registry/registry.go:109-116",
+    "tools/tasks.go:920-923",
+    "tools/tasks.go:951-955",
+    "tools/tasks.go:1038-1055",
+    "hooks/hooks.go:33-40",
+    "hooks/hooks.go:69-96",
+    "tools/tasks.go:848-856",
+    "tools/tasks.go:971-989",
+    "registry_setup.go:240-243",
+    "main.go:181-184",
+    "session_switcher.go:93-100",
+    "tools/tasks.go:958-972",
+    "tools/send_message_routing.go:576-640",
+    "tools/send_message_envelope.go:23-42",
+    "types/tools.go:24-44",
+    "tools/tasks.go:392-458",
+    "tools/tasks.go:340-390",
+    "tools/tasks.go:496-542",
+    "tui/state.go:146-238",
+    "tools/tasks.go:636-648",
+    "tools/tasks.go:1038-1042",
+    "tools/verification_nudge.go:8-12",
+    "tools/tasks_test.go:325-358",
+    "tools/tasks.go:933-949",
+    "tools/tasks.go:545-568",
+    "tools/tasks.go:449-493",
+    "tools/tasks.go:1046-1053",
+    "tools/k_protocol_test.go:480-497",
+    "tools/tasks.go:18-33",
+    "tools/tasks.go:249-259",
+    "tools/tasks.go:576-584",
+    "registry/tool_visibility.go:5-15",
+    "registry/tool_visibility.go:38-43",
+    "tools/tasks.go:848-906",
+    "loop/concurrent.go:19-22",
+    "tools/tasks_test.go:150-190",
+    "tools/tasks_test.go:194-222",
+    "tools/tasks_hook_test.go:1-75"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "TU-GAP-001",
+      "severity": "P0",
+      "category": "runtime_exposure",
+      "title": "TaskUpdate is registered unconditionally instead of following the TS todo-v2 gate",
+      "description": "TS exposes TaskUpdate only when todo-v2 is enabled. CLAUDE_CODE_ENABLE_TASKS force-enables todo-v2, otherwise interactive sessions enable it and non-interactive sessions hide task-v2 tools. Go has an equivalent RuntimeScope.IsTodoV2Enabled helper, but SetupRegistry registers TaskUpdate and the other task-v2 tools unconditionally."
+    },
+    {
+      "id": "TU-GAP-002",
+      "severity": "P0",
+      "category": "schema_runtime_validation",
+      "title": "Go does not enforce TS strict-object and field-presence semantics",
+      "description": "TS uses z.strictObject and distinguishes a missing optional string from a present empty string with undefined checks. Go publishes a similar visible schema, but parseInput uses json.Unmarshal into TaskUpdateInput, which ignores unknown keys, accepts a hidden id alias, trims taskId, and stores optional strings as plain strings so empty subject/description/activeForm/owner cannot be set. Empty status is treated as absent instead of a schema error."
+    },
+    {
+      "id": "TU-GAP-003",
+      "severity": "P0",
+      "category": "output_contract",
+      "title": "Structured TaskUpdate output data and statusChange are missing",
+      "description": "TS TaskUpdate returns typed data with success, taskId, updatedFields, error, statusChange, and verificationNudgeNeeded, then maps it to a non-error tool_result string. Go TaskUpdate returns plain text directly through ToolResult.Content and loses structured fields such as statusChange and verificationNudgeNeeded. Go error paths also mix non-error text with IsError=true business errors rather than preserving the TS success:false data contract."
+    },
+    {
+      "id": "TU-GAP-004",
+      "severity": "P0",
+      "category": "hooks_lifecycle",
+      "title": "TaskCompleted hooks are not executed before completing a task",
+      "description": "TS runs TaskCompleted hooks before applying status=completed. Blocking hook feedback prevents the update and returns success:false with formatted TaskCompleted feedback. Go's hooks package can load and run HookTaskCompleted, but TaskUpdateTool has no HookRunner field, registry setup does not retain or inject a TaskUpdateTool hook runner, and Execute updates status directly without hook execution."
+    },
+    {
+      "id": "TU-GAP-005",
+      "severity": "P1",
+      "category": "teammate_lifecycle",
+      "title": "Teammate owner assignment, mailbox notification, and completion reminder are missing",
+      "description": "TS auto-assigns the current agent as owner when a swarm teammate starts an unowned task, sends a task_assignment mailbox message when owner changes, and appends a TaskList reminder when a teammate completes a task. Go only applies an explicit owner string and has no TaskUpdate path to current agent name, team name, teammate color, mailbox delivery, or teammate completion reminder."
+    },
+    {
+      "id": "TU-GAP-006",
+      "severity": "P1",
+      "category": "state_lifecycle",
+      "title": "TaskUpdate does not mirror TS app-state expansion or task-update notifications",
+      "description": "TS TaskUpdate auto-expands the task view and the underlying task utilities notify in-process subscribers after task mutations. Go's Tool.Execute signature has no ToolUseContext or setAppState channel, TaskUpdate ignores context, and TaskStore update/delete/block operations mutate files without a task-updated signal."
+    },
+    {
+      "id": "TU-GAP-007",
+      "severity": "P1",
+      "category": "runtime_logic",
+      "title": "Verification nudge fires without TS feature, GrowthBook, and main-thread gates",
+      "description": "TS only computes verificationNudgeNeeded when VERIFICATION_AGENT is enabled, GrowthBook key tengu_hive_evidence is true, the caller is not a subagent, and this update changed status to completed. The boolean is part of structured output and only the mapper appends text. Go computes and appends the nudge whenever the input status is completed and all tasks are completed, regardless of feature flags, GrowthBook, current agent id, or whether status actually changed."
+    },
+    {
+      "id": "TU-GAP-008",
+      "severity": "P1",
+      "category": "runtime_logic",
+      "title": "Go adds dependency/status behaviors that TS TaskUpdate does not implement",
+      "description": "Go prevents in_progress when blockers remain, refuses self/cyclic dependency edges and reports warnings, and removes dependency references when a task is completed. TS TaskUpdate does not check blockers before status=in_progress, blockTask only fails for missing endpoints, and completing a task leaves dependency edges in the store. Some of the Go behavior may be useful, but it is not exact parity."
+    },
+    {
+      "id": "TU-GAP-009",
+      "severity": "P1",
+      "category": "robustness_persistence",
+      "title": "TaskUpdate operates on unvalidated Go task rows and a wider persisted shape",
+      "description": "TS getTask migrates legacy ant statuses, validates against TaskSchema, and returns null for invalid rows before TaskUpdate mutates them. Go reads JSON directly into TaskItem with Status as a free string and extra persisted fields such as comments and timestamps. TaskUpdate can therefore operate on rows TS would ignore or normalize, and the on-disk shape is not TS-compatible."
+    },
+    {
+      "id": "TU-GAP-010",
+      "severity": "P2",
+      "category": "tool_metadata",
+      "title": "TaskUpdate lacks TS tool metadata hooks beyond registry-level deferred discovery",
+      "description": "TS TaskUpdate declares searchHint, maxResultSizeChars, prompt, outputSchema, userFacingName, shouldDefer, isConcurrencySafe, toAutoClassifierInput, and renderToolUseMessage. Go has registry-level deferred/search metadata for TaskUpdate and a short Description, but TaskUpdateTool itself has no concurrency-safe marker, output schema, prompt equivalent, user-facing name, max-result size, render hook, or auto-classifier input."
+    },
+    {
+      "id": "TU-GAP-011",
+      "severity": "P2",
+      "category": "test_coverage",
+      "title": "TaskUpdate parity tests cover only happy-path text, deletion cleanup, and unconditional nudge",
+      "description": "The existing Go tests exercise a basic update with owner and blockedBy, deletion dependency cleanup, cycle refusal at store level, and the unconditional verification nudge. They do not cover TS parity for enablement gating, strict unknown-key rejection, present-empty-string updates, hidden id alias rejection, structured output/statusChange, TaskCompleted blocking hooks, mailbox assignment, teammate auto-owner, app-state/task notifications, TS feature-gated verification nudge, or Go-only dependency behavior decisions."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "TU-TASK-001",
+      "title": "Gate TaskUpdate registration with todo-v2 enablement",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "registry_setup.go",
+        "tools/runtime_scope.go",
+        "registry/registry_test.go",
+        "tools/tool_search_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Interactive registries expose TaskUpdate.",
+        "Non-interactive registries without CLAUDE_CODE_ENABLE_TASKS do not expose TaskUpdate.",
+        "Non-interactive registries with CLAUDE_CODE_ENABLE_TASKS truthy expose TaskUpdate.",
+        "TodoWrite/task-v2 mutual exposure matches the broader task-tool policy chosen for TaskCreate/TaskGet/TaskList."
+      ],
+      "verification": [
+        "go test ./... -run 'Test.*Task.*Enable|Test.*Registry.*Task|Test.*ToolSearch.*Task' -count=1",
+        "go test ./tools ./registry -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-002",
+      "title": "Implement strict TaskUpdate input and presence-aware optional fields",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "tools/parse.go",
+        "tools/tasks.go",
+        "types/tools.go",
+        "tools/tasks_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Unknown top-level keys are rejected for TaskUpdate.",
+        "The hidden id alias is no longer accepted unless explicitly documented as a deliberate compatibility extension.",
+        "taskId is validated as a required string without trim-based reinterpretation.",
+        "Present empty subject, description, activeForm, and owner values update the stored task.",
+        "Empty status is rejected as invalid instead of treated as omitted.",
+        "metadata null values still delete keys."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskUpdate.*(Strict|Empty|Metadata|Invalid|Alias)' -count=1",
+        "go test ./tools -run TestTaskUpdateTool -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-003",
+      "title": "Add TS-compatible structured TaskUpdate result data",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-002"
+      ],
+      "owned_files": [
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/tasks.go",
+        "tools/helpers.go",
+        "tools/tasks_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TaskUpdate success data includes success, taskId, updatedFields, optional statusChange, and verificationNudgeNeeded.",
+        "TaskUpdate failure data includes success:false, taskId, updatedFields:[], and error.",
+        "Not-found and hook-blocked failures render as non-error tool_result content like TS.",
+        "Deletion reports updatedFields:['deleted'] and statusChange from previous status to deleted.",
+        "Verification nudge text is produced by result mapping from a boolean, not by mutating the primary data shape."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskUpdate.*(Structured|StatusChange|NotFound|Delete|Verification)' -count=1",
+        "go test ./registry ./types -run 'Test.*ToolResult' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-004",
+      "title": "Wire TaskCompleted hooks into TaskUpdate",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-003"
+      ],
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_hook_test.go",
+        "registry_setup.go",
+        "main.go",
+        "session_switcher.go",
+        "hooks/hooks.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TaskUpdateTool has a HookRunner or equivalent hook access path.",
+        "Startup and session switching inject the active HookRunner into the registered TaskUpdateTool.",
+        "status=completed invokes HookTaskCompleted with task_id, task_subject, task_description, teammate_name, and team_name before mutation.",
+        "Blocking hook output prevents status change and returns formatted TaskCompleted feedback.",
+        "Abort/cancellation context is honored for hook execution."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskUpdate.*Hook|TestRunTaskCompletedHook' -count=1",
+        "go test ./hooks -run 'Test.*TaskCompleted' -count=1",
+        "go test ./... -run 'Test.*Session.*Hook|Test.*Registry.*Hook' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-005",
+      "title": "Implement teammate owner and mailbox side effects for TaskUpdate",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-003",
+        "TU-TASK-004"
+      ],
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/send_message_routing.go",
+        "tools/send_message_envelope.go",
+        "tools/team.go",
+        "tools/tasks_test.go",
+        "tools/send_message_routing_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "When agent teams are enabled, status=in_progress with omitted owner and an unowned task sets owner to the current agent name.",
+        "Changing owner under agent teams writes a task_assignment JSON envelope to the assignee mailbox with taskId, subject, description, assignedBy, and timestamp.",
+        "Mailbox sender name and color or the nearest Go equivalent are populated consistently.",
+        "When a teammate marks a task completed, the rendered result includes the TS TaskList reminder.",
+        "No mailbox side effect occurs outside agent-team mode."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskUpdate.*(AutoOwner|Mailbox|Assignment|TeammateReminder)' -count=1",
+        "go test ./tools -run 'TestSendMessage_.*Mailbox|Test.*Team.*Task' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-006",
+      "title": "Add TaskUpdate app-state and task-update notification lifecycle",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-003"
+      ],
+      "owned_files": [
+        "types/tools.go",
+        "tools/tasks.go",
+        "tui/state.go",
+        "tui/root.go",
+        "tools/tasks_test.go",
+        "tui/state_test.go",
+        "tui/root_status_bar_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Task mutations emit a task-updated signal after update, delete, and dependency edge changes.",
+        "Listener failures do not fail the task mutation.",
+        "Interactive TaskUpdate can request or perform task-view expansion equivalent to TS expandedView='tasks'.",
+        "Non-interactive callers remain unaffected.",
+        "If exact AppState parity is out of scope, the divergence is represented by a tested no-op contract rather than accidental absence."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTask.*Notify|TestTaskUpdate.*AppState' -count=1",
+        "go test ./tui -run 'Test.*Task.*State|Test.*Expanded' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-007",
+      "title": "Match TS verification-nudge gating",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-003"
+      ],
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/verification_nudge.go",
+        "tools/tasks_test.go",
+        "tools/agent_feature_gates.go",
+        "tools/agent_feature_gates_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "No nudge appears unless the Go equivalent of VERIFICATION_AGENT and tengu_hive_evidence are enabled.",
+        "No nudge appears when the current context is a subagent/agent-owned context.",
+        "No nudge appears when input status=completed but the persisted task was already completed.",
+        "Nudge appears when the final main-thread completion closes 3+ non-verification tasks under enabled gates.",
+        "The structured result carries verificationNudgeNeeded separately from rendered text."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskUpdate.*Verification' -count=1",
+        "go test ./tools -run TestTodoWrite.*Verification -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-008",
+      "title": "Resolve Go-only dependency and blocked-status semantics",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-003"
+      ],
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/k_protocol_test.go",
+        "tools/reports/TaskUpdate.md"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "status=in_progress behavior for tasks with open blockers matches TS or is explicitly gated as a deliberate Go extension.",
+        "Dependency edge creation accepts/rejects self and cyclic edges according to the chosen parity policy.",
+        "Completion does not remove dependency references if exact TS parity is selected.",
+        "Deletion cleanup continues to remove references, matching TS deleteTask.",
+        "Rendered result and structured result do not surface Go-only warnings unless that divergence is intentionally retained."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskUpdate.*(Blocked|Dependency|Cycle|Complete|Delete)' -count=1",
+        "go test ./tools -run TestTaskStore_BlockTask_RefusesCycle -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-009",
+      "title": "Validate and normalize task rows before TaskUpdate mutation",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-002"
+      ],
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/k_protocol_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TaskUpdate treats invalid task rows as not found, matching TS getTask returning null.",
+        "Legacy statuses open/resolved/planning/implementing/reviewing/verifying normalize under the same conditions as TS or a documented Go compatibility policy.",
+        "Persisted task shape used by task-v2 tools is TS-compatible or extra fields are isolated from TS parity paths.",
+        "TaskUpdate cannot mutate rows with statuses outside pending/in_progress/completed unless status=deleted is the requested pseudo-action."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskUpdate.*(InvalidRow|LegacyStatus|PersistedShape)' -count=1",
+        "go test ./tools -run 'TestTaskList.*Invalid|TestTaskGet.*Invalid' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-010",
+      "title": "Expose TaskUpdate tool metadata parity",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-003"
+      ],
+      "owned_files": [
+        "tools/tasks.go",
+        "registry/tool_visibility.go",
+        "loop/concurrent.go",
+        "prompt/static_sections.go",
+        "tools/tool_search_test.go",
+        "loop/concurrent_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TaskUpdate implements IsConcurrentSafe() true or equivalent scheduler metadata.",
+        "TaskUpdate exposes userFacingName='TaskUpdate' where Go has a user-facing metadata surface.",
+        "TaskUpdate prompt content covers TS usage guidance, deletion, dependencies, status workflow, staleness, and examples.",
+        "TaskUpdate searchHint matches or intentionally maps from TS 'update a task'.",
+        "TaskUpdate auto-classifier input joins taskId, status when present, and subject when present.",
+        "TaskUpdate max-result/output-schema metadata is available to the same consumers as other structured Go tools."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./loop -run 'Test.*TaskUpdate.*(Metadata|Concurrent|Classifier|Prompt|ToolSearch)' -count=1",
+        "go test ./loop -run Test.*Concurrent -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TU-TASK-011",
+      "title": "Add focused TaskUpdate parity regression tests",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TU-TASK-001",
+        "TU-TASK-002",
+        "TU-TASK-003",
+        "TU-TASK-004",
+        "TU-TASK-005",
+        "TU-TASK-006",
+        "TU-TASK-007",
+        "TU-TASK-008",
+        "TU-TASK-009",
+        "TU-TASK-010"
+      ],
+      "owned_files": [
+        "tools/tasks_test.go",
+        "tools/tasks_hook_test.go",
+        "tools/k_protocol_test.go",
+        "registry/registry_test.go",
+        "loop/concurrent_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Tests fail against the current implementation for known TaskUpdate gaps and pass after the corresponding tasks land.",
+        "Coverage includes strict unknown-key rejection, present-empty-string updates, hidden id alias policy, structured statusChange, not-found non-error data, deleted pseudo-status, TaskCompleted blocking hook rollback, mailbox assignment, auto-owner, teammate completion reminder, task-update notification, verification gates, and dependency policy.",
+        "Skipped tests, if any, name the exact blocking task id and acceptance condition for unskip.",
+        "The suite is isolated from global CLAUDE_HOME, CLAUDE_CODE_TASK_LIST_ID, team env, and feature flags."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./loop -run 'TestTaskUpdate|Test.*Task.*Enable|Test.*Task.*Hook|Test.*Task.*Mailbox|Test.*Task.*Concurrent' -count=1",
+        "go test ./tools -race -run 'TestTaskUpdate|TestTaskStore' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    }
+  ],
+  "acceptance_criteria": [
+    "TaskUpdate input validation and schema behavior match the original TS implementation for all report gaps.",
+    "TaskUpdate model-visible output and structured result data match TS golden fixtures.",
+    "TaskUpdate runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "Interactive registries expose TaskUpdate.",
+    "Non-interactive registries without CLAUDE_CODE_ENABLE_TASKS do not expose TaskUpdate.",
+    "Non-interactive registries with CLAUDE_CODE_ENABLE_TASKS truthy expose TaskUpdate.",
+    "TodoWrite/task-v2 mutual exposure matches the broader task-tool policy chosen for TaskCreate/TaskGet/TaskList.",
+    "Unknown top-level keys are rejected for TaskUpdate.",
+    "The hidden id alias is no longer accepted unless explicitly documented as a deliberate compatibility extension.",
+    "taskId is validated as a required string without trim-based reinterpretation.",
+    "Present empty subject, description, activeForm, and owner values update the stored task.",
+    "Empty status is rejected as invalid instead of treated as omitted.",
+    "metadata null values still delete keys.",
+    "TaskUpdate success data includes success, taskId, updatedFields, optional statusChange, and verificationNudgeNeeded.",
+    "TaskUpdate failure data includes success:false, taskId, updatedFields:[], and error.",
+    "Not-found and hook-blocked failures render as non-error tool_result content like TS.",
+    "Deletion reports updatedFields:['deleted'] and statusChange from previous status to deleted.",
+    "Verification nudge text is produced by result mapping from a boolean, not by mutating the primary data shape.",
+    "TaskUpdateTool has a HookRunner or equivalent hook access path.",
+    "Startup and session switching inject the active HookRunner into the registered TaskUpdateTool.",
+    "status=completed invokes HookTaskCompleted with task_id, task_subject, task_description, teammate_name, and team_name before mutation.",
+    "Blocking hook output prevents status change and returns formatted TaskCompleted feedback.",
+    "Abort/cancellation context is honored for hook execution.",
+    "When agent teams are enabled, status=in_progress with omitted owner and an unowned task sets owner to the current agent name.",
+    "Changing owner under agent teams writes a task_assignment JSON envelope to the assignee mailbox with taskId, subject, description, assignedBy, and timestamp.",
+    "Mailbox sender name and color or the nearest Go equivalent are populated consistently.",
+    "When a teammate marks a task completed, the rendered result includes the TS TaskList reminder."
+  ],
+  "verification": [
+    "go test ./... -run 'Test.*Task.*Enable|Test.*Registry.*Task|Test.*ToolSearch.*Task' -count=1",
+    "go test ./tools ./registry -count=1",
+    "go test ./tools -run 'TestTaskUpdate.*(Strict|Empty|Metadata|Invalid|Alias)' -count=1",
+    "go test ./tools -run TestTaskUpdateTool -count=1",
+    "go test ./tools -run 'TestTaskUpdate.*(Structured|StatusChange|NotFound|Delete|Verification)' -count=1",
+    "go test ./registry ./types -run 'Test.*ToolResult' -count=1",
+    "go test ./tools -run 'TestTaskUpdate.*Hook|TestRunTaskCompletedHook' -count=1",
+    "go test ./hooks -run 'Test.*TaskCompleted' -count=1",
+    "go test ./... -run 'Test.*Session.*Hook|Test.*Registry.*Hook' -count=1",
+    "go test ./tools -run 'TestTaskUpdate.*(AutoOwner|Mailbox|Assignment|TeammateReminder)' -count=1",
+    "go test ./tools -run 'TestSendMessage_.*Mailbox|Test.*Team.*Task' -count=1",
+    "go test ./tools -run 'TestTask.*Notify|TestTaskUpdate.*AppState' -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

@@ -1,0 +1,11 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "pytest_injected"
+
+[run]
+cwd = "/workspace"
+command = '''python -m pytest \
+  tests/test_copy.py::test_warn_if_chmod_raises_permission_error \
+  tests/test_copy.py::test_chmod_permission_error_copy_succeeds \
+  tests/test_copy.py::test_chmod_permission_error_warning_message_format \
+  tests/test_copy.py::test_exclude_replaces \
+  -o addopts='' -o filterwarnings=ignore::DeprecationWarning -q --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

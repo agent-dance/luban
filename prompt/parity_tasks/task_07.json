@@ -1,0 +1,50 @@
+{
+  "id": "task_07",
+  "title": "Align environment and Git context semantics",
+  "priority": "P1",
+  "status": "ready_for_dispatch",
+  "depends_on": [
+    "task_03"
+  ],
+  "write_scope": [
+    "prompt/env.go",
+    "prompt/git.go",
+    "prompt/*_test.go"
+  ],
+  "read_first": [
+    "../src/context.ts",
+    "../src/constants/prompts.ts",
+    "prompt/system.go",
+    "session_switcher.go"
+  ],
+  "objective": "Bring Go environment and Git context content up to original fidelity and robustness.",
+  "context": [
+    "The original environment prompt includes primary cwd, git repo status, additional working directories, platform, shell, OS version, model information, worktree warnings, and knowledge cutoff.",
+    "The original Git status uses --no-optional-locks, includes current branch, main branch, git user, clean state, recent commits, and snapshot wording.",
+    "Go currently provides a smaller Git context block from simple git commands."
+  ],
+  "deliverables": [
+    "Add environment context builder with primary working directory, additional directories, platform, shell, and OS version.",
+    "Add optional model description and knowledge cutoff hooks if model catalog data is available.",
+    "Use --no-optional-locks for git status and git log calls.",
+    "Include current branch, default/main branch, git user, status, and recent commits.",
+    "Add clean status placeholder when working tree is clean.",
+    "Add snapshot wording that clarifies Git status does not update during the conversation.",
+    "Support a disable-git-instructions setting or environment gate."
+  ],
+  "acceptance": [
+    "Non-git directories return no Git status without error.",
+    "Long status output truncates around 2000 characters with an explanatory suffix.",
+    "Git context is injected through SystemContext from task_03, not base static prompt.",
+    "Tests cover clean repo, dirty repo, non-git directory, and timeout/error behavior."
+  ],
+  "verification": [
+    "go test ./prompt"
+  ],
+  "non_goals": [
+    "Do not implement the full settings subsystem.",
+    "Do not change Git tool execution behavior.",
+    "Do not add network calls."
+  ],
+  "handoff_notes": "Use temporary git repositories in tests and keep timeouts short."
+}

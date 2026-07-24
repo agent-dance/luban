@@ -1,0 +1,19 @@
+schema_version = "workbuddy.code_lite.verifier.v1"
+family = "pytest_injected"
+
+[run]
+cwd = "/workspace"
+command = '''python -m pytest \
+  tests/test_static_utils_standalone.py::TestCalculateEtag::test_module_exists \
+  tests/test_static_utils_standalone.py::TestCalculateEtag::test_returns_quoted_string \
+  tests/test_static_utils_standalone.py::TestCalculateEtag::test_deterministic \
+  tests/test_static_utils_standalone.py::TestCalculateEtag::test_different_for_different_content \
+  tests/test_static_utils_standalone.py::TestCalculateEtag::test_empty_file \
+  tests/test_static_utils_standalone.py::TestCalculateEtag::test_binary_file \
+  tests/test_static_utils_standalone.py::TestCalculateEtag::test_uses_sha256 \
+  tests/test_static_utils_standalone.py::TestAsgiStaticEtag::test_asgi_module_imports_calculate_etag \
+  tests/test_static_utils_standalone.py::TestAsgiStaticEtag::test_etag_header_constant \
+  tests/test_static_utils_standalone.py::TestAsgiStaticEtag::test_if_none_match_handling \
+  tests/test_static_utils_standalone.py::TestAsgiStaticEtag::test_304_response \
+  -v \
+  --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

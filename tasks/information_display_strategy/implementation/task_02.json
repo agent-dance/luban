@@ -1,0 +1,59 @@
+{
+  "id": "task_02",
+  "title": "Tool formatter and slash-command presentation contracts",
+  "status": "completed",
+  "priority": "P0",
+  "objective": "Give every production tool family and registered slash command a stable semantic lifecycle contract without inferring business outcomes from prose.",
+  "requirements": [
+    "All 41 production tool names, aliases, dynamic MCP names, and unknown fallback are covered.",
+    "Queued, running, success, warning, failure, inspect, and full states are tested for every production formatter.",
+    "All 24 registered slash commands have typed family/action/target/display/risk/outcome contracts.",
+    "Legacy OnEvent text remains byte-compatible while typed results are bounded, ANSI-free, redacted, and explicitly marked when they mirror the legacy stream.",
+    "Text-returning commands report explicit success, warning, partial, failure, denial, cancellation, timeout, interruption, or exit through a domain result channel.",
+    "Every production tool has a fixture matching its actual structured wire shape rather than a generic success map."
+  ],
+  "dependencies": ["task_01"],
+  "write_scope": ["tui tool formatter and commands presentation adapter"],
+  "changed_files": [
+    "tui/presentation_formatter.go",
+    "tui/presentation_formatter_test.go",
+    "commands/presentation.go",
+    "commands/presentation_test.go",
+    "commands/commands.go",
+    "commands/builtins.go",
+    "commands/config.go",
+    "commands/init_cmd.go",
+    "commands/resume.go",
+    "commands/rename.go",
+    "commands/review.go",
+    "commands/doctor.go",
+    "commands/mcp.go",
+    "commands/mcp_prompts.go",
+    "commands/skills.go",
+    "tools/powershell.go",
+    "tools/powershell_test.go",
+    "tools/tasks.go"
+  ],
+  "cost": {
+    "forecast_person_days": {"low": 6, "base": 10, "high": 16, "source": "Full-alignment allocation from INFORMATION_DISPLAY_STRATEGY_REPORT.md"},
+    "actual_person_days": null
+  },
+  "acceptance": [
+    {"criterion": "Production formatter catalog has 41 exact entries plus aliases/dynamic fallback.", "evidence": ["TestProductionToolFamilyCoverage"]},
+    {"criterion": "Every formatter covers the complete lifecycle and expansion matrix.", "evidence": ["TestEveryProductionFormatterCoversLifecycleWarningFailureAndExpansion"]},
+    {"criterion": "Every production tool exposes tool-specific fields from a realistic structured result.", "evidence": ["TestEveryProductionFormatterUsesToolSpecificStructuredFields"]},
+    {"criterion": "24 registered slash commands use exact presentation contracts.", "evidence": ["TestBuiltinCommandPresentationContractsCoverRegistry"]},
+    {"criterion": "Typed command outcomes, sections, and evidence references survive without replaying mirrored legacy text.", "evidence": ["TestCommandPresentationPreservesEveryTypedTerminalOutcomeAndSections", "TestCommandPresentationResultIsBoundedAndRetainsHeadAndTail"]},
+    {"criterion": "Legacy text is unchanged and domain failures are explicit, not parsed.", "evidence": ["TestCommandPresentationEmitsTypedLifecycleWithoutChangingLegacyText", "TestTypedDomainOutcomesCoverTextReturningBuiltins"]},
+    {"criterion": "Secrets, auth tokens, device codes, ANSI, and long output are safe and bounded.", "evidence": ["commands/presentation_test.go", "tui/presentation_formatter_test.go"]}
+  ],
+  "verification": {
+    "baseline": {"git_head": "7c6eea019e6f31449149770e986face7edd4d9ec", "go_version": "go1.26.1", "platform": "darwin/arm64"},
+    "commands": [
+      {"command": "/opt/homebrew/bin/go test ./commands ./tui -count=1", "exit_code": 0, "evidence": "TERMINAL_MATRIX.md"},
+      {"command": "/opt/homebrew/bin/go test -race ./... -count=1", "exit_code": 0, "evidence": "TERMINAL_MATRIX.md"}
+    ]
+  },
+  "remaining_risks": ["A newly registered tool or slash command must extend the catalog test or intentionally accept the conservative fallback."],
+  "result": {"completed_at": "2026-07-15", "summary": "Tool and slash-command output is semantic, lifecycle-aware, explicit about business outcomes, and renderer-neutral."}
+}

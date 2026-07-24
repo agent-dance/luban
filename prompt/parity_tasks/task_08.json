@@ -1,0 +1,53 @@
+{
+  "id": "task_08",
+  "title": "Implement prompt cache scope and dynamic boundary strategy",
+  "priority": "P0",
+  "status": "ready_for_dispatch",
+  "depends_on": [
+    "task_01",
+    "task_02"
+  ],
+  "write_scope": [
+    "prompt/cache.go",
+    "provider/anthropic.go",
+    "provider/*_test.go",
+    "loop/"
+  ],
+  "read_first": [
+    "../src/constants/prompts.ts",
+    "../src/utils/api.ts",
+    "../src/services/api/claude.ts",
+    "provider/anthropic.go",
+    "provider/provider.go",
+    "prompt/prompt-cache.md"
+  ],
+  "objective": "Upgrade Go prompt caching from basic cache_control markers to original-style static/dynamic scope handling.",
+  "context": [
+    "Go already marks Anthropic system, tool, and message breakpoints.",
+    "The original splits system prompt blocks into attribution, CLI prefix, global static content, org-scoped content, and uncached dynamic content.",
+    "Dynamic prompt changes should not invalidate the static prompt cache."
+  ],
+  "deliverables": [
+    "Add a SYSTEM_PROMPT_DYNAMIC_BOUNDARY equivalent or metadata-based boundary.",
+    "Mark static blocks with global or org cache scope where supported.",
+    "Mark dynamic blocks with null cache scope.",
+    "Implement fallback to org scope when global cache is not safe or when tool-based cache markers require it.",
+    "Teach Anthropic provider to convert block cache scopes into appropriate cache_control payloads.",
+    "Preserve existing single-string cache behavior as fallback."
+  ],
+  "acceptance": [
+    "Tests prove dynamic block text changes do not alter static block cache metadata.",
+    "Anthropic provider emits cache_control only for eligible blocks.",
+    "OpenAI and Responses providers ignore cache scopes safely.",
+    "Existing provider cache tests pass."
+  ],
+  "verification": [
+    "go test ./prompt ./provider ./loop"
+  ],
+  "non_goals": [
+    "Do not implement cache_edits microcompaction.",
+    "Do not implement beta header latching unless already exposed by provider config.",
+    "Do not add billing or plan eligibility checks unless the repo already has that data."
+  ],
+  "handoff_notes": "Update prompt/prompt-cache.md only if this task changes documented behavior; larger doc cleanup belongs to task_14."
+}

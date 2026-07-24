@@ -1,0 +1,138 @@
+{
+  "id": "task_28",
+  "title": "Verify management, persistence, concurrency, and recovery",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 9,
+  "owner_role": "test-engineer",
+  "estimated_minutes": 60,
+  "parallel_group": "acceptance",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_12",
+    "task_13",
+    "task_14",
+    "task_15",
+    "task_16",
+    "task_17",
+    "task_20",
+    "task_21",
+    "task_22",
+    "task_23",
+    "task_24",
+    "task_25",
+    "task_30",
+    "task_31"
+  ],
+  "objective": "Exercise /skills scopes, settings persistence, same-name ownership, concurrent refresh/toggle/invoke, resume, compact, and all user surfaces, including the single-line selected-detail and bounded-panel layout contract.",
+  "context": [
+    "Complete one low-conflict slice of the accepted live skill catalog and cache-preserving design.",
+    "The worktree is shared and dirty; only owned_files may be modified."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Developer-context initial catalog and progressive disclosure inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Live discovery, visibility overrides, and skill lifecycle inspiration."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Exact-prefix caching motivates append-only deltas."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "tasks/skills_live_catalog_cache/task_31.json",
+    "commands/skills.go",
+    "skills/loader.go",
+    "skills/override_store.go",
+    "session/skill_catalog_state.go",
+    "compact/",
+    "tui/skills_surface.go",
+    "tui/skills_menu.go",
+    "tui/skills_toggle_view.go"
+  ],
+  "owned_files": [
+    "commands/skills_lifecycle_acceptance_task28_test.go",
+    "session/skills_resume_acceptance_task28_test.go",
+    "compact/skills_compact_acceptance_task28_test.go",
+    "skills/catalog_race_acceptance_task28_test.go",
+    "tui/skills_surface_acceptance_task28_test.go",
+    "skills_surface_acceptance_task28_test.go",
+    "skills_surface_acceptance_task28_pty_unix_test.go",
+    "skills_surface_acceptance_task28_pty_unsupported_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Test all four visibility states at session and persistent scopes.",
+      "Test managed read-only policy and reset-to-inherited.",
+      "Test concurrent refresh/toggle/snapshot/invoke under race detector.",
+      "Test exact /skills launcher routing versus /skills subcommand routing; exact /skills must immediately load the interactive checklist, while /skills list/show/set continue through the text command backend.",
+      "Test direct loading, left-side checkbox rendering, inert Enter, Backspace filter editing, and one-Esc close behavior without an intermediate action menu.",
+      "Test task_31 layout end to end: each list row occupies one terminal line with terminal-cell ellipsis, only the selected skill exposes details, and the complete bordered panel stays inside the viewport.",
+      "Test ASCII, CJK, combining text, emoji/ZWJ sequences, long names/summaries/paths/identity metadata, extreme narrow/short terminals, shrink/grow resize, filtering, and selected-row visibility.",
+      "Test Space with stable ID plus observed revision after filtering, after a concurrent refresh, and with same-name different-source rows.",
+      "Test that a configured-on shadowed row remains checked while selected details identify its winner, and that off/on plus winner removal keep configuration and activation semantics distinct.",
+      "Test persisted last non-off restoration after menu reopen, fresh store/process construction, and project-scoped text command transitions through off.",
+      "Test managed read-only and active-session-override conflicts without mutation.",
+      "Inject persistence failure, live-apply failure with successful rollback, and rollback failure; require authoritative redraw and a degraded-refresh-required warning for the last case.",
+      "Test TUI/screen-reader behavioral parity through shared contracts."
+    ],
+    "exclude": [
+      "Do not modify production code.",
+      "Do not collapse distinct failure modes into one broad smoke assertion."
+    ]
+  },
+  "implementation_steps": [
+    "Build focused acceptance matrices in new files.",
+    "Run targeted race tests.",
+    "Report defects to task owners with exact scenario and expected state."
+  ],
+  "deliverables": [
+    "commands/skills_lifecycle_acceptance_task28_test.go",
+    "session/skills_resume_acceptance_task28_test.go",
+    "compact/skills_compact_acceptance_task28_test.go",
+    "skills/catalog_race_acceptance_task28_test.go",
+    "tui/skills_surface_acceptance_task28_test.go",
+    "skills_surface_acceptance_task28_test.go",
+    "skills_surface_acceptance_task28_pty_unix_test.go",
+    "skills_surface_acceptance_task28_pty_unsupported_test.go"
+  ],
+  "acceptance_criteria": [
+    "Overrides persist only in requested scope.",
+    "Same-name skills never disable each other by accident.",
+    "Resume and compact respect context epoch visibility.",
+    "No data race appears across refresh/toggle/snapshot/invoke.",
+    "Exact /skills directly opens the authoritative checklist, while explicit /skills subcommands have distinct, verified text-command outcomes.",
+    "The direct checklist renders auto, name-only, and manual-only as [x] and off as [ ], changes only the selected stable ID when its observed revision is current, and immediately reflects the authoritative persisted effective state.",
+    "Every skill list row is a single physical terminal line and is ellipsized by display-cell width without splitting grapheme clusters or overflowing for CJK, combining text, emoji/ZWJ sequences, or long metadata.",
+    "Only the selected skill renders details; selection/filter changes remove old details, and every selected detail line remains within the inner panel width.",
+    "Across extreme height, width, and resize cases, the full skills panel including both borders remains inside the viewport and the selected row remains visible whenever a content row is available.",
+    "A shadowed non-off row stays checked but reports its winner stable ID as the reason it is currently inactive; winner removal clears that notice and makes the row active.",
+    "Stale revisions and active session overrides are rejected without mutation and tell the user how to refresh or clear the higher-priority scope.",
+    "Ordinary failures roll back both rendered and backend state; rollback failure is surfaced as degraded and redraws from a freshly read authoritative snapshot instead of claiming unchanged state.",
+    "TUI and screen-reader semantics match."
+  ],
+  "verification": [
+    "go test ./commands ./session ./compact ./skills -run 'Skills.*Acceptance|CatalogRace' -count=1",
+    "go test . ./tui -run 'Skills.*Acceptance|Skill.*Surface' -count=1",
+    "go test ./tui -run 'Skills.*(Layout|SingleLine|Details|Overflow|Viewport|Resize|Unicode|CJK|Emoji|Narrow|Short)' -count=1",
+    "go test -race ./skills ./loop ./tools ./session -run 'Skill|Catalog' -count=1",
+    "GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go test -c -o /tmp/skills-task28-windows.test .",
+    "go test ./i18n -count=1",
+    "go vet . ./commands ./session ./compact ./skills ./tui",
+    "git diff --check -- commands/skills_lifecycle_acceptance_task28_test.go session/skills_resume_acceptance_task28_test.go compact/skills_compact_acceptance_task28_test.go skills/catalog_race_acceptance_task28_test.go tui/skills_surface_acceptance_task28_test.go skills_surface_acceptance_task28_test.go skills_surface_acceptance_task28_pty_unix_test.go skills_surface_acceptance_task28_pty_unsupported_test.go"
+  ],
+  "risks": [],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Add management/lifecycle/race acceptance tests only. Cover scopes, same-name identities, resume, compact, and surface parity; also exercise task 31 through render-level tests for one-row cell-width ellipsis, selected-only details, complete border containment, extreme width/height, resize, CJK, combining text, emoji/ZWJ, and long metadata. Do not edit production code.",
+  "notes_for_assignee": "If verification exposes a defect in another owner's production file, report the exact failing test and owner task; do not patch across ownership boundaries."
+}

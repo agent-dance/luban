@@ -1,0 +1,97 @@
+{
+  "id": "task_31",
+  "title": "Constrain skills checklist rows and panel to the terminal viewport",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 9,
+  "owner_role": "executor",
+  "estimated_minutes": 60,
+  "parallel_group": "surface_layout",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_30"
+  ],
+  "objective": "Render every skill list row on exactly one terminal line with display-cell-aware ellipsis, expose details only for the selected skill, and keep the complete bordered skills panel inside the current terminal height across resize and extreme dimensions.",
+  "context": [
+    "Task 30 is accepted and owns the direct /skills checklist interaction. This is a distinct follow-up layout task; do not reopen or rewrite task 30 history.",
+    "Terminal display width is not rune count: CJK, combining marks, variation selectors, and emoji sequences must not make a supposedly truncated row wrap or cross the right border.",
+    "The panel height budget must include both borders and every optional child row. A child list that fits while the bottom border is drawn below the viewport is still an overflow defect.",
+    "The worktree is shared and dirty; only owned_files may be modified."
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "tasks/skills_live_catalog_cache/task_30.json",
+    "tui/root.go",
+    "tui/skills_menu.go",
+    "tui/skills_toggle_view.go",
+    "tui/root_input_height_test.go",
+    "tui/goal_status_test.go"
+  ],
+  "owned_files": [
+    "tui/skills_layout.go",
+    "tui/skills_layout_task31_test.go",
+    "tui/root.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Introduce a pure skills-panel layout calculation that receives current terminal width and height and budgets the outer top/bottom borders, horizontal padding, title/filter/status/help/pager rows, visible skill rows, and selected-detail rows before rendering children.",
+      "Render each skill list item as exactly one physical terminal row. Normalize embedded whitespace/newlines in row metadata, reserve cells for selection marker and checkbox, and truncate the remaining label/summary with a single ellipsis according to terminal display-cell width rather than rune count.",
+      "Make truncation Unicode-safe for ASCII, CJK, combining sequences, emoji, variation selectors, and zero-width joiner sequences: never emit invalid UTF-8, split a grapheme cluster, exceed the requested cell width, or append an ellipsis that itself does not fit. NFC-normalize representable clusters; when go-tui cannot faithfully store a multi-rune cluster at its physical cell width, replace that whole cluster atomically with one safe placeholder instead of emitting a partial sequence.",
+      "Render the detail block only for the currently selected stable skill row. Moving selection or changing the filter must remove the previous row's details; unselected rows must never leak their summary, path, source, identity, visibility, mutability, or shadow metadata through a hidden/wrapped second line.",
+      "Constrain each detail line to one physical row as well, but permit multiple distinct detail rows for the selected skill when the height budget allows them.",
+      "Wrap actionable transaction notices into a pre-budgeted sequence of individually bounded single-line rows when one physical row cannot contain both the outcome and a complete recovery command; keep the full command visible at practical widths and include every emitted notice row in the panel height budget.",
+      "Set an explicit total panel height no greater than the available terminal viewport and derive the content-row allowance after subtracting borders. Reduce visible list rows and optional detail/status/filter/pager/help rows deterministically when height is scarce so the bottom border remains in bounds.",
+      "Recompute width truncation, visible range, selected details, and height budget on every render after terminal resize; keep selection stable when still valid and keep it visible when the viewport shrinks.",
+      "For widths or heights too small to contain ordinary chrome, degrade without panic or out-of-bounds writes. Whenever at least two terminal rows are available, both panel borders must remain inside the viewport."
+    ],
+    "exclude": [
+      "Do not change exact /skills routing, Space/Enter/Esc semantics, backend mutation, persistence, visibility states, or authoritative refresh behavior accepted in task 30.",
+      "Do not add new user-visible copy or bypass semantic i18n. Reuse existing localized title, detail, notice, pager, and help strings.",
+      "Do not add a new dependency or refactor unrelated TUI overlays."
+    ]
+  },
+  "implementation_steps": [
+    "Add failing pure layout/truncation tests first for ASCII, CJK, combining text, emoji/ZWJ sequences, long names/summaries/paths, and widths around the ellipsis boundary.",
+    "Extract the smallest reusable cell-width and panel-budget helpers into tui/skills_layout.go, reusing existing TUI width primitives where they satisfy grapheme and cell-width requirements.",
+    "Update only the skills checklist renderer in tui/root.go to consume the computed inner width and row budget, give every rendered line an explicit one-row height, and assign the panel its bounded total height.",
+    "Add render-level tests for selected-only details, bottom-border containment, extreme widths/heights, shrink/grow resize, filtering, and selection visibility.",
+    "Run focused, race, i18n, static, and diff checks."
+  ],
+  "deliverables": [
+    "tui/skills_layout.go",
+    "tui/skills_layout_task31_test.go",
+    "tui/root.go"
+  ],
+  "acceptance_criteria": [
+    "Every visible skill item consumes exactly one terminal row at wide and narrow widths; a long name or summary is ellipsized inside the inner panel width and never wraps into a second row.",
+    "Cell-width truncation stays within its requested width for ASCII, CJK, combining characters, emoji, variation selectors, and zero-width joiner sequences, preserves valid UTF-8, never emits a partial grapheme cluster, atomically substitutes renderer-unsafe clusters, and handles widths smaller than the ellipsis without overflow.",
+    "Only the currently selected skill's detail fields are present in the rendered panel. Moving selection and filtering immediately remove the previous skill's details and show the new selected skill's details only.",
+    "Long selected summary, path, source, stable ID, visibility, read-only reason, and shadow-winner metadata each remain a bounded single detail row rather than widening or wrapping the panel.",
+    "Stale, session-override, persistence, and rollback notices remain visibly actionable: a complete recovery command may occupy its own bounded row, and notice wrapping never pushes the bottom border outside the viewport.",
+    "At terminal heights 0, 1, 2, and other constrained values, rendering does not panic or write outside the buffer; whenever two rows are available, the bottom border is inside the viewport rather than below it.",
+    "At practical short heights, the sum of top border, rendered content rows, and bottom border never exceeds terminal height. Optional details and chrome yield to the list/borders according to a deterministic tested priority.",
+    "Shrinking and growing the terminal recomputes truncation and visible row count on the next render, keeps a valid selection stable, and scrolls the visible range so the selected row remains visible.",
+    "Task 30 interaction behavior remains unchanged: exact /skills opens directly, checkboxes retain their state, Space alone toggles, Enter is inert, and one Esc closes."
+  ],
+  "verification": [
+    "go test ./tui -run 'Skills.*(Layout|SingleLine|Details|Overflow|Viewport|Resize|Unicode|CJK|Emoji|Narrow|Short)' -count=1",
+    "go test -race ./tui -run 'Skills.*(Layout|Overflow|Resize|Unicode)' -count=1",
+    "go test ./tui -run 'Skills.*Menu|Skills.*Toggle|Space.*Skill' -count=1",
+    "go test ./i18n -count=1",
+    "go vet ./tui ./i18n",
+    "git diff --check -- tui/skills_layout.go tui/skills_layout_task31_test.go tui/root.go"
+  ],
+  "risks": [
+    "Rune-count truncation can pass ASCII tests while still wrapping CJK and emoji; assertions must measure terminal cells and inspect rendered line count.",
+    "go-tui child heights and outer borders are additive. Budgeting only list rows will reproduce the bottom-border overflow when title, details, notice, or help rows are present.",
+    "A fixed maximum item count is not a height budget because selected details and localized chrome have variable row demand.",
+    "Very small viewports cannot display all information; the tested priority must preserve in-bounds borders and a usable selected list row before optional details and help."
+  ],
+  "non_goals": [
+    "No redesign of checkbox visuals or skill management semantics.",
+    "No horizontal scrolling or multi-line skill rows.",
+    "No production changes outside the skills checklist renderer and its isolated layout helpers."
+  ],
+  "dispatch_prompt": "Implement task 31 as an isolated TUI layout follow-up. Add tests first, then make skill rows and detail rows single-line with grapheme-safe terminal-cell ellipsis; show details only for the selected row; budget the complete bordered panel against the current terminal height so its bottom border cannot overflow; cover extreme width/height, resize, CJK, combining text, emoji/ZWJ, and long metadata. Preserve all task 30 interaction/backend behavior and modify only owned_files.",
+  "notes_for_assignee": "Task 31 exclusively owns the final skills-checklist rendering changes in tui/root.go; task 30 retains its earlier integration as delivery evidence but no longer co-owns that hot file. Do not solve height overflow by hiding the bottom border or by clipping after building an oversized tree. Compute the total row budget before rendering. If existing generic truncation does not preserve grapheme clusters, keep the fix local to skills layout rather than changing unrelated callers."
+}

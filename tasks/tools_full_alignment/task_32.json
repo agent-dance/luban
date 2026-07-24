@@ -1,0 +1,577 @@
+{
+  "id": "task_32",
+  "title": "Align TeamCreate tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all TeamCreate improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "TeamCreate"
+    ],
+    "problem": "TeamCreate is only partially aligned with the TS baseline. The simple happy-path response contains team_name, team_file_path, and lead_agent_id, but the Go implementation widens the input contract, writes a different team-file path and schema, eagerly registers coordinator agents, omits TS task-list and session-cleanup lifecycle work, lacks the external feature killswitch and analytics event, and has tests that currently lock several Go-only behaviors instead of TS parity.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/TeamCreate.json"
+    ],
+    "ts_references": [
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:88-90",
+      "../src/tools.ts:228-230",
+      "../src/utils/agentSwarmsEnabled.ts:24-43",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:37-48",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:96-105",
+      "../src/utils/envUtils.ts:7-17",
+      "../src/utils/swarm/teamHelpers.ts:100-123",
+      "../src/utils/agentId.ts:38-40",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:64-72",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:142-155",
+      "../src/tools/TeamCreateTool/prompt.ts:33-35",
+      "../src/utils/swarm/teamHelpers.ts:64-90",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:157-175",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:193-212",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:182-191",
+      "../src/utils/tasks.ts:147-187",
+      "../src/utils/tasks.ts:199-210",
+      "../src/utils/tasks.ts:233-240",
+      "../src/tools/TeamCreateTool/prompt.ts:24-41",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:177-180",
+      "../src/bootstrap/state.ts:144-149",
+      "../src/utils/swarm/teamHelpers.ts:553-590",
+      "../src/utils/swarm/teamHelpers.ts:641-678",
+      "../src/entrypoints/init.ts:191-200",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:177-212",
+      "../src/tools/AgentTool/AgentTool.tsx:282-316",
+      "../src/tools/shared/spawnMultiAgent.ts:319-337",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:214-222",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:157-191",
+      "../src/tools/TeamCreateTool/TeamCreateTool.ts:230-236"
+    ],
+    "go_references": [
+      "registry_setup.go:99-112",
+      "registry_setup.go:331-333",
+      "tools/parse.go:13-21",
+      "tools/parse.go:248-255",
+      "tools/team.go:456-474",
+      "tools/team.go:482-517",
+      "tools/team_test.go:117-123",
+      "brand/brand.go:16-17",
+      "swarm/team.go:33-42",
+      "tools/team.go:113-117",
+      "tools/send_message_routing.go:157-205",
+      "tools/send_message_routing.go:238-273",
+      "tools/team_test.go:136-143",
+      "tools/send_message_routing_test.go:287-291",
+      "swarm/team.go:13-31",
+      "tools/team.go:21-53",
+      "tools/send_message_routing.go:275-305",
+      "tools/team.go:600-612",
+      "tools/team.go:32-53",
+      "tools/team.go:592-619",
+      "tools/tasks.go:56-105",
+      "registry_setup.go:236-243",
+      "main.go:315-317",
+      "tools/team.go:671-686",
+      "swarm/team.go:112-140",
+      "tools/team.go:510-598",
+      "coordinator/coordinator.go:152-158",
+      "tools/team_dispatch_test.go:72-115",
+      "tools/team_dispatch_test.go:119-149",
+      "tools/agent_cache_eviction_hint.go:10-28",
+      "tools/file_operations.go:207-212",
+      "tools/team_test.go:114-167",
+      "tools/team_test.go:371-392",
+      "tools/send_message_routing_test.go:280-312",
+      "tools/team_dispatch_test.go:72-149",
+      "registry_setup.go",
+      "registry/registry_test.go",
+      "tools/team_test.go",
+      "tools/parse.go",
+      "tools/team.go",
+      "tools/team_alignment_test.go",
+      "swarm/team.go",
+      "tools/send_message_routing.go",
+      "tools/send_message_routing_test.go",
+      "swarm/team_test.go",
+      "tools/agent.go",
+      "tools/tasks.go",
+      "tools/runtime_scope.go",
+      "tools/tasks_test.go",
+      "main.go",
+      "tools/team_dispatch_test.go",
+      "tools/agent_test.go",
+      "coordinator/coordinator.go",
+      "coordinator/coordinator_test.go",
+      "tools/team_analytics.go"
+    ],
+    "source_note": ""
+  },
+  "owned_files": [
+    "registry_setup.go",
+    "registry/registry_test.go",
+    "tools/team_test.go",
+    "tools/parse.go",
+    "tools/team.go",
+    "tools/team_alignment_test.go",
+    "swarm/team.go",
+    "tools/send_message_routing.go",
+    "tools/send_message_routing_test.go",
+    "swarm/team_test.go",
+    "tools/agent.go",
+    "tools/tasks.go",
+    "tools/runtime_scope.go",
+    "tools/tasks_test.go",
+    "main.go",
+    "tools/team_dispatch_test.go",
+    "tools/agent_test.go",
+    "coordinator/coordinator.go",
+    "coordinator/coordinator_test.go",
+    "tools/team_analytics.go",
+    "registry_setup.go:99-112",
+    "registry_setup.go:331-333",
+    "tools/parse.go:13-21",
+    "tools/parse.go:248-255",
+    "tools/team.go:456-474",
+    "tools/team.go:482-517",
+    "tools/team_test.go:117-123",
+    "brand/brand.go:16-17",
+    "swarm/team.go:33-42",
+    "tools/team.go:113-117",
+    "tools/send_message_routing.go:157-205",
+    "tools/send_message_routing.go:238-273",
+    "tools/team_test.go:136-143",
+    "tools/send_message_routing_test.go:287-291",
+    "swarm/team.go:13-31",
+    "tools/team.go:21-53",
+    "tools/send_message_routing.go:275-305",
+    "tools/team.go:600-612",
+    "tools/team.go:32-53",
+    "tools/team.go:592-619",
+    "tools/tasks.go:56-105",
+    "registry_setup.go:236-243",
+    "main.go:315-317",
+    "tools/team.go:671-686",
+    "swarm/team.go:112-140",
+    "tools/team.go:510-598",
+    "coordinator/coordinator.go:152-158",
+    "tools/team_dispatch_test.go:72-115",
+    "tools/team_dispatch_test.go:119-149",
+    "tools/agent_cache_eviction_hint.go:10-28",
+    "tools/file_operations.go:207-212",
+    "tools/team_test.go:114-167",
+    "tools/team_test.go:371-392",
+    "tools/send_message_routing_test.go:280-312",
+    "tools/team_dispatch_test.go:72-149"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "teamcreate-01",
+      "severity": "P1",
+      "category": "permissions_lifecycle",
+      "title": "Tool availability omits the TS external-user killswitch",
+      "description": "TS exposes TeamCreate only when isAgentSwarmsEnabled() is true. For external users that requires an explicit env/CLI opt-in and the GrowthBook gate tengu_amber_flint to remain enabled. Go gates TeamCreate/TeamDelete on USER_TYPE=ant, CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS, or --agent-teams, but has no corresponding external killswitch check."
+    },
+    {
+      "id": "teamcreate-02",
+      "severity": "P0",
+      "category": "schema_runtime",
+      "title": "Input contract is wider than TS strictObject",
+      "description": "TS declares z.strictObject({team_name, description?, agent_type?}) and validates non-empty team_name. Go's typed input additionally accepts name and agents, the generic JSON unmarshal ignores unknown keys, Execute falls back from team_name to name, and current tests create a team with name plus agents."
+    },
+    {
+      "id": "teamcreate-03",
+      "severity": "P0",
+      "category": "output_state",
+      "title": "Team path, storage name, lead ID, and duplicate-name behavior diverge",
+      "description": "TS stores teams under CLAUDE_CONFIG_DIR or ~/.claude, uses teams/{sanitizeName(teamName)}/config.json, keeps lead_agent_id as team-lead@finalTeamName, and treats readTeamFile() returning null as no existing team before falling back to generateWordSlug() on valid collisions. Go stores under ~/.deepseek-code/teams/{teamStorageName}/team.json, uses a different sanitizer that preserves case/underscores and truncates, replaces spaces in lead_agent_id, checks only file existence for collisions, and uses a smaller local random slug list."
+    },
+    {
+      "id": "teamcreate-04",
+      "severity": "P0",
+      "category": "state_lifecycle",
+      "title": "Persisted team-file and active team context omit TS fields",
+      "description": "TS persists a TeamFile whose lead member includes agentId, name, agentType, model, joinedAt, tmuxPaneId, cwd, and subscriptions, then updates AppState.teamContext with teamName, teamFilePath, leadAgentId, and a teammates map with color/cwd/spawnedAt. Go persists a narrower TeamConfig with name, description, createdAt, leadAgentId, leadSessionId, and members containing agentId/name/color/tmuxPaneId/cwd/isActive, stores the sanitized storage name in cfg.Name, and keeps only a small TeamInfo in memory."
+    },
+    {
+      "id": "teamcreate-05",
+      "severity": "P0",
+      "category": "state_lifecycle",
+      "title": "TeamCreate does not reset or create the corresponding task list",
+      "description": "TS treats Team = TaskList: TeamCreate resets the sanitized team task list, ensures its directory exists, and sets leaderTeamName so subsequent task tools use the team list. Go can resolve task-list scope through RuntimeScope after main wires TeamManager.CurrentTeamName, but TeamCreate itself has no TaskStore dependency and does not reset stale task files, preserve high-water marks, ensure the team task directory, or emit a task-list change notification."
+    },
+    {
+      "id": "teamcreate-06",
+      "severity": "P0",
+      "category": "lifecycle_robustness",
+      "title": "Session-created team cleanup lifecycle is missing",
+      "description": "TS registers every TeamCreate team for session-end cleanup, removes the registration on explicit TeamDelete, and gracefulShutdown removes orphan team directories, task directories, worktrees, and pane-backed teammates. Go writes the team config and only deletes it through explicit TeamDelete; no inspected TeamManager, main wiring, or swarm package path tracks session-created teams for shutdown cleanup."
+    },
+    {
+      "id": "teamcreate-07",
+      "severity": "P0",
+      "category": "runtime_lifecycle",
+      "title": "TeamCreate eagerly registers coordinator agents instead of only scaffolding the team",
+      "description": "TS TeamCreate creates the lead-owned team state; teammate materialization happens later via Agent when teamName and name are present. Go TeamCreate builds agent specs, creates coordinator.Agent execute closures, registers them with the coordinator, subscribes them to the message bus, and TeamDispatch tests rely on those agents immediately executing work."
+    },
+    {
+      "id": "teamcreate-08",
+      "severity": "P2",
+      "category": "observability",
+      "title": "TeamCreate analytics event is not mirrored",
+      "description": "TS emits tengu_team_created with team_name, teammate_count, lead_agent_type, and resolved teammate mode after successful creation. Go TeamCreate returns the JSON response without a corresponding team-created analytics hook, although other Go areas expose pluggable analytics-style hooks."
+    },
+    {
+      "id": "teamcreate-09",
+      "severity": "P0",
+      "category": "testing",
+      "title": "Current tests assert Go-only behavior and do not lock TS parity",
+      "description": "Go tests cover happy-path JSON, save rollback, duplicate disk names, and some real-agent dispatch behavior, but they also assert name/agents input, ~/.deepseek-code/.../team.json paths, lead plus worker members persisted by TeamCreate, and immediate TeamDispatch execution. They do not lock strict input rejection, TS path/config schema, TS task-list reset, session cleanup registration, analytics, or the Agent-owned teammate spawn boundary."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "TCT-01",
+      "title": "Mirror TS TeamCreate availability gate",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "registry_setup.go",
+        "registry/registry_test.go",
+        "tools/team_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "USER_TYPE=ant registers TeamCreate and TeamDelete.",
+        "External sessions without CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS and without --agent-teams do not register TeamCreate or TeamDelete.",
+        "External sessions with opt-in register TeamCreate only when the Go killswitch adapter reports enabled.",
+        "A disabled killswitch hides TeamCreate/TeamDelete even when external opt-in is present.",
+        "SendMessage registration remains independent and unchanged."
+      ],
+      "verification": [
+        "go test ./... -run 'Test.*AgentSwarms|Test.*TeamCreate.*Gate|Test.*Registry.*Team' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "If Go intentionally does not embed GrowthBook, use an injected feature-gate interface or env-backed adapter so tests can model the TS killswitch without adding a new dependency."
+    },
+    {
+      "source_id": "TCT-02",
+      "title": "Enforce the TS strict TeamCreate input contract",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "tools/parse.go",
+        "tools/team.go",
+        "tools/team_test.go",
+        "tools/team_alignment_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TeamCreate({team_name:'alpha'}) succeeds.",
+        "TeamCreate({team_name:'alpha', description:'...', agent_type:'researcher'}) succeeds and persists agent_type for the lead.",
+        "TeamCreate({name:'alpha'}) returns an input error.",
+        "TeamCreate({team_name:'alpha', agents:[...]}) returns an input error and registers no agents.",
+        "TeamCreate with any unknown property returns an input error comparable to z.strictObject behavior.",
+        "The published schema no longer exposes name or agents."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTeamCreate.*Input|TestTeamCreate_Success|TestTeamCreate_MissingName' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Prefer a TeamCreate-local strict validator unless a shared additionalProperties:false migration is already planned for all tools."
+    },
+    {
+      "source_id": "TCT-03",
+      "title": "Align TeamCreate path, name, ID, and duplicate handling with TS",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [],
+      "owned_files": [
+        "swarm/team.go",
+        "tools/send_message_routing.go",
+        "tools/team.go",
+        "tools/team_test.go",
+        "tools/send_message_routing_test.go",
+        "swarm/team_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "team_file_path for team_name 'My Team' points to ~/.claude/teams/my-team/config.json or CLAUDE_CONFIG_DIR/teams/my-team/config.json.",
+        "lead_agent_id for team_name 'My Team' is exactly team-lead@My Team.",
+        "The persisted team config name remains the final display team name, not the storage directory slug.",
+        "The sanitizer matches TS replace(/[^a-zA-Z0-9]/g, '-').toLowerCase() for team directories and task-list IDs.",
+        "Existing valid team configs trigger generation of a new word slug; missing or unreadable configs follow TS readTeamFile null/error behavior.",
+        "Tests cover case, spaces, punctuation, CLAUDE_CONFIG_DIR, and existing-team collision."
+      ],
+      "verification": [
+        "go test ./tools ./swarm -run 'TestTeamCreate.*Path|TestTeamCreate.*LeadAgent|TestTeamCreate.*Existing|TestSaveLoad|TestMailbox' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Do not change global DeepSeek branding unless required; a team-specific Claude-compatible storage helper is safer than rewriting every ConfigDirName consumer."
+    },
+    {
+      "source_id": "TCT-04",
+      "title": "Mirror TS TeamFile and active team context state",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TCT-02",
+        "TCT-03"
+      ],
+      "owned_files": [
+        "swarm/team.go",
+        "tools/send_message_routing.go",
+        "tools/team.go",
+        "tools/agent.go",
+        "tools/team_test.go",
+        "tools/send_message_routing_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "The persisted lead member includes agentId, name, agentType, model, joinedAt, tmuxPaneId, cwd, and subscriptions:[] with TS field names.",
+        "TeamCreate with no spawned teammates persists only the team lead as a member.",
+        "Description and leadSessionId remain optional with TS-compatible field names.",
+        "Go active team state carries teamName, teamFilePath, leadAgentId, and a teammates map or equivalent with lead color, cwd, tmux fields, and spawnedAt.",
+        "SendMessage and Agent teammate spawning continue to resolve members by TS member name.",
+        "Existing Go-only isActive handling is either removed from the TeamCreate-created lead row or documented as an additive field that TS readers tolerate."
+      ],
+      "verification": [
+        "go test ./tools ./swarm -run 'TestTeamCreate.*Persist|TestAgentToolSpawnsAddressableTeammate|TestSendMessage_TeamMailbox' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Keep the persisted file TS-compatible first; if Go needs extra runtime fields, ensure TS safe readers ignore them or keep them in Go-only sidecar state."
+    },
+    {
+      "source_id": "TCT-05",
+      "title": "Implement TeamCreate task-list reset and creation lifecycle",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TCT-03"
+      ],
+      "owned_files": [
+        "tools/team.go",
+        "tools/tasks.go",
+        "tools/runtime_scope.go",
+        "registry_setup.go",
+        "tools/team_test.go",
+        "tools/tasks_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Creating a team resets existing JSON task files in the sanitized team task-list directory.",
+        "The reset preserves or updates a high-water mark so later task IDs follow the TS reset semantics.",
+        "The team task-list directory exists immediately after TeamCreate, before the first TaskCreate.",
+        "Subsequent TaskCreate/TaskList/TaskGet calls in the leader session resolve to the created team task list unless CLAUDE_CODE_TASK_LIST_ID overrides it.",
+        "Task-list change notifications or equivalent runtime hooks fire when the active team task list changes.",
+        "A TeamCreate save failure leaves task-list state untouched."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTeamCreate.*TaskList|TestTaskCreateTool|TestTaskListAndGetTool|TestTaskStore' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "This can be implemented by injecting a TaskStore or a narrow task-list lifecycle interface into TeamManager; avoid importing task tool internals into swarm storage."
+    },
+    {
+      "source_id": "TCT-06",
+      "title": "Add session-created team cleanup lifecycle",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TCT-03",
+        "TCT-05"
+      ],
+      "owned_files": [
+        "tools/team.go",
+        "swarm/team.go",
+        "main.go",
+        "tools/team_test.go",
+        "swarm/team_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Successful TeamCreate registers the final team name for session cleanup only after the team file is written.",
+        "TeamDelete unregisters the team before or after successful explicit cleanup to avoid duplicate cleanup.",
+        "A session shutdown cleanup path removes registered team directories and corresponding task directories.",
+        "Cleanup best-effort handles already-removed teams without surfacing a fatal error.",
+        "If Go supports worktree-backed teammates, cleanup removes clean teammate worktrees before deleting team state.",
+        "Tests cover explicit TeamDelete, orphan cleanup, cleanup idempotency, and save-failure non-registration."
+      ],
+      "verification": [
+        "go test ./tools ./swarm -run 'TestTeamCreate.*Cleanup|TestTeamDelete|TestDelete' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Go may need a small cleanup registry or shutdown hook surface if main.go does not already expose one for non-worktree lifecycle cleanup."
+    },
+    {
+      "source_id": "TCT-07",
+      "title": "Restore the TS TeamCreate versus Agent responsibility boundary",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TCT-02",
+        "TCT-04"
+      ],
+      "owned_files": [
+        "tools/team.go",
+        "tools/team_dispatch_test.go",
+        "tools/agent.go",
+        "tools/agent_test.go",
+        "coordinator/coordinator.go",
+        "coordinator/coordinator_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TeamCreate does not accept agent specs and does not register coordinator agents or message-bus subscribers beyond any explicit lead context required by Go.",
+        "TeamDispatch no longer depends on TeamCreate-created agents, or is clearly moved behind a Go-only/internal surface outside TS TeamCreate parity.",
+        "Agent with team_name and name remains the path that adds teammates to the team config.",
+        "Permission, model, worktree, prompt, and shutdown behavior for teammates remains owned by Agent/spawnTeammate code.",
+        "Tests prove TeamCreate alone cannot dispatch worker tasks, while Agent-spawned teammates remain addressable by SendMessage."
+      ],
+      "verification": [
+        "go test ./tools ./coordinator -run 'TestTeamCreate|TestTeamDispatch|TestAgentToolSpawnsAddressableTeammate|TestMessageBus' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "If TeamDispatch is still desired as a Go extension, document it as outside the TS TeamCreate baseline and keep its setup separate from TeamCreate."
+    },
+    {
+      "source_id": "TCT-08",
+      "title": "Add TeamCreate analytics parity hook",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TCT-04"
+      ],
+      "owned_files": [
+        "tools/team.go",
+        "tools/team_test.go",
+        "tools/team_analytics.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Successful TeamCreate emits team_name, teammate_count, lead_agent_type, and resolved teammate_mode or the nearest Go equivalent.",
+        "Failed TeamCreate calls emit no success event.",
+        "The analytics sink is injectable in tests and nil-safe in production.",
+        "The event is emitted after durable state write and before returning success.",
+        "No PII/filepath-sensitive fields beyond the TS event payload are added."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTeamCreate.*Analytics|TestTeamCreate_Success|TestTeamCreate_SaveFailure' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "Follow existing pluggable hook style such as agent_cache_eviction_hint.go rather than adding a heavyweight analytics dependency."
+    },
+    {
+      "source_id": "TCT-09",
+      "title": "Add focused TeamCreate parity regression tests",
+      "priority": "P2",
+      "addresses_gaps": [],
+      "dependencies": [
+        "TCT-01",
+        "TCT-02",
+        "TCT-03",
+        "TCT-04",
+        "TCT-05",
+        "TCT-06",
+        "TCT-07"
+      ],
+      "owned_files": [
+        "tools/team_test.go",
+        "tools/team_alignment_test.go",
+        "tools/send_message_routing_test.go",
+        "tools/team_dispatch_test.go",
+        "swarm/team_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Tests reject name, agents, and unknown TeamCreate fields.",
+        "Tests assert TS-compatible team_file_path, lead_agent_id, sanitizer behavior, duplicate behavior, and config filename.",
+        "Tests assert the persisted lead member fields and that TeamCreate starts with only the lead member.",
+        "Tests assert task-list reset/creation and leader task-list scope after TeamCreate.",
+        "Tests assert session cleanup registration/unregistration and orphan cleanup.",
+        "Tests assert TeamCreate does not register dispatchable coordinator workers.",
+        "Existing SendMessage and Agent teammate tests still pass under the TS-compatible team config."
+      ],
+      "verification": [
+        "go test ./tools ./swarm ./coordinator -run 'TestTeamCreate|TestTeamDelete|TestAgentToolSpawnsAddressableTeammate|TestSendMessage_TeamMailbox|TestTeamDispatch' -count=1",
+        "go test ./... -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": "This task is best landed after the implementation tasks unless the project accepts temporary red alignment tests."
+    }
+  ],
+  "acceptance_criteria": [
+    "TeamCreate input validation and schema behavior match the original TS implementation for all report gaps.",
+    "TeamCreate model-visible output and structured result data match TS golden fixtures.",
+    "TeamCreate runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "USER_TYPE=ant registers TeamCreate and TeamDelete.",
+    "External sessions without CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS and without --agent-teams do not register TeamCreate or TeamDelete.",
+    "External sessions with opt-in register TeamCreate only when the Go killswitch adapter reports enabled.",
+    "A disabled killswitch hides TeamCreate/TeamDelete even when external opt-in is present.",
+    "SendMessage registration remains independent and unchanged.",
+    "TeamCreate({team_name:'alpha'}) succeeds.",
+    "TeamCreate({team_name:'alpha', description:'...', agent_type:'researcher'}) succeeds and persists agent_type for the lead.",
+    "TeamCreate({name:'alpha'}) returns an input error.",
+    "TeamCreate({team_name:'alpha', agents:[...]}) returns an input error and registers no agents.",
+    "TeamCreate with any unknown property returns an input error comparable to z.strictObject behavior.",
+    "The published schema no longer exposes name or agents.",
+    "team_file_path for team_name 'My Team' points to ~/.claude/teams/my-team/config.json or CLAUDE_CONFIG_DIR/teams/my-team/config.json.",
+    "lead_agent_id for team_name 'My Team' is exactly team-lead@My Team.",
+    "The persisted team config name remains the final display team name, not the storage directory slug.",
+    "The sanitizer matches TS replace(/[^a-zA-Z0-9]/g, '-').toLowerCase() for team directories and task-list IDs.",
+    "Existing valid team configs trigger generation of a new word slug; missing or unreadable configs follow TS readTeamFile null/error behavior.",
+    "Tests cover case, spaces, punctuation, CLAUDE_CONFIG_DIR, and existing-team collision.",
+    "The persisted lead member includes agentId, name, agentType, model, joinedAt, tmuxPaneId, cwd, and subscriptions:[] with TS field names.",
+    "TeamCreate with no spawned teammates persists only the team lead as a member.",
+    "Description and leadSessionId remain optional with TS-compatible field names.",
+    "Go active team state carries teamName, teamFilePath, leadAgentId, and a teammates map or equivalent with lead color, cwd, tmux fields, and spawnedAt.",
+    "SendMessage and Agent teammate spawning continue to resolve members by TS member name.",
+    "Existing Go-only isActive handling is either removed from the TeamCreate-created lead row or documented as an additive field that TS readers tolerate.",
+    "Creating a team resets existing JSON task files in the sanitized team task-list directory."
+  ],
+  "verification": [
+    "go test ./... -run 'Test.*AgentSwarms|Test.*TeamCreate.*Gate|Test.*Registry.*Team' -count=1",
+    "go test ./tools -run 'TestTeamCreate.*Input|TestTeamCreate_Success|TestTeamCreate_MissingName' -count=1",
+    "go test ./tools ./swarm -run 'TestTeamCreate.*Path|TestTeamCreate.*LeadAgent|TestTeamCreate.*Existing|TestSaveLoad|TestMailbox' -count=1",
+    "go test ./tools ./swarm -run 'TestTeamCreate.*Persist|TestAgentToolSpawnsAddressableTeammate|TestSendMessage_TeamMailbox' -count=1",
+    "go test ./tools -run 'TestTeamCreate.*TaskList|TestTaskCreateTool|TestTaskListAndGetTool|TestTaskStore' -count=1",
+    "go test ./tools ./swarm -run 'TestTeamCreate.*Cleanup|TestTeamDelete|TestDelete' -count=1",
+    "go test ./tools ./coordinator -run 'TestTeamCreate|TestTeamDispatch|TestAgentToolSpawnsAddressableTeammate|TestMessageBus' -count=1",
+    "go test ./tools -run 'TestTeamCreate.*Analytics|TestTeamCreate_Success|TestTeamCreate_SaveFailure' -count=1",
+    "go test ./tools ./swarm ./coordinator -run 'TestTeamCreate|TestTeamDelete|TestAgentToolSpawnsAddressableTeammate|TestSendMessage_TeamMailbox|TestTeamDispatch' -count=1",
+    "go test ./... -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

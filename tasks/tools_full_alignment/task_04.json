@@ -1,0 +1,123 @@
+{
+  "id": "task_04",
+  "title": "Establish TS golden parity test harness for tools",
+  "priority": "P1",
+  "status": "accepted",
+  "objective": "Create a reusable parity test harness and fixture layout so each tool task can lock TS input validation, output data, model-visible text, permission decisions, state transitions, and edge cases before implementation.",
+  "context": {
+    "tools": [
+      "Agent",
+      "AskUserQuestion",
+      "Bash",
+      "CronCreate",
+      "CronDelete",
+      "CronList",
+      "Edit",
+      "EnterPlanMode",
+      "EnterWorktree",
+      "ExitPlanMode",
+      "ExitWorktree",
+      "Glob",
+      "Grep",
+      "ListMcpResourcesTool",
+      "NotebookEdit",
+      "Read",
+      "ReadMcpResourceTool",
+      "RemoteTrigger",
+      "SendMessage",
+      "SendUserMessage",
+      "Skill",
+      "TaskCreate",
+      "TaskGet",
+      "TaskList",
+      "TaskOutput",
+      "TaskStop",
+      "TaskUpdate",
+      "TeamCreate",
+      "TeamDelete",
+      "TodoWrite",
+      "ToolSearch",
+      "WebFetch",
+      "WebSearch",
+      "Write"
+    ],
+    "problem": "Reports repeatedly call for replacing Go-specific tests with TS parity tests. A shared harness prevents every implementation subagent from inventing incompatible fixtures.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/Agent.json",
+      "tasks/tools_full_alignment/_agent_reports/AskUserQuestion.json",
+      "tasks/tools_full_alignment/_agent_reports/Bash.json",
+      "tasks/tools_full_alignment/_agent_reports/CronCreate.json",
+      "tasks/tools_full_alignment/_agent_reports/CronDelete.json",
+      "tasks/tools_full_alignment/_agent_reports/CronList.json",
+      "tasks/tools_full_alignment/_agent_reports/Edit.json",
+      "tasks/tools_full_alignment/_agent_reports/EnterPlanMode.json",
+      "tasks/tools_full_alignment/_agent_reports/EnterWorktree.json",
+      "tasks/tools_full_alignment/_agent_reports/ExitPlanMode.json",
+      "tasks/tools_full_alignment/_agent_reports/ExitWorktree.json",
+      "tasks/tools_full_alignment/_agent_reports/Glob.json",
+      "tasks/tools_full_alignment/_agent_reports/Grep.json",
+      "tasks/tools_full_alignment/_agent_reports/ListMcpResourcesTool.json",
+      "tasks/tools_full_alignment/_agent_reports/NotebookEdit.json",
+      "tasks/tools_full_alignment/_agent_reports/Read.json",
+      "tasks/tools_full_alignment/_agent_reports/ReadMcpResourceTool.json",
+      "tasks/tools_full_alignment/_agent_reports/RemoteTrigger.json",
+      "tasks/tools_full_alignment/_agent_reports/SendMessage.json",
+      "tasks/tools_full_alignment/_agent_reports/SendUserMessage.json",
+      "tasks/tools_full_alignment/_agent_reports/Skill.json",
+      "tasks/tools_full_alignment/_agent_reports/TaskCreate.json",
+      "tasks/tools_full_alignment/_agent_reports/TaskGet.json",
+      "tasks/tools_full_alignment/_agent_reports/TaskList.json",
+      "tasks/tools_full_alignment/_agent_reports/TaskOutput.json",
+      "tasks/tools_full_alignment/_agent_reports/TaskStop.json",
+      "tasks/tools_full_alignment/_agent_reports/TaskUpdate.json",
+      "tasks/tools_full_alignment/_agent_reports/TeamCreate.json",
+      "tasks/tools_full_alignment/_agent_reports/TeamDelete.json",
+      "tasks/tools_full_alignment/_agent_reports/TodoWrite.json",
+      "tasks/tools_full_alignment/_agent_reports/ToolSearch.json",
+      "tasks/tools_full_alignment/_agent_reports/WebFetch.json",
+      "tasks/tools_full_alignment/_agent_reports/WebSearch.json",
+      "tasks/tools_full_alignment/_agent_reports/Write.json"
+    ],
+    "ts_references": [
+      "../src/tools",
+      "../src/Tool.ts"
+    ],
+    "go_references": [
+      "tools/*_alignment_test.go",
+      "registry_setup_test.go",
+      "provider/*_test.go"
+    ]
+  },
+  "owned_files": [
+    "tools/parity_harness_test.go",
+    "tools/testdata/",
+    "registry/parity_harness_test.go",
+    "provider/tool_result_parity_test.go"
+  ],
+  "dependencies": [],
+  "recommended_companion_tasks": [],
+  "parallelization_notes": "Can be assigned as a foundation task. Run at most three foundation tasks concurrently, then dispatch dependent tool tasks according to INDEX.json.",
+  "improvement_points": [],
+  "implementation_subtasks": [],
+  "implementation_steps": [
+    "Define fixture format for input, expected validation error, expected typed data, expected model text, permission decision, and state side effects.",
+    "Add helpers to run a Go tool through the production registry/dispatcher rather than calling Execute directly.",
+    "Import or transcribe golden TS cases for representative tools first.",
+    "Document how each future task adds fixtures."
+  ],
+  "acceptance_criteria": [
+    "At least one read-only, one mutating, one stateful, and one web/MCP tool has a parity fixture.",
+    "Future tool tasks can add fixtures without duplicating dispatcher setup.",
+    "The harness can assert both typed result data and model-visible text."
+  ],
+  "verification": [
+    "go test ./tools ./registry ./provider -run \"Parity|Alignment|Golden\" -count=1"
+  ],
+  "risks": [
+    "Golden fixtures can fossilize incorrect assumptions; each fixture must cite the TS source line or behavior it locks."
+  ],
+  "non_goals": [
+    "Do not require a live TS runtime in Go CI unless separately approved."
+  ],
+  "notes_for_assignee": "Build the shared surface narrowly and prove it with one or two migrated tools before broad rollout."
+}

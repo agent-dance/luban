@@ -1,0 +1,52 @@
+{
+  "id": "task_13",
+  "title": "Add settings and environment compatibility layer",
+  "priority": "P1",
+  "status": "ready_for_dispatch",
+  "depends_on": [
+    "task_04",
+    "task_07"
+  ],
+  "write_scope": [
+    "config/",
+    "prompt/settings.go",
+    "cli/cli.go",
+    "prompt/*_test.go"
+  ],
+  "read_first": [
+    "../src/context.ts",
+    "../src/utils/claudemd.ts",
+    "../src/utils/settings/settings.ts",
+    "cli/cli.go",
+    "brand/brand.go"
+  ],
+  "objective": "Expose the original prompt-affecting settings and environment gates needed for behavioral parity.",
+  "context": [
+    "The original lets settings and environment variables disable CLAUDE.md loading, skip auto-discovery in bare mode, exclude memory files, and include additional directories.",
+    "Go currently hardcodes much of this behavior or lacks the switches entirely.",
+    "This task adds the compatibility layer, not a full settings UI."
+  ],
+  "deliverables": [
+    "Add CLAUDE_CODE_DISABLE_CLAUDE_MDS or brand-equivalent gate.",
+    "Add bare-mode semantics for memory auto-discovery where applicable.",
+    "Add claudeMdExcludes-compatible pattern handling.",
+    "Add an additional-directories memory loading gate.",
+    "Expose language and output-style inputs for prompt sections if corresponding runtime settings exist.",
+    "Document unsupported original settings explicitly."
+  ],
+  "acceptance": [
+    "Settings and env gates have table-driven tests.",
+    "Default behavior remains compatible with existing DeepSeek Code behavior unless parity requires a documented change.",
+    "Unsupported settings fail closed or no-op with clear documentation.",
+    "Memory discovery from task_04 respects the new gates."
+  ],
+  "verification": [
+    "go test ./prompt ./cli ./config"
+  ],
+  "non_goals": [
+    "Do not implement a settings UI.",
+    "Do not implement remote config or GrowthBook.",
+    "Do not change provider selection behavior."
+  ],
+  "handoff_notes": "If a config package does not exist or is not suitable, keep the compatibility functions local to prompt/settings.go and document the limitation."
+}

@@ -1,0 +1,576 @@
+{
+  "id": "task_26",
+  "title": "Align TaskCreate tool with the TS baseline",
+  "priority": "P0",
+  "status": "accepted",
+  "objective": "Implement all TaskCreate improvements identified by the per-tool subagent report so the Go clone matches the original TypeScript tool in public contract, runtime logic, robustness, state lifecycle, and tests.",
+  "context": {
+    "tools": [
+      "TaskCreate"
+    ],
+    "problem": "Go TaskCreate matches the basic public name, required subject/description schema, pending-task creation, persistent task IDs, metadata/activeForm fields, and model-facing success text for the happy path. It is not yet exact parity with the TS baseline. The largest gaps are runtime exposure gating, strict input validation, persisted task-file shape, native TaskCreated hook semantics and wiring, structured output data, UI/task-update lifecycle side effects, concurrency/tool metadata, and focused parity tests.",
+    "source_reports": [
+      "tasks/tools_full_alignment/_agent_reports/TaskCreate.json"
+    ],
+    "ts_references": [
+      "../src/utils/tasks.ts:133-139",
+      "../src/tools.ts:218-220",
+      "../src/tools/TodoWriteTool/TodoWriteTool.ts:51-54",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:68-70",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:18-32",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:80-90",
+      "../src/utils/tasks.ts:76-87",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:81-90",
+      "../src/utils/tasks.ts:284-300",
+      "../src/utils/tasks.ts:333-340",
+      "../src/entrypoints/sdk/coreSchemas.ts:355-383",
+      "../src/entrypoints/sdk/coreSchemas.ts:601-611",
+      "../src/utils/hooks.ts:1649-1652",
+      "../src/utils/hooks.ts:1914-1918",
+      "../src/utils/hooks.ts:3732-3772",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:92-113",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:100-103",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:36-43",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:121-128",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:130-136",
+      "../src/utils/tasks.ts:292-300",
+      "../src/utils/tasks.ts:17-67",
+      "../src/utils/tasks.ts:300-302",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:115-119",
+      "../src/hooks/useTasksV2.ts:88-116",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:50-78",
+      "../src/tools/TaskCreateTool/prompt.ts:3-55",
+      "../src/tools/TaskCreateTool/TaskCreateTool.ts:92-119"
+    ],
+    "go_references": [
+      "tools/runtime_scope.go:150-158",
+      "registry_setup.go:233-241",
+      "registry_setup.go:244",
+      "prompt/static_sections.go:129-132",
+      "tools/tasks.go:701-723",
+      "tools/parse.go:22-40",
+      "tools/parse.go:114-120",
+      "tools/tasks.go:726-733",
+      "tools/tasks.go:18-33",
+      "tools/tasks.go:225-236",
+      "tools/tasks.go:190-198",
+      "tools/tasks_test.go:361-371",
+      "hooks/hooks.go:21-40",
+      "hooks/config.go:115-134",
+      "hooks/hooks.go:147-194",
+      "tools/tasks.go:754-783",
+      "hooks/config_test.go:136-160",
+      "tools/tasks.go:686-693",
+      "registry_setup.go:19-37",
+      "registry_setup.go:238",
+      "main.go:181-184",
+      "session_switcher.go:96-105",
+      "tools/tasks_hook_test.go:63-75",
+      "tools/tasks.go:734-751",
+      "tools/helpers.go:104-113",
+      "types/tools.go:58-68",
+      "tools/tasks.go:218-246",
+      "tools/tasks.go:734-737",
+      "tools/tasks.go:218-247",
+      "tools/tasks.go:726-751",
+      "tools/agent_todos_cleanup.go:1-8",
+      "tools/tasks_test.go:69-96",
+      "tools/tasks.go:695-723",
+      "registry/tool_visibility.go:17-34",
+      "loop/concurrent.go:16-45",
+      "tools/tasks.go:786-791",
+      "prompt/static_sections.go:129-139",
+      "tools/k_protocol_test.go:312-340",
+      "tools/tasks_hook_test.go:10-31",
+      "registry_setup.go",
+      "tools/runtime_scope.go",
+      "prompt/static_sections.go",
+      "registry/registry_test.go",
+      "prompt/static_sections_test.go",
+      "tools/tasks_test.go",
+      "tools/tasks.go",
+      "tools/parse.go",
+      "types/tools.go",
+      "tools/tasks_alignment_test.go",
+      "tools/k_protocol_test.go",
+      "hooks/hooks.go",
+      "hooks/config.go",
+      "hooks/config_test.go",
+      "hooks/hooks_test.go",
+      "tools/tasks_hook_test.go",
+      "main.go",
+      "session_switcher.go",
+      "loop/concurrent_test.go",
+      "registry/registry.go",
+      "types/tools_test.go",
+      "tools/task_events.go",
+      "loop/events.go",
+      "loop/query.go",
+      "repl_tui.go",
+      "loop/integration_test.go",
+      "registry/tool_visibility.go",
+      "loop/concurrent.go"
+    ],
+    "source_note": ""
+  },
+  "owned_files": [
+    "registry_setup.go",
+    "tools/runtime_scope.go",
+    "prompt/static_sections.go",
+    "registry/registry_test.go",
+    "prompt/static_sections_test.go",
+    "tools/tasks_test.go",
+    "tools/tasks.go",
+    "tools/parse.go",
+    "types/tools.go",
+    "tools/tasks_alignment_test.go",
+    "tools/k_protocol_test.go",
+    "hooks/hooks.go",
+    "hooks/config.go",
+    "hooks/config_test.go",
+    "hooks/hooks_test.go",
+    "tools/tasks_hook_test.go",
+    "main.go",
+    "session_switcher.go",
+    "loop/concurrent_test.go",
+    "registry/registry.go",
+    "types/tools_test.go",
+    "tools/task_events.go",
+    "loop/events.go",
+    "loop/query.go",
+    "repl_tui.go",
+    "loop/integration_test.go",
+    "registry/tool_visibility.go",
+    "loop/concurrent.go",
+    "tools/runtime_scope.go:150-158",
+    "registry_setup.go:233-241",
+    "registry_setup.go:244",
+    "prompt/static_sections.go:129-132",
+    "tools/tasks.go:701-723",
+    "tools/parse.go:22-40",
+    "tools/parse.go:114-120",
+    "tools/tasks.go:726-733",
+    "tools/tasks.go:18-33",
+    "tools/tasks.go:225-236",
+    "tools/tasks.go:190-198",
+    "tools/tasks_test.go:361-371",
+    "hooks/hooks.go:21-40",
+    "hooks/config.go:115-134",
+    "hooks/hooks.go:147-194",
+    "tools/tasks.go:754-783",
+    "hooks/config_test.go:136-160",
+    "tools/tasks.go:686-693",
+    "registry_setup.go:19-37",
+    "registry_setup.go:238",
+    "main.go:181-184",
+    "session_switcher.go:96-105",
+    "tools/tasks_hook_test.go:63-75",
+    "tools/tasks.go:734-751",
+    "tools/helpers.go:104-113",
+    "types/tools.go:58-68",
+    "tools/tasks.go:218-246",
+    "tools/tasks.go:734-737",
+    "tools/tasks.go:218-247",
+    "tools/tasks.go:726-751",
+    "tools/agent_todos_cleanup.go:1-8",
+    "tools/tasks_test.go:69-96",
+    "tools/tasks.go:695-723",
+    "registry/tool_visibility.go:17-34",
+    "loop/concurrent.go:16-45",
+    "tools/tasks.go:786-791",
+    "prompt/static_sections.go:129-139",
+    "tools/k_protocol_test.go:312-340",
+    "tools/tasks_hook_test.go:10-31"
+  ],
+  "dependencies": [
+    "task_01",
+    "task_02",
+    "task_03"
+  ],
+  "recommended_companion_tasks": [
+    "task_04"
+  ],
+  "parallelization_notes": "Can be assigned to an implementation subagent after listed dependencies are available. Avoid running concurrently with another task that owns the same files.",
+  "improvement_points": [
+    {
+      "id": "TC-GAP-001",
+      "severity": "P0",
+      "category": "runtime_exposure",
+      "title": "Go exposes TaskCreate and TodoWrite without TS task-v2 mutual gating",
+      "description": "TS only includes TaskCreate/TaskGet/TaskUpdate/TaskList when isTodoV2Enabled() is true, and TodoWrite disables itself when task-v2 is enabled. Go has a RuntimeScope.IsTodoV2Enabled helper, but SetupRegistry registers TaskCreate/TaskList/TaskUpdate/TaskGet and TodoWrite unconditionally. This can expose both task systems at once, or expose TaskCreate in non-interactive sessions where TS would hide it unless CLAUDE_CODE_ENABLE_TASKS is truthy."
+    },
+    {
+      "id": "TC-GAP-002",
+      "severity": "P0",
+      "category": "schema_runtime_validation",
+      "title": "Go runtime parsing is not TS strict-object validation",
+      "description": "TS uses z.strictObject with required subject and description strings, so missing description and unknown top-level keys are rejected before call execution. Go publishes required subject/description in the JSON schema, but Execute parses with json.Unmarshal into TaskCreateInput, which ignores unknown keys and turns missing description into an empty string. Go also adds a trim-space subject check that TS does not have, so whitespace-only subjects are rejected in Go but accepted by the TS z.string schema."
+    },
+    {
+      "id": "TC-GAP-003",
+      "severity": "P0",
+      "category": "state_persistence",
+      "title": "Go writes a task JSON shape that is not TS TaskSchema-compatible",
+      "description": "TS TaskCreate writes Task records with required blocks and blockedBy arrays, even when empty, and its TaskSchema requires those arrays. Go's TaskItem marks blocks, blockedBy, activeForm, owner, metadata, comments, and timestamps with omitempty-style persistence. createDetailed sets empty blocks/blockedBy slices, but json.MarshalIndent omits them, so a newly-created Go task file can be missing fields that TS requires. Go also persists CreatedAt/UpdatedAt fields that TS does not write."
+    },
+    {
+      "id": "TC-GAP-004",
+      "severity": "P0",
+      "category": "hooks_lifecycle",
+      "title": "Go maps TaskCreate hooks to Notification instead of implementing native TaskCreated",
+      "description": "TS has TaskCreated as a first-class hook event in SDK schemas, settings, matching, and TaskCreate execution. The hook input includes task_id, task_subject, optional task_description, teammate_name, and team_name, and blocking errors are formatted as TaskCreated hook feedback. Go's hook enum and config loader do not include TaskCreated, filename inference does not recognize task-created scripts, and runTaskCreatedHook explicitly maps the event to Notification with a message and ToolInput payload."
+    },
+    {
+      "id": "TC-GAP-005",
+      "severity": "P0",
+      "category": "hooks_wiring_rollback",
+      "title": "TaskCreate HookRunner is optional and not wired into the default runtime",
+      "description": "TS TaskCreate always calls executeTaskCreatedHooks through the tool-use context after creating a task, deletes the just-created task on any blocking error, and throws the joined TaskCreated feedback. Go added a HookRunner field and rollback code, but NewTaskCreateTool leaves HookRunner nil, RegistryDeps does not retain the TaskCreateTool pointer, main.go and session_switcher.go wire hookRunner only into AgentTool, TeamManager, background tasks, and the query engine, and the blocking rollback test is skipped."
+    },
+    {
+      "id": "TC-GAP-006",
+      "severity": "P1",
+      "category": "output_error_contract",
+      "title": "Go only returns the mapped text, not the TS structured output data",
+      "description": "TS declares outputSchema {task:{id,subject}}, returns that data from call(), and separately maps it to the final text 'Task #<id> created successfully: <subject>'. Go returns only a StringResponse with that final text. The shared Go ToolResult can carry ContentBlocks and string metadata, but there is no TaskCreate data payload or output schema equivalent. Go also collapses create storage failures to a generic 'failed to create task' message, while TS createTask write errors propagate from the underlying filesystem operation."
+    },
+    {
+      "id": "TC-GAP-007",
+      "severity": "P1",
+      "category": "state_lifecycle_ui",
+      "title": "Go lacks TS task-update notification and auto-expanded task view side effects",
+      "description": "TS emits an in-process tasksUpdated signal after createTask and TaskCreate then auto-expands the app's tasks view through setAppState. The signal is explicitly guarded so listener failures never fail the task mutation. Go's createDetailed path only writes the task file and returns a clone; no observer signal, app-state update, or task-view expansion equivalent is present in the TaskCreate path."
+    },
+    {
+      "id": "TC-GAP-008",
+      "severity": "P2",
+      "category": "tool_metadata_scheduling_prompt",
+      "title": "Go lacks several TaskCreate tool metadata hooks, including concurrency safety",
+      "description": "TS TaskCreate declares shouldDefer, searchHint, maxResultSizeChars, userFacingName, isConcurrencySafe true, toAutoClassifierInput returning subject, renderToolUseMessage null, and a rich prompt explaining when to create tasks. Go has registry-level deferred metadata and a short Description, but TaskCreateTool does not implement IsConcurrentSafe(), has no per-tool prompt equivalent, uses a different search hint, lacks max-result/output-schema metadata, and has no auto-classifier input hook. Since Go's scheduler defaults tools to non-concurrent unless IsConcurrentSafe is implemented or the tool is Read/Glob/Grep, TaskCreate calls are serialized even though the store has a file lock and TS marks the tool safe."
+    },
+    {
+      "id": "TC-GAP-009",
+      "severity": "P1",
+      "category": "test_coverage",
+      "title": "Current Go tests do not lock the TS TaskCreate parity contract",
+      "description": "Go has useful happy-path, persistence, and concurrent-ID tests, plus nil/empty hook-runner tests. It does not cover task-v2/TodoWrite exposure gating, strict unknown-key and missing-description rejection, TS-compatible persisted JSON, native TaskCreated hook config and payload, runtime hook wiring, non-skipped blocking rollback, structured output data, app-state/task-update notifications, or TaskCreate concurrency metadata. One test explicitly skips the blocking rollback scenario."
+    }
+  ],
+  "implementation_subtasks": [
+    {
+      "source_id": "TC-TASK-001",
+      "title": "Align TaskCreate task-v2 exposure and TodoWrite mutual gating",
+      "priority": "P2",
+      "addresses_gaps": [
+        "TC-GAP-001",
+        "TC-GAP-009"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "registry_setup.go",
+        "tools/runtime_scope.go",
+        "prompt/static_sections.go",
+        "registry/registry_test.go",
+        "prompt/static_sections_test.go",
+        "tools/tasks_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Interactive sessions and sessions with CLAUDE_CODE_ENABLE_TASKS truthy expose TaskCreate, TaskGet, TaskUpdate, and TaskList.",
+        "Non-interactive sessions without CLAUDE_CODE_ENABLE_TASKS do not expose TaskCreate, TaskGet, TaskUpdate, or TaskList.",
+        "TodoWrite is not model-visible when task-v2 tools are visible, matching the TS inverse isEnabled relationship.",
+        "TaskStop and TaskOutput exposure remains unchanged.",
+        "Prompt task-management guidance reflects the actually visible task tool rather than both task systems."
+      ],
+      "verification": [
+        "go test ./... -run 'TaskCreate|TodoWrite|VisibleDefinitions|StaticSections' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TC-TASK-002",
+      "title": "Make TaskCreate input parsing match TS strictObject semantics",
+      "priority": "P2",
+      "addresses_gaps": [
+        "TC-GAP-002",
+        "TC-GAP-009"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/parse.go",
+        "types/tools.go",
+        "tools/tasks_test.go",
+        "tools/tasks_alignment_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TaskCreate rejects unknown top-level input keys before creating a task.",
+        "TaskCreate rejects omitted subject and omitted description.",
+        "TaskCreate accepts empty-string subject or whitespace subject if supplied as a string, matching z.string without min/trim constraints.",
+        "TaskCreate keeps activeForm optional and metadata limited to object-like values.",
+        "The published JSON schema or runtime validator clearly expresses additionalProperties=false for TaskCreate."
+      ],
+      "verification": [
+        "go test ./tools ./types -run 'TaskCreate.*Input|TaskCreate.*Strict|ParseInput|JSONSchema' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TC-TASK-003",
+      "title": "Persist TS-compatible task records from TaskCreate",
+      "priority": "P2",
+      "addresses_gaps": [
+        "TC-GAP-003",
+        "TC-GAP-006",
+        "TC-GAP-009"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/k_protocol_test.go",
+        "tools/tasks_alignment_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "A newly-created TaskCreate JSON file includes id, subject, description, status, blocks:[], and blockedBy:[] exactly where TS requires them.",
+        "Absent optional activeForm, owner, and metadata fields serialize compatibly with TS undefined/optional behavior.",
+        "Go-only CreatedAt, UpdatedAt, CompletedAt, and Comments fields are removed from the TS-compatible task file or stored in a separate Go-only sidecar that TS readers ignore.",
+        "TaskStore create errors preserve enough underlying filesystem/error detail for callers and tests to distinguish permission, mkdir, and write failures.",
+        "Existing TaskList, TaskGet, TaskUpdate, dependency deletion, and concurrent-ID behavior remain intact."
+      ],
+      "verification": [
+        "go test ./tools -run 'TaskCreate|TaskStore|TaskList|TaskGet|TaskUpdate|ConcurrentCreate' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TC-TASK-004",
+      "title": "Add native TaskCreated hook support to the Go hook subsystem",
+      "priority": "P2",
+      "addresses_gaps": [
+        "TC-GAP-004",
+        "TC-GAP-009"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "hooks/hooks.go",
+        "hooks/config.go",
+        "hooks/config_test.go",
+        "hooks/hooks_test.go",
+        "tools/tasks.go",
+        "tools/tasks_hook_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "Go defines HookTaskCreated with string value TaskCreated.",
+        "Rich settings under hooks.TaskCreated load instead of being skipped as unknown.",
+        "task-created-*.sh and taskcreated-*.sh filenames infer HookTaskCreated.",
+        "Runner.Run for HookTaskCreated sends hook_event_name/type TaskCreated and task_id/task_subject/task_description/team_name/teammate_name fields, not a Notification payload.",
+        "Command and HTTP TaskCreated hooks can block task creation via exit code 2 or structured block:true with the same blocking pathway used by TS-style hooks."
+      ],
+      "verification": [
+        "go test ./hooks ./tools -run 'TaskCreated|TaskCreate.*Hook|HookTypeFromFilename|LoadConfig' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TC-TASK-005",
+      "title": "Wire TaskCreate hooks through runtime context and enforce rollback",
+      "priority": "P2",
+      "addresses_gaps": [
+        "TC-GAP-004",
+        "TC-GAP-005",
+        "TC-GAP-009"
+      ],
+      "dependencies": [
+        "TC-TASK-004"
+      ],
+      "owned_files": [
+        "registry_setup.go",
+        "main.go",
+        "session_switcher.go",
+        "tools/tasks.go",
+        "tools/tasks_hook_test.go",
+        "loop/concurrent_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "RegistryDeps retains the registered TaskCreateTool so runtime hook runners can be injected and updated.",
+        "Initial startup and session switching assign the active HookRunner to TaskCreateTool, matching AgentTool and TeamManager wiring.",
+        "TaskCreate passes the execution context/cancellation into TaskCreated hook execution.",
+        "A blocking TaskCreated hook deletes the just-created task and returns model-visible feedback equivalent to 'TaskCreated hook feedback:\\n<message>'.",
+        "The skipped blocking rollback test is replaced by deterministic command or in-process hook tests and no longer skipped."
+      ],
+      "verification": [
+        "go test ./tools ./hooks ./loop -run 'TaskCreate.*Hook|TaskCreated|SessionSwitcher|ExecuteTools' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TC-TASK-006",
+      "title": "Expose TaskCreate structured output data while preserving final text",
+      "priority": "P2",
+      "addresses_gaps": [
+        "TC-GAP-006",
+        "TC-GAP-009"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/tasks.go",
+        "types/tools_test.go",
+        "registry/registry_test.go",
+        "tools/tasks_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TaskCreate has an internal structured result equivalent to {task:{id,subject}} for tool-result storage or inspection.",
+        "The model-facing tool_result content remains exactly 'Task #<id> created successfully: <subject>' for successful creates.",
+        "TaskCreate storage failures preserve underlying error detail instead of only 'failed to create task'.",
+        "The added structured-result surface does not regress tools that only return plain text.",
+        "Tests cover direct Execute, registry ExecuteToolWithError, and JSON/tool-result serialization paths."
+      ],
+      "verification": [
+        "go test ./types ./registry ./tools -run 'ToolResult|TaskCreate.*Output|TaskCreate.*Error|ExecuteToolWithError' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TC-TASK-007",
+      "title": "Add TaskCreate task-update notifications and task-view lifecycle hooks",
+      "priority": "P2",
+      "addresses_gaps": [
+        "TC-GAP-007",
+        "TC-GAP-009"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/task_events.go",
+        "loop/events.go",
+        "loop/query.go",
+        "repl_tui.go",
+        "tools/tasks_test.go",
+        "loop/integration_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TaskStore exposes an in-process task-updated subscription or event surface for create/update/delete/reset operations.",
+        "Listener failures are isolated and cannot make task mutation fail.",
+        "TaskCreate emits the event after successful persistence and after rollback-relevant deletes as appropriate.",
+        "The interactive runtime has an equivalent of TS auto-expanding or refreshing the task view after TaskCreate.",
+        "Tests verify listener invocation, listener panic/error isolation, and the TaskCreate-triggered UI/event lifecycle."
+      ],
+      "verification": [
+        "go test ./tools ./loop -run 'Task.*Event|TaskCreate.*Notify|TaskCreate.*Expand|TaskStore' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    },
+    {
+      "source_id": "TC-TASK-008",
+      "title": "Fill TaskCreate metadata, scheduling, discovery, and prompt parity",
+      "priority": "P2",
+      "addresses_gaps": [
+        "TC-GAP-008",
+        "TC-GAP-009"
+      ],
+      "dependencies": [],
+      "owned_files": [
+        "tools/tasks.go",
+        "registry/tool_visibility.go",
+        "prompt/static_sections.go",
+        "loop/concurrent.go",
+        "loop/concurrent_test.go",
+        "registry/registry_test.go",
+        "prompt/static_sections_test.go",
+        "tools/tasks_test.go"
+      ],
+      "read_first": [],
+      "implementation_steps": [],
+      "acceptance_criteria": [
+        "TaskCreate implements IsConcurrentSafe() true and scheduler tests show adjacent TaskCreate calls can batch concurrently.",
+        "TaskCreate discovery search hint matches the TS hint 'create a task in the task list' or an explicitly documented compatibility layer maps to it.",
+        "Go exposes or emulates TaskCreate's toAutoClassifierInput behavior by returning the subject.",
+        "TaskCreate prompt/system guidance includes TS-equivalent when-to-use, when-not-to-use, field, duplicate-check, dependency, and teammate guidance.",
+        "Go records or exposes TaskCreate maxResultSizeChars/output-schema/userFacingName/null-render metadata where the local tool metadata surface supports it."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./prompt ./loop -run 'TaskCreate.*Concurrent|TaskCreate.*Metadata|TaskCreate.*Prompt|ToolVisibility|StaticSections|Concurrent' -count=1"
+      ],
+      "risks": [],
+      "non_goals": [],
+      "notes": ""
+    }
+  ],
+  "acceptance_criteria": [
+    "TaskCreate input validation and schema behavior match the original TS implementation for all report gaps.",
+    "TaskCreate model-visible output and structured result data match TS golden fixtures.",
+    "TaskCreate runtime side effects, state transitions, permission decisions, and error branches listed in improvement_points are implemented or explicitly documented as intentionally out of scope.",
+    "All implementation_subtasks acceptance criteria are satisfied.",
+    "Interactive sessions and sessions with CLAUDE_CODE_ENABLE_TASKS truthy expose TaskCreate, TaskGet, TaskUpdate, and TaskList.",
+    "Non-interactive sessions without CLAUDE_CODE_ENABLE_TASKS do not expose TaskCreate, TaskGet, TaskUpdate, or TaskList.",
+    "TodoWrite is not model-visible when task-v2 tools are visible, matching the TS inverse isEnabled relationship.",
+    "TaskStop and TaskOutput exposure remains unchanged.",
+    "Prompt task-management guidance reflects the actually visible task tool rather than both task systems.",
+    "TaskCreate rejects unknown top-level input keys before creating a task.",
+    "TaskCreate rejects omitted subject and omitted description.",
+    "TaskCreate accepts empty-string subject or whitespace subject if supplied as a string, matching z.string without min/trim constraints.",
+    "TaskCreate keeps activeForm optional and metadata limited to object-like values.",
+    "The published JSON schema or runtime validator clearly expresses additionalProperties=false for TaskCreate.",
+    "A newly-created TaskCreate JSON file includes id, subject, description, status, blocks:[], and blockedBy:[] exactly where TS requires them.",
+    "Absent optional activeForm, owner, and metadata fields serialize compatibly with TS undefined/optional behavior.",
+    "Go-only CreatedAt, UpdatedAt, CompletedAt, and Comments fields are removed from the TS-compatible task file or stored in a separate Go-only sidecar that TS readers ignore.",
+    "TaskStore create errors preserve enough underlying filesystem/error detail for callers and tests to distinguish permission, mkdir, and write failures.",
+    "Existing TaskList, TaskGet, TaskUpdate, dependency deletion, and concurrent-ID behavior remain intact.",
+    "Go defines HookTaskCreated with string value TaskCreated.",
+    "Rich settings under hooks.TaskCreated load instead of being skipped as unknown.",
+    "task-created-*.sh and taskcreated-*.sh filenames infer HookTaskCreated.",
+    "Runner.Run for HookTaskCreated sends hook_event_name/type TaskCreated and task_id/task_subject/task_description/team_name/teammate_name fields, not a Notification payload.",
+    "Command and HTTP TaskCreated hooks can block task creation via exit code 2 or structured block:true with the same blocking pathway used by TS-style hooks.",
+    "RegistryDeps retains the registered TaskCreateTool so runtime hook runners can be injected and updated.",
+    "Initial startup and session switching assign the active HookRunner to TaskCreateTool, matching AgentTool and TeamManager wiring.",
+    "TaskCreate passes the execution context/cancellation into TaskCreated hook execution.",
+    "A blocking TaskCreated hook deletes the just-created task and returns model-visible feedback equivalent to 'TaskCreated hook feedback:\\n<message>'."
+  ],
+  "verification": [
+    "go test ./... -run 'TaskCreate|TodoWrite|VisibleDefinitions|StaticSections' -count=1",
+    "go test ./tools ./types -run 'TaskCreate.*Input|TaskCreate.*Strict|ParseInput|JSONSchema' -count=1",
+    "go test ./tools -run 'TaskCreate|TaskStore|TaskList|TaskGet|TaskUpdate|ConcurrentCreate' -count=1",
+    "go test ./hooks ./tools -run 'TaskCreated|TaskCreate.*Hook|HookTypeFromFilename|LoadConfig' -count=1",
+    "go test ./tools ./hooks ./loop -run 'TaskCreate.*Hook|TaskCreated|SessionSwitcher|ExecuteTools' -count=1",
+    "go test ./types ./registry ./tools -run 'ToolResult|TaskCreate.*Output|TaskCreate.*Error|ExecuteToolWithError' -count=1",
+    "go test ./tools ./loop -run 'Task.*Event|TaskCreate.*Notify|TaskCreate.*Expand|TaskStore' -count=1",
+    "go test ./tools ./registry ./prompt ./loop -run 'TaskCreate.*Concurrent|TaskCreate.*Metadata|TaskCreate.*Prompt|ToolVisibility|StaticSections|Concurrent' -count=1"
+  ],
+  "risks": [
+    "Some subtasks touch shared runtime surfaces; coordinate with foundation tasks to avoid incompatible local adapters."
+  ],
+  "non_goals": [
+    "Do not make unrelated behavior changes outside this tool unless required by a listed dependency."
+  ],
+  "notes_for_assignee": "Start by adding or updating parity fixtures, then implement the smallest vertical slice that makes a failing fixture pass. Keep TS evidence lines in comments or test names where useful."
+}

@@ -1,0 +1,560 @@
+{
+  "tool": "TaskStop",
+  "summary": "TaskStop is partially aligned on the happy-path input names and success JSON fields, but it is not yet fully equivalent to the TS baseline. The main gaps are legacy KillShell lookup, SDK stop_task support, TS-style validation/error typing, broader task-runtime dispatch, stopped-task lifecycle side effects, persisted-running-task handling, and typed output/UI metadata parity.",
+  "confidence": "high",
+  "gaps": [
+    {
+      "id": "taskstop-gap-01",
+      "title": "Legacy KillShell alias is not registered for TaskStop",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts:39-45",
+        "../src/tools/TaskStopTool/TaskStopTool.ts:60-62",
+        "../src/tools/TaskStopTool/TaskStopTool.ts:107-114"
+      ],
+      "evidence_go": [
+        "types/tools.go:47-50",
+        "registry/registry.go:41-56",
+        "tools/tasks.go:1115-1123",
+        "tools/agent.go:3633-3639"
+      ],
+      "description": "TS publishes TaskStop with aliases:['KillShell'] and both validateInput/call accept the deprecated shell_id parameter for KillShell compatibility. Go's registry can resolve aliases only when a tool implements Aliases(), but TaskStopTool only exposes Name/Description/Schema/Execute and therefore registry.Get(\"KillShell\") will not find it. The only Go KillShell normalization found is inside agent profile/tool-name parsing, not the top-level tool registry.",
+      "impact": "Existing transcripts, SDK clients, or tool invocations that still refer to KillShell cannot execute the Go TaskStop tool even though TS keeps that name working."
+    },
+    {
+      "id": "taskstop-gap-02",
+      "title": "SDK stop_task control request is missing",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tasks/stopTask.ts:1-2",
+        "../src/entrypoints/sdk/controlSchemas.ts:455-461",
+        "../src/cli/print.ts:3772-3782"
+      ],
+      "evidence_go": [
+        "sdk/transport.go:192-224",
+        "sdk/types.go:36-93",
+        "engine/engine.go:14-49",
+        "engine/config.go:75-82"
+      ],
+      "description": "TS explicitly shares stopTask between the LLM tool and SDK stop_task control requests. Go's SDK transport routes initialize, interrupt, set_model, set_permission_mode, set_max_thinking_tokens, resume, compact, and get_context_usage, but has no stop_task case, no StopTaskRequest type, and no Engine method that exposes the BackgroundTaskManager stop operation to the SDK layer.",
+      "impact": "SDK hosts can stop a running task in TS but receive an unsupported-control-subtype error in Go, leaving SDK task lifecycle behavior incomplete."
+    },
+    {
+      "id": "taskstop-gap-03",
+      "title": "Validation and error typing do not match TS",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts:10-18",
+        "../src/tools/TaskStopTool/TaskStopTool.ts:60-90",
+        "../src/tasks/stopTask.ts:10-17",
+        "../src/tasks/stopTask.ts:46-63"
+      ],
+      "evidence_go": [
+        "tools/tasks.go:1124-1137",
+        "tools/tasks.go:1140-1161",
+        "tools/parse.go:13-31",
+        "tools/helpers.go:84-101",
+        "tools/background_tasks.go:564-573"
+      ],
+      "description": "TS uses a strict input object, validates missing/not-found/not-running before call execution, returns validation errorCode 1 or 3, and stopTask throws StopTaskError with machine-readable codes not_found, not_running, and unsupported_type. Go parses through json.Unmarshal, silently ignores unknown fields, trims task_id/shell_id whitespace before deciding missing, returns only ToolResult.IsError with a plain message, and adds a Go-only persisted-running-in-another-process error without a typed code.",
+      "impact": "Malformed inputs and failure paths can diverge from TS, and callers cannot reliably distinguish not_found, not_running, unsupported_type, or cross-process state in the Go result."
+    },
+    {
+      "id": "taskstop-gap-04",
+      "title": "Stop dispatch covers only Go background-manager task types",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/Task.ts:6-13",
+        "../src/tasks.ts:22-38",
+        "../src/tasks/stopTask.ts:57-65",
+        "../src/tasks/DreamTask/DreamTask.ts:132-156",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx:808-847"
+      ],
+      "evidence_go": [
+        "tools/background_tasks.go:117-120",
+        "tools/background_tasks.go:559-614",
+        "tools/runtime_task_store.go:13-33",
+        "tools/tasks.go:1158-1161"
+      ],
+      "description": "TS dispatches stop through getTaskByType over a broader runtime task registry: local_bash, local_agent, remote_agent, dream, and feature-gated local_workflow/monitor_mcp implementations. If a visible running task has no registered implementation, TS reports unsupported_type. Go's BackgroundTaskManager defines only local_bash and local_agent constants, TaskStop directly calls Background.Stop, and Stop has no type-specific kill registry or unsupported_type branch for other runtime task records.",
+      "impact": "Go cannot faithfully stop or classify every TS-visible task type, and future/persisted runtime records with non-local Go task types will fail through generic missing/not-running/cross-process paths instead of TS-equivalent dispatch."
+    },
+    {
+      "id": "taskstop-gap-05",
+      "title": "Stopped-task lifecycle side effects are not TS-equivalent",
+      "priority": "P0",
+      "evidence_ts": [
+        "../src/tasks/stopTask.ts:65-99",
+        "../src/tasks/LocalShellTask/killShellTasks.ts:16-46",
+        "../src/tasks/LocalShellTask/LocalShellTask.tsx:105-171",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx:832-845",
+        "../src/tasks/DreamTask/DreamTask.ts:136-155"
+      ],
+      "evidence_go": [
+        "tools/background_tasks.go:169-201",
+        "tools/background_tasks.go:582-613",
+        "tools/background_tasks.go:690-700",
+        "tools/background_tasks.go:729-750",
+        "tools/runtime_task_store.go:13-33"
+      ],
+      "description": "TS does more than cancel: local shell stops mark notified=true to suppress the noisy killed notification and emit a task_terminated SDK event directly; remote-agent stops mark notified, emit SDK termination, archive the remote session, evict output, and remove metadata; dream stops mark notified and roll back the consolidation lock. Go Stop sets status=killed/exit=-1/finished_at, cancels/kills, persists the record, and later emits a generic Notification hook from the background goroutine. RuntimeTaskRecord has Notified and OutputOffset fields, but BackgroundTask.recordLocked never populates Notified and BackgroundTask has no notified state.",
+      "impact": "Go can duplicate or miss closeout notifications relative to TS, does not close SDK task-started bookends for stopped tasks, and lacks task-type-specific cleanup such as remote archive/metadata removal or dream lock rollback."
+    },
+    {
+      "id": "taskstop-gap-06",
+      "title": "Persisted running tasks can be visible but cannot be stopped or restored",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts:71-90",
+        "../src/tasks/stopTask.ts:43-65"
+      ],
+      "evidence_go": [
+        "tools/background_tasks.go:433-445",
+        "tools/background_tasks.go:559-573",
+        "tools/tasks.go:1232-1246",
+        "tools/agent_sessions.go:265-275"
+      ],
+      "description": "TS validates against the current appState task map and any visible running task is expected to have an in-process task implementation that can be killed. Go TaskOutput/Snapshot can surface persisted runtime records from .claude/runtime-tasks, including running records, but BackgroundTaskManager.Stop refuses a running persisted record that is not in this manager with 'running in another process and cannot be stopped from this session'. The stored-agent restore path likewise refuses running records from another process.",
+      "impact": "The model can observe a running task via Go TaskOutput/runtime persistence but cannot stop it with TaskStop, creating a lifecycle dead end that TS avoids by tying visibility to a killable appState task."
+    },
+    {
+      "id": "taskstop-gap-07",
+      "title": "Typed output schema and UI/tool metadata parity are incomplete",
+      "priority": "P2",
+      "evidence_ts": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts:22-34",
+        "../src/tools/TaskStopTool/TaskStopTool.ts:39-58",
+        "../src/tools/TaskStopTool/TaskStopTool.ts:92-106",
+        "../src/tools/TaskStopTool/TaskStopTool.ts:122-128",
+        "../src/tools/TaskStopTool/UI.tsx:7-39",
+        "../src/tools/TaskStopTool/prompt.ts:3-8"
+      ],
+      "evidence_go": [
+        "types/tools.go:17-22",
+        "types/tools.go:53-68",
+        "tools/helpers.go:64-81",
+        "tools/tasks.go:1121-1137",
+        "tools/tasks.go:1167-1172",
+        "registry/tool_visibility.go:35-38"
+      ],
+      "description": "TS declares an output schema with message, task_id, task_type, and optional command, sets maxResultSizeChars=100000, shouldDefer, searchHint, userFacingName, concurrency safety, toAutoClassifierInput, custom prompt text, empty tool-use rendering, and a truncated UI result renderer. Go returns equivalent success fields as a JSON string via ResponseJSON and has registry-level deferred metadata, but the Tool interface/result type has no output schema, max-result metadata, user-facing name, classifier projection, concurrency-safety metadata, or TaskStop-specific render/prompt surface.",
+      "impact": "Model-visible JSON is close on the happy path, but API/tool-definition metadata, transcript replay validation, UI rendering, and classifier/search behavior are not fully representable in Go."
+    },
+    {
+      "id": "taskstop-gap-08",
+      "title": "Go regression coverage is narrow for TaskStop parity",
+      "priority": "P1",
+      "evidence_ts": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts:39-45",
+        "../src/tools/TaskStopTool/TaskStopTool.ts:60-90",
+        "../src/tasks/stopTask.ts:10-17",
+        "../src/tasks/stopTask.ts:65-99",
+        "../src/cli/print.ts:3772-3782"
+      ],
+      "evidence_go": [
+        "tools/tasks_test.go:226-287",
+        "tools/tasks_test.go:374-399",
+        "tools/tasks_test.go:454-480",
+        "tools/agent_bash_cleanup_test.go:8-56",
+        "sdk/transport_test.go:430-476",
+        "sdk/transport_test.go:564-591"
+      ],
+      "description": "Existing Go tests cover a shell happy path, cleanup after a TaskOutput timeout, and local-agent killed metadata persistence. They do not lock the TS-specific legacy alias, shell_id path, missing/not-found/not-running/unsupported-type errors, strict input behavior, SDK stop_task control request, notification/notified side effects, or persisted-running-task behavior.",
+      "impact": "Future changes can regress the TS compatibility surface without failing tests, especially around the runtime/lifecycle branches that are most different from TS."
+    }
+  ],
+  "candidate_tasks": [
+    {
+      "title": "Register TaskStop's KillShell alias",
+      "priority": "P0",
+      "dependency_key": "taskstop-gap-01",
+      "objective": "Make Go TaskStop resolve and execute through the deprecated KillShell tool name exactly as TS does.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "registry/registry_test.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts",
+        "types/tools.go",
+        "registry/registry.go",
+        "tools/tasks.go",
+        "tools/agent.go"
+      ],
+      "implementation_steps": [
+        "Add an Aliases() []string method to TaskStopTool returning []string{\"KillShell\"}.",
+        "Keep shell_id input compatibility unchanged.",
+        "Add registry tests proving registry.Get(\"KillShell\") returns the TaskStop tool and ExecuteTool can stop using shell_id.",
+        "Confirm agent-profile legacy normalization still maps KillShell to TaskStop without becoming the only alias path."
+      ],
+      "acceptance_criteria": [
+        "TaskStopTool implements types.AliasedTool.",
+        "A registry containing TaskStop resolves both TaskStop and KillShell to the same tool.",
+        "KillShell invoked with shell_id stops a running background task and returns the same success JSON fields as TaskStop with task_id."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskStop.*Alias|TestTaskStopAndOutputTools'",
+        "go test ./registry -run 'TestGetAlias'"
+      ],
+      "risks": [
+        "Alias registration must not add KillShell to model-facing tool definitions; it should remain lookup-only like other Go aliases."
+      ],
+      "non_goals": [
+        "Do not reintroduce a separate KillShell implementation.",
+        "Do not change TaskOutput legacy aliases in this task."
+      ]
+    },
+    {
+      "title": "Wire SDK stop_task to the same stop runtime as TaskStop",
+      "priority": "P0",
+      "dependency_key": "taskstop-gap-02",
+      "objective": "Support SDK control_request subtype stop_task in Go and route it through the same stopping semantics as the LLM-invoked TaskStop tool.",
+      "owned_files": [
+        "sdk/types.go",
+        "sdk/transport.go",
+        "sdk/transport_test.go",
+        "engine/engine.go",
+        "engine/core.go",
+        "engine/config.go",
+        "registry_setup.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/entrypoints/sdk/controlSchemas.ts",
+        "../src/cli/print.ts",
+        "../src/tasks/stopTask.ts",
+        "sdk/transport.go",
+        "sdk/types.go",
+        "engine/engine.go",
+        "engine/core.go",
+        "engine/config.go",
+        "registry_setup.go"
+      ],
+      "implementation_steps": [
+        "Add StopTaskRequest with subtype stop_task and task_id.",
+        "Extend SDKServer.handleControlRequest with a stop_task case.",
+        "Expose a narrow engine-level StopTask method or optional internal interface that calls the configured BackgroundTaskManager/stop runtime.",
+        "Return control_response success with an empty response payload on success, matching TS.",
+        "Return control_response error using the stop error message on failure.",
+        "Add SDK transport tests for success, not-found, malformed request, and unsupported stop runtime."
+      ],
+      "acceptance_criteria": [
+        "SDK control_request {subtype:'stop_task', task_id:'...'} stops a running Go background task.",
+        "The successful control_response has subtype success and no extra payload, matching TS print.ts behavior.",
+        "Not-found/not-running failures return control_response subtype error with the stop message.",
+        "Existing interrupt/set_model/resume/compact control tests still pass."
+      ],
+      "verification": [
+        "go test ./sdk -run 'TestServe_.*StopTask|TestServe_Interrupt|TestServe_UnknownControlSubtype'",
+        "go test ./engine ./tools -run 'TestTaskStop'"
+      ],
+      "risks": [
+        "Engine currently stores BackgroundTasks behind a compact read-only interface; keep the new stop capability narrow and optional instead of widening unrelated compact APIs."
+      ],
+      "non_goals": [
+        "Do not change the SDK permission-response protocol.",
+        "Do not make SDK stop_task stop arbitrary OS processes outside the runtime task manager."
+      ]
+    },
+    {
+      "title": "Add TS-compatible TaskStop validation and typed stop errors",
+      "priority": "P1",
+      "dependency_key": "taskstop-gap-03",
+      "objective": "Make Go distinguish TaskStop missing input, not found, not running, and unsupported type in the same way TS validateInput and StopTaskError do.",
+      "owned_files": [
+        "tools/tasks.go",
+        "tools/background_tasks.go",
+        "tools/parse.go",
+        "tools/tasks_test.go",
+        "types/tools.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts",
+        "../src/tasks/stopTask.ts",
+        "tools/tasks.go",
+        "tools/background_tasks.go",
+        "tools/parse.go",
+        "tools/helpers.go"
+      ],
+      "implementation_steps": [
+        "Introduce a small StopTaskError type with Code values not_found, not_running, unsupported_type, and a separate code/path for Go-only cross-process refusal if kept.",
+        "Have BackgroundTaskManager.Stop return StopTaskError for not found and not running instead of generic fmt.Errorf.",
+        "Add TaskStop input validation that rejects missing task_id/shell_id with the TS message and preserves the TS precedence task_id ?? shell_id.",
+        "Decide deliberately whether to keep or remove Go's strings.TrimSpace behavior; exact TS parity treats whitespace-only ids as ids, not missing input.",
+        "Represent strict input semantics for TaskStop where the Go schema/parser can express it, including rejecting unknown fields if a strict parser is available.",
+        "Add tests for missing input, shell_id fallback, task_id precedence over shell_id, not-found, not-running, non-string input, and unknown fields."
+      ],
+      "acceptance_criteria": [
+        "Missing task id returns 'Missing required parameter: task_id'.",
+        "Not found returns 'No task found with ID: <id>' and a machine-readable not_found code internally.",
+        "Not running returns 'Task <id> is not running (status: <status>)' and a machine-readable not_running code internally.",
+        "Unsupported task type is distinguishable from not found/not running.",
+        "TaskStop behavior for task_id plus shell_id matches TS precedence."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskStop.*(Input|Errors|ShellID|NotRunning|Unsupported)'",
+        "go test ./tools -run 'TestTaskStopAndOutputTools|TestTaskStopCancelsAgentTaskAndPersistsKilledMetadata'"
+      ],
+      "risks": [
+        "A global strict parse change could affect many tools; prefer TaskStop-local validation unless a shared strict-parser migration is already planned."
+      ],
+      "non_goals": [
+        "Do not change TaskCreate/TaskGet/TaskUpdate input parsing in this task.",
+        "Do not redesign ToolResult error transport beyond what TaskStop needs."
+      ]
+    },
+    {
+      "title": "Introduce a task-type-aware stop dispatcher",
+      "priority": "P0",
+      "dependency_key": "taskstop-gap-04",
+      "objective": "Make Go TaskStop dispatch through a runtime task-type registry so each supported task type can perform the same stop and cleanup path as TS, while unsupported visible types return unsupported_type.",
+      "owned_files": [
+        "tools/background_tasks.go",
+        "tools/runtime_task_store.go",
+        "tools/tasks.go",
+        "tools/agent_sessions.go",
+        "tools/tasks_test.go"
+      ],
+      "dependencies": [
+        "Add TS-compatible TaskStop validation and typed stop errors"
+      ],
+      "read_first": [
+        "../src/Task.ts",
+        "../src/tasks.ts",
+        "../src/tasks/stopTask.ts",
+        "../src/tasks/LocalShellTask/killShellTasks.ts",
+        "../src/tasks/LocalAgentTask/LocalAgentTask.tsx",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx",
+        "../src/tasks/DreamTask/DreamTask.ts",
+        "tools/background_tasks.go",
+        "tools/agent_sessions.go",
+        "tools/runtime_task_store.go"
+      ],
+      "implementation_steps": [
+        "Define a small internal stop handler interface keyed by runtime task type.",
+        "Register handlers for local_bash and local_agent using existing BackgroundTaskManager cancellation paths.",
+        "Return unsupported_type for visible running records whose type has no registered stop handler.",
+        "Preserve current child-task cascade behavior for local_agent/local_bash where it is a Go runtime requirement.",
+        "Add tests with synthetic runtime records/tasks for supported local_bash/local_agent and unsupported type values."
+      ],
+      "acceptance_criteria": [
+        "TaskStop routes local_bash and local_agent through explicit type handlers.",
+        "A running task with an unregistered type returns unsupported_type instead of a generic missing/cross-process error when it is visible to the runtime.",
+        "Adding a future remote_agent/dream handler does not require changing TaskStopTool.Execute.",
+        "Existing shell and agent stop tests still pass."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskStop.*(TypeDispatch|Unsupported|Agent|Shell)'"
+      ],
+      "risks": [
+        "Some Go task types may not yet exist; keep unsupported handling explicit rather than pretending to implement TS remote/dream behavior prematurely."
+      ],
+      "non_goals": [
+        "Do not implement remote_agent cloud APIs or dream memory consolidation unless those runtimes already exist in Go.",
+        "Do not remove Go's child cascade unless a separate parity decision approves it."
+      ]
+    },
+    {
+      "title": "Align stopped-task lifecycle notifications and cleanup",
+      "priority": "P0",
+      "dependency_key": "taskstop-gap-05",
+      "objective": "Make Go record and emit stopped-task lifecycle side effects in the same places TS does: notified state, SDK termination, suppression of noisy local-shell killed notifications, and type-specific cleanup.",
+      "owned_files": [
+        "tools/background_tasks.go",
+        "tools/runtime_task_store.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "sdk/events.go",
+        "sdk/events_test.go"
+      ],
+      "dependencies": [
+        "Introduce a task-type-aware stop dispatcher"
+      ],
+      "read_first": [
+        "../src/tasks/stopTask.ts",
+        "../src/tasks/LocalShellTask/killShellTasks.ts",
+        "../src/tasks/LocalShellTask/LocalShellTask.tsx",
+        "../src/tasks/RemoteAgentTask/RemoteAgentTask.tsx",
+        "../src/tasks/DreamTask/DreamTask.ts",
+        "tools/background_tasks.go",
+        "tools/runtime_task_store.go",
+        "sdk/events.go"
+      ],
+      "implementation_steps": [
+        "Add notified state to BackgroundTask or otherwise persist RuntimeTaskRecord.Notified from the stop path.",
+        "For local_bash TaskStop, mark notified before the completion goroutine emits a killed notification so the Go runtime can suppress duplicate/noisy model notifications.",
+        "Add or reuse an SDK task-terminated event helper for stopped tasks if the Go SDK event layer supports task lifecycle events.",
+        "Keep generic completion hooks for natural completed/failed tasks, but gate stopped-task hooks to match TS notification semantics.",
+        "Add type-specific cleanup hooks for any Go runtimes equivalent to TS remote_agent or dream when those handlers exist.",
+        "Add tests proving local shell stopped by TaskStop is persisted notified/killed and does not emit a duplicate completion notification."
+      ],
+      "acceptance_criteria": [
+        "Stopped local_bash records persist status killed, exit -1, finished_at, and notified=true or equivalent suppression state.",
+        "Stopping a local_bash task does not enqueue/emit a redundant generic killed model notification.",
+        "SDK lifecycle listeners receive a stopped/terminated event for stopped tasks when the Go SDK task lifecycle channel is enabled.",
+        "Natural completed/failed task notifications continue to fire once."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTaskStop.*(Lifecycle|Notification|Notified|Persists)'",
+        "go test ./sdk -run 'Test.*Task.*Terminated|Test.*Events'"
+      ],
+      "risks": [
+        "Notification behavior may be shared with hooks; tests should isolate hook emission so suppressing TaskStop noise does not hide real completed/failed events."
+      ],
+      "non_goals": [
+        "Do not redesign the whole hook system.",
+        "Do not add remote-agent archive calls unless a Go remote-agent runtime is present."
+      ]
+    },
+    {
+      "title": "Resolve persisted-running-task stop semantics",
+      "priority": "P1",
+      "dependency_key": "taskstop-gap-06",
+      "objective": "Eliminate the state where Go TaskOutput can show a running persisted task that TaskStop cannot stop, either by reattaching/restoring stoppable tasks or by hiding/classifying stale records consistently.",
+      "owned_files": [
+        "tools/background_tasks.go",
+        "tools/agent_sessions.go",
+        "tools/runtime_task_store.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "tools/agent_lifecycle_test.go"
+      ],
+      "dependencies": [
+        "Add TS-compatible TaskStop validation and typed stop errors"
+      ],
+      "read_first": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts",
+        "../src/tasks/stopTask.ts",
+        "tools/background_tasks.go",
+        "tools/agent_sessions.go",
+        "tools/tasks.go",
+        "tools/runtime_task_store.go"
+      ],
+      "implementation_steps": [
+        "Define the intended Go equivalent of TS 'visible task is stoppable': reattach, mark stale, or hide from TaskOutput.",
+        "If reattaching local_agent records is feasible, restore enough session state to cancel the task or mark it no longer running before exposing it.",
+        "If cross-process stopping is impossible, classify persisted running records as stale/unavailable consistently in TaskOutput and TaskStop instead of advertising them as live not_ready tasks.",
+        "Add tests for a running record present only in RuntimeTaskStore: TaskOutput behavior and TaskStop behavior must agree.",
+        "Ensure completed/failed persisted records remain readable by TaskOutput."
+      ],
+      "acceptance_criteria": [
+        "A task shown by TaskOutput as running/not_ready is stoppable by TaskStop in the same process.",
+        "A running record from another process is either reattached and stoppable or classified as stale/unavailable in both TaskOutput and TaskStop.",
+        "Completed/failed persisted records are still retrievable for output inspection.",
+        "The user-facing error text for truly cross-process tasks is tested and typed, not a generic fmt.Errorf branch."
+      ],
+      "verification": [
+        "go test ./tools -run 'TestTask(Output|Stop).*Persisted.*Running|TestTaskOutputFallsBackToPersistedAgentResult'"
+      ],
+      "risks": [
+        "Cross-process process killing is OS- and ownership-sensitive; prefer a conservative stale/unavailable classification if safe reattachment is not available."
+      ],
+      "non_goals": [
+        "Do not kill arbitrary PIDs read from disk without ownership/session validation.",
+        "Do not change completed-task output retention policy."
+      ]
+    },
+    {
+      "title": "Expose TaskStop output schema and metadata parity hooks",
+      "priority": "P2",
+      "dependency_key": "taskstop-gap-07",
+      "objective": "Represent TaskStop's TS output schema and tool metadata in Go without changing the happy-path JSON fields.",
+      "owned_files": [
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "registry/registry.go",
+        "tools/tasks.go",
+        "tools/tasks_test.go",
+        "loop/query.go",
+        "compact/resultstore.go"
+      ],
+      "dependencies": [],
+      "read_first": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts",
+        "../src/tools/TaskStopTool/UI.tsx",
+        "../src/tools/TaskStopTool/prompt.ts",
+        "types/tools.go",
+        "registry/tool_visibility.go",
+        "tools/tasks.go",
+        "tools/helpers.go"
+      ],
+      "implementation_steps": [
+        "Add optional tool metadata interfaces for output schema, max result size, user-facing name, classifier input, concurrency safety, and prompt text where the Go runtime consumes them.",
+        "Implement the relevant metadata on TaskStopTool.",
+        "Keep the current success JSON keys message, task_id, task_type, and command.",
+        "If UI rendering exists for Go tool results, add the TS-equivalent stopped command rendering and truncation behavior.",
+        "Add tests for metadata discovery and stable success payload fields."
+      ],
+      "acceptance_criteria": [
+        "TaskStop publishes an output schema equivalent to TS's message/task_id/task_type/command shape.",
+        "TaskStop metadata includes should-defer/search hint, max result size, concurrency-safe, and classifier projection where supported.",
+        "Visible success payload remains JSON with the four TS fields.",
+        "Any Go UI renderer shows '<command> · stopped' with TS-equivalent truncation when not verbose."
+      ],
+      "verification": [
+        "go test ./tools ./registry -run 'TestTaskStop.*(Schema|Metadata|Output|Render)'",
+        "go test ./loop ./compact -run 'Test.*ToolResult'"
+      ],
+      "risks": [
+        "Adding metadata interfaces can affect many tools; keep them optional and verify zero-value behavior for existing tools."
+      ],
+      "non_goals": [
+        "Do not change TaskStop runtime cancellation semantics in this metadata task.",
+        "Do not add UI-only metadata to API tool definitions unless the TS API also exposes it."
+      ]
+    },
+    {
+      "title": "Build a TaskStop parity regression suite",
+      "priority": "P1",
+      "dependency_key": "taskstop-gap-08",
+      "objective": "Lock the TS compatibility surface for TaskStop so future changes cover legacy aliasing, validation, runtime stop behavior, lifecycle side effects, SDK stop_task, and persisted-task edge cases.",
+      "owned_files": [
+        "tools/tasks_test.go",
+        "tools/background_tasks_test.go",
+        "registry/registry_test.go",
+        "sdk/transport_test.go",
+        "sdk/events_test.go"
+      ],
+      "dependencies": [
+        "Register TaskStop's KillShell alias",
+        "Wire SDK stop_task to the same stop runtime as TaskStop",
+        "Add TS-compatible TaskStop validation and typed stop errors",
+        "Align stopped-task lifecycle notifications and cleanup"
+      ],
+      "read_first": [
+        "../src/tools/TaskStopTool/TaskStopTool.ts",
+        "../src/tasks/stopTask.ts",
+        "../src/cli/print.ts",
+        "tools/tasks_test.go",
+        "sdk/transport_test.go",
+        "registry/registry_test.go"
+      ],
+      "implementation_steps": [
+        "Add table-driven TaskStop input/error tests for missing, shell_id, task_id precedence, not found, not running, unsupported type, and unknown/non-string fields.",
+        "Add registry alias tests for KillShell.",
+        "Add lifecycle tests for stopped shell and agent tasks, including persisted status, exit code, finished_at, and notification suppression/SDK closeout where implemented.",
+        "Add SDK stop_task success and failure tests.",
+        "Add persisted-running-record tests that assert TaskOutput and TaskStop agree on visibility/stoppability."
+      ],
+      "acceptance_criteria": [
+        "Each TS compatibility branch identified in this report has at least one Go regression test.",
+        "The suite fails if KillShell alias support is removed.",
+        "The suite fails if SDK stop_task returns unsupported subtype.",
+        "The suite fails if TaskStop cannot distinguish missing/not-found/not-running/unsupported-type.",
+        "The suite documents any intentional Go-only cross-process behavior with explicit assertions."
+      ],
+      "verification": [
+        "go test ./tools ./registry ./sdk -run 'Test(TaskStop|KillShell|Serve_.*StopTask|.*Task.*Terminated)'"
+      ],
+      "risks": [
+        "Some tests depend on implementation tasks above. If added before implementation, mark only those future-facing cases with precise t.Skip messages tied to this report's gap ids."
+      ],
+      "non_goals": [
+        "Do not create broad flaky integration tests that spawn long-lived external processes.",
+        "Do not update production code in this test-suite task except minimal test hooks needed for deterministic assertions."
+      ]
+    }
+  ]
+}

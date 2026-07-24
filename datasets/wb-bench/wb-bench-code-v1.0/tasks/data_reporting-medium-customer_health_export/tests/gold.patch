@@ -1,0 +1,46 @@
+diff --git a/app/export.py b/app/export.py
+index 68563ef..f65bb4e 100644
+--- a/app/export.py
++++ b/app/export.py
+@@ -1,23 +1,21 @@
+ #!/usr/bin/env python3
+-# Expected CLI: python app/export.py --data data --out export.csv
+-# Keep columns stable because another team imports this file.
+-
+-import argparse
++import argparse,csv
+ from pathlib import Path
+-
+-
+-def write_export(data_dir: Path, out_path: Path) -> None:
+-    # TODO: build the requested CSV export.
+-    out_path.write_text('', encoding='utf-8')
+-
+-
++def rows(p):
++    with p.open(newline='',encoding='utf-8') as f: return list(csv.DictReader(f))
++def write_export(data_dir: Path, out_path: Path):
++    usage={r['account_id']:r for r in rows(data_dir/'usage.csv')}; tickets={r['account_id']:r for r in rows(data_dir/'tickets.csv')}
++    out=[]
++    for a in rows(data_dir/'accounts.csv'):
++        u=usage.get(a['account_id'],{}); t=tickets.get(a['account_id'],{})
++        active=int(u.get('active_users',0)); projects=int(u.get('projects',0)); sev=int(t.get('sev1',0)); open_t=int(t.get('open_tickets',0))
++        if sev>0 or open_t>=5: health='red'
++        elif active<2 or projects==0: health='yellow'
++        else: health='green'
++        out.append({'account_id':a['account_id'],'name':a['name'],'owner':a['owner'],'plan':a['plan'],'active_users':active,'projects':projects,'open_tickets':open_t,'sev1':sev,'health':health,'last_active':u.get('last_active','')})
++    out.sort(key=lambda r:({'red':0,'yellow':1,'green':2}[r['health']], r['owner'], r['name']))
++    with out_path.open('w',newline='',encoding='utf-8') as f:
++        w=csv.DictWriter(f, fieldnames=['account_id','name','owner','plan','active_users','projects','open_tickets','sev1','health','last_active']); w.writeheader(); w.writerows(out)
+ def main():
+-    parser = argparse.ArgumentParser()
+-    parser.add_argument('--data', default='data')
+-    parser.add_argument('--out', default='export.csv')
+-    args = parser.parse_args()
+-    write_export(Path(args.data), Path(args.out))
+-
+-
+-if __name__ == '__main__':
+-    main()
++    p=argparse.ArgumentParser(); p.add_argument('--data',default='data'); p.add_argument('--out',default='export.csv'); a=p.parse_args(); write_export(Path(a.data),Path(a.out))
++if __name__=='__main__': main()

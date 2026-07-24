@@ -1,0 +1,62 @@
+diff --git a/itsdangerous_like/tokens.py b/itsdangerous_like/tokens.py
+index 43c3644..d07bf94 100644
+--- a/itsdangerous_like/tokens.py
++++ b/itsdangerous_like/tokens.py
+@@ -25,7 +25,10 @@ class BadSignature(Exception):
+     decoded safely. Malformed tokens without a payload keep payload
+     as None.
+     """
+-    pass
++    def __init__(self, message, payload=None, reason="bad_signature"):
++        super().__init__(message)
++        self.payload = payload
++        self.reason = reason
+ 
+ 
+ class SignatureExpired(BadSignature):
+@@ -34,7 +37,9 @@ class SignatureExpired(BadSignature):
+     This must remain a BadSignature subclass, expose date_signed,
+     and use reason=ERROR_REASONS["expired"].
+     """
+-    pass
++    def __init__(self, message, payload=None, date_signed=None):
++        super().__init__(message, payload=payload, reason=ERROR_REASONS["expired"])
++        self.date_signed = date_signed
+ 
+ 
+ class TokenSigner:
+@@ -52,14 +57,28 @@ class TokenSigner:
+     def loads(self, token, max_age=None):
+         try:
+             payload_b64, ts_s, sig = token.split(".", 2)
+-        except ValueError:
+-            raise BadSignature("bad token")
++        except ValueError as exc:
++            raise BadSignature("Malformed token", reason="malformed") from exc
+         value = payload_b64 + "." + ts_s
++        payload = self._decode_payload(payload_b64)
+         if not hmac.compare_digest(sig, self._sign(value)):
+-            raise BadSignature("bad signature")
+-        if max_age is not None and int(self.time_fn()) - int(ts_s) > max_age:
+-            raise SignatureExpired("expired")
+-        return _unb64(payload_b64).decode()
++            raise BadSignature("Signature does not match", payload=payload, reason="bad_signature")
++        try:
++            ts = int(ts_s)
++        except ValueError as exc:
++            raise BadSignature("Timestamp is not an integer", payload=payload, reason="bad_timestamp") from exc
++        age = int(self.time_fn()) - ts
++        if max_age is not None and age > max_age:
++            raise SignatureExpired("Signature age exceeds max_age", payload=payload, date_signed=ts)
++        if age < 0:
++            raise BadSignature("Timestamp is in the future", payload=payload, reason="future_timestamp")
++        return payload
++
++    def _decode_payload(self, payload_b64):
++        try:
++            return _unb64(payload_b64).decode()
++        except Exception as exc:
++            raise BadSignature("Payload is not valid base64", reason="bad_payload") from exc
+ 
+     def _sign(self, value):
+         return hmac.new(self.secret + self.salt, value.encode(), hashlib.sha256).hexdigest()

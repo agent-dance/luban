@@ -1,0 +1,51 @@
+schema_version = "1.3"
+[task]
+name = "workbuddy/schema_behavior-medium-datakey_errors"
+authors = []
+keywords = []
+
+[metadata]
+source_case = "schema_behavior-medium-datakey_errors"
+difficulty = "medium"
+category = "schema-behavior"
+subcategory = "data-models-and-validation"
+tags = ["marshmallow", "data-key", "validation-errors", "schema-behavior"]
+repo = "marshmallow"
+commit = "0000000000000000000000000000000000000000"
+source_commit = ""
+pr_url = ""
+n_files_changed = 1
+n_lines_changed = 8
+instruction_clarity = "medium"
+solution_space = "medium"
+
+intent = "debug"
+artifact_type = "product_code"
+role = "algo"
+edit_mode = "modify_existing"
+complexity = "L3"
+surface = "partial_repo"
+verification_mode = "functional_tests"
+retrofit_action = "new-category"
+taxonomy_status = "experimental"
+target_language = "python"
+source_language = "python"
+entrypoint = "python"
+task-type = ["schema-behavior"]
+
+[verifier]
+import_path = "workbuddy_bench.judge:CompositeVerifier"
+timeout_sec = 600.0
+
+[agent]
+timeout_sec = 1800.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240
+gpus = 0
+network_mode = "public"
+mcp_servers = []
+

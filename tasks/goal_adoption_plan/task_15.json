@@ -1,0 +1,76 @@
+{
+  "id": "task_15",
+  "title": "Implement and register goal tools",
+  "priority": "P1",
+  "status": "accepted",
+  "owner_role": "executor",
+  "estimated_minutes": 5,
+  "parallel_group": "tools",
+  "can_run_in_parallel": false,
+  "dependencies": [
+    "task_14"
+  ],
+  "objective": "Implement GetGoal, CreateGoal, and UpdateGoal tools and register them with the runtime.",
+  "context": [
+    "These tools let the model inspect and mark the goal, but they must not bypass slash-command or permission semantics.",
+    "Registration touches shared registry setup, so this should run after other registry-heavy work is quiet."
+  ],
+  "source_evidence": [
+    {
+      "source": "repo",
+      "file_or_url": "registry_setup.go:625",
+      "note": "Existing task/todo tools are registered in a central setup path."
+    }
+  ],
+  "read_first": [
+    "tools/goal_tools_test.go",
+    "tools/tasks.go",
+    "registry_setup.go",
+    "registry/tool_visibility.go",
+    "goal/goal.go"
+  ],
+  "owned_files": [
+    "tools/goal_tools.go",
+    "registry_setup.go",
+    "registry/tool_visibility.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Implement GetGoal, CreateGoal, and UpdateGoal.",
+      "Share GoalRuntime with slash command where practical.",
+      "Register tools with correct metadata.",
+      "Keep nil runtime behavior explicit and safe."
+    ],
+    "exclude": [
+      "No broad tool contract refactor.",
+      "No evaluator loop changes."
+    ]
+  },
+  "implementation_steps": [
+    "Create tools/goal_tools.go.",
+    "Implement schemas and execution with fake-friendly runtime.",
+    "Register tools in registry_setup.go.",
+    "Update visibility metadata if needed.",
+    "Run tools and registry focused tests."
+  ],
+  "deliverables": [
+    "Model-facing goal tools are available through registry setup."
+  ],
+  "acceptance_criteria": [
+    "go test ./tools -run Goal passes.",
+    "Registry can find the goal tools.",
+    "Tool metadata marks GetGoal read-only and CreateGoal/UpdateGoal mutating."
+  ],
+  "verification": [
+    "go test ./tools ./registry -run 'Goal|Visibility|Tool' -count=1"
+  ],
+  "risks": [
+    "registry_setup.go is a shared high-conflict file."
+  ],
+  "non_goals": [
+    "No TUI rendering.",
+    "No new dependency."
+  ],
+  "dispatch_prompt": "Implement and register GetGoal, CreateGoal, and UpdateGoal tools to satisfy tools/goal_tools_test.go. Keep runtime injection safe and metadata accurate.",
+  "notes_for_assignee": "If the shared tool contract layer is mid-change, coordinate upward before editing registry_setup.go."
+}

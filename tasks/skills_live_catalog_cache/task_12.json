@@ -1,0 +1,85 @@
+{
+  "id": "task_12",
+  "title": "Validate skillOverrides in editable settings",
+  "priority": "P0",
+  "status": "accepted",
+  "wave": 3,
+  "owner_role": "executor",
+  "estimated_minutes": 50,
+  "parallel_group": "provider_adapters",
+  "can_run_in_parallel": true,
+  "dependencies": [
+    "task_01",
+    "task_04",
+    "task_07"
+  ],
+  "objective": "Allow safe editing of four-state skill overrides while rejecting malformed keys, values, and managed-policy bypass attempts.",
+  "context": [
+    "Implement the accepted hybrid skill catalog design in the dirty shared worktree.",
+    "Registry state is authoritative; prompt messages are an append-only model projection and never the authorization boundary."
+  ],
+  "source_evidence": [
+    {
+      "source": "official_docs",
+      "file_or_url": "https://developers.openai.com/codex/skills",
+      "note": "Bounded metadata catalog and on-demand full skill content."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/skills",
+      "note": "Live discovery and four-state skill visibility controls."
+    },
+    {
+      "source": "official_docs",
+      "file_or_url": "https://code.claude.com/docs/en/prompt-caching",
+      "note": "Append-only messages preserve the prior cached prefix."
+    }
+  ],
+  "read_first": [
+    "tasks/skills_live_catalog_cache/INDEX.json",
+    "tools/file_edit_settings_validator.go",
+    "config/settings.go",
+    "skills/catalog_contract.go"
+  ],
+  "owned_files": [
+    "tools/file_edit_settings_validator.go",
+    "tools/skill_overrides_settings_task12_test.go"
+  ],
+  "implementation_scope": {
+    "include": [
+      "Add skillOverrides to the settings schema/allowlist.",
+      "Require stable SkillID keys and validate either the backward-compatible local four-state scalar shape or the structured visibility plus optional last_non_off record; name and qualified selectors are resolved by command/UI layers before persistence.",
+      "Require last_non_off, when present, to be auto, name-only, or manual-only and reject it for malformed/non-off records.",
+      "Reject unknown states and attempts to write managed-only fields."
+    ],
+    "exclude": [
+      "Do not modify files owned by another task.",
+      "Do not add dependencies or perform unrelated refactors."
+    ]
+  },
+  "implementation_steps": [
+    "Extend the existing validator narrowly.",
+    "Add valid, invalid, nested, unknown-field, and backward-compatibility tests.",
+    "Keep actual persistence in task_07."
+  ],
+  "deliverables": [
+    "tools/file_edit_settings_validator.go",
+    "tools/skill_overrides_settings_task12_test.go"
+  ],
+  "acceptance_criteria": [
+    "Valid overrides pass existing settings edit flows.",
+    "Persistent keys are stable SkillIDs only; ambiguous names and qualified selectors never become settings identities.",
+    "Legacy scalar overrides and structured off-plus-last_non_off overrides both validate without weakening unknown-field checks.",
+    "Invalid visibility values fail before writing.",
+    "Existing settings keys keep their behavior."
+  ],
+  "verification": [
+    "go test ./tools -run 'SkillOverrides.*Settings|SettingsValidator' -count=1"
+  ],
+  "risks": [],
+  "non_goals": [
+    "No unrelated feature work."
+  ],
+  "dispatch_prompt": "Extend the existing settings validator for skillOverrides and add focused tests. Do not implement storage or /skills behavior.",
+  "notes_for_assignee": "Respect owned_files. Escalate contract gaps to the integration owner rather than editing another task's production files."
+}
