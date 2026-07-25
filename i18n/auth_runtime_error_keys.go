@@ -156,7 +156,6 @@ const (
 	KeyAuthStoreLockHeld           Key = "auth.store.lock_held"
 	KeyAuthStoreHomeUnavailable    Key = "auth.store.home_unavailable"
 	KeyAuthStoreCreateDirectory    Key = "auth.store.create_directory"
-	KeyAuthStoreReadLegacy         Key = "auth.store.read_legacy"
 	KeyAuthStoreRead               Key = "auth.store.read"
 	KeyAuthStoreDecode             Key = "auth.store.decode"
 	KeyAuthStoreEncode             Key = "auth.store.encode"
@@ -190,7 +189,7 @@ var authRuntimeErrorKeys = []Key{
 	KeyAuthDeviceDecodeTokenResponse, KeyAuthDeviceRemoteError,
 	KeyAuthDeviceRemoteErrorDetail,
 	KeyAuthStoreAcquireLock, KeyAuthStoreLockHeld, KeyAuthStoreHomeUnavailable,
-	KeyAuthStoreCreateDirectory, KeyAuthStoreReadLegacy, KeyAuthStoreRead,
+	KeyAuthStoreCreateDirectory, KeyAuthStoreRead,
 	KeyAuthStoreDecode, KeyAuthStoreEncode, KeyAuthStoreCreateTemporary,
 	KeyAuthStoreWriteTemporary, KeyAuthStoreSetPermissions,
 	KeyAuthStoreCloseTemporary, KeyAuthStoreReplaceCredentials,
@@ -507,13 +506,6 @@ func init() {
 		"OAuth 認証情報ディレクトリを作成できませんでした：%v",
 		"OAuth 자격 증명 디렉터리를 만들지 못했습니다: %v",
 		"Не удалось создать каталог учётных данных OAuth: %v")
-	addAuthRuntimeError(KeyAuthStoreReadLegacy,
-		"Failed to read legacy OAuth credentials: %v",
-		"读取旧版 OAuth 凭据失败：%v",
-		"Die bisherigen OAuth-Zugangsdaten konnten nicht gelesen werden: %v",
-		"旧形式の OAuth 認証情報を読み取れませんでした：%v",
-		"이전 OAuth 자격 증명을 읽지 못했습니다: %v",
-		"Не удалось прочитать прежние учётные данные OAuth: %v")
 	addAuthRuntimeError(KeyAuthStoreRead,
 		"Failed to read OAuth credentials: %v",
 		"读取 OAuth 凭据失败：%v",

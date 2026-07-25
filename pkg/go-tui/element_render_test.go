@@ -466,7 +466,6 @@ func checkString(t *testing.T, buf *Buffer, x, y int, expected string) {
 
 func TestRenderTree_TextWithBorder(t *testing.T) {
 	type tc struct {
-		name       string
 		text       string
 		wantWidth  int
 		wantHeight int

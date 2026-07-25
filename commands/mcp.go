@@ -14,20 +14,21 @@ import (
 
 	"github.com/agent-dance/luban/brand"
 	"github.com/agent-dance/luban/i18n"
-	svcmcp "github.com/agent-dance/luban/services/mcp"
+	mcpauth "github.com/agent-dance/luban/internal/mcp/auth"
+	"github.com/agent-dance/luban/internal/mcp/catalog"
+	mcpmanager "github.com/agent-dance/luban/internal/mcp/manager"
 )
 
-// MCPBackend is the narrow services/mcp surface used by the /mcp command.
-// *services/mcp.Manager satisfies it; tests use an in-memory fake.
+// MCPBackend is the narrow MCP manager surface used by the /mcp command.
+// *mcpmanager.Manager satisfies it; tests use an in-memory fake.
 type MCPBackend interface {
 	ServerNames() []string
-	Snapshot() []svcmcp.MCPServerConnection
-	HealthSnapshot() svcmcp.HealthSnapshot
-	State(name string) (svcmcp.MCPServerConnection, bool)
-	AddConfig(name string, cfg svcmcp.MCPServerConfig)
-	SetConfigs(configs map[string]svcmcp.MCPServerConfig)
-	ToggleEnabled(ctx context.Context, name string, enabled bool) (svcmcp.MCPServerConnection, error)
-	Reconnect(ctx context.Context, name string) (svcmcp.MCPServerConnection, error)
+	Snapshot() []mcpmanager.MCPServerConnection
+	State(name string) (mcpmanager.MCPServerConnection, bool)
+	AddConfig(name string, cfg catalog.MCPServerConfig)
+	SetConfigs(configs map[string]catalog.MCPServerConfig)
+	ToggleEnabled(ctx context.Context, name string, enabled bool) (mcpmanager.MCPServerConnection, error)
+	Reconnect(ctx context.Context, name string) (mcpmanager.MCPServerConnection, error)
 }
 
 type mcpSourceProvider interface {
@@ -36,7 +37,7 @@ type mcpSourceProvider interface {
 }
 
 type mcpAuthenticator interface {
-	AuthURL(ctx context.Context, serverName string, cfg svcmcp.MCPServerConfig) (mcpAuthResult, error)
+	AuthURL(ctx context.Context, serverName string, cfg catalog.MCPServerConfig) (mcpAuthResult, error)
 }
 
 type mcpAuthResult struct {
@@ -56,7 +57,7 @@ func NewMCPCommand(backend MCPBackend) Command {
 	return wrapCommandPresentation(&mcpCmd{backend: backend})
 }
 
-// RegisterMCPCommand lets callers wire the command without importing services/mcp
+// RegisterMCPCommand lets callers wire the command without importing the MCP manager
 // at the slash-command registry callsite.
 func RegisterMCPCommand(r *Registry, backend MCPBackend) {
 	if r == nil {
@@ -189,12 +190,6 @@ func (c *mcpCmd) toggle(ctx *Context, backend MCPBackend, args string, enabled b
 		if isInternalMCPServer(name, backend) {
 			continue
 		}
-		state, ok := backend.State(name)
-		if ok && isManagedMCPScope(state.Config.Scope) {
-			ctx.OnEvent(i18n.Format(ctx.Language, mcpToggleKey(enabled, i18n.KeyMCPManagedEnable, i18n.KeyMCPManagedDisable), name))
-			hadFailure = true
-			continue
-		}
 		if _, err := backend.ToggleEnabled(context.Background(), name, enabled); err != nil {
 			ctx.OnEvent(i18n.Format(ctx.Language, mcpToggleKey(enabled, i18n.KeyMCPEnableFailed, i18n.KeyMCPDisableFailed), name, err))
 			hadFailure = true
@@ -242,13 +237,13 @@ func (c *mcpCmd) reconnect(ctx *Context, backend MCPBackend, args string) error 
 		return nil
 	}
 	switch state.Type {
-	case svcmcp.MCPStateConnected:
+	case mcpmanager.MCPStateConnected:
 		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyMCPReconnectSuccess, name, len(state.Tools), len(state.Resources), len(state.Prompts)))
 		reportCommandSucceeded(ctx)
-	case svcmcp.MCPStateNeedsAuth:
+	case mcpmanager.MCPStateNeedsAuth:
 		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyMCPReconnectNeedsAuth, name, name))
 		reportCommandFailed(ctx)
-	case svcmcp.MCPStateDisabled:
+	case mcpmanager.MCPStateDisabled:
 		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyMCPReconnectDisabled, name, name))
 		reportCommandFailed(ctx)
 	default:
@@ -309,25 +304,32 @@ func (c *mcpCmd) addJSON(ctx *Context, backend MCPBackend, args string) error {
 		reportCommandFailed(ctx)
 		return nil
 	}
-	var cfg svcmcp.MCPServerConfig
+	var cfg catalog.MCPServerConfig
 	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
 		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyMCPInvalidServerJSON, err))
 		reportCommandFailed(ctx)
 		return nil
 	}
-	cfg.Name = name
-	wrapped, err := json.Marshal(map[string]any{"mcpServers": map[string]svcmcp.MCPServerConfig{name: cfg}})
+	wrapped, err := json.Marshal(map[string]any{"mcpServers": map[string]catalog.MCPServerConfig{name: cfg}})
 	if err != nil {
 		return err
 	}
-	parsed, err := svcmcp.ParseMCPConfig(wrapped, svcmcp.ParseOptions{Scope: svcmcp.ScopeLocal, ExpandVars: true})
+	parsed, err := catalog.ParseMCPConfig(wrapped, catalog.ParseOptions{Scope: catalog.ScopeLocal, ExpandVars: true})
 	if err != nil {
 		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyMCPInvalidConfigError, err))
 		reportCommandFailed(ctx)
 		return nil
 	}
-	if len(parsed.Errors) > 0 {
-		ctx.OnEvent(formatMCPValidationErrors(ctx.Language, parsed.Errors))
+	var fatalErrors []catalog.ValidationError
+	for _, validation := range parsed.Errors {
+		if validation.IsWarning() {
+			ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyMCPWarning, validation.Path+": "+validation.Message))
+			continue
+		}
+		fatalErrors = append(fatalErrors, validation)
+	}
+	if len(fatalErrors) > 0 {
+		ctx.OnEvent(formatMCPValidationErrors(ctx.Language, fatalErrors))
 		reportCommandFailed(ctx)
 		return nil
 	}
@@ -373,14 +375,14 @@ func (c *mcpCmd) remove(ctx *Context, backend MCPBackend, args string) error {
 }
 
 type mcpRuntimeBackend struct {
-	manager     *svcmcp.Manager
+	manager     *mcpmanager.Manager
 	sources     map[string]string
 	diagnostics []string
 	language    i18n.Language
 }
 
 func newRuntimeMCPBackend(cwd string, language i18n.Language) *mcpRuntimeBackend {
-	manager := svcmcp.NewManager(svcmcp.WithWorkingDirectory(cwd))
+	manager := mcpmanager.NewManager(mcpmanager.WithWorkingDirectory(cwd))
 	b := &mcpRuntimeBackend{
 		manager:  manager,
 		sources:  make(map[string]string),
@@ -393,8 +395,8 @@ func newRuntimeMCPBackend(cwd string, language i18n.Language) *mcpRuntimeBackend
 	return b
 }
 
-func (b *mcpRuntimeBackend) load(path string, scope svcmcp.ConfigScope) {
-	parsed, err := svcmcp.ParseMCPConfigFile(path, svcmcp.ParseOptions{
+func (b *mcpRuntimeBackend) load(path string, scope catalog.ConfigScope) {
+	parsed, err := catalog.ParseMCPConfigFile(path, catalog.ParseOptions{
 		Scope:      scope,
 		ExpandVars: true,
 		FilePath:   path,
@@ -409,6 +411,9 @@ func (b *mcpRuntimeBackend) load(path string, scope svcmcp.ConfigScope) {
 		b.diagnostics = append(b.diagnostics, fmt.Sprintf("%s: %s", validation.Path, validation.Message))
 	}
 	for name, cfg := range parsed.Servers {
+		if parsed.HasFatalValidationForServer(name) {
+			continue
+		}
 		cfg.Scope = scope
 		b.manager.AddConfig(name, cfg)
 		b.sources[name] = path
@@ -422,7 +427,7 @@ func (b *mcpRuntimeBackend) load(path string, scope svcmcp.ConfigScope) {
 
 func (b *mcpRuntimeBackend) collectCommandDiagnostics() {
 	for _, state := range b.manager.Snapshot() {
-		if state.Config.Type != "" && state.Config.Type != svcmcp.TransportStdio {
+		if state.Config.Type != "" && state.Config.Type != catalog.TransportStdio {
 			continue
 		}
 		command := strings.TrimSpace(state.Config.Command)
@@ -443,29 +448,25 @@ func (b *mcpRuntimeBackend) collectCommandDiagnostics() {
 
 func (b *mcpRuntimeBackend) ServerNames() []string { return b.manager.ServerNames() }
 
-func (b *mcpRuntimeBackend) Snapshot() []svcmcp.MCPServerConnection { return b.manager.Snapshot() }
+func (b *mcpRuntimeBackend) Snapshot() []mcpmanager.MCPServerConnection { return b.manager.Snapshot() }
 
-func (b *mcpRuntimeBackend) HealthSnapshot() svcmcp.HealthSnapshot {
-	return b.manager.HealthSnapshot()
-}
-
-func (b *mcpRuntimeBackend) State(name string) (svcmcp.MCPServerConnection, bool) {
+func (b *mcpRuntimeBackend) State(name string) (mcpmanager.MCPServerConnection, bool) {
 	return b.manager.State(name)
 }
 
-func (b *mcpRuntimeBackend) AddConfig(name string, cfg svcmcp.MCPServerConfig) {
+func (b *mcpRuntimeBackend) AddConfig(name string, cfg catalog.MCPServerConfig) {
 	b.manager.AddConfig(name, cfg)
 }
 
-func (b *mcpRuntimeBackend) SetConfigs(configs map[string]svcmcp.MCPServerConfig) {
+func (b *mcpRuntimeBackend) SetConfigs(configs map[string]catalog.MCPServerConfig) {
 	b.manager.SetConfigs(configs)
 }
 
-func (b *mcpRuntimeBackend) ToggleEnabled(ctx context.Context, name string, enabled bool) (svcmcp.MCPServerConnection, error) {
+func (b *mcpRuntimeBackend) ToggleEnabled(ctx context.Context, name string, enabled bool) (mcpmanager.MCPServerConnection, error) {
 	return b.manager.ToggleEnabled(ctx, name, enabled)
 }
 
-func (b *mcpRuntimeBackend) Reconnect(ctx context.Context, name string) (svcmcp.MCPServerConnection, error) {
+func (b *mcpRuntimeBackend) Reconnect(ctx context.Context, name string) (mcpmanager.MCPServerConnection, error) {
 	return b.manager.Reconnect(ctx, name)
 }
 
@@ -487,18 +488,14 @@ func (b *mcpRuntimeBackend) Diagnostics() []string {
 
 type mcpConfigCandidate struct {
 	path  string
-	scope svcmcp.ConfigScope
+	scope catalog.ConfigScope
 }
 
 func mcpConfigCandidates(cwd string) []mcpConfigCandidate {
 	return []mcpConfigCandidate{
-		{path: filepath.Join(brand.LegacyUserConfigDir(), "settings.json"), scope: svcmcp.ScopeUser},
-		{path: filepath.Join(brand.LegacyDeepSeekUserConfigDir(), "settings.json"), scope: svcmcp.ScopeUser},
-		{path: filepath.Join(brand.UserConfigDir(), "settings.json"), scope: svcmcp.ScopeUser},
-		{path: filepath.Join(cwd, ".mcp.json"), scope: svcmcp.ScopeProject},
-		{path: filepath.Join(cwd, brand.LegacyConfigDirName, "settings.json"), scope: svcmcp.ScopeLocal},
-		{path: filepath.Join(cwd, brand.LegacyDeepSeekConfigDirName, "settings.json"), scope: svcmcp.ScopeLocal},
-		{path: filepath.Join(cwd, brand.ConfigDirName, "settings.json"), scope: svcmcp.ScopeLocal},
+		{path: filepath.Join(brand.UserConfigDir(), "settings.json"), scope: catalog.ScopeUser},
+		{path: filepath.Join(cwd, ".mcp.json"), scope: catalog.ScopeProject},
+		{path: filepath.Join(cwd, brand.ConfigDirName, "settings.json"), scope: catalog.ScopeLocal},
 	}
 }
 
@@ -506,14 +503,14 @@ type defaultMCPAuthenticator struct {
 	language i18n.Language
 }
 
-func (d defaultMCPAuthenticator) AuthURL(ctx context.Context, serverName string, cfg svcmcp.MCPServerConfig) (mcpAuthResult, error) {
+func (d defaultMCPAuthenticator) AuthURL(ctx context.Context, serverName string, cfg catalog.MCPServerConfig) (mcpAuthResult, error) {
 	transport := cfg.Type
 	if transport == "" {
-		transport = svcmcp.TransportStdio
+		transport = catalog.TransportStdio
 	}
 	switch transport {
-	case svcmcp.TransportHTTP, svcmcp.TransportSSE:
-		flow, err := svcmcp.NewOAuthManager(nil, nil).StartOAuthFlow(ctx, serverName, cfg, svcmcp.OAuthFlowOptions{
+	case catalog.TransportHTTP, catalog.TransportSSE:
+		flow, err := mcpauth.NewOAuthManager(nil, nil).StartOAuthFlow(ctx, serverName, cfg.AuthDescriptor(), mcpauth.OAuthFlowOptions{
 			SkipBrowserOpen: true,
 			Timeout:         10 * time.Minute,
 		})
@@ -525,12 +522,6 @@ func (d defaultMCPAuthenticator) AuthURL(ctx context.Context, serverName string,
 			AuthURL: flow.AuthorizationURL,
 			Message: i18n.Format(d.language, i18n.KeyMCPAuthOpenURL, serverName),
 		}, nil
-	case svcmcp.TransportClaudeAIProxy:
-		return mcpAuthResult{
-			Status:  "unsupported",
-			Message: i18n.Format(d.language, i18n.KeyMCPAuthClaudeConnector, serverName),
-			AuthURL: "https://claude.ai/settings/connectors",
-		}, nil
 	default:
 		return mcpAuthResult{
 			Status:  "unsupported",
@@ -540,36 +531,42 @@ func (d defaultMCPAuthenticator) AuthURL(ctx context.Context, serverName string,
 }
 
 type mcpStatusReport struct {
-	GeneratedAt time.Time           `json:"generatedAt"`
-	Counts      svcmcp.HealthCounts `json:"counts"`
-	Servers     []mcpServerReport   `json:"servers"`
-	Diagnostics []string            `json:"diagnostics,omitempty"`
+	GeneratedAt time.Time         `json:"generatedAt"`
+	Counts      mcpStatusCounts   `json:"counts"`
+	Servers     []mcpServerReport `json:"servers"`
+	Diagnostics []string          `json:"diagnostics,omitempty"`
+}
+
+type mcpStatusCounts struct {
+	Pending   int `json:"pending"`
+	Connected int `json:"connected"`
+	Failed    int `json:"failed"`
+	NeedsAuth int `json:"needsAuth"`
+	Disabled  int `json:"disabled"`
 }
 
 type mcpServerReport struct {
-	Name                 string                    `json:"name"`
-	State                svcmcp.MCPConnectionState `json:"state"`
-	Transport            svcmcp.TransportType      `json:"transport"`
-	Scope                svcmcp.ConfigScope        `json:"scope,omitempty"`
-	ConfigSource         string                    `json:"configSource,omitempty"`
-	Capabilities         []string                  `json:"capabilities,omitempty"`
-	ToolsCount           int                       `json:"toolsCount"`
-	ResourcesCount       int                       `json:"resourcesCount"`
-	PromptsCount         int                       `json:"promptsCount"`
-	AuthStatus           string                    `json:"authStatus"`
-	LastError            string                    `json:"lastError,omitempty"`
-	ReconnectAttempt     int                       `json:"reconnectAttempt,omitempty"`
-	MaxReconnectAttempts int                       `json:"maxReconnectAttempts,omitempty"`
-	ServerInfoName       string                    `json:"serverInfoName,omitempty"`
-	ServerInfoVersion    string                    `json:"serverInfoVersion,omitempty"`
-	DiagnosticWarnings   []string                  `json:"diagnosticWarnings,omitempty"`
+	Name                 string                        `json:"name"`
+	State                mcpmanager.MCPConnectionState `json:"state"`
+	Transport            catalog.TransportType         `json:"transport"`
+	Scope                catalog.ConfigScope           `json:"scope,omitempty"`
+	ConfigSource         string                        `json:"configSource,omitempty"`
+	Capabilities         []string                      `json:"capabilities,omitempty"`
+	ToolsCount           int                           `json:"toolsCount"`
+	ResourcesCount       int                           `json:"resourcesCount"`
+	PromptsCount         int                           `json:"promptsCount"`
+	AuthStatus           string                        `json:"authStatus"`
+	LastError            string                        `json:"lastError,omitempty"`
+	ReconnectAttempt     int                           `json:"reconnectAttempt,omitempty"`
+	MaxReconnectAttempts int                           `json:"maxReconnectAttempts,omitempty"`
+	ServerInfoName       string                        `json:"serverInfoName,omitempty"`
+	ServerInfoVersion    string                        `json:"serverInfoVersion,omitempty"`
+	DiagnosticWarnings   []string                      `json:"diagnosticWarnings,omitempty"`
 }
 
 func buildMCPStatusReport(backend MCPBackend, language i18n.Language) mcpStatusReport {
-	health := backend.HealthSnapshot()
 	report := mcpStatusReport{
-		GeneratedAt: health.GeneratedAt,
-		Counts:      health.Counts,
+		GeneratedAt: time.Now(),
 	}
 	if sourceProvider, ok := backend.(mcpSourceProvider); ok {
 		report.Diagnostics = sourceProvider.Diagnostics()
@@ -577,6 +574,18 @@ func buildMCPStatusReport(backend MCPBackend, language i18n.Language) mcpStatusR
 	states := backend.Snapshot()
 	report.Servers = make([]mcpServerReport, 0, len(states))
 	for _, state := range states {
+		switch state.Type {
+		case mcpmanager.MCPStatePending:
+			report.Counts.Pending++
+		case mcpmanager.MCPStateConnected:
+			report.Counts.Connected++
+		case mcpmanager.MCPStateFailed:
+			report.Counts.Failed++
+		case mcpmanager.MCPStateNeedsAuth:
+			report.Counts.NeedsAuth++
+		case mcpmanager.MCPStateDisabled:
+			report.Counts.Disabled++
+		}
 		row := mcpServerReport{
 			Name:                 state.Name,
 			State:                state.Type,
@@ -705,7 +714,7 @@ func emitMCPDiagnostics(ctx *Context, report mcpStatusReport, jsonOutput bool) {
 	sb.WriteString(i18n.Format(ctx.Language, i18n.KeyMCPDiagnosticCounts,
 		report.Counts.Connected, report.Counts.Pending, report.Counts.Failed, report.Counts.NeedsAuth, report.Counts.Disabled))
 	for _, server := range report.Servers {
-		if server.State == svcmcp.MCPStateConnected {
+		if server.State == mcpmanager.MCPStateConnected {
 			continue
 		}
 		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyMCPDiagnosticServerState, server.Name, localizedMCPState(ctx.Language, server.State)))
@@ -753,14 +762,14 @@ func mcpUsage(lang i18n.Language) string {
 	return i18n.Text(lang, i18n.KeyMCPUsage)
 }
 
-func normalizedTransport(t svcmcp.TransportType) svcmcp.TransportType {
+func normalizedTransport(t catalog.TransportType) catalog.TransportType {
 	if t == "" {
-		return svcmcp.TransportStdio
+		return catalog.TransportStdio
 	}
 	return t
 }
 
-func capabilityNames(caps svcmcp.ServerCapabilities) []string {
+func capabilityNames(caps catalog.ServerCapabilities) []string {
 	if len(caps) == 0 {
 		return nil
 	}
@@ -772,39 +781,37 @@ func capabilityNames(caps svcmcp.ServerCapabilities) []string {
 	return names
 }
 
-func authStatus(state svcmcp.MCPServerConnection) string {
+func authStatus(state mcpmanager.MCPServerConnection) string {
 	transport := normalizedTransport(state.Config.Type)
-	if state.Type == svcmcp.MCPStateNeedsAuth {
+	if state.Type == mcpmanager.MCPStateNeedsAuth {
 		return "needs-auth"
 	}
 	switch transport {
-	case svcmcp.TransportHTTP, svcmcp.TransportSSE:
-		if state.Type == svcmcp.MCPStateConnected && (len(state.Tools) > 0 || len(state.Resources) > 0 || len(state.Prompts) > 0) {
+	case catalog.TransportHTTP, catalog.TransportSSE:
+		if state.Type == mcpmanager.MCPStateConnected && (len(state.Tools) > 0 || len(state.Resources) > 0 || len(state.Prompts) > 0) {
 			return "authenticated"
 		}
 		if state.Config.OAuth != nil {
 			return "oauth-configured"
 		}
 		return "unknown"
-	case svcmcp.TransportClaudeAIProxy:
-		return "claude.ai"
 	default:
 		return "not-applicable"
 	}
 }
 
-func localizedMCPState(lang i18n.Language, state svcmcp.MCPConnectionState) string {
+func localizedMCPState(lang i18n.Language, state mcpmanager.MCPConnectionState) string {
 	key := i18n.Key("")
 	switch state {
-	case svcmcp.MCPStatePending:
+	case mcpmanager.MCPStatePending:
 		key = i18n.KeyMCPStatePending
-	case svcmcp.MCPStateConnected:
+	case mcpmanager.MCPStateConnected:
 		key = i18n.KeyMCPStateConnected
-	case svcmcp.MCPStateFailed:
+	case mcpmanager.MCPStateFailed:
 		key = i18n.KeyMCPStateFailed
-	case svcmcp.MCPStateNeedsAuth:
+	case mcpmanager.MCPStateNeedsAuth:
 		key = i18n.KeyMCPStateNeedsAuth
-	case svcmcp.MCPStateDisabled:
+	case mcpmanager.MCPStateDisabled:
 		key = i18n.KeyMCPStateDisabled
 	default:
 		return string(state)
@@ -831,23 +838,15 @@ func localizedMCPAuthStatus(lang i18n.Language, status string) string {
 	return i18n.Text(lang, key)
 }
 
-func localizedMCPScope(lang i18n.Language, scope svcmcp.ConfigScope) string {
+func localizedMCPScope(lang i18n.Language, scope catalog.ConfigScope) string {
 	key := i18n.Key("")
 	switch scope {
-	case svcmcp.ScopeLocal:
+	case catalog.ScopeLocal:
 		key = i18n.KeyMCPScopeLocal
-	case svcmcp.ScopeUser:
+	case catalog.ScopeUser:
 		key = i18n.KeyMCPScopeUser
-	case svcmcp.ScopeProject:
+	case catalog.ScopeProject:
 		key = i18n.KeyMCPScopeProject
-	case svcmcp.ScopeDynamic:
-		key = i18n.KeyMCPScopeDynamic
-	case svcmcp.ScopeEnterprise:
-		key = i18n.KeyMCPScopeEnterprise
-	case svcmcp.ScopeClaudeAI:
-		key = i18n.KeyMCPScopeClaudeAI
-	case svcmcp.ScopeManaged:
-		key = i18n.KeyMCPScopeManaged
 	default:
 		return string(scope)
 	}
@@ -859,11 +858,7 @@ func isInternalMCPServer(name string, backend MCPBackend) bool {
 	if !ok {
 		return false
 	}
-	return name == "ide" || state.Config.Type == svcmcp.TransportSSEIDE || state.Config.Type == svcmcp.TransportWebSocketIDE
-}
-
-func isManagedMCPScope(scope svcmcp.ConfigScope) bool {
-	return scope == svcmcp.ScopeEnterprise || scope == svcmcp.ScopeManaged
+	return name == "ide" || state.Config.Type == catalog.TransportSSEIDE || state.Config.Type == catalog.TransportWebSocketIDE
 }
 
 func mcpToggleKey(enabled bool, enabledKey, disabledKey i18n.Key) i18n.Key {
@@ -898,7 +893,7 @@ func persistMCPEnabledState(ctx *Context, names []string, enabled bool) (string,
 	return path, cmd.writeSettings(path, settings)
 }
 
-func persistMCPServerConfig(ctx *Context, name string, cfg svcmcp.MCPServerConfig) (string, error) {
+func persistMCPServerConfig(ctx *Context, name string, cfg catalog.MCPServerConfig) (string, error) {
 	path := mcpWritableSettingsPath(ctx)
 	cmd := configCmd{}
 	settings, err := cmd.readSettings(path, ctx.Language)
@@ -914,7 +909,7 @@ func persistMCPServerConfig(ctx *Context, name string, cfg svcmcp.MCPServerConfi
 
 var errMCPServerNotWritable = errors.New("mcp_server_not_writable")
 
-func removeMCPServerConfig(ctx *Context, name string) (string, map[string]svcmcp.MCPServerConfig, error) {
+func removeMCPServerConfig(ctx *Context, name string) (string, map[string]catalog.MCPServerConfig, error) {
 	path := mcpWritableSettingsPath(ctx)
 	cmd := configCmd{}
 	settings, err := cmd.readSettings(path, ctx.Language)
@@ -946,8 +941,8 @@ func mcpWritableSettingsPath(ctx *Context) string {
 	return filepath.Join(cwd, brand.ConfigDirName, "settings.json")
 }
 
-func mcpServersFromSettings(value any) map[string]svcmcp.MCPServerConfig {
-	out := make(map[string]svcmcp.MCPServerConfig)
+func mcpServersFromSettings(value any) map[string]catalog.MCPServerConfig {
+	out := make(map[string]catalog.MCPServerConfig)
 	raw, err := json.Marshal(value)
 	if err != nil || string(raw) == "null" {
 		return out
@@ -992,7 +987,7 @@ func removeString(values []string, value string) []string {
 	return out
 }
 
-func formatMCPValidationErrors(lang i18n.Language, errorsIn []svcmcp.ValidationError) string {
+func formatMCPValidationErrors(lang i18n.Language, errorsIn []catalog.ValidationError) string {
 	if len(errorsIn) == 0 {
 		return ""
 	}

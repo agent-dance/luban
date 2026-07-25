@@ -22,8 +22,8 @@ type CacheScopeOptions struct {
 	ToolCacheMarker bool
 }
 
-// ApplyCacheScopes returns a copy of blocks with original-style static/dynamic
-// cache metadata. Cache-eligible static blocks become global when safe and org
+// ApplyCacheScopes returns a copy of blocks with static/dynamic cache metadata.
+// Cache-eligible static blocks become global when safe and org
 // otherwise. Dynamic blocks remain uncached. If a block contains the dynamic
 // boundary marker, it is split into a cache-eligible static block followed by an
 // uncached dynamic block.

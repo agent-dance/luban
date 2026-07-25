@@ -24,7 +24,7 @@ func TestToolFileHelperKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolFileHelperEnglishCompatibility(t *testing.T) {
+func TestToolFileHelperEnglishContract(t *testing.T) {
 	cases := []struct {
 		key  Key
 		args []any
@@ -48,19 +48,6 @@ func TestToolFileHelperEnglishCompatibility(t *testing.T) {
 		{KeyToolFileHelperEditTargetChangedAfter, nil, "file changed after it was read; read it again before editing"},
 		{KeyToolFileHelperPathOutsideAllowed, []any{"/tmp/raw"}, "path is outside allowed directories (resolved to /tmp/raw)"},
 		{KeyToolFileHelperVerifyFDPathFailed, []any{errors.New("raw-cause")}, "cannot verify fd path: raw-cause"},
-		{KeyToolFileHelperSettingsInvalidJSON, []any{errors.New("unexpected EOF")}, "settings.json validation failed after edit: invalid JSON (unexpected EOF). Refusing to write a settings file the runtime cannot parse."},
-		{KeyToolFileHelperSettingsTopLevelObject, []any{[]any{}}, "settings.json validation failed after edit: top-level value must be an object, got []interface {}"},
-		{KeyToolFileHelperSettingsSkillOverrides, []any{errors.New("raw-cause")}, "settings.json validation failed after edit: invalid skillOverrides (raw-cause)"},
-		{KeyToolFileHelperSettingsMissingKey, []any{"permissions"}, `settings.json validation failed after edit: missing required key "permissions". The runtime cannot start without a populated permissions block.`},
-		{KeyToolFileHelperSettingsUnknownKey, []any{"extra"}, `settings.json validation failed after edit: top-level key "extra" is not part of the published schema (additionalProperties:false).`},
-		{KeyToolFileHelperSkillOverridesObject, []any{[]any{}}, "must be an object, got []interface {}"},
-		{KeyToolFileHelperSkillOverrideKey, []any{"raw-id", errors.New("raw-cause")}, `key "raw-id": raw-cause`},
-		{KeyToolFileHelperSkillOverrideRecord, []any{"skill:project:raw", errors.New("raw-cause")}, "skill:project:raw: raw-cause"},
-		{KeyToolFileHelperSkillOverrideShape, []any{float64(3)}, "override must be a visibility string or object, got float64"},
-		{KeyToolFileHelperSkillOverrideField, []any{"extra"}, `field "extra" is not allowed`},
-		{KeyToolFileHelperSkillOverrideMissingField, []any{"visibility"}, `missing required field "visibility"`},
-		{KeyToolFileHelperSkillOverrideStringField, []any{"visibility", true}, `field "visibility" must be a string, got bool`},
-		{KeyToolFileHelperSkillOverrideLastNonOff, []any{errors.New("invalid skill visibility")}, "invalid skill visibility: last_non_off is valid only for off overrides"},
 	}
 
 	for _, tc := range cases {

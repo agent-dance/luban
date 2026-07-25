@@ -19,7 +19,7 @@ func TestSkillGeneratedSummaryKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestSkillGeneratedSummaryEnglishCompatibility(t *testing.T) {
+func TestSkillGeneratedSummaryEnglishContract(t *testing.T) {
 	if got := Format(LangEN, KeySkillGeneratedSummary, "review"); got != "Skill: review" {
 		t.Fatalf("generated skill summary = %q", got)
 	}

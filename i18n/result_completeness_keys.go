@@ -3,12 +3,11 @@ package i18n
 // Semantic copy for typed result-completeness provenance. Raw provenance
 // identifiers remain protocol values and are never used as translation keys.
 const (
-	KeyPresentationPaginationWarning        Key = "presentation.completeness.pagination"
-	KeyPresentationSourceTruncatedWarning   Key = "presentation.completeness.source_truncated"
-	KeyPresentationCaptureDroppedWarning    Key = "presentation.completeness.capture_dropped"
-	KeyPresentationDisplayPreviewWarning    Key = "presentation.completeness.display_preview"
-	KeyPresentationDisplayPreviewEvidence   Key = "presentation.completeness.display_preview_evidence"
-	KeyPresentationUnknownTruncationWarning Key = "presentation.completeness.unknown_truncation"
+	KeyPresentationPaginationWarning      Key = "presentation.completeness.pagination"
+	KeyPresentationSourceTruncatedWarning Key = "presentation.completeness.source_truncated"
+	KeyPresentationCaptureDroppedWarning  Key = "presentation.completeness.capture_dropped"
+	KeyPresentationDisplayPreviewWarning  Key = "presentation.completeness.display_preview"
+	KeyPresentationDisplayPreviewEvidence Key = "presentation.completeness.display_preview_evidence"
 )
 
 func init() {
@@ -52,11 +51,4 @@ func init() {
 		"表示中の結果は短縮プレビューです。完全な証拠を確認できます",
 		"표시된 결과는 축약된 미리보기이며 전체 근거를 사용할 수 있습니다",
 		"Показан сокращённый предварительный просмотр; полные данные доступны")
-	add(KeyPresentationUnknownTruncationWarning,
-		"The result is incomplete, but its truncation provenance is unavailable; complete evidence is not claimed",
-		"结果不完整，但缺少截断来源；不声明完整证据可用",
-		"Das Ergebnis ist unvollständig, aber die Kürzungsherkunft fehlt; vollständige Belege werden nicht zugesichert",
-		"結果は不完全ですが切り詰め元が不明なため、完全な証拠があるとは表示しません",
-		"결과가 불완전하지만 잘림 출처를 알 수 없어 완전한 근거가 있다고 표시하지 않습니다",
-		"Результат неполный, но происхождение усечения неизвестно; наличие полных данных не заявляется")
 }

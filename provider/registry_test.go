@@ -159,9 +159,8 @@ func TestCanonicalProviderName(t *testing.T) {
 		name string
 		want string
 	}{
-		{"openai-responses", "openai"},
-		{" OAuth ", "anthropic"},
 		{"DeepSeek", "deepseek"},
+		{" OpenAI ", "openai"},
 	}
 	for _, tt := range tests {
 		if got := CanonicalProviderName(tt.name); got != tt.want {
@@ -285,42 +284,15 @@ func TestProviderRegistry_ConnectionState_OpenAIOAuthUsesChatGPTAuth(t *testing.
 	if !detail.CanSelectModels {
 		t.Fatalf("expected OpenAI OAuth to be selectable, got %+v", detail)
 	}
-	if detail.Detail != "Connected (ChatGPT OAuth)" {
-		t.Fatalf("detail = %q", detail.Detail)
+	if got := detail.DetailText(i18n.LangEN); got != "Connected (ChatGPT OAuth)" {
+		t.Fatalf("detail = %q", got)
 	}
-	localized := detail.Localized(i18n.LangZH)
-	if localized.Detail == detail.Detail || !strings.Contains(localized.Detail, "ChatGPT OAuth") {
-		t.Fatalf("localized detail = %q, compatibility detail = %q", localized.Detail, detail.Detail)
+	localized := detail.DetailText(i18n.LangZH)
+	if !strings.Contains(localized, "ChatGPT OAuth") {
+		t.Fatalf("localized detail = %q", localized)
 	}
-	if localized.DetailKey != i18n.KeyProviderConnectionChatGPTOAuth {
-		t.Fatalf("detail key = %q", localized.DetailKey)
-	}
-}
-
-func TestProviderRegistry_ConnectionState_AnthropicUsesLegacyOAuthCredential(t *testing.T) {
-	cs, err := NewCredentialStoreAt(filepath.Join(t.TempDir(), "auth.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cs.Set(CredentialEntry{
-		Provider:    "oauth",
-		AuthMethod:  "oauth",
-		AccessToken: "legacy-oauth-token",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	r := NewProviderRegistry()
-	r.catalog = DefaultCatalog()
-	r.SetCredentialStore(cs)
-	registerAnthropic(r)
-
-	detail := r.ConnectionState("anthropic")
-	if !detail.CanSelectModels {
-		t.Fatalf("expected Anthropic to be selectable via legacy oauth credential, got %+v", detail)
-	}
-	if detail.Kind != ConnectionKindOAuth {
-		t.Fatalf("kind = %q, want oauth", detail.Kind)
+	if detail.DetailKey != i18n.KeyProviderConnectionChatGPTOAuth {
+		t.Fatalf("detail key = %q", detail.DetailKey)
 	}
 }
 
@@ -420,35 +392,19 @@ func TestDefaultRegistry_AllProviders(t *testing.T) {
 	r := DefaultRegistry()
 	all := r.All()
 
-	// We register visible providers plus hidden compatibility aliases.
-	if len(all) < 13 {
-		t.Errorf("expected at least 13 providers in default registry, got %d", len(all))
+	if len(all) != 16 {
+		t.Errorf("expected 16 providers in default registry, got %d", len(all))
 	}
 
 	// Check all expected providers are present
 	expected := []string{
 		"anthropic", "openai", "bedrock", "vertex", "ollama",
-		"deepseek", "gemini", "groq", "xai", "mistral", "zhipu", "minimax", "kimi", "oauth",
+		"deepseek", "gemini", "groq", "xai", "mistral", "zhipu", "minimax", "kimi",
+		"volcengine", "alibaba-cloud", "tencent-cloud",
 	}
 	for _, name := range expected {
 		if _, ok := r.Get(name); !ok {
 			t.Errorf("expected provider %q to be registered", name)
-		}
-	}
-}
-
-func TestDefaultRegistry_VisibleProvidersHideAliases(t *testing.T) {
-	r := DefaultRegistry()
-	visibleNames := make(map[string]bool)
-	for _, info := range r.Visible() {
-		visibleNames[info.Name] = true
-	}
-	for _, alias := range []string{"openai-responses", "oauth"} {
-		if visibleNames[alias] {
-			t.Fatalf("hidden alias %q should not be visible", alias)
-		}
-		if _, ok := r.Get(alias); !ok {
-			t.Fatalf("hidden alias %q should remain registered for compatibility", alias)
 		}
 	}
 }

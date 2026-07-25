@@ -10,8 +10,8 @@ import (
 
 	"github.com/agent-dance/luban/brand"
 	"github.com/agent-dance/luban/commands"
-	"github.com/agent-dance/luban/compact"
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/runtime/compact"
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/types"
 )
@@ -23,20 +23,32 @@ import (
 type stubQL struct {
 	messages []types.Message
 	model    string
+	provider provider.Provider
 	maxCtx   int
 	usedCtx  int
 }
 
-func (s *stubQL) SetMessages(msgs []types.Message) { s.messages = msgs }
-func (s *stubQL) Messages() []types.Message        { return s.messages }
-func (s *stubQL) Model() string                    { return s.model }
-func (s *stubQL) SetModel(m string)                { s.model = m }
-func (s *stubQL) ContextUsage() (int, int)         { return s.maxCtx, s.usedCtx }
-func (s *stubQL) SetProvider(_ provider.Provider)  {} // stub — no-op in tests
+func (s *stubQL) SetMessagesPreservingToolUseLedger(msgs []types.Message) {
+	s.messages = msgs
+}
+func (s *stubQL) Messages() []types.Message          { return s.messages }
+func (s *stubQL) Model() string                      { return s.model }
+func (s *stubQL) SetModel(m string)                  { s.model = m }
+func (s *stubQL) ContextUsage() (int, int)           { return s.maxCtx, s.usedCtx }
+func (s *stubQL) SetProvider(next provider.Provider) { s.provider = next }
 
 type warningStubQL struct {
 	stubQL
 	state compact.TokenWarningState
+}
+
+type detailedContextStubQL struct {
+	stubQL
+	usage compact.ContextInputUsage
+}
+
+func (s *detailedContextStubQL) ContextUsageDetail() (int, compact.ContextInputUsage) {
+	return s.maxCtx, s.usage
 }
 
 func (s *warningStubQL) ContextWarningState() compact.TokenWarningState {
@@ -46,12 +58,14 @@ func (s *warningStubQL) ContextWarningState() compact.TokenWarningState {
 type stubSessionStore struct {
 	entries     []commands.SessionListEntry
 	loads       map[string][]types.Message
+	loadCalls   []string
 	renames     map[string]string
 	searchCalls []string
 }
 
 func (s *stubSessionStore) Save(_ string, _ []types.Message) error { return nil }
 func (s *stubSessionStore) Load(id string) ([]types.Message, error) {
+	s.loadCalls = append(s.loadCalls, id)
 	if msgs, ok := s.loads[id]; ok {
 		return msgs, nil
 	}
@@ -205,13 +219,13 @@ func TestRegisterBuiltins_RemovesUnsupportedSlashCommands(t *testing.T) {
 func TestHelpIsRegisteredAndDiscoversFullscreenKeyboardPaths(t *testing.T) {
 	r := commands.NewRegistry()
 	commands.RegisterBuiltins(r)
-	var output string
-	if err := r.Find("help").Execute(&commands.Context{OnEvent: func(value string) { output += value }}, ""); err != nil {
+	var output strings.Builder
+	if err := r.Find("help").Execute(&commands.Context{OnCommandPresentation: captureCompletedCommand(&output)}, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"/help", "Ctrl+O", "Alt+O", "Ctrl+Home", "PageUp", "Escape"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("help omitted %q:\n%s", want, output)
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("help omitted %q:\n%s", want, output.String())
 		}
 	}
 }
@@ -243,16 +257,6 @@ func TestQuit_AliasForExit(t *testing.T) {
 	err := r.Find("quit").Execute(newCtx(&stubQL{}), "")
 	if !errors.Is(err, commands.ErrExit) {
 		t.Fatalf("expected ErrExit, got %v", err)
-	}
-}
-
-func TestModel_ShowCurrentModel(t *testing.T) {
-	r := commands.NewRegistry()
-	commands.RegisterBuiltins(r)
-	var output string
-	ctx := &commands.Context{QueryLoop: &stubQL{model: "claude-opus-4-5"}, OnEvent: func(s string) { output += s }}
-	if err := r.Find("model").Execute(ctx, ""); err != nil || output == "" {
-		t.Fatal("expected model output")
 	}
 }
 
@@ -297,13 +301,13 @@ func TestStatusLabelsProcessedUsageAndUniqueInput(t *testing.T) {
 	r := commands.NewRegistry()
 	commands.RegisterBuiltins(r)
 
-	var output string
+	var output strings.Builder
 	ctx := &commands.Context{
 		QueryLoop: &stubQL{
 			messages: []types.Message{types.UserMessage("hello")},
 			model:    "gpt-5.4",
 		},
-		OnEvent:                  func(s string) { output += s },
+		OnCommandPresentation:    captureCompletedCommand(&output),
 		TotalInputTokens:         2006,
 		TotalOutputTokens:        86,
 		TotalCacheReadTokens:     1920,
@@ -314,12 +318,12 @@ func TestStatusLabelsProcessedUsageAndUniqueInput(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	for _, want := range []string{"New input≈:", "API processed usage:", "Input tokens:    2,006", "Cache read:      1,920"} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("expected status output to contain %q, got:\n%s", want, output)
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("expected status output to contain %q, got:\n%s", want, output.String())
 		}
 	}
-	if strings.Contains(output, "Total processed:") || strings.Contains(output, "Total tokens:") {
-		t.Fatalf("status should not derive a total that can double-count cached tokens, got:\n%s", output)
+	if strings.Contains(output.String(), "Total processed:") || strings.Contains(output.String(), "Total tokens:") {
+		t.Fatalf("status should not derive a total that can double-count cached tokens, got:\n%s", output.String())
 	}
 }
 
@@ -327,7 +331,7 @@ func TestContextCommandUsesWarningStateEffectiveInputWindow(t *testing.T) {
 	r := commands.NewRegistry()
 	commands.RegisterBuiltins(r)
 
-	var output string
+	var output strings.Builder
 	ctx := &commands.Context{
 		QueryLoop: &warningStubQL{
 			stubQL: stubQL{
@@ -343,7 +347,7 @@ func TestContextCommandUsesWarningStateEffectiveInputWindow(t *testing.T) {
 				IsAtBlockingLimit:          true,
 			},
 		},
-		OnEvent: func(s string) { output += s },
+		OnCommandPresentation: captureCompletedCommand(&output),
 	}
 
 	if err := r.Find("context").Execute(ctx, ""); err != nil {
@@ -354,19 +358,51 @@ func TestContextCommandUsesWarningStateEffectiveInputWindow(t *testing.T) {
 		"Remaining:              22%",
 		"blocking limit reached",
 	} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("expected /context output to contain %q, got:\n%s", want, output)
+		if !strings.Contains(output.String(), want) {
+			t.Fatalf("expected /context output to contain %q, got:\n%s", want, output.String())
 		}
 	}
-	if strings.Contains(output, "100,000 / 108,000 tokens") {
-		t.Fatalf("/context must not display the auto-compact capacity as the model context, got:\n%s", output)
+	if strings.Contains(output.String(), "100,000 / 108,000 tokens") {
+		t.Fatalf("/context must not display the auto-compact capacity as the model context, got:\n%s", output.String())
+	}
+}
+
+func TestBDDContextCommandPreservesEstimateMeasurement(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		measurement compact.ContextUsageMeasurement
+		wantUsage   string
+		wantSource  string
+	}{
+		{name: "complete estimate", measurement: compact.ContextUsageLocalEstimate, wantUsage: "≈90,000 / 200,000", wantSource: "complete local estimate"},
+		{name: "lower bound", measurement: compact.ContextUsageLocalLowerBound, wantUsage: "≥90,000 / 200,000", wantSource: "incomplete local estimate (lower bound)"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var output strings.Builder
+			ctx := &commands.Context{
+				Language: i18n.LangEN,
+				QueryLoop: &detailedContextStubQL{
+					stubQL: stubQL{model: "fixture", maxCtx: 200_000},
+					usage:  compact.ContextInputUsage{UsedTokens: 90_000, Measurement: test.measurement},
+				},
+				OnCommandPresentation: captureCompletedCommand(&output),
+			}
+			registry := commands.NewRegistry()
+			commands.RegisterBuiltins(registry)
+			if err := registry.Find("context").Execute(ctx, ""); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(output.String(), test.wantUsage) || !strings.Contains(output.String(), test.wantSource) {
+				t.Fatalf("measurement was not preserved:\n%s", output.String())
+			}
+		})
 	}
 }
 
 func TestSessionCurrent_ShowsMetadata(t *testing.T) {
 	r := commands.NewRegistry()
 	commands.RegisterBuiltins(r)
-	var output string
+	var output strings.Builder
 	store := &stubSessionStore{entries: []commands.SessionListEntry{{
 		ID:           "sess-1",
 		Title:        "fix-login",
@@ -377,12 +413,12 @@ func TestSessionCurrent_ShowsMetadata(t *testing.T) {
 		CWD:          "/repo/app",
 		PreviewText:  "Please fix login",
 	}}}
-	ctx := &commands.Context{QueryLoop: &stubQL{}, SessionStore: store, SessionID: "sess-1", OnEvent: func(s string) { output += s }}
+	ctx := &commands.Context{QueryLoop: &stubQL{}, SessionStore: store, SessionID: "sess-1", OnCommandPresentation: captureCompletedCommand(&output)}
 	if err := r.Find("session").Execute(ctx, "current"); err != nil {
 		t.Fatal(err)
 	}
-	if output == "" || !strings.Contains(output, "fix-login") {
-		t.Fatalf("expected session metadata output, got %q", output)
+	if output.Len() == 0 || !strings.Contains(output.String(), "fix-login") {
+		t.Fatalf("expected session metadata output, got %q", output.String())
 	}
 }
 
@@ -430,6 +466,34 @@ func TestResume_UsesResumeSessionCallback(t *testing.T) {
 	}
 	if resumed.ID != "sess-2" {
 		t.Fatalf("expected ResumeSession callback to receive sess-2, got %+v", resumed)
+	}
+}
+
+func TestResume_WithoutTransitionFailsClosedWithoutMutatingMessages(t *testing.T) {
+	r := commands.NewRegistry()
+	commands.RegisterBuiltins(r)
+
+	store := &stubSessionStore{
+		entries: []commands.SessionListEntry{{ID: "sess-2", Title: "resume-me"}},
+		loads:   map[string][]types.Message{"sess-2": {types.UserMessage("target")}},
+	}
+	ql := &stubQL{messages: []types.Message{types.UserMessage("current")}}
+	ctx := &commands.Context{
+		QueryLoop:    ql,
+		SessionStore: store,
+		SessionID:    "sess-1",
+		OnEvent:      func(string) {},
+	}
+
+	err := r.Find("resume").Execute(ctx, "resume-me")
+	if err == nil || !strings.Contains(err.Error(), "session transition is not configured") {
+		t.Fatalf("missing transition error = %v", err)
+	}
+	if len(store.loadCalls) != 0 {
+		t.Fatalf("failed-closed resume loaded target transcript: %v", store.loadCalls)
+	}
+	if got := ql.Messages(); len(got) != 1 || got[0].GetText() != "current" {
+		t.Fatalf("failed-closed resume mutated messages: %#v", got)
 	}
 }
 

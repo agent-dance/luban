@@ -16,8 +16,8 @@ func TestBuildPromptDumpJSONIncludesMetadataAndRedactsSecrets(t *testing.T) {
 		Cache:  true,
 	}}, CacheScopeOptions{GlobalSafe: true})
 	userCtx := UserContext{
-		ClaudeMd:    "password: hunter2",
-		CurrentDate: "Today's date is 2026-07-10.",
+		Instructions: "password: hunter2",
+		CurrentDate:  "Today's date is 2026-07-10.",
 	}
 	systemCtx := SystemContext{GitStatus: "clean"}
 
@@ -47,7 +47,7 @@ func TestBuildPromptDumpJSONIncludesMetadataAndRedactsSecrets(t *testing.T) {
 		t.Fatalf("dump should contain redaction marker:\n%s", buf.String())
 	}
 	if len(decoded.Context) != 3 {
-		t.Fatalf("Context len = %d, want claudeMd/currentDate/gitStatus", len(decoded.Context))
+		t.Fatalf("Context len = %d, want instructions/currentDate/gitStatus", len(decoded.Context))
 	}
 }
 

@@ -12,24 +12,16 @@ func TestToolIndirectResidualKeysCoverEveryLanguageAndPreserveRuntimeValues(t *t
 		KeyToolIndirectWorktreeDeleteBranch,
 		KeyToolIndirectWorktreeRemoveHookMissing,
 		KeyToolIndirectWorktreeRemoveHookFailed,
-		KeyToolIndirectPlanApprovalLeadOnly,
-		KeyToolIndirectPlanApprovalCommit,
-		KeyToolIndirectPlanApprovalModeRequired,
-		KeyToolIndirectPlanApprovalPlanRequired,
-		KeyToolIndirectPlanApprovalPrepareDir,
-		KeyToolIndirectPlanApprovalPersist,
-		KeyToolIndirectPlanApprovalTeamRequired,
-		KeyToolIndirectPlanApprovalEncodeRequest,
 		KeyToolIndirectPlanStateRequired,
+		KeyToolIndirectPlanStateProjectRootRequired,
+		KeyToolIndirectPlanStateResolveProjectRoot,
+		KeyToolIndirectPlanStateLoad,
+		KeyToolIndirectPlanStateDecode,
 		KeyToolIndirectPlanStateNotActive,
 		KeyToolIndirectPlanStateRestoreMode,
 		KeyToolIndirectPlanStateChangedDuringExit,
 		KeyToolIndirectPlanStatePersistExitedState,
-		KeyToolIndirectBashModeDeprecated,
-		KeyToolIndirectBashModeUnknown,
-		KeyToolIndirectBashModeNonReadForbidden,
-		KeyToolIndirectBashModeDestructive,
-		KeyToolIndirectBashModePattern,
+		KeyToolIndirectPlanStateSchemaVersion,
 	}
 	for _, key := range keys {
 		for _, lang := range AllLanguages() {
@@ -49,17 +41,10 @@ func TestToolIndirectResidualKeysCoverEveryLanguageAndPreserveRuntimeValues(t *t
 		if !strings.Contains(got, "acceptEdits") || !strings.Contains(got, "cause-42") {
 			t.Fatalf("plan-state text lost mode or cause for %s: %q", lang.Code(), got)
 		}
-		got = Format(lang, KeyToolIndirectBashModeDeprecated, "plan", "acceptEdits")
-		if !strings.Contains(got, "plan") || !strings.Contains(got, "acceptEdits") {
-			t.Fatalf("bash-mode text lost config identifiers for %s: %q", lang.Code(), got)
-		}
 	}
 }
 
-func TestToolIndirectResidualEnglishCompatibility(t *testing.T) {
-	if got, want := Format(LangEN, KeyToolIndirectBashModeDeprecated, "plan", "acceptEdits"), `bash execution mode "plan" is deprecated and was renamed to "acceptEdits"; please update your config`; got != want {
-		t.Fatalf("deprecated-mode English changed: got %q want %q", got, want)
-	}
+func TestToolIndirectResidualEnglishFormatting(t *testing.T) {
 	if got, want := Format(LangEN, KeyToolIndirectWorktreeDeleteBranch, "feature", "raw git output"), `delete worktree branch "feature": raw git output`; got != want {
 		t.Fatalf("worktree cleanup English changed: got %q want %q", got, want)
 	}

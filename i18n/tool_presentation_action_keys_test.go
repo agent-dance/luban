@@ -9,7 +9,7 @@ func TestToolPresentationActionCatalogCoversEveryLanguage(t *testing.T) {
 		KeyToolActionFindTools, KeyToolActionFetchWeb, KeyToolActionSearchWeb, KeyToolActionUseMCPTool,
 		KeyToolActionListMCPResources, KeyToolActionReadMCPResource, KeyToolActionRunAgent,
 		KeyToolActionCreateTask, KeyToolActionListTasks, KeyToolActionUpdateTask, KeyToolActionGetTask,
-		KeyToolActionStopTask, KeyToolActionReadTaskOutput, KeyToolActionUpdateTodos, KeyToolActionGetGoal,
+		KeyToolActionStopTask, KeyToolActionReadTaskOutput, KeyToolActionGetGoal,
 		KeyToolActionCreateGoal, KeyToolActionUpdateGoal, KeyToolActionEnterPlanMode, KeyToolActionExitPlanMode,
 		KeyToolActionAskUser, KeyToolActionSendUserMessage, KeyToolActionSendMessage, KeyToolActionCreateTeam,
 		KeyToolActionDeleteTeam, KeyToolActionCreateSchedule, KeyToolActionDeleteSchedule, KeyToolActionListSchedules,

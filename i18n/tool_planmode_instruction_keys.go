@@ -4,12 +4,10 @@ package i18n
 // Tool names and the phase protocol term remain stable identifiers across
 // languages; the localized entry message is supplied as the sole argument.
 const (
-	KeyToolPlanModeInterviewInstructions Key = "tool.plan_mode.instructions.interview"
-	KeyToolPlanModeInstructions          Key = "tool.plan_mode.instructions.standard"
+	KeyToolPlanModeInstructions Key = "tool.plan_mode.instructions.standard"
 )
 
 var toolPlanModeInstructionKeys = []Key{
-	KeyToolPlanModeInterviewInstructions,
 	KeyToolPlanModeInstructions,
 }
 
@@ -21,15 +19,6 @@ func init() {
 		}
 	}
 
-	add(
-		KeyToolPlanModeInterviewInstructions,
-		"%s\n\nDO NOT write or edit any files except the plan file. Detailed workflow instructions will follow.",
-		"%s\n\n除 plan 文件外，不要写入或编辑任何文件。稍后会提供详细的工作流说明。",
-		"%s\n\nSchreibe oder bearbeite ausschließlich die plan-Datei; alle anderen Dateien sind tabu. Detaillierte Arbeitsablaufanweisungen folgen.",
-		"%s\n\nplan ファイル以外のファイルには、書き込みも編集もしないでください。詳しいワークフロー手順は後ほど提示されます。",
-		"%s\n\nplan 파일을 제외한 어떤 파일도 작성하거나 편집하지 마세요. 자세한 워크플로 지침은 이어서 제공됩니다.",
-		"%s\n\nНе записывайте и не редактируйте никакие файлы, кроме файла plan. Подробные инструкции по рабочему процессу последуют далее.",
-	)
 	add(
 		KeyToolPlanModeInstructions,
 		"%s\n\nIn plan mode, you should:\n1. Thoroughly explore the codebase to understand existing patterns\n2. Identify similar features and architectural approaches\n3. Consider multiple approaches and their trade-offs\n4. Use AskUserQuestion if you need to clarify the approach\n5. Design a concrete implementation strategy\n6. When ready, use ExitPlanMode to present your plan for approval\n\nRemember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.",

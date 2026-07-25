@@ -9,17 +9,6 @@ import (
 	"syscall"
 )
 
-// suspendTerminal tears down terminal state before process suspension.
-// Must be called from the main event loop.
-func (a *App) suspendTerminal() {
-	if a.onSuspend != nil {
-		a.onSuspend()
-	}
-	a.terminalMu.Lock()
-	_ = a.suspendTerminalChecked()
-	a.terminalMu.Unlock()
-}
-
 func (a *App) suspendTerminalChecked() error {
 	a.disableMouseCapture(a.mouseCaptureEnabled())
 	setBracketedPaste(a.terminal, false)
@@ -52,19 +41,6 @@ func (a *App) suspendTerminalChecked() error {
 	err := a.terminal.ExitRawMode()
 	a.terminalSuspended.Store(true)
 	return err
-}
-
-// resumeTerminal restores terminal state after process resumption.
-// Must be called from the main event loop.
-func (a *App) resumeTerminal() {
-	a.terminalSuspended.Store(true)
-	if !a.legacyKeyboard {
-		a.kittyKeyboard = true
-	}
-	a.terminalMu.Lock()
-	err := a.resumeTerminalChecked()
-	a.terminalMu.Unlock()
-	a.finishSuspendResume(err)
 }
 
 func (a *App) resumeTerminalChecked() error {

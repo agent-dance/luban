@@ -3,6 +3,6 @@
 package sandbox
 
 func init() {
-	// NoopBackend is always registered as the final fallback in Detect().
-	// No platform-specific backend is added here.
+	// Windows currently has no platform-specific sandbox backend. Detect returns
+	// the unsandboxed backend when the platform list remains empty.
 }

@@ -63,8 +63,7 @@ var ensureValidMu sync.Mutex
 
 // Store manages loading, saving, and refreshing OAuth credentials.
 type Store struct {
-	dir        string   // directory containing the credentials file
-	legacyDirs []string // fallback directories, highest priority first
+	dir string // directory containing the credentials file
 }
 
 // NewStore creates a Store that persists credentials in ~/.luban-code/.credentials.json.
@@ -72,33 +71,11 @@ func NewStore() (*Store, error) {
 	if brand.HomeDir() == "" {
 		return nil, i18n.NewError(i18n.KeyAuthStoreHomeUnavailable)
 	}
-	return &Store{
-		dir: brand.UserConfigDir(),
-		legacyDirs: []string{
-			brand.LegacyDeepSeekUserConfigDir(),
-			brand.LegacyUserConfigDir(),
-		},
-	}, nil
-}
-
-// newStoreAt creates a Store with an explicit directory (used in tests).
-func newStoreAt(dir string) *Store {
-	return &Store{dir: dir}
+	return &Store{dir: brand.UserConfigDir()}, nil
 }
 
 func (s *Store) credPath() string {
 	return filepath.Join(s.dir, credentialsFile)
-}
-
-func (s *Store) legacyCredPaths() []string {
-	paths := make([]string, 0, len(s.legacyDirs))
-	for _, dir := range s.legacyDirs {
-		if dir == "" || dir == s.dir {
-			continue
-		}
-		paths = append(paths, filepath.Join(dir, credentialsFile))
-	}
-	return paths
 }
 
 // LoadCredentials reads credentials from disk with file locking.
@@ -116,20 +93,7 @@ func (s *Store) LoadCredentials() (*Credentials, error) {
 	data, err := os.ReadFile(s.credPath())
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			for _, legacyPath := range s.legacyCredPaths() {
-				legacyData, legacyErr := os.ReadFile(legacyPath)
-				if legacyErr != nil {
-					if errors.Is(legacyErr, os.ErrNotExist) {
-						continue
-					}
-					return nil, i18n.WrapError(i18n.KeyAuthStoreReadLegacy, legacyErr)
-				}
-				data = legacyData
-				break
-			}
-			if data == nil {
-				return nil, nil
-			}
+			return nil, nil
 		} else {
 			return nil, i18n.WrapError(i18n.KeyAuthStoreRead, err)
 		}

@@ -6,9 +6,6 @@ func TestRootSurfaceKeysAreLocalizedAndComplete(t *testing.T) {
 	if err := ValidateSemanticCatalog(); err != nil {
 		t.Fatalf("semantic catalog is incomplete: %v", err)
 	}
-	if got := Format(LangZH, KeyPendingImagesAttached, "[Image #1]"); got == "  📷 [Image #1] attached — ↑/↓ select, Delete remove, Enter send" {
-		t.Fatalf("pending image copy was not localized: %q", got)
-	}
 	if got := Format(LangJA, KeyModelPickerProviderHint, "provider-id"); got == "" || got == "Provider: provider-id. Press Enter to select reasoning effort, or Esc to go back." {
 		t.Fatalf("model picker hint was not localized: %q", got)
 	}
@@ -29,15 +26,6 @@ func TestActivityRunningCountIsLocalizedForEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestActivityHistoryLabelIsLocalizedForEveryLanguage(t *testing.T) {
-	for _, lang := range AllLanguages() {
-		got := Text(lang, KeyActivityHistory)
-		if got == "" || got == "[tui.activity.history]" {
-			t.Fatalf("activity history label is missing for %s: %q", lang.Code(), got)
-		}
-	}
-}
-
 func TestTranscriptSelectionHintsAreLocalizedForEveryLanguage(t *testing.T) {
 	keys := []Key{KeyTranscriptSelectionHintOption, KeyTranscriptSelectionHintGeneric}
 	for _, lang := range AllLanguages() {
@@ -53,14 +41,8 @@ func TestTranscriptSelectionHintsAreLocalizedForEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestActivityAgentCountUsesTheProductTermInChinese(t *testing.T) {
-	if got := Format(LangZH, KeyActivityAgents, 2); got != "2 个 Agent" {
-		t.Fatalf("Chinese Agent count = %q", got)
-	}
-}
-
 func TestLLMRequestStatusKeysAreLocalizedAndComplete(t *testing.T) {
-	keys := []Key{KeyLLMRequestProblem, KeyLLMRequestRetrying, KeyLLMRequestError, KeyLLMRequestMetrics}
+	keys := []Key{KeyLLMRequestProblem, KeyLLMRequestRetrying, KeyLLMRequestError, KeyLLMRequestMetrics, KeyLLMRequestInterruptStatus}
 	for _, lang := range AllLanguages() {
 		for _, key := range keys {
 			if got := Text(lang, key); got == "" || got == "["+string(key)+"]" {
@@ -68,11 +50,14 @@ func TestLLMRequestStatusKeysAreLocalizedAndComplete(t *testing.T) {
 			}
 		}
 	}
-	if got := Format(LangZH, KeyLLMRequestMetrics, "120ms", "800ms", "1.2s"); got != "API 请求 120ms · 首 token 800ms · 总耗时 1.2s" {
+	if got := Format(LangZH, KeyLLMRequestMetrics, "120ms", "800ms"); got != "建立连接 120ms · 首 token 800ms" {
 		t.Fatalf("Chinese LLM metrics = %q", got)
 	}
 	if got := Format(LangZH, KeyLLMRequestRetrying, 2, 10, "2.0s", "连接已重置"); got != "第 2/10 次重试 · 2.0s 后继续 · 连接已重置" {
 		t.Fatalf("Chinese retry status = %q", got)
+	}
+	if got := Format(LangZH, KeyLLMRequestInterruptStatus, "1.2s"); got != "(1.2s • Ctrl+C 中断)" {
+		t.Fatalf("Chinese interrupt status = %q", got)
 	}
 }
 

@@ -57,17 +57,17 @@ func TestHelpUsesActiveLanguageForBuiltInDescriptions(t *testing.T) {
 	registry := NewRegistry()
 	RegisterBuiltins(registry)
 
-	var output string
-	ctx := &Context{Language: i18n.LangZH, OnEvent: func(text string) { output += text }}
+	var output strings.Builder
+	ctx := &Context{Language: i18n.LangZH, OnCommandPresentation: captureCompletedCommand(&output)}
 	if err := registry.Find("help").Execute(ctx, ""); err != nil {
 		t.Fatalf("help Execute: %v", err)
 	}
 	for _, want := range []string{"/help", "列出所有可用命令", "选择显示语言", "管理 MCP 服务器"} {
-		if !strings.Contains(output, want) {
-			t.Errorf("localized help omitted %q:\n%s", want, output)
+		if !strings.Contains(output.String(), want) {
+			t.Errorf("localized help omitted %q:\n%s", want, output.String())
 		}
 	}
-	if strings.Contains(output, "List all available commands") {
-		t.Fatalf("localized help leaked the English description:\n%s", output)
+	if strings.Contains(output.String(), "List all available commands") {
+		t.Fatalf("localized help leaked the English description:\n%s", output.String())
 	}
 }

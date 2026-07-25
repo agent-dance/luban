@@ -220,7 +220,7 @@ func TestParseTailwindClassesWithPositions(t *testing.T) {
 		input        string
 		attrStartCol int
 		wantCount    int
-		checkClass   int    // index of class to check
+		checkClass   int // index of class to check
 		wantClass    string
 		wantStartCol int
 		wantEndCol   int
@@ -372,7 +372,7 @@ func TestAllTailwindClasses_SpecificClasses(t *testing.T) {
 	// Check for specific classes that should exist
 	expectedClasses := []string{
 		"flex", "flex-col", "flex-row",
-		"flex-grow", "flex-shrink", "flex-grow-0", "flex-shrink-0",
+		"flex-grow-0", "flex-shrink-0",
 		"justify-start", "justify-center", "justify-end", "justify-between", "justify-around", "justify-evenly",
 		"items-start", "items-center", "items-end", "items-stretch",
 		"self-start", "self-center", "self-end", "self-stretch",

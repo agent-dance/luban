@@ -33,14 +33,13 @@ func TestEnvironmentContextBuilderIncludesSessionDetails(t *testing.T) {
 	}
 }
 
-func TestBuildSystemPromptUsesEnvironmentContextWithoutGitStatus(t *testing.T) {
+func TestBuildSystemPromptUsesEnvironmentContext(t *testing.T) {
 	cfg := Config{
 		CWD:              "/repo",
 		AdditionalDirs:   []string{"/extra"},
 		ModelID:          "model-id",
 		ModelDescription: "Model Name",
 		KnowledgeCutoff:  "2026-01",
-		GitContext:       "This is the git status at the start of the conversation.",
 	}
 	got := BuildSystemPrompt(nil, cfg)
 
@@ -55,16 +54,5 @@ func TestBuildSystemPromptUsesEnvironmentContextWithoutGitStatus(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected system prompt to contain %q in:\n%s", want, got)
 		}
-	}
-	if strings.Contains(got, "git status at the start of the conversation") {
-		t.Fatal("git context should be injected through SystemContext, not base system prompt")
-	}
-
-	block, ok := (SystemContextBuilder{}).FromConfig(cfg).Build().Block()
-	if !ok {
-		t.Fatal("expected system context block")
-	}
-	if !strings.Contains(block.Text, "gitStatus: This is the git status at the start of the conversation.") {
-		t.Fatalf("expected git status in SystemContext block, got %q", block.Text)
 	}
 }

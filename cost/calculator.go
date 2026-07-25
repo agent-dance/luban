@@ -1,7 +1,5 @@
 package cost
 
-import "fmt"
-
 // CalculateCost computes the USD cost for a single API response given the
 // model name and token usage counts.
 //
@@ -36,15 +34,4 @@ func CalculateCostFromPricing(pricing ModelPricing, usage TokenUsage) CostBreakd
 		WebSearchUSD:     webSearchUSD,
 		TotalUSD:         inputUSD + outputUSD + cacheReadUSD + cacheCreationUSD + webSearchUSD,
 	}
-}
-
-// FormatUSD formats a USD amount for display.
-//   - amounts >= $0.01 are shown with 2 decimal places  ($1.23)
-//   - smaller amounts are shown with 4 decimal places  ($0.0034)
-//   - zero is shown as $0.0000
-func FormatUSD(amount float64) string {
-	if amount >= 0.01 {
-		return fmt.Sprintf("$%.2f", amount)
-	}
-	return fmt.Sprintf("$%.4f", amount)
 }

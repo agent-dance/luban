@@ -5,6 +5,10 @@ import (
 	"testing"
 )
 
+func parseAndGenerateSkipImports(filename, source string) ([]byte, error) {
+	return parseAndGenerate(filename, source, true)
+}
+
 func TestGenerator_SimpleComponent(t *testing.T) {
 	type tc struct {
 		input           string

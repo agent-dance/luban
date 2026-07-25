@@ -174,70 +174,23 @@ func TestCredentialStore_Persistence(t *testing.T) {
 	}
 }
 
-func TestNewCredentialStoreLoadsLegacyDeepSeekBeforeClaudeGo(t *testing.T) {
+func TestNewCredentialStoreUsesLUBANCredentials(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 
-	writeStore := func(path, apiKey string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		data, err := json.Marshal(credentialFile{
-			Version: 1,
-			Entries: map[string]CredentialEntry{
-				"openai": {Provider: "openai", AuthMethod: "api_key", APIKey: apiKey},
-			},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, data, 0o600); err != nil {
-			t.Fatal(err)
-		}
+	path := filepath.Join(home, ".luban-code", "auth.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	writeStore(filepath.Join(home, ".claude-go", "auth.json"), "claude-key")
-	writeStore(filepath.Join(home, ".deepseek-code", "auth.json"), "deepseek-key")
-
-	store, err := NewCredentialStore()
+	data, err := json.Marshal(credentialFile{Entries: map[string]CredentialEntry{
+		"openai": {Provider: "openai", AuthMethod: "api_key", APIKey: "luban-key"},
+	}})
 	if err != nil {
-		t.Fatalf("NewCredentialStore: %v", err)
+		t.Fatal(err)
 	}
-	entry, ok := store.Get("openai")
-	if !ok || entry.APIKey != "deepseek-key" {
-		t.Fatalf("entry = %#v, ok=%v; want legacy DeepSeek credentials", entry, ok)
-	}
-	if store.path != filepath.Join(home, ".luban-code", "auth.json") {
-		t.Fatalf("store.path = %q, want LUBAN path", store.path)
-	}
-}
-
-func TestNewCredentialStorePrefersLUBANCredentials(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-
-	for dir, apiKey := range map[string]string{
-		".luban-code":    "luban-key",
-		".deepseek-code": "deepseek-key",
-	} {
-		path := filepath.Join(home, dir, "auth.json")
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		data, err := json.Marshal(credentialFile{
-			Version: 1,
-			Entries: map[string]CredentialEntry{
-				"openai": {Provider: "openai", AuthMethod: "api_key", APIKey: apiKey},
-			},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, data, 0o600); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
 	}
 
 	store, err := NewCredentialStore()
@@ -283,102 +236,15 @@ func TestCredentialStore_FileFormat(t *testing.T) {
 	if err := json.Unmarshal(data, &f); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if f.Version != 1 {
-		t.Errorf("expected version 1, got %d", f.Version)
-	}
 	if len(f.Entries) != 1 {
 		t.Errorf("expected 1 entry, got %d", len(f.Entries))
 	}
-}
-
-func TestCredentialStore_MigrateFromEnv(t *testing.T) {
-	s, _ := newTestCredentialStore(t)
-
-	// Set up environment variables.
-	os.Setenv("ANTHROPIC_API_KEY", "ant-key")
-	os.Setenv("OPENAI_API_KEY", "oai-key")
-	os.Setenv("XAI_API_KEY", "xai-key")
-	defer os.Unsetenv("ANTHROPIC_API_KEY")
-	defer os.Unsetenv("OPENAI_API_KEY")
-	defer os.Unsetenv("XAI_API_KEY")
-
-	count := s.MigrateFromEnv()
-	if count != 3 {
-		t.Errorf("expected 3 migrated entries, got %d", count)
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("unmarshal raw file: %v", err)
 	}
-
-	// Check imported entries.
-	ant, ok := s.Get("anthropic")
-	if !ok {
-		t.Fatal("expected anthropic entry after migration")
-	}
-	if ant.APIKey != "ant-key" {
-		t.Errorf("expected ant-key, got %q", ant.APIKey)
-	}
-	if ant.AuthMethod != "env" {
-		t.Errorf("expected auth method 'env', got %q", ant.AuthMethod)
-	}
-
-	oai, ok := s.Get("openai")
-	if !ok {
-		t.Fatal("expected openai entry after migration")
-	}
-	if oai.APIKey != "oai-key" {
-		t.Errorf("expected oai-key, got %q", oai.APIKey)
-	}
-
-	xai, ok := s.Get("xai")
-	if !ok {
-		t.Fatal("expected xai entry after migration")
-	}
-	if xai.APIKey != "xai-key" || xai.AuthMethod != "env" {
-		t.Errorf("xai entry = %+v, want imported env credential", xai)
-	}
-}
-
-func TestCredentialStore_MigrateFromEnv_SkipsExisting(t *testing.T) {
-	s, _ := newTestCredentialStore(t)
-
-	// Pre-populate with an existing entry.
-	_ = s.Set(CredentialEntry{Provider: "anthropic", AuthMethod: "api_key", APIKey: "existing-key"})
-
-	os.Setenv("ANTHROPIC_API_KEY", "env-key")
-	defer os.Unsetenv("ANTHROPIC_API_KEY")
-
-	count := s.MigrateFromEnv()
-	if count != 0 {
-		t.Errorf("expected 0 migrated (should skip existing), got %d", count)
-	}
-
-	got, _ := s.Get("anthropic")
-	if got.APIKey != "existing-key" {
-		t.Errorf("expected existing key to be preserved, got %q", got.APIKey)
-	}
-}
-
-func TestCredentialStore_MigrateFromEnv_OAuth(t *testing.T) {
-	s, _ := newTestCredentialStore(t)
-
-	os.Setenv("OAUTH_ACCESS_TOKEN", "oauth-token-123")
-	defer os.Unsetenv("OAUTH_ACCESS_TOKEN")
-
-	count := s.MigrateFromEnv()
-	if count != 1 {
-		t.Errorf("expected 1 migrated, got %d", count)
-	}
-
-	entry, ok := s.Get("anthropic")
-	if !ok {
-		t.Fatal("expected anthropic entry")
-	}
-	if entry.AuthMethod != "oauth" {
-		t.Errorf("expected auth method 'oauth', got %q", entry.AuthMethod)
-	}
-	if entry.AccessToken != "oauth-token-123" {
-		t.Errorf("expected access token, got %q", entry.AccessToken)
-	}
-	if entry.APIKey != "" {
-		t.Errorf("expected empty API key for OAuth, got %q", entry.APIKey)
+	if _, exists := raw["version"]; exists {
+		t.Fatal("credential file retained unused version field")
 	}
 }
 

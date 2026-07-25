@@ -4,14 +4,14 @@ import "testing"
 
 func TestToolResultCompletenessSeparatesSourceAndView(t *testing.T) {
 	complete := ToolResultCompleteness{Source: ToolResultCompletenessComplete}
-	if complete.IsIncomplete() || !complete.CanRetainFullEvidence() {
+	if !complete.CanRetainFullEvidence() {
 		t.Fatalf("complete provenance = %+v", complete)
 	}
 
 	pagination := complete
 	pagination.View = ToolResultCompletenessPagination
 	pagination.Pagination = &ToolResultPagination{Offset: 20, Limit: 10, NextOffset: 30, HasMore: true}
-	if !pagination.IsIncomplete() || pagination.CanRetainFullEvidence() {
+	if pagination.CanRetainFullEvidence() {
 		t.Fatalf("pagination provenance = %+v", pagination)
 	}
 	cloned := pagination.Clone()
@@ -21,7 +21,7 @@ func TestToolResultCompletenessSeparatesSourceAndView(t *testing.T) {
 	}
 
 	preview := complete.WithDisplayPreview()
-	if !preview.IsIncomplete() || preview.RetainedResultIncomplete() || preview.CanRetainFullEvidence() {
+	if preview.RetainedResultIncomplete() || preview.CanRetainFullEvidence() {
 		t.Fatalf("display preview provenance = %+v", preview)
 	}
 

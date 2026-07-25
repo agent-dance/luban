@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/agent-dance/luban/brand"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -51,11 +52,11 @@ func enabledToolNames(tools []types.Tool) map[string]bool {
 }
 
 func introSection() string {
-	return brandPromptText(`You are Claude Code, an agentic coding CLI.
+	return fmt.Sprintf(`You are %s, an agentic coding CLI.
 
 You are an interactive agent that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
-IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.`)
+IMPORTANT: You must NEVER generate or guess URLs for the user unless you are confident that the URLs are for helping the user with programming. You may use URLs provided by the user in their messages or local files.`, brand.DisplayName)
 }
 
 func systemSection() string {
@@ -84,7 +85,7 @@ func doingTasksSection() string {
 		`Do not add error handling, fallbacks, or validation for scenarios that cannot happen. Trust internal code and framework guarantees. Validate at system boundaries such as user input and external APIs.`,
 		`Do not create helpers, utilities, or abstractions for one-time operations. Design for the task at hand, not hypothetical future requirements.`,
 		`Avoid backwards-compatibility hacks when you can make the direct change. If you are certain something is unused, delete it completely.`,
-		brandPromptText(`If the user asks for help or wants to give feedback about Claude Code, direct them to the product's normal support or issue-reporting path.`),
+		fmt.Sprintf(`If the user asks for help or wants to give feedback about %s, direct them to the product's normal support or issue-reporting path.`, brand.DisplayName),
 	}
 	return bulletSection("Doing tasks", items)
 }
@@ -134,8 +135,6 @@ func usingToolsSection(enabled map[string]bool) string {
 	}
 	if enabled["TaskCreate"] {
 		items = append(items, taskManagementGuidance("TaskCreate"))
-	} else if enabled["TodoWrite"] {
-		items = append(items, taskManagementGuidance("TodoWrite"))
 	}
 	items = append(items, `You can call multiple tools in a single response. If you intend to call multiple tools and there are no dependencies between them, make all independent tool calls in parallel. If tool calls depend on previous results, call them sequentially.`)
 	return bulletSection("Using your tools", items)

@@ -7,8 +7,7 @@ import (
 
 func TestCommentPreservationInElements(t *testing.T) {
 	type tc struct {
-		source   string
-		expected string // if empty, expected == source (idempotent)
+		source string
 	}
 
 	tests := map[string]tc{
@@ -131,11 +130,6 @@ templ Foo() {
 			formatted, err := fmtr.Format("test.gsx", tt.source)
 			if err != nil {
 				t.Fatalf("format error: %v", err)
-			}
-
-			expected := tt.expected
-			if expected == "" {
-				expected = tt.source
 			}
 
 			// Verify no comments were lost

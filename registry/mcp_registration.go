@@ -17,8 +17,7 @@ type MCPDynamicRegisteredTool interface {
 }
 
 // SyncMCPDynamicTools atomically replaces previously registered dynamic MCP
-// tools with next. Generic MCPTool, resource tools, and non-MCP mcp__ commands
-// are left alone.
+// tools with next. Resource tools and non-MCP mcp__ commands are left alone.
 func (r *Registry) SyncMCPDynamicTools(next []types.Tool) {
 	if r == nil {
 		return
@@ -31,7 +30,6 @@ func (r *Registry) SyncMCPDynamicTools(next []types.Tool) {
 		tool := r.tools[name]
 		if isMCPDynamicRegistered(tool) {
 			delete(r.tools, name)
-			removeAliasesForTool(r.aliases, name, tool)
 			continue
 		}
 		keptOrder = append(keptOrder, name)
@@ -46,22 +44,11 @@ func (r *Registry) SyncMCPDynamicTools(next []types.Tool) {
 			if !isMCPDynamicRegistered(existing) {
 				continue
 			}
-			removeAliasesForTool(r.aliases, tool.Name(), existing)
 			r.tools[tool.Name()] = tool
-			if aliased, ok := tool.(types.AliasedTool); ok {
-				for _, alias := range aliased.Aliases() {
-					r.aliases[alias] = tool.Name()
-				}
-			}
 			continue
 		}
 		r.tools[tool.Name()] = tool
 		r.order = append(r.order, tool.Name())
-		if aliased, ok := tool.(types.AliasedTool); ok {
-			for _, alias := range aliased.Aliases() {
-				r.aliases[alias] = tool.Name()
-			}
-		}
 	}
 }
 
@@ -81,7 +68,6 @@ func (r *Registry) RemoveMCPDynamicToolsForServer(serverName string) int {
 		registration, ok := tool.(MCPDynamicRegisteredTool)
 		if ok && registration.MCPDynamicRegistration().ServerName == serverName {
 			delete(r.tools, name)
-			removeAliasesForTool(r.aliases, name, tool)
 			removed++
 			continue
 		}
@@ -94,17 +80,4 @@ func (r *Registry) RemoveMCPDynamicToolsForServer(serverName string) int {
 func isMCPDynamicRegistered(tool types.Tool) bool {
 	_, ok := tool.(MCPDynamicRegisteredTool)
 	return ok
-}
-
-func removeAliasesForTool(aliases map[string]string, canonical string, tool types.Tool) {
-	if len(aliases) == 0 || tool == nil {
-		return
-	}
-	if aliased, ok := tool.(types.AliasedTool); ok {
-		for _, alias := range aliased.Aliases() {
-			if aliases[alias] == canonical {
-				delete(aliases, alias)
-			}
-		}
-	}
 }

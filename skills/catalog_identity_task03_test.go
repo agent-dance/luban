@@ -20,7 +20,7 @@ func TestCatalogIdentityFilesystemLocatorAndSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	direct, err := CanonicalFilesystemSkillLocator(filepath.Join(dir, ".", "real", "..", "real", "SKILL.md"))
+	direct, err := canonicalFilesystemSkillLocator(filepath.Join(dir, ".", "real", "..", "real", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestCatalogIdentityFilesystemLocatorAndSymlink(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-	alias, err := CanonicalFilesystemSkillLocator(link)
+	alias, err := canonicalFilesystemSkillLocator(link)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestCatalogIdentityFilesystemLocatorAndSymlink(t *testing.T) {
 	}
 
 	missing := filepath.Join(dir, "missing", "SKILL.md")
-	missingLocator, err := CanonicalFilesystemSkillLocator(missing)
+	missingLocator, err := canonicalFilesystemSkillLocator(missing)
 	if err != nil {
 		t.Fatalf("deleted/missing path must remain canonicalizable: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestCatalogIdentitySourceSelectsLocatorModel(t *testing.T) {
 	if !filepath.IsAbs(string(local)) {
 		t.Fatalf("project locator is not absolute: %q", local)
 	}
-	if _, err := CanonicalFilesystemSkillLocator("skill://server/review"); !errors.Is(err, ErrInvalidSkillLocator) {
+	if _, err := canonicalFilesystemSkillLocator("skill://server/review"); !errors.Is(err, ErrInvalidSkillLocator) {
 		t.Fatalf("ambiguous filesystem locator error = %v", err)
 	}
 	if _, err := CanonicalSkillLocator(SkillSource("unknown"), "anything"); !errors.Is(err, ErrInvalidSkillLocator) {
@@ -125,7 +125,7 @@ func TestCatalogIdentitySourceSelectsLocatorModel(t *testing.T) {
 }
 
 func TestCatalogIdentityStableSourceAwareSkillID(t *testing.T) {
-	locator, err := CanonicalFilesystemSkillLocator(filepath.Join(t.TempDir(), "review", "SKILL.md"))
+	locator, err := canonicalFilesystemSkillLocator(filepath.Join(t.TempDir(), "review", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,10 +180,6 @@ func TestSkillDigestUsesExactEffectiveContent(t *testing.T) {
 	if err := ComputeSkillDigest(content).Validate(); err != nil {
 		t.Fatalf("digest violates contract: %v", err)
 	}
-	if ComputeSkillDigest(content) != ComputeSkillDigest(content) {
-		t.Fatal("same content produced different digests")
-	}
-
 	variants := []string{
 		"abc\n",
 		"abc\r\n",
@@ -199,7 +195,7 @@ func TestSkillDigestUsesExactEffectiveContent(t *testing.T) {
 }
 
 func TestCatalogIdentitySkillRevisionInputDeterminism(t *testing.T) {
-	locator, err := CanonicalFilesystemSkillLocator(filepath.Join(t.TempDir(), "review", "SKILL.md"))
+	locator, err := canonicalFilesystemSkillLocator(filepath.Join(t.TempDir(), "review", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,11 +218,11 @@ func TestCatalogIdentitySkillRevisionInputDeterminism(t *testing.T) {
 		Executable:         true,
 		Mutable:            true,
 	}
-	first, err := SkillRevisionInput(base)
+	first, err := skillRevisionInput(base)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := SkillRevisionInput(base)
+	second, err := skillRevisionInput(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +230,7 @@ func TestCatalogIdentitySkillRevisionInputDeterminism(t *testing.T) {
 		t.Fatal("same effective state produced different revision material")
 	}
 	first[0] ^= 0xff
-	third, err := SkillRevisionInput(base)
+	third, err := skillRevisionInput(base)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,11 +240,11 @@ func TestCatalogIdentitySkillRevisionInputDeterminism(t *testing.T) {
 
 	withRevision := base
 	withRevision.Revision = 99
-	baseFingerprint, err := SkillRevisionFingerprint(base)
+	baseFingerprint, err := skillRevisionFingerprint(base)
 	if err != nil {
 		t.Fatal(err)
 	}
-	withRevisionFingerprint, err := SkillRevisionFingerprint(withRevision)
+	withRevisionFingerprint, err := skillRevisionFingerprint(withRevision)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +257,7 @@ func TestCatalogIdentitySkillRevisionInputDeterminism(t *testing.T) {
 
 	changed := base
 	changed.Summary = "Review all changes"
-	changedFingerprint, err := SkillRevisionFingerprint(changed)
+	changedFingerprint, err := skillRevisionFingerprint(changed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,7 +267,7 @@ func TestCatalogIdentitySkillRevisionInputDeterminism(t *testing.T) {
 
 	invalid := base
 	invalid.Digest = "sha256:not-canonical"
-	if _, err := SkillRevisionInput(invalid); !errors.Is(err, ErrInvalidSkillDigest) {
+	if _, err := skillRevisionInput(invalid); !errors.Is(err, ErrInvalidSkillDigest) {
 		t.Fatalf("invalid input error = %v, want ErrInvalidSkillDigest", err)
 	}
 }

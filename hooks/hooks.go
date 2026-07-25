@@ -341,43 +341,43 @@ var safeFilenameRe = regexp.MustCompile(`^[a-zA-Z0-9._-]+\.sh$`)
 func hookTypeFromFilename(name string) HookType {
 	lower := strings.ToLower(name)
 	switch {
-	case strings.HasPrefix(lower, "pre-tool-use") || strings.HasPrefix(lower, "pretooluse"):
+	case strings.HasPrefix(lower, "pre-tool-use"):
 		return HookPreToolUse
-	case strings.HasPrefix(lower, "post-tool-use-failure") || strings.HasPrefix(lower, "posttoolusefailure"):
+	case strings.HasPrefix(lower, "post-tool-use-failure"):
 		return HookPostToolUseFailure
-	case strings.HasPrefix(lower, "post-tool-use") || strings.HasPrefix(lower, "posttooluse"):
+	case strings.HasPrefix(lower, "post-tool-use"):
 		return HookPostToolUse
-	case strings.HasPrefix(lower, "session-start") || strings.HasPrefix(lower, "sessionstart"):
+	case strings.HasPrefix(lower, "session-start"):
 		return HookSessionStart
-	case strings.HasPrefix(lower, "session-end") || strings.HasPrefix(lower, "sessionend"):
+	case strings.HasPrefix(lower, "session-end"):
 		return HookSessionEnd
-	case strings.HasPrefix(lower, "user-prompt") || strings.HasPrefix(lower, "userprompt"):
+	case strings.HasPrefix(lower, "user-prompt"):
 		return HookUserPromptSubmit
+	case strings.HasPrefix(lower, "stop-failure"):
+		return HookStopFailure
 	case strings.HasPrefix(lower, "stop"):
 		return HookStop
-	case strings.HasPrefix(lower, "pre-query") || strings.HasPrefix(lower, "prequery"):
+	case strings.HasPrefix(lower, "pre-query"):
 		return HookPreQuery
-	case strings.HasPrefix(lower, "post-query") || strings.HasPrefix(lower, "postquery"):
+	case strings.HasPrefix(lower, "post-query"):
 		return HookPostQuery
-	case strings.HasPrefix(lower, "post-sampling") || strings.HasPrefix(lower, "postsampling"):
+	case strings.HasPrefix(lower, "post-sampling"):
 		return HookPostSampling
-	case strings.HasPrefix(lower, "stop-failure") || strings.HasPrefix(lower, "stopfailure"):
-		return HookStopFailure
 	case strings.HasPrefix(lower, "notification"):
 		return HookNotification
-	case strings.HasPrefix(lower, "pre-compact") || strings.HasPrefix(lower, "precompact"):
+	case strings.HasPrefix(lower, "pre-compact"):
 		return HookPreCompact
-	case strings.HasPrefix(lower, "post-compact") || strings.HasPrefix(lower, "postcompact"):
+	case strings.HasPrefix(lower, "post-compact"):
 		return HookPostCompact
-	case strings.HasPrefix(lower, "subagent-start") || strings.HasPrefix(lower, "subagentstart"):
+	case strings.HasPrefix(lower, "subagent-start"):
 		return HookSubagentStart
-	case strings.HasPrefix(lower, "subagent-stop") || strings.HasPrefix(lower, "subagentstop"):
+	case strings.HasPrefix(lower, "subagent-stop"):
 		return HookSubagentStop
-	case strings.HasPrefix(lower, "teammate-idle") || strings.HasPrefix(lower, "teammateidle"):
+	case strings.HasPrefix(lower, "teammate-idle"):
 		return HookTeammateIdle
-	case strings.HasPrefix(lower, "task-created") || strings.HasPrefix(lower, "taskcreated"):
+	case strings.HasPrefix(lower, "task-created"):
 		return HookTaskCreated
-	case strings.HasPrefix(lower, "task-completed") || strings.HasPrefix(lower, "taskcompleted"):
+	case strings.HasPrefix(lower, "task-completed"):
 		return HookTaskCompleted
 	default:
 		return ""
@@ -460,7 +460,7 @@ func (r *Runner) RunDetailed(ctx context.Context, hookType HookType, input HookI
 		configID := fmt.Sprintf("config-%d", index+1)
 		executionInput := input.Snapshot()
 		executionInput.HookConfigID = configID
-		executionInput.HookExecutionID = r.uniqueHookExecutionID(hookExecutionID(hookType, executionInput, configID))
+		executionInput.HookExecutionID = r.nextHookExecutionID(hookExecutionID(hookType, executionInput, configID))
 		output := r.executeHook(ctx, hook, executionInput)
 		executions = append(executions, HookExecution{
 			ExecutionID: executionInput.HookExecutionID,
@@ -475,19 +475,16 @@ func (r *Runner) RunDetailed(ctx context.Context, hookType HookType, input HookI
 	return executions
 }
 
-// uniqueHookExecutionID preserves the historical first-occurrence ID while
-// disambiguating retries/repeated lifecycle invocations that share the same
-// causal fields and configuration. ConfigID remains stable across executions.
-func (r *Runner) uniqueHookExecutionID(base string) string {
+// nextHookExecutionID disambiguates every lifecycle invocation that shares
+// the same causal fields and configuration. ConfigID remains stable across
+// executions, while the occurrence suffix identifies the concrete attempt.
+func (r *Runner) nextHookExecutionID(base string) string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.executionCounts == nil {
 		r.executionCounts = make(map[string]uint64)
 	}
 	r.executionCounts[base]++
-	if r.executionCounts[base] == 1 {
-		return base
-	}
 	return fmt.Sprintf("%s:occurrence-%d", base, r.executionCounts[base])
 }
 
@@ -592,6 +589,7 @@ func firstHookReason(output HookOutput) string {
 		output.SystemReminder,
 		output.StopReason,
 		output.Stderr,
+		output.ExecutionError,
 	} {
 		if value = strings.TrimSpace(value); value != "" {
 			return value
@@ -722,8 +720,6 @@ func hookErrorOutput(message string, block bool) HookOutput {
 	return HookOutput{
 		ExitCode:       -1,
 		ExecutionError: message,
-		Stderr:         message,
-		StderrBytes:    int64(len(message)),
 		Block:          block,
 	}
 }
@@ -770,12 +766,6 @@ func executeCommandHook(parentCtx context.Context, hook Hook, input HookInput) H
 	output.Stderr = stderr.String()
 	output.StderrBytes = stderr.Total()
 	output.StderrTruncated = stderr.Truncated()
-	if output.Stderr == "" && output.ExecutionError != "" {
-		// Preserve the historical Stderr-facing error contract for callers while
-		// retaining the distinct execution error above for exact evidence.
-		output.Stderr = output.ExecutionError
-		output.StderrBytes = int64(len(output.Stderr))
-	}
 
 	// Try to parse stdout as JSON for structured output
 	var structured struct {

@@ -28,11 +28,6 @@ func Debug(format string, args ...any) {
 	}
 }
 
-// Debugf is an alias for Debug.
-func Debugf(format string, args ...any) {
-	Debug(format, args...)
-}
-
 // Server writes a server-prefixed log message.
 func Server(format string, args ...any) {
 	mu.Lock()

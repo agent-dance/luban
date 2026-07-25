@@ -25,9 +25,9 @@ func TestAdminCommandsUseContextLanguage(t *testing.T) {
 		t.Run(tt.command, func(t *testing.T) {
 			var output strings.Builder
 			ctx := &commands.Context{
-				CWD:      t.TempDir(),
-				Language: i18n.LangZH,
-				OnEvent:  func(s string) { output.WriteString(s) },
+				CWD:                   t.TempDir(),
+				Language:              i18n.LangZH,
+				OnCommandPresentation: captureCompletedCommand(&output),
 			}
 			if err := registry.Find(tt.command).Execute(ctx, tt.args); err != nil {
 				t.Fatalf("Execute: %v", err)

@@ -26,7 +26,7 @@ func TestNewErrorEventRetainsPrivateEvidenceUntilAudienceProjection(t *testing.T
 		t.Fatal("runtime event retained caller-owned metadata map")
 	}
 	projection, err := NewAudienceProjector().Project(event, ProjectionOptions{
-		Audience: AudienceSDK, Redaction: RedactionPublic,
+		Audience: AudienceSDK, Redaction: RedactionStrict,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -4,20 +4,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agent-dance/luban/goal"
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/runtime/goal"
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/types"
 )
 
 type commandI18NQueryLoop struct{}
 
-func (commandI18NQueryLoop) SetMessages([]types.Message)   {}
-func (commandI18NQueryLoop) Messages() []types.Message     { return nil }
-func (commandI18NQueryLoop) Model() string                 { return "model-test" }
-func (commandI18NQueryLoop) SetModel(string)               {}
-func (commandI18NQueryLoop) ContextUsage() (int, int)      { return 1000, 250 }
-func (commandI18NQueryLoop) SetProvider(provider.Provider) {}
+func (commandI18NQueryLoop) SetMessagesPreservingToolUseLedger([]types.Message) {}
+func (commandI18NQueryLoop) Messages() []types.Message                          { return nil }
+func (commandI18NQueryLoop) Model() string                                      { return "model-test" }
+func (commandI18NQueryLoop) SetModel(string)                                    {}
+func (commandI18NQueryLoop) ContextUsage() (int, int)                           { return 1000, 250 }
+func (commandI18NQueryLoop) SetProvider(provider.Provider)                      {}
 
 type commandI18NGoalRuntime struct{ current *goal.Goal }
 
@@ -67,15 +67,6 @@ func TestBuiltinsUseContextLanguage(t *testing.T) {
 			name: "model switch", cmd: &modelCmd{}, args: "model-test",
 			ctx:  func(ctx *Context) { ctx.QueryLoop = commandI18NQueryLoop{} },
 			want: "模型已切换为",
-		},
-		{
-			name: "cost report", cmd: &costCmd{},
-			ctx: func(ctx *Context) {
-				ctx.CurrentModel = "unknown-model"
-				ctx.TotalInputTokens = 12
-				ctx.TotalOutputTokens = 34
-			},
-			want: "Token 用量",
 		},
 		{
 			name: "session usage", cmd: &sessionCmd{}, args: "invalid",

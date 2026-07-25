@@ -243,4 +243,3 @@ func TestParser_CommentGrouping_BlankLineSeparation(t *testing.T) {
 		})
 	}
 }
-

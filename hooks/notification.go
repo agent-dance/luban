@@ -51,9 +51,9 @@ func executeNotificationHook(ctx context.Context, hook Hook, input HookInput) Ho
 	}
 
 	if err != nil {
-		// Notification failures are non-fatal — just surface the error as stderr.
+		// Notification failures are non-fatal execution failures.
 		message := i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyHookNotificationFailed, err)
-		return HookOutput{ExecutionError: message, Stderr: message, StderrBytes: int64(len(message))}
+		return HookOutput{ExecutionError: message}
 	}
 	return HookOutput{}
 }

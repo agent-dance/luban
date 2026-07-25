@@ -58,3 +58,18 @@ func TestStatusBuildDiagnosticKeepsUnknownDistinctFromMatch(t *testing.T) {
 		t.Fatalf("unknown comparison presented as match:\n%s", output)
 	}
 }
+
+func TestStatusUsesSessionBillingCurrency(t *testing.T) {
+	var output string
+	ctx := &Context{
+		Language: i18n.LangZH, QueryLoop: commandI18NQueryLoop{},
+		TotalCostUSD: 0.125, CostCurrency: "CNY",
+		OnEvent: func(value string) { output += value },
+	}
+	if err := (&statusCmd{}).Execute(ctx, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "¥0.1250") || strings.Contains(output, "$0.1250") {
+		t.Fatalf("status cost did not use session currency:\n%s", output)
+	}
+}

@@ -27,7 +27,7 @@ func TestTaskCreatedTask26ConfigFilenameAndCommandBlocking(t *testing.T) {
 		t.Fatalf("TaskCreated block was not typed: %T %v", err, err)
 	}
 
-	for _, filename := range []string{"task-created-a.sh", "taskcreated-b.sh"} {
+	for _, filename := range []string{"task-created-a.sh", "task-created-b.sh"} {
 		if got := hookTypeFromFilename(filename); got != HookTaskCreated {
 			t.Errorf("hookTypeFromFilename(%q) = %q", filename, got)
 		}

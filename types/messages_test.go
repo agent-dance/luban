@@ -128,7 +128,7 @@ func TestToolResultMessageToolReferenceRoundTrip(t *testing.T) {
 	}
 }
 
-func TestHasToolUse(t *testing.T) {
+func TestGetToolUses(t *testing.T) {
 	msg := Message{
 		Role: RoleAssistant,
 		Content: []ContentBlock{
@@ -136,10 +136,6 @@ func TestHasToolUse(t *testing.T) {
 			ToolUseBlock{Type: ContentTypeToolUse, ID: "t1", Name: "Bash", Input: map[string]any{"command": "ls"}},
 		},
 	}
-	if !msg.HasToolUse() {
-		t.Error("expected HasToolUse to be true")
-	}
-
 	uses := msg.GetToolUses()
 	if len(uses) != 1 {
 		t.Fatalf("expected 1 tool use, got %d", len(uses))
@@ -191,10 +187,6 @@ func TestMessageWithToolUseMarshalRoundTrip(t *testing.T) {
 	var decoded Message
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("unmarshal error: %v", err)
-	}
-
-	if !decoded.HasToolUse() {
-		t.Error("expected decoded message to have tool use")
 	}
 
 	uses := decoded.GetToolUses()

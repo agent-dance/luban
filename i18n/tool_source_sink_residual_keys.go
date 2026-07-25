@@ -5,50 +5,43 @@ package i18n
 // operating-system causes remain formatting parameters.
 const (
 	KeyCompactSummaryNoSummarizer        Key = "compact.summary.no_summarizer"
-	KeyCompactSummaryPTLRetriesExhausted Key = "compact.summary.ptl_retries_exhausted"
 	KeyCompactSummaryPTLHistoryPreserved Key = "compact.summary.ptl_history_preserved"
 
-	KeyToolSourceSinkReadDirectory          Key = "tool.source_sink.read.directory"
-	KeyToolSourceSinkParseMarshal           Key = "tool.source_sink.parse.marshal"
-	KeyToolSourceSinkParseDecode            Key = "tool.source_sink.parse.decode"
-	KeyToolSourceSinkConfigCreateDirectory  Key = "tool.source_sink.config.create_directory"
-	KeyToolSourceSinkConfigMarshal          Key = "tool.source_sink.config.marshal"
-	KeyToolSourceSinkConfigWrite            Key = "tool.source_sink.config.write"
-	KeyToolSourceSinkAtomicCreateTemporary  Key = "tool.source_sink.atomic.create_temporary"
-	KeyToolSourceSinkAtomicWriteTemporary   Key = "tool.source_sink.atomic.write_temporary"
-	KeyToolSourceSinkAtomicSyncTemporary    Key = "tool.source_sink.atomic.sync_temporary"
-	KeyToolSourceSinkAtomicCloseTemporary   Key = "tool.source_sink.atomic.close_temporary"
-	KeyToolSourceSinkAtomicChmodTemporary   Key = "tool.source_sink.atomic.chmod_temporary"
-	KeyToolSourceSinkAtomicReplaceTarget    Key = "tool.source_sink.atomic.replace_target"
-	KeyToolSourceSinkReadPathNullBytes      Key = "tool.source_sink.read.path_null_bytes"
-	KeyToolSourceSinkReadImageEmpty         Key = "tool.source_sink.read.image_empty"
-	KeyToolSourceSinkReadImageTokenLimit    Key = "tool.source_sink.read.image_token_limit"
-	KeyToolSourceSinkReadImagePrepare       Key = "tool.source_sink.read.image_prepare"
-	KeyToolSourceSinkReadPNGInvalidSize     Key = "tool.source_sink.read.png_invalid_size"
-	KeyToolSourceSinkReadPNGTooLarge        Key = "tool.source_sink.read.png_too_large"
-	KeyToolSourceSinkNotebookSourceFormat   Key = "tool.source_sink.read.notebook_source_format"
-	KeyToolSourceSinkNotebookParse          Key = "tool.source_sink.read.notebook_parse"
-	KeyToolSourceSinkNotebookCellSource     Key = "tool.source_sink.read.notebook_cell_source"
-	KeyToolSourceSinkSearchInvalidRegex     Key = "tool.source_sink.search.invalid_regex"
-	KeyToolSourceSinkSearchInvalidContext   Key = "tool.source_sink.search.invalid_context"
-	KeyToolSourceSinkSearchOutsideAllowed   Key = "tool.source_sink.search.outside_allowed"
-	KeyToolSourceSinkMCPReadSettings        Key = "tool.source_sink.mcp.read_settings"
-	KeyToolSourceSinkMCPParseSettings       Key = "tool.source_sink.mcp.parse_settings"
-	KeyToolSourceSinkMCPNotConfigured       Key = "tool.source_sink.mcp.not_configured"
-	KeyToolSourceSinkMCPConnect             Key = "tool.source_sink.mcp.connect"
-	KeyToolSourceSinkMCPConnectTimeout      Key = "tool.source_sink.mcp.connect_timeout"
-	KeyToolSourceSinkMCPListTools           Key = "tool.source_sink.mcp.list_tools"
-	KeyToolSourceSinkWorktreeRuntimeMissing Key = "tool.source_sink.worktree.runtime_missing"
-	KeyToolSourceSinkWorktreeCWDEmpty       Key = "tool.source_sink.worktree.cwd_empty"
-	KeyToolSourceSinkWorktreeCWDUnavailable Key = "tool.source_sink.worktree.cwd_unavailable"
-	KeyToolSourceSinkWorktreeCWDNotDir      Key = "tool.source_sink.worktree.cwd_not_directory"
-	KeyToolSourceSinkWorktreePersistSession Key = "tool.source_sink.worktree.persist_session"
-	KeyToolSourceSinkWorktreeSwitchCWD      Key = "tool.source_sink.worktree.switch_cwd"
+	KeyToolSourceSinkReadDirectory           Key = "tool.source_sink.read.directory"
+	KeyToolSourceSinkParseMarshal            Key = "tool.source_sink.parse.marshal"
+	KeyToolSourceSinkParseDecode             Key = "tool.source_sink.parse.decode"
+	KeyToolSourceSinkConfigCreateDirectory   Key = "tool.source_sink.config.create_directory"
+	KeyToolSourceSinkConfigMarshal           Key = "tool.source_sink.config.marshal"
+	KeyToolSourceSinkConfigWrite             Key = "tool.source_sink.config.write"
+	KeyToolSourceSinkAtomicCreateTemporary   Key = "tool.source_sink.atomic.create_temporary"
+	KeyToolSourceSinkAtomicWriteTemporary    Key = "tool.source_sink.atomic.write_temporary"
+	KeyToolSourceSinkAtomicSyncTemporary     Key = "tool.source_sink.atomic.sync_temporary"
+	KeyToolSourceSinkAtomicCloseTemporary    Key = "tool.source_sink.atomic.close_temporary"
+	KeyToolSourceSinkAtomicChmodTemporary    Key = "tool.source_sink.atomic.chmod_temporary"
+	KeyToolSourceSinkAtomicReplaceTarget     Key = "tool.source_sink.atomic.replace_target"
+	KeyToolSourceSinkReadPathNullBytes       Key = "tool.source_sink.read.path_null_bytes"
+	KeyToolSourceSinkReadImageEmpty          Key = "tool.source_sink.read.image_empty"
+	KeyToolSourceSinkReadImageTokenLimit     Key = "tool.source_sink.read.image_token_limit"
+	KeyToolSourceSinkReadImagePrepare        Key = "tool.source_sink.read.image_prepare"
+	KeyToolSourceSinkReadPNGInvalidSize      Key = "tool.source_sink.read.png_invalid_size"
+	KeyToolSourceSinkReadPNGTooLarge         Key = "tool.source_sink.read.png_too_large"
+	KeyToolSourceSinkNotebookSourceFormat    Key = "tool.source_sink.read.notebook_source_format"
+	KeyToolSourceSinkNotebookParse           Key = "tool.source_sink.read.notebook_parse"
+	KeyToolSourceSinkNotebookCellSource      Key = "tool.source_sink.read.notebook_cell_source"
+	KeyToolSourceSinkSearchInvalidRegex      Key = "tool.source_sink.search.invalid_regex"
+	KeyToolSourceSinkSearchInvalidContext    Key = "tool.source_sink.search.invalid_context"
+	KeyToolSourceSinkSearchInvalidPagination Key = "tool.source_sink.search.invalid_pagination"
+	KeyToolSourceSinkSearchOutsideAllowed    Key = "tool.source_sink.search.outside_allowed"
+	KeyToolSourceSinkWorktreeRuntimeMissing  Key = "tool.source_sink.worktree.runtime_missing"
+	KeyToolSourceSinkWorktreeCWDEmpty        Key = "tool.source_sink.worktree.cwd_empty"
+	KeyToolSourceSinkWorktreeCWDUnavailable  Key = "tool.source_sink.worktree.cwd_unavailable"
+	KeyToolSourceSinkWorktreeCWDNotDir       Key = "tool.source_sink.worktree.cwd_not_directory"
+	KeyToolSourceSinkWorktreePersistSession  Key = "tool.source_sink.worktree.persist_session"
+	KeyToolSourceSinkWorktreeSwitchCWD       Key = "tool.source_sink.worktree.switch_cwd"
 )
 
 var toolSourceSinkResidualKeys = [...]Key{
 	KeyCompactSummaryNoSummarizer,
-	KeyCompactSummaryPTLRetriesExhausted,
 	KeyCompactSummaryPTLHistoryPreserved,
 	KeyToolSourceSinkReadDirectory,
 	KeyToolSourceSinkParseMarshal,
@@ -73,13 +66,8 @@ var toolSourceSinkResidualKeys = [...]Key{
 	KeyToolSourceSinkNotebookCellSource,
 	KeyToolSourceSinkSearchInvalidRegex,
 	KeyToolSourceSinkSearchInvalidContext,
+	KeyToolSourceSinkSearchInvalidPagination,
 	KeyToolSourceSinkSearchOutsideAllowed,
-	KeyToolSourceSinkMCPReadSettings,
-	KeyToolSourceSinkMCPParseSettings,
-	KeyToolSourceSinkMCPNotConfigured,
-	KeyToolSourceSinkMCPConnect,
-	KeyToolSourceSinkMCPConnectTimeout,
-	KeyToolSourceSinkMCPListTools,
 	KeyToolSourceSinkWorktreeRuntimeMissing,
 	KeyToolSourceSinkWorktreeCWDEmpty,
 	KeyToolSourceSinkWorktreeCWDUnavailable,
@@ -107,13 +95,6 @@ func init() {
 		"summarizer が設定されていません",
 		"summarizer가 구성되지 않았습니다",
 		"Summarizer не настроен")
-	add(KeyCompactSummaryPTLRetriesExhausted,
-		"compact summary prompt-too-long retry exhausted after %d attempts",
-		"生成压缩摘要时，prompt-too-long 重试 %d 次后仍未成功",
-		"Die prompt-too-long-Wiederholungen für die Kompaktzusammenfassung waren nach %d Versuchen ausgeschöpft",
-		"圧縮要約の prompt-too-long リトライは %d 回で上限に達しました",
-		"압축 요약의 prompt-too-long 재시도가 %d회 후 모두 소진되었습니다",
-		"Повторные попытки prompt-too-long для краткой сводки исчерпаны после %d попыток")
 	add(KeyCompactSummaryPTLHistoryPreserved,
 		"compact summary input exceeds the context window; conversation history was preserved",
 		"压缩摘要输入超出上下文窗口；会话历史已保留",
@@ -286,6 +267,13 @@ func init() {
 		"ripgrep の使用方法が正しくありません: context 値は 0 以上の整数で指定してください",
 		"ripgrep 사용 오류: context 값은 0 이상의 정수여야 합니다",
 		"Ошибка использования ripgrep: значения context должны быть неотрицательными целыми числами")
+	add(KeyToolSourceSinkSearchInvalidPagination,
+		"grep pagination parameter %s must be a non-negative integer",
+		"grep 分页参数 %s 必须是非负整数",
+		"Der grep-Paginierungsparameter %s muss eine nicht negative Ganzzahl sein",
+		"grep のページ分割パラメーター %s は 0 以上の整数で指定してください",
+		"grep 페이지 매김 매개변수 %s은(는) 0 이상의 정수여야 합니다",
+		"Параметр пагинации grep %s должен быть неотрицательным целым числом")
 	add(KeyToolSourceSinkSearchOutsideAllowed,
 		"path is outside allowed directories: %s",
 		"路径不在允许的目录中：%s",
@@ -293,49 +281,6 @@ func init() {
 		"パスは許可されたディレクトリの外にあります: %s",
 		"경로가 허용된 디렉터리 밖에 있습니다: %s",
 		"Путь находится вне разрешённых каталогов: %s")
-
-	add(KeyToolSourceSinkMCPReadSettings,
-		"read MCP settings %s: %v",
-		"读取 MCP 设置 %s 失败：%v",
-		"MCP-Einstellungen %s konnten nicht gelesen werden: %v",
-		"MCP 設定 %s を読み込めませんでした: %v",
-		"MCP 설정 %s을(를) 읽지 못했습니다: %v",
-		"Не удалось прочитать настройки MCP %s: %v")
-	add(KeyToolSourceSinkMCPParseSettings,
-		"parse MCP settings %s: %v",
-		"解析 MCP 设置 %s 失败：%v",
-		"MCP-Einstellungen %s konnten nicht verarbeitet werden: %v",
-		"MCP 設定 %s を解析できませんでした: %v",
-		"MCP 설정 %s을(를) 파싱하지 못했습니다: %v",
-		"Не удалось разобрать настройки MCP %s: %v")
-	add(KeyToolSourceSinkMCPNotConfigured,
-		"MCP server %q not configured",
-		"尚未配置 MCP server %q",
-		"MCP-Server %q ist nicht konfiguriert",
-		"MCP server %q は設定されていません",
-		"MCP server %q이(가) 구성되지 않았습니다",
-		"MCP server %q не настроен")
-	add(KeyToolSourceSinkMCPConnect,
-		"connect MCP server %q: %v",
-		"连接 MCP server %q 失败：%v",
-		"Verbindung zum MCP-Server %q fehlgeschlagen: %v",
-		"MCP server %q に接続できませんでした: %v",
-		"MCP server %q에 연결하지 못했습니다: %v",
-		"Не удалось подключиться к MCP server %q: %v")
-	add(KeyToolSourceSinkMCPConnectTimeout,
-		"connect MCP server %q: timed out after 30s",
-		"连接 MCP server %q 超时（30 秒）",
-		"Zeitüberschreitung nach 30 s beim Verbinden mit MCP-Server %q",
-		"MCP server %q への接続が 30 秒でタイムアウトしました",
-		"MCP server %q 연결이 30초 후 시간 초과되었습니다",
-		"Истекло время подключения к MCP server %q (30 с)")
-	add(KeyToolSourceSinkMCPListTools,
-		"list tools from MCP server %q: %v",
-		"列出 MCP server %q 的 Tool 失败：%v",
-		"Tools des MCP-Servers %q konnten nicht aufgelistet werden: %v",
-		"MCP server %q の Tool 一覧を取得できませんでした: %v",
-		"MCP server %q의 Tool 목록을 가져오지 못했습니다: %v",
-		"Не удалось получить список Tool с MCP server %q: %v")
 
 	add(KeyToolSourceSinkWorktreeRuntimeMissing,
 		"worktree runtime is not configured",

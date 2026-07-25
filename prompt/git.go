@@ -19,7 +19,7 @@ type GitContextOptions struct {
 	DisableGitInstructions bool
 }
 
-// LoadGitContext returns a Claude Code-style git status snapshot for cwd.
+// LoadGitContext returns a git status snapshot for cwd.
 // It returns an empty string for non-git directories, disabled git instructions,
 // missing git, command failures, and timeouts.
 func LoadGitContext(cwd string) string {
@@ -139,7 +139,7 @@ func truncateGitStatus(status string) string {
 	if len(status) <= maxGitStatusChars {
 		return status
 	}
-	return status[:maxGitStatusChars] + "\n... (truncated because it exceeds 2k characters. If you need more information, run \"git status\" using BashTool)"
+	return status[:maxGitStatusChars] + "\n... (truncated because it exceeds 2k characters. If you need more information, run \"git status\" using Bash)"
 }
 
 func emptyPlaceholder(value string) string {
@@ -150,13 +150,5 @@ func emptyPlaceholder(value string) string {
 }
 
 func gitInstructionsDisabled() bool {
-	for _, name := range []string{
-		"CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS",
-		"DISABLE_GIT_INSTRUCTIONS",
-	} {
-		if isTruthyPromptEnv(os.Getenv(name)) {
-			return true
-		}
-	}
-	return false
+	return isTruthyPromptEnv(os.Getenv("LUBAN_CODE_DISABLE_GIT_INSTRUCTIONS"))
 }

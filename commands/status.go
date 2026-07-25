@@ -7,6 +7,7 @@ import (
 
 	"github.com/agent-dance/luban/buildinfo"
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/provider"
 )
 
 // ---------------------------------------------------------------------------
@@ -54,7 +55,7 @@ func (c *statusCmd) Execute(ctx *Context, _ string) error {
 		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyCommandStatusWebSearches, formatTokens(ctx.TotalWebSearchRequests)))
 	}
 	if ctx.TotalCostUSD > 0 {
-		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyCommandStatusCost, ctx.TotalCostUSD))
+		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyCommandStatusCost, provider.CostCurrencySymbol(ctx.CostCurrency), ctx.TotalCostUSD))
 	} else if ctx.CostUnknown {
 		sb.WriteString(i18n.Text(ctx.Language, i18n.KeyCommandStatusCostUnknown))
 	}

@@ -22,7 +22,7 @@ func TestToolBackgroundAgentKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolBackgroundAgentEnglishCompatibility(t *testing.T) {
+func TestToolBackgroundAgentEnglishContract(t *testing.T) {
 	rawCause := errors.New("raw-cause-42")
 	tests := []struct {
 		key  Key

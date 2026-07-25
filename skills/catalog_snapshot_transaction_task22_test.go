@@ -8,16 +8,20 @@ import (
 	"time"
 )
 
-func TestConsumeSnapshotBlocksRefreshAndReturnsDefensiveSnapshot(t *testing.T) {
+func TestConsumeSnapshotAtGenerationBlocksRefreshAndReturnsDefensiveSnapshot(t *testing.T) {
 	root := t.TempDir()
 	task22WriteTransactionalSkill(t, root, "transactional", "initial")
-	manager := NewManager(DirSource{Dir: root, Source: SourceProject})
+	manager := newCatalogManagerForTest(DirSource{Dir: root, Source: SourceProject})
+	binding, err := manager.SnapshotBinding("task22-session")
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	callbackStarted := make(chan struct{})
 	releaseCallback := make(chan struct{})
 	consumeDone := make(chan error, 1)
 	go func() {
-		consumeDone <- manager.ConsumeSnapshot("task22-session", func(snapshot CatalogSnapshot) error {
+		consumeDone <- manager.ConsumeSnapshotAtGeneration("task22-session", binding.ProjectGeneration, func(snapshot CatalogSnapshot) error {
 			if len(snapshot.Skills) != 1 || snapshot.Skills[0].Summary != "initial" {
 				return errors.New("unexpected transactional snapshot")
 			}
@@ -32,12 +36,12 @@ func TestConsumeSnapshotBlocksRefreshAndReturnsDefensiveSnapshot(t *testing.T) {
 
 	refreshDone := make(chan struct{})
 	go func() {
-		manager.Refresh()
+		_, _ = manager.RefreshSnapshot("task22-session")
 		close(refreshDone)
 	}()
 	select {
 	case <-refreshDone:
-		t.Fatal("Refresh crossed an active ConsumeSnapshot read transaction")
+		t.Fatal("RefreshSnapshot crossed an active ConsumeSnapshotAtGeneration read transaction")
 	case <-time.After(50 * time.Millisecond):
 	}
 	close(releaseCallback)
@@ -47,7 +51,7 @@ func TestConsumeSnapshotBlocksRefreshAndReturnsDefensiveSnapshot(t *testing.T) {
 	select {
 	case <-refreshDone:
 	case <-time.After(time.Second):
-		t.Fatal("Refresh remained blocked after ConsumeSnapshot returned")
+		t.Fatal("RefreshSnapshot remained blocked after ConsumeSnapshotAtGeneration returned")
 	}
 
 	snapshot, err := manager.Snapshot("task22-session")
@@ -56,53 +60,6 @@ func TestConsumeSnapshotBlocksRefreshAndReturnsDefensiveSnapshot(t *testing.T) {
 	}
 	if len(snapshot.Skills) != 1 || snapshot.Skills[0].Summary != "initial" {
 		t.Fatalf("callback mutated Manager snapshot: %#v", snapshot)
-	}
-}
-
-func TestConsumeSnapshotBlocksVisibilityWriterAndPropagatesCallbackError(t *testing.T) {
-	root := t.TempDir()
-	task22WriteTransactionalSkill(t, root, "visibility", "visible")
-	manager := NewManager(DirSource{Dir: root, Source: SourceProject})
-	snapshot, err := manager.Snapshot("task22-visibility")
-	if err != nil || len(snapshot.Skills) != 1 {
-		t.Fatalf("snapshot = %#v err=%v", snapshot, err)
-	}
-	name := snapshot.Skills[0].Name
-
-	wantErr := errors.New("task22 callback stopped")
-	callbackStarted := make(chan struct{})
-	releaseCallback := make(chan struct{})
-	consumeDone := make(chan error, 1)
-	go func() {
-		consumeDone <- manager.ConsumeSnapshot("task22-visibility", func(CatalogSnapshot) error {
-			close(callbackStarted)
-			<-releaseCallback
-			return wantErr
-		})
-	}()
-	<-callbackStarted
-
-	writerDone := make(chan bool, 1)
-	go func() {
-		changed, found := manager.SetEnabled("task22-visibility", name, false)
-		writerDone <- changed && found
-	}()
-	select {
-	case result := <-writerDone:
-		t.Fatalf("visibility writer crossed transaction: result=%t", result)
-	case <-time.After(50 * time.Millisecond):
-	}
-	close(releaseCallback)
-	if err := <-consumeDone; !errors.Is(err, wantErr) {
-		t.Fatalf("ConsumeSnapshot error = %v, want %v", err, wantErr)
-	}
-	select {
-	case ok := <-writerDone:
-		if !ok {
-			t.Fatal("visibility writer did not commit after transaction")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("visibility writer remained blocked after callback error")
 	}
 }
 

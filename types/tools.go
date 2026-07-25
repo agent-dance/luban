@@ -72,24 +72,9 @@ type ToolMetadata struct {
 	MaxResultSizeChars int  `json:"max_result_size_chars,omitempty"`
 }
 
-// ToolContract carries TS-style optional contract fields without expanding
-// the legacy Tool interface. Tools migrate incrementally by implementing
-// ToolContractProvider; tools that do not implement it keep their old path.
-type ToolContract struct {
-	OutputSchema       *JSONSchema
-	Strict             bool
-	ReadOnly           bool
-	ConcurrencySafe    bool
-	MaxResultSizeChars int
-}
-
 // UnlimitedToolResultSize mirrors TS Infinity for tools that self-bound their
 // output and must never have results persisted by the shared result store.
 const UnlimitedToolResultSize = -1
-
-type ToolContractProvider interface {
-	ToolContract() ToolContract
-}
 
 type ToolResultMapper interface {
 	MapToolResultToToolResultBlock(data any, toolUseID string) ToolResultBlock
@@ -102,32 +87,13 @@ type ToolPermissionRejectionMapper interface {
 	MapToolPermissionRejection(input map[string]any, toolUseID, message string) ToolResultBlock
 }
 
-type ConcurrentSafeTool interface {
-	IsConcurrentSafe() bool
-}
-
-type InputAwareConcurrentSafeTool interface {
-	IsConcurrentSafeInput(input map[string]any) bool
-}
-
-type ReadOnlyTool interface {
-	IsReadOnly() bool
-}
-
-type InputAwareReadOnlyTool interface {
-	IsReadOnlyInput(input map[string]any) bool
-}
-
-// ToolDefinition is the API-level tool contract. OutputSchema and Metadata
-// are retained for local/MCP consumers; model providers select only the
-// fields their wire format supports.
+// ToolDefinition is the provider-facing tool contract. Strict is derived from
+// the input schema instead of a second independently maintained declaration.
 type ToolDefinition struct {
-	Name         string       `json:"name"`
-	Description  string       `json:"description"`
-	InputSchema  JSONSchema   `json:"input_schema"`
-	OutputSchema *JSONSchema  `json:"output_schema,omitempty"`
-	Strict       bool         `json:"strict,omitempty"`
-	Metadata     ToolMetadata `json:"-"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	InputSchema JSONSchema `json:"input_schema"`
+	Strict      bool       `json:"strict,omitempty"`
 }
 
 // ServerToolDefinition is an API-hosted tool schema. It is intentionally
@@ -181,21 +147,14 @@ type PermissionUpdateType string
 
 const (
 	PermissionUpdateAddRules       PermissionUpdateType = "addRules"
-	PermissionUpdateReplaceRules   PermissionUpdateType = "replaceRules"
-	PermissionUpdateRemoveRules    PermissionUpdateType = "removeRules"
-	PermissionUpdateSetMode        PermissionUpdateType = "setMode"
 	PermissionUpdateAddDirectories PermissionUpdateType = "addDirectories"
-	PermissionUpdateRemoveDirs     PermissionUpdateType = "removeDirectories"
 )
 
 type PermissionUpdateDestination string
 
 const (
-	PermissionDestinationUserSettings    PermissionUpdateDestination = "userSettings"
-	PermissionDestinationProjectSettings PermissionUpdateDestination = "projectSettings"
-	PermissionDestinationLocalSettings   PermissionUpdateDestination = "localSettings"
-	PermissionDestinationSession         PermissionUpdateDestination = "session"
-	PermissionDestinationCLIArg          PermissionUpdateDestination = "cliArg"
+	PermissionDestinationLocalSettings PermissionUpdateDestination = "localSettings"
+	PermissionDestinationSession       PermissionUpdateDestination = "session"
 )
 
 // PermissionRuleValue mirrors the model-visible value stored in permissions
@@ -217,15 +176,14 @@ type PermissionUpdate struct {
 }
 
 const (
-	ToolFeatureTaskV2        = "task_v2"
-	ToolFeatureTeams         = "teams"
-	ToolFeatureRemoteTrigger = "remote_trigger"
-	ToolFeatureCron          = "cron"
-	ToolFeatureWebSearch     = "web_search"
-	ToolFeatureToolSearch    = "tool_search"
-	ToolFeaturePlanMode      = "plan_mode"
-	ToolFeatureWorktree      = "worktree"
-	ToolFeatureBrief         = "brief"
+	ToolFeatureTeams           = "teams"
+	ToolFeatureRemoteTrigger   = "remote_trigger"
+	ToolFeatureCron            = "cron"
+	ToolFeatureWebSearch       = "web_search"
+	ToolFeatureToolSearch      = "tool_search"
+	ToolFeaturePlanMode        = "plan_mode"
+	ToolFeatureWorktree        = "worktree"
+	ToolFeatureSendUserMessage = "send_user_message"
 )
 
 // ToolRuntimeContext is the immutable-by-convention session snapshot used by
@@ -237,7 +195,6 @@ type ToolRuntimeContext struct {
 	AllowedDirs    []string              `json:"allowedDirs,omitempty"`
 	Interactive    bool                  `json:"interactive,omitempty"`
 	AgentID        string                `json:"agentId,omitempty"`
-	ChannelsActive bool                  `json:"channelsActive,omitempty"`
 	PermissionMode string                `json:"permissionMode,omitempty"`
 	Provider       string                `json:"provider,omitempty"`
 	Model          string                `json:"model,omitempty"`
@@ -317,6 +274,11 @@ type ToolPermissionResult struct {
 	PermissionBinding   ToolPermissionBinding
 	// Required marks bypass-immune asks such as safety and explicit ask rules.
 	Required bool
+	// ToolLocalReadOnlyAllow records that this exact invocation passed a
+	// read-only tool's own scope checks before its final decision was delegated
+	// to the runtime permission policy. It must not override required asks or
+	// explicit ask/deny rules.
+	ToolLocalReadOnlyAllow bool
 	// Sandboxed is the tool-check snapshot proving that this exact invocation
 	// was evaluated with a real OS sandbox capability. Permission handlers may
 	// use sandbox auto-approval only when this signed handoff bit is true.
@@ -324,6 +286,11 @@ type ToolPermissionResult struct {
 	// SandboxCapability is the immutable capability ID corresponding to
 	// Sandboxed. An empty ID can never authorize sandbox auto-approval.
 	SandboxCapability string
+	// RuntimeSnapshot and ToolMetadata are detached, process-local presentation
+	// context captured by Registry during the permission check. They describe
+	// the basis shown to a reviewer and never grant or widen execution authority.
+	RuntimeSnapshot *ToolRuntimeContext `json:"-"`
+	ToolMetadata    ToolMetadata        `json:"-"`
 }
 
 // ToolPermissionChecker lets a tool make its content-specific decision before
@@ -336,66 +303,6 @@ type ToolPermissionChecker interface {
 // for example Bash commands and ExitWorktree(action=remove).
 type ToolMetadataProvider interface {
 	ToolMetadata(input map[string]any) ToolMetadata
-}
-
-// ToolAutoClassifierInputProvider projects a tool input to the concise string
-// used by permission/autonomy classifiers.
-type ToolAutoClassifierInputProvider interface {
-	ToAutoClassifierInput(input map[string]any) string
-}
-
-type ToolSearchReadClassification struct {
-	IsSearch bool
-	IsRead   bool
-}
-
-// ToolSearchReadClassifier distinguishes search enumeration from direct reads.
-// A tool may be read-only while still returning IsRead=false (Glob is the
-// canonical example).
-type ToolSearchReadClassifier interface {
-	SearchReadClassification(input map[string]any) ToolSearchReadClassification
-}
-
-func ToolAutoClassifierInput(tool Tool, input map[string]any) string {
-	if provider, ok := tool.(ToolAutoClassifierInputProvider); ok {
-		return provider.ToAutoClassifierInput(input)
-	}
-	return ""
-}
-
-func ToolSearchRead(tool Tool, input map[string]any) ToolSearchReadClassification {
-	if provider, ok := tool.(ToolSearchReadClassifier); ok {
-		return provider.SearchReadClassification(input)
-	}
-	if metadata, ok := tool.(ToolMetadataProvider); ok {
-		return ToolSearchReadClassification{IsSearch: metadata.ToolMetadata(input).Search}
-	}
-	return ToolSearchReadClassification{}
-}
-
-// AliasedTool allows a tool to expose legacy lookup names while publishing a
-// single canonical model-facing name.
-type AliasedTool interface {
-	Aliases() []string
-}
-
-// SendUserMessageAttachment is the renderer-facing metadata for a Brief
-// attachment. Attachment bytes deliberately never enter the model-visible
-// tool result or this cross-layer value.
-type SendUserMessageAttachment struct {
-	Path     string `json:"path"`
-	Size     int64  `json:"size"`
-	IsImage  bool   `json:"isImage"`
-	FileUUID string `json:"file_uuid,omitempty"`
-}
-
-// SendUserMessageOutput is shared by the tool dispatcher and UI renderers.
-// The provider sees only the tool's compact acknowledgement; local renderers
-// consume this typed value to display the actual user-facing message.
-type SendUserMessageOutput struct {
-	Message     string                      `json:"message"`
-	Attachments []SendUserMessageAttachment `json:"attachments,omitempty"`
-	SentAt      string                      `json:"sentAt,omitempty"`
 }
 
 // ToolResult represents the output of a tool execution.
@@ -520,8 +427,7 @@ func (e *ToolInputValidationError) LocalizedToolInputValidation(lang i18n.Langua
 }
 
 // ValidateToolInput enforces the root strict-object boundary advertised by a
-// tool schema. Value/type validation remains with the individual tool during
-// incremental migration.
+// tool schema. Value and type validation remain owned by the individual tool.
 func ValidateToolInput(t Tool, input map[string]any) error {
 	if t == nil {
 		return nil
@@ -543,76 +449,9 @@ func ValidateToolInput(t Tool, input map[string]any) error {
 	return &ToolInputValidationError{ToolName: t.Name(), UnexpectedFields: unexpected}
 }
 
-// ResolveToolContract returns the optional contract with legacy scheduling
-// interfaces folded in where a complete contract has not yet been declared.
-func ResolveToolContract(t Tool) ToolContract {
-	if t == nil {
-		return ToolContract{}
-	}
-	var contract ToolContract
-	if provider, ok := t.(ToolContractProvider); ok {
-		contract = provider.ToolContract()
-	}
-	if provider, ok := t.(ToolMetadataProvider); ok {
-		metadata := provider.ToolMetadata(nil)
-		contract.ReadOnly = metadata.ReadOnly
-		contract.ConcurrencySafe = metadata.ConcurrencySafe
-		if metadata.MaxResultSizeChars != 0 {
-			contract.MaxResultSizeChars = metadata.MaxResultSizeChars
-		}
-	}
-	if concurrent, ok := t.(ConcurrentSafeTool); ok {
-		contract.ConcurrencySafe = concurrent.IsConcurrentSafe()
-	}
-	if readOnly, ok := t.(ReadOnlyTool); ok {
-		contract.ReadOnly = readOnly.IsReadOnly()
-	}
-	return contract
-}
-
-// ToolConcurrencySafety resolves dynamic scheduling metadata before static
-// metadata. The second return value reports whether the tool declared a value.
-func ToolConcurrencySafety(t Tool, input map[string]any) (bool, bool) {
-	if t == nil {
-		return false, false
-	}
-	if provider, ok := t.(ToolMetadataProvider); ok {
-		return provider.ToolMetadata(input).ConcurrencySafe, true
-	}
-	if provider, ok := t.(InputAwareConcurrentSafeTool); ok {
-		return provider.IsConcurrentSafeInput(input), true
-	}
-	if provider, ok := t.(ConcurrentSafeTool); ok {
-		return provider.IsConcurrentSafe(), true
-	}
-	if provider, ok := t.(ToolContractProvider); ok {
-		return provider.ToolContract().ConcurrencySafe, true
-	}
-	return false, false
-}
-
-// ToolReadOnly resolves dynamic permission metadata before static metadata.
-func ToolReadOnly(t Tool, input map[string]any) (bool, bool) {
-	if t == nil {
-		return false, false
-	}
-	if provider, ok := t.(ToolMetadataProvider); ok {
-		return provider.ToolMetadata(input).ReadOnly, true
-	}
-	if provider, ok := t.(InputAwareReadOnlyTool); ok {
-		return provider.IsReadOnlyInput(input), true
-	}
-	if provider, ok := t.(ReadOnlyTool); ok {
-		return provider.IsReadOnly(), true
-	}
-	if provider, ok := t.(ToolContractProvider); ok {
-		return provider.ToolContract().ReadOnly, true
-	}
-	return false, false
-}
-
 // MapToolResult separates typed result data from provider-visible content.
-// Legacy tools without a mapper retain the previous string/block behavior.
+// Tools with typed Data may provide a model-facing mapper; explicit Content
+// and ContentBlocks remain authoritative for tools without typed Data.
 func MapToolResult(t Tool, result ToolResult, toolUseID string) ToolResultBlock {
 	block := ToolResultBlock{
 		Type:          ContentTypeToolResult,
@@ -686,18 +525,22 @@ func MapToolResult(t Tool, result ToolResult, toolUseID string) ToolResultBlock 
 }
 
 func applyToolResultContract(t Tool, block ToolResultBlock) ToolResultBlock {
-	contract := ResolveToolContract(t)
-	if contract.MaxResultSizeChars == 0 {
+	provider, ok := t.(ToolMetadataProvider)
+	if !ok {
+		return block
+	}
+	maxResultSizeChars := provider.ToolMetadata(nil).MaxResultSizeChars
+	if maxResultSizeChars == 0 {
 		return block
 	}
 	metadata := make(map[string]string, len(block.Metadata)+1)
 	for key, value := range block.Metadata {
 		metadata[key] = value
 	}
-	if contract.MaxResultSizeChars == UnlimitedToolResultSize {
+	if maxResultSizeChars == UnlimitedToolResultSize {
 		metadata["maxResultSizeChars"] = "inf"
-	} else if contract.MaxResultSizeChars > 0 {
-		metadata["maxResultSizeChars"] = strconv.Itoa(contract.MaxResultSizeChars)
+	} else if maxResultSizeChars > 0 {
+		metadata["maxResultSizeChars"] = strconv.Itoa(maxResultSizeChars)
 	}
 	block.Metadata = metadata
 	return block
@@ -705,30 +548,12 @@ func applyToolResultContract(t Tool, block ToolResultBlock) ToolResultBlock {
 
 // ToDefinition converts a Tool interface to an API ToolDefinition
 func ToDefinition(t Tool) ToolDefinition {
-	contract := ResolveToolContract(t)
-	metadata := ToolMetadata{
-		ReadOnly:           contract.ReadOnly,
-		ConcurrencySafe:    contract.ConcurrencySafe,
-		MaxResultSizeChars: contract.MaxResultSizeChars,
-	}
-	if provider, ok := t.(ToolMetadataProvider); ok {
-		declared := provider.ToolMetadata(nil)
-		metadata.ReadOnly = declared.ReadOnly
-		metadata.Search = declared.Search
-		metadata.Write = declared.Write
-		metadata.Destructive = declared.Destructive
-		metadata.ConcurrencySafe = declared.ConcurrencySafe
-		if declared.MaxResultSizeChars != 0 {
-			metadata.MaxResultSizeChars = declared.MaxResultSizeChars
-		}
-	}
+	schema := t.Schema()
 	return ToolDefinition{
-		Name:         t.Name(),
-		Description:  t.Description(),
-		InputSchema:  t.Schema(),
-		OutputSchema: contract.OutputSchema,
-		Strict:       contract.Strict,
-		Metadata:     metadata,
+		Name:        t.Name(),
+		Description: t.Description(),
+		InputSchema: schema,
+		Strict:      schema.RejectsUnknownFields(),
 	}
 }
 

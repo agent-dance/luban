@@ -5,20 +5,79 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/agent-dance/luban/engine"
 	"github.com/agent-dance/luban/i18n"
-	"github.com/agent-dance/luban/types"
 )
+
+// PermissionDecision is the result of an SDK permission challenge.
+type PermissionDecision int
+
+const (
+	PermissionAllow PermissionDecision = iota
+	PermissionDeny
+	PermissionAllowOnce
+)
+
+// PermissionRequest is the SDK-owned authorization request projected by the
+// application runtime adapter.
+type PermissionRequest struct {
+	SessionID          string             `json:"session_id"`
+	ExecutionSessionID string             `json:"execution_session_id,omitempty"`
+	TurnID             string             `json:"turn_id,omitempty"`
+	DecisionID         string             `json:"decision_id,omitempty"`
+	ToolUseID          string             `json:"tool_use_id,omitempty"`
+	ToolName           string             `json:"tool_name"`
+	Input              map[string]any     `json:"input"`
+	ActorID            string             `json:"actor_id,omitempty"`
+	ActorType          string             `json:"actor_type,omitempty"`
+	WorkUnitID         string             `json:"work_unit_id,omitempty"`
+	Kind               string             `json:"kind,omitempty"`
+	Action             string             `json:"action,omitempty"`
+	Target             string             `json:"target,omitempty"`
+	Impact             string             `json:"impact,omitempty"`
+	RiskReason         string             `json:"risk_reason,omitempty"`
+	RuleSource         string             `json:"rule_source,omitempty"`
+	ApprovalScope      string             `json:"approval_scope,omitempty"`
+	Choices            []string           `json:"choices,omitempty"`
+	Body               string             `json:"body,omitempty"`
+	ReviewDetails      []string           `json:"review_details,omitempty"`
+	PostMode           string             `json:"post_mode,omitempty"`
+	Description        string             `json:"description,omitempty"`
+	Mode               string             `json:"mode,omitempty"`
+	AvoidPrompts       bool               `json:"avoid_prompts,omitempty"`
+	Message            string             `json:"message,omitempty"`
+	Suggestions        []PermissionUpdate `json:"suggestions,omitempty"`
+	BlockedPath        string             `json:"blocked_path,omitempty"`
+}
+
+type PermissionRuleValue struct {
+	ToolName    string `json:"toolName"`
+	RuleContent string `json:"ruleContent,omitempty"`
+}
+
+type PermissionUpdate struct {
+	Type        string                `json:"type"`
+	Destination string                `json:"destination"`
+	Behavior    string                `json:"behavior,omitempty"`
+	Rules       []PermissionRuleValue `json:"rules,omitempty"`
+	Directories []string              `json:"directories,omitempty"`
+	Mode        string                `json:"mode,omitempty"`
+}
+
+// PermissionHandler decides whether an SDK-projected tool call is allowed.
+type PermissionHandler interface {
+	Check(context.Context, PermissionRequest) (PermissionDecision, error)
+}
+
+// allowAllPermissionHandler approves every SDK permission request.
+type allowAllPermissionHandler struct{}
+
+func (allowAllPermissionHandler) Check(context.Context, PermissionRequest) (PermissionDecision, error) {
+	return PermissionAllow, nil
+}
 
 // permissionResult is the resolved outcome of a permission challenge.
 type permissionResult struct {
 	behavior string // "allow" | "deny"
-	message  string
-}
-
-// pendingPermission is a single in-flight permission challenge.
-type pendingPermission struct {
-	ch chan permissionResult
 }
 
 // permissionBridge manages the lifecycle of pending permission challenges.
@@ -26,28 +85,42 @@ type pendingPermission struct {
 // (which calls Check) and the stdin-reading goroutine (which delivers replies).
 type permissionBridge struct {
 	mu      sync.Mutex
-	pending map[string]*pendingPermission // keyed by requestID
+	pending map[string]chan permissionResult // keyed by requestID
+	done    chan struct{}
+	closed  bool
 }
 
 func newPermissionBridge() *permissionBridge {
 	return &permissionBridge{
-		pending: make(map[string]*pendingPermission),
+		pending: make(map[string]chan permissionResult),
+		done:    make(chan struct{}),
 	}
 }
 
-// register creates a channel for the given requestID and returns it.
-func (b *permissionBridge) register(requestID string) chan permissionResult {
+// register creates one waiter for requestID. Reusing an in-flight ID is
+// rejected so a response can never be delivered to the wrong permission call.
+func (b *permissionBridge) register(requestID string) (chan permissionResult, bool) {
 	ch := make(chan permissionResult, 1)
 	b.mu.Lock()
-	b.pending[requestID] = &pendingPermission{ch: ch}
-	b.mu.Unlock()
-	return ch
+	defer b.mu.Unlock()
+	if b.closed {
+		return nil, false
+	}
+	if _, exists := b.pending[requestID]; exists {
+		return nil, false
+	}
+	b.pending[requestID] = ch
+	return ch, true
 }
 
 // deliver sends the result to the waiting Check call and cleans up.
 func (b *permissionBridge) deliver(requestID string, result permissionResult) bool {
 	b.mu.Lock()
-	pp, ok := b.pending[requestID]
+	if b.closed {
+		b.mu.Unlock()
+		return false
+	}
+	ch, ok := b.pending[requestID]
 	if ok {
 		delete(b.pending, requestID)
 	}
@@ -55,8 +128,29 @@ func (b *permissionBridge) deliver(requestID string, result permissionResult) bo
 	if !ok {
 		return false
 	}
-	pp.ch <- result
+	ch <- result
 	return true
+}
+
+// close fails every current and future permission waiter. Waiter channels are
+// deliberately not closed: Check selects on done, so no zero-value result can
+// ever be mistaken for a valid denial response.
+func (b *permissionBridge) close() {
+	b.mu.Lock()
+	if b.closed {
+		b.mu.Unlock()
+		return
+	}
+	b.closed = true
+	clear(b.pending)
+	close(b.done)
+	b.mu.Unlock()
+}
+
+func (b *permissionBridge) isClosed() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.closed
 }
 
 // unregister removes only the exact waiter created by this Check call. The
@@ -65,18 +159,18 @@ func (b *permissionBridge) deliver(requestID string, result permissionResult) bo
 func (b *permissionBridge) unregister(requestID string, ch chan permissionResult) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	pp, ok := b.pending[requestID]
-	if !ok || pp.ch != ch {
+	pending, ok := b.pending[requestID]
+	if !ok || pending != ch {
 		return false
 	}
 	delete(b.pending, requestID)
 	return true
 }
 
-// SDKPermissionHandler implements engine.PermissionHandler.
+// sdkPermissionHandler implements PermissionHandler.
 // It serialises the challenge to stdout via sendFn and blocks until the client
 // replies or ctx is cancelled.
-type SDKPermissionHandler struct {
+type sdkPermissionHandler struct {
 	bridge      *permissionBridge
 	sendFn      func(msg any) error
 	newReqID    func() string
@@ -84,7 +178,7 @@ type SDKPermissionHandler struct {
 }
 
 // Check sends a can_use_tool challenge and waits for the client's response.
-func (h *SDKPermissionHandler) Check(ctx context.Context, req engine.PermissionRequest) (engine.PermissionDecision, error) {
+func (h *sdkPermissionHandler) Check(ctx context.Context, req PermissionRequest) (PermissionDecision, error) {
 	// Fast path: if an in-process approval callback is registered, ask it first.
 	if h.getApproval != nil {
 		if fn := h.getApproval(); fn != nil {
@@ -104,7 +198,6 @@ func (h *SDKPermissionHandler) Check(ctx context.Context, req engine.PermissionR
 		ExecutionSessionID: req.ExecutionSessionID,
 		TurnID:             req.TurnID,
 		DecisionID:         req.DecisionID,
-		RequestID:          reqID,
 		ToolName:           req.ToolName,
 		Input:              req.Input,
 		ToolUseID:          req.ToolUseID,
@@ -126,32 +219,47 @@ func (h *SDKPermissionHandler) Check(ctx context.Context, req engine.PermissionR
 		Mode:               req.Mode,
 		AvoidPrompts:       req.AvoidPrompts,
 		Message:            req.Message,
-		Suggestions:        append([]types.PermissionUpdate(nil), req.Suggestions...),
+		Suggestions:        append([]PermissionUpdate(nil), req.Suggestions...),
 		BlockedPath:        req.BlockedPath,
 	})
 	if err != nil {
-		return engine.PermissionDeny, i18n.WrapError(i18n.KeySDKPermissionMarshalRequest, err)
+		return PermissionDeny, i18n.WrapError(i18n.KeySDKPermissionMarshalRequest, err)
 	}
 
-	ch := h.bridge.register(reqID)
+	ch, registered := h.bridge.register(reqID)
+	if !registered {
+		if h.bridge.isClosed() {
+			return PermissionDeny, context.Canceled
+		}
+		return PermissionDeny, i18n.NewError(i18n.KeySDKPermissionDuplicateRequestID, reqID)
+	}
 
-	if err := h.sendFn(SDKControlRequestOut{
+	if err := h.sendFn(SDKControlRequest{
 		Type:      "control_request",
 		RequestID: reqID,
 		Request:   json.RawMessage(inner),
 	}); err != nil {
 		h.bridge.unregister(reqID, ch)
-		return engine.PermissionDeny, i18n.WrapError(i18n.KeySDKPermissionSendRequest, err)
+		return PermissionDeny, i18n.WrapError(i18n.KeySDKPermissionSendRequest, err)
 	}
 
 	select {
 	case <-ctx.Done():
 		h.bridge.unregister(reqID, ch)
-		return engine.PermissionDeny, ctx.Err()
+		return PermissionDeny, ctx.Err()
+	case <-h.bridge.done:
+		h.bridge.unregister(reqID, ch)
+		return PermissionDeny, context.Canceled
 	case result := <-ch:
-		if result.behavior == "allow" {
-			return engine.PermissionAllow, nil
+		if err := ctx.Err(); err != nil {
+			return PermissionDeny, err
 		}
-		return engine.PermissionDeny, nil
+		if h.bridge.isClosed() {
+			return PermissionDeny, context.Canceled
+		}
+		if result.behavior == "allow" {
+			return PermissionAllow, nil
+		}
+		return PermissionDeny, nil
 	}
 }

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/agent-dance/luban/commands"
-	"github.com/agent-dance/luban/goal"
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/runtime/goal"
 )
 
 type fakeGoalRuntime struct {
@@ -265,25 +265,21 @@ func TestGoalCommandResumesBlockedGoal(t *testing.T) {
 	}
 }
 
-func TestGoalCommandClearAliasesPersistClearedState(t *testing.T) {
-	for _, alias := range []string{"clear", "stop", "off", "reset", "none", "cancel"} {
-		t.Run(alias, func(t *testing.T) {
-			current := mustCreateGoal(t, "ship the release", 0)
-			runtime := &fakeGoalRuntime{current: &current}
+func TestGoalCommandClearPersistsClearedState(t *testing.T) {
+	current := mustCreateGoal(t, "ship the release", 0)
+	runtime := &fakeGoalRuntime{current: &current}
 
-			output, err := executeGoalCommand(t, runtime, alias)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if runtime.current == nil || runtime.current.Status != goal.StatusCleared {
-				t.Fatalf("goal after %q = %#v", alias, runtime.current)
-			}
-			if len(runtime.saved) != 1 {
-				t.Fatalf("saved goals = %d, want 1", len(runtime.saved))
-			}
-			assertContainsFold(t, output, "clear")
-		})
+	output, err := executeGoalCommand(t, runtime, "clear")
+	if err != nil {
+		t.Fatal(err)
 	}
+	if runtime.current == nil || runtime.current.Status != goal.StatusCleared {
+		t.Fatalf("goal after clear = %#v", runtime.current)
+	}
+	if len(runtime.saved) != 1 {
+		t.Fatalf("saved goals = %d, want 1", len(runtime.saved))
+	}
+	assertContainsFold(t, output, "clear")
 }
 
 func TestGoalCommandClearWithoutGoalIsIdempotent(t *testing.T) {
@@ -331,7 +327,7 @@ func TestGoalCommandTransitionsUseAtomicUpdaterWhenAvailable(t *testing.T) {
 				t.Fatalf("atomic UpdateGoal calls = %d, want 1", runtime.updateCalls)
 			}
 			if runtime.loadCalls != 0 || runtime.saveCalls != 0 {
-				t.Fatalf("legacy goal persistence used despite goal.Updater: loads=%d saves=%d", runtime.loadCalls, runtime.saveCalls)
+				t.Fatalf("direct goal persistence used despite goal.Updater: loads=%d saves=%d", runtime.loadCalls, runtime.saveCalls)
 			}
 			if runtime.current == nil || runtime.current.Status != test.wantStatus || runtime.current.Objective != test.wantSubject {
 				t.Fatalf("goal after %q = %+v, want status=%q objective=%q", test.args, runtime.current, test.wantStatus, test.wantSubject)
@@ -380,7 +376,7 @@ func TestGoalCommandLocalizesStatusAndDomainErrors(t *testing.T) {
 		t.Fatal("/goal is not registered")
 	}
 	var output strings.Builder
-	ctx := &commands.Context{Language: i18n.LangZH, GoalRuntime: &fakeGoalRuntime{current: &active}, OnEvent: func(value string) { output.WriteString(value) }}
+	ctx := &commands.Context{Language: i18n.LangZH, GoalRuntime: &fakeGoalRuntime{current: &active}, OnCommandPresentation: captureCompletedCommand(&output)}
 	if err := cmd.Execute(ctx, "status"); err != nil {
 		t.Fatal(err)
 	}
@@ -488,20 +484,15 @@ func executeGoalCommand(t *testing.T, runtime commands.GoalRuntime, args string)
 	}
 	var output strings.Builder
 	err := cmd.Execute(&commands.Context{
-		GoalRuntime: runtime,
-		OnEvent: func(value string) {
-			if output.Len() > 0 {
-				output.WriteByte('\n')
-			}
-			output.WriteString(value)
-		},
+		GoalRuntime:           runtime,
+		OnCommandPresentation: captureCompletedCommand(&output),
 	}, args)
 	return output.String(), err
 }
 
 func mustCreateGoal(t *testing.T, objective string, tokenBudget int) goal.Goal {
 	t.Helper()
-	created, err := goal.Create(objective, tokenBudget, time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC))
+	created, err := goal.CreateWithCriteria(objective, []string{objective}, tokenBudget, time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -37,12 +37,6 @@ func MCPInstructionBlocks(servers []MCPServerInstruction) []string {
 	return blocks
 }
 
-// MCPInstructionsSection renders the system prompt section used by Claude Code
-// for connected MCP servers that provide initialize-result instructions.
-func MCPInstructionsSection(servers []MCPServerInstruction) string {
-	return MCPInstructionsSectionForLanguage(i18n.LangEN, servers)
-}
-
 // MCPInstructionsSectionForLanguage renders instructions that may be retained
 // in visible conversation history using the active runtime language.
 func MCPInstructionsSectionForLanguage(lang i18n.Language, servers []MCPServerInstruction) string {

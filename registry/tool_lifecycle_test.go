@@ -22,15 +22,14 @@ func toolNames(tools []types.Tool) map[string]bool {
 	return out
 }
 
-func TestVisibilityRuntimeGatesTaskFamiliesAndDeniedTools(t *testing.T) {
+func TestVisibilityKeepsTaskToolsAndAppliesRuntimeGatesAndDeniedTools(t *testing.T) {
 	reg := New()
-	for _, name := range []string{"Read", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TodoWrite", "TeamCreate", "SendMessage", "WebSearch", "ToolSearch"} {
+	for _, name := range []string{"Read", "TaskCreate", "TaskGet", "TaskList", "TaskUpdate", "TeamCreate", "SendMessage", "WebSearch", "ToolSearch"} {
 		reg.Register(&mockTool{name: name})
 	}
 	runtime := &runtimeContextStub{ctx: types.ToolRuntimeContext{
 		Interactive: true,
 		Features: map[string]bool{
-			types.ToolFeatureTaskV2:     true,
 			types.ToolFeatureTeams:      false,
 			types.ToolFeatureWebSearch:  true,
 			types.ToolFeatureToolSearch: false,
@@ -45,19 +44,10 @@ func TestVisibilityRuntimeGatesTaskFamiliesAndDeniedTools(t *testing.T) {
 			t.Errorf("expected %s to be visible", name)
 		}
 	}
-	for _, name := range []string{"Read", "TodoWrite", "TeamCreate", "SendMessage", "ToolSearch"} {
+	for _, name := range []string{"Read", "TeamCreate", "SendMessage", "ToolSearch"} {
 		if visible[name] {
 			t.Errorf("expected %s to be hidden", name)
 		}
-	}
-
-	runtime.ctx.Features[types.ToolFeatureTaskV2] = false
-	visible = toolNames(reg.VisibleTools(nil))
-	if !visible["TodoWrite"] {
-		t.Fatal("TodoWrite should become visible when task-v2 is disabled")
-	}
-	if visible["TaskCreate"] {
-		t.Fatal("TaskCreate should become hidden when task-v2 is disabled")
 	}
 }
 
@@ -132,10 +122,16 @@ func TestUnknownToolMessageExcludesRuntimeDisabledTools(t *testing.T) {
 
 func TestToolMetadataMapsReadWriteSearchAndDestructive(t *testing.T) {
 	reg := New()
-	reg.Register(&mockTool{name: "Read"})
-	reg.Register(&mockTool{name: "Write"})
-	reg.Register(&mockTool{name: "Grep"})
-	reg.Register(&mockTool{name: "ExitWorktree"})
+	reg.Register(&mockTool{name: "Read", metadata: types.ToolMetadata{ReadOnly: true, ConcurrencySafe: true}})
+	reg.Register(&mockTool{name: "Write", metadata: types.ToolMetadata{Write: true}})
+	reg.Register(&mockTool{name: "Grep", metadata: types.ToolMetadata{ReadOnly: true, Search: true, ConcurrencySafe: true}})
+	reg.Register(&inputAwareMetadataTool{
+		mockTool: mockTool{name: "ExitWorktree"},
+		metadata: func(input map[string]any) types.ToolMetadata {
+			remove, _ := input["action"].(string)
+			return types.ToolMetadata{Write: true, Destructive: strings.EqualFold(remove, "remove")}
+		},
+	})
 
 	if got := reg.ToolMetadata("Read", nil); !got.ReadOnly || !got.ConcurrencySafe || got.Write {
 		t.Fatalf("unexpected Read metadata: %+v", got)
@@ -149,4 +145,63 @@ func TestToolMetadataMapsReadWriteSearchAndDestructive(t *testing.T) {
 	if got := reg.ToolMetadata("ExitWorktree", map[string]any{"action": "remove"}); !got.Destructive || !got.Write {
 		t.Fatalf("unexpected ExitWorktree(remove) metadata: %+v", got)
 	}
+}
+
+func TestPermissionResultKeepsDetachedReviewContextFromCheck(t *testing.T) {
+	reg := New()
+	metadata := types.ToolMetadata{ReadOnly: true, Search: true, ConcurrencySafe: true}
+	reg.Register(&mockTool{name: "ReviewProbe", metadata: metadata})
+	runtime := &runtimeContextStub{ctx: types.ToolRuntimeContext{
+		ProjectRoot: "/workspace/project",
+		AllowedDirs: []string{"/workspace/project"},
+		Features:    map[string]bool{"review": true},
+		AskRules:    []types.PermissionRuleValue{{ToolName: "ReviewProbe"}},
+	}}
+	reg.SetRuntimeContextProvider(runtime)
+
+	result, err := reg.CheckToolPermissions(context.Background(), "ReviewProbe", map[string]any{"path": "docs"}, types.ToolPermissionRequest{})
+	if err != nil {
+		t.Fatalf("CheckToolPermissions: %v", err)
+	}
+	if result.RuntimeSnapshot == nil || result.ToolMetadata != metadata {
+		t.Fatalf("review context = runtime %#v metadata %#v", result.RuntimeSnapshot, result.ToolMetadata)
+	}
+
+	runtime.ctx.AllowedDirs[0] = "/workspace/changed"
+	runtime.ctx.Features["review"] = false
+	runtime.ctx.AskRules[0].ToolName = "ChangedProbe"
+	if got := result.RuntimeSnapshot; got.AllowedDirs[0] != "/workspace/project" || !got.Features["review"] || got.AskRules[0].ToolName != "ReviewProbe" {
+		t.Fatalf("permission review context followed later runtime mutation: %#v", *got)
+	}
+}
+
+type metadataFallbackProbe struct{}
+
+func (*metadataFallbackProbe) Name() string        { return "Read" }
+func (*metadataFallbackProbe) Description() string { return "metadata fallback probe" }
+func (*metadataFallbackProbe) Schema() types.JSONSchema {
+	return types.JSONSchema{Type: "object"}
+}
+func (*metadataFallbackProbe) Execute(context.Context, map[string]any) (types.ToolResult, error) {
+	return types.ToolResult{}, nil
+}
+func (*metadataFallbackProbe) IsReadOnly() bool       { return true }
+func (*metadataFallbackProbe) IsConcurrentSafe() bool { return true }
+
+func TestToolMetadataDoesNotInferFromNameOrOptionalInterfaces(t *testing.T) {
+	reg := New()
+	reg.Register(&metadataFallbackProbe{})
+
+	if got := reg.ToolMetadata("Read", nil); got != (types.ToolMetadata{}) {
+		t.Fatalf("undeclared metadata = %+v, want zero value", got)
+	}
+}
+
+type inputAwareMetadataTool struct {
+	mockTool
+	metadata func(map[string]any) types.ToolMetadata
+}
+
+func (t *inputAwareMetadataTool) ToolMetadata(input map[string]any) types.ToolMetadata {
+	return t.metadata(input)
 }

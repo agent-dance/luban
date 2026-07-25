@@ -58,7 +58,7 @@ func TestConfiguredAskRuleUsesDeclaredSource(t *testing.T) {
 	}
 }
 
-func TestLegacyAskRuleGetsDeterministicRuleDescription(t *testing.T) {
+func TestAskRuleWithoutSourceGetsDeterministicRuleDescription(t *testing.T) {
 	installNoopSafetyChecks(t)
 	checker := NewChecker(ModeRuleBased, []Rule{{Tool: "CustomTool", Pattern: "review", Decision: DecisionAsk}})
 	var got PromptRequest
@@ -68,12 +68,12 @@ func TestLegacyAskRuleGetsDeterministicRuleDescription(t *testing.T) {
 	})
 
 	checker.CheckPrompt(context.Background(), PromptRequest{
-		DecisionID: "legacy-rule", ToolName: "CustomTool",
+		DecisionID: "rule-without-source", ToolName: "CustomTool",
 		Input: map[string]any{"scope": "review"}, RuleSource: "tool permission policy",
 	}, CheckOptions{})
 
 	want := permissionFormat(i18n.KeyPermissionConfiguredPatternRule, "CustomTool", "review")
 	if got.RuleSource != want {
-		t.Fatalf("legacy rule source = %q, want %q", got.RuleSource, want)
+		t.Fatalf("rule source = %q, want %q", got.RuleSource, want)
 	}
 }

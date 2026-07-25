@@ -19,39 +19,17 @@ const (
 	MemoryTypeProject MemoryType = "Project"
 	MemoryTypeLocal   MemoryType = "Local"
 	MemoryTypeManaged MemoryType = "Managed"
-	MemoryTypeAutoMem MemoryType = "AutoMem"
-	MemoryTypeTeamMem MemoryType = "TeamMem"
 )
 
-// MemoryFileInfo describes a discovered memory file and its model-visible
-// content. The optional fields are reserved for include/rules parity work.
+// MemoryFileInfo describes a discovered memory file and its model-visible content.
 type MemoryFileInfo struct {
-	Path                   string
-	Type                   MemoryType
-	Content                string
-	Parent                 string
-	Globs                  []string
-	ContentDiffersFromDisk bool
-	RawContent             string
+	Path    string
+	Type    MemoryType
+	Content string
+	Parent  string
 }
 
-// LoadInstructions reads the first existing instruction file and returns its content.
-func LoadInstructions(paths ...string) string {
-	for _, p := range paths {
-		data, err := os.ReadFile(p)
-		if err == nil {
-			return strings.TrimSpace(string(data))
-		}
-	}
-	return ""
-}
-
-// LoadClaudeMD reads a legacy CLAUDE.md file and returns its content.
-func LoadClaudeMD(paths ...string) string {
-	return LoadInstructions(paths...)
-}
-
-// DiscoverMemoryFiles returns memory files in original priority order:
+// DiscoverMemoryFiles returns memory files in priority order:
 // managed, user, project, then local. Later entries have higher priority.
 func DiscoverMemoryFiles(cwd string) []MemoryFileInfo {
 	return DiscoverMemoryFilesWithSettings(cwd, defaultPromptSettings())
@@ -75,8 +53,6 @@ type memoryPaths struct {
 func defaultMemoryPaths() memoryPaths {
 	home, _ := os.UserHomeDir()
 	userDirs := []string{
-		firstNonEmptyPath(os.Getenv("CLAUDE_CONFIG_DIR"), filepath.Join(home, brand.LegacyConfigDirName)),
-		firstNonEmptyPath(os.Getenv("DEEPSEEK_CODE_CONFIG_DIR"), filepath.Join(home, brand.LegacyDeepSeekConfigDirName)),
 		firstNonEmptyPath(os.Getenv("LUBAN_CODE_CONFIG_DIR"), filepath.Join(home, brand.ConfigDirName)),
 	}
 	return memoryPaths{
@@ -113,17 +89,17 @@ func nonEmptyUniquePaths(paths []string) []string {
 
 func managedMemoryDir() string {
 	if os.Getenv("USER_TYPE") == "ant" {
-		if override := strings.TrimSpace(os.Getenv("CLAUDE_CODE_MANAGED_SETTINGS_PATH")); override != "" {
+		if override := strings.TrimSpace(os.Getenv("LUBAN_CODE_MANAGED_SETTINGS_PATH")); override != "" {
 			return override
 		}
 	}
 	switch runtime.GOOS {
 	case "darwin":
-		return "/Library/Application Support/ClaudeCode"
+		return "/Library/Application Support/LUBAN Code"
 	case "windows":
-		return `C:\Program Files\ClaudeCode`
+		return `C:\Program Files\LUBAN Code`
 	default:
-		return "/etc/claude-code"
+		return "/etc/luban-code"
 	}
 }
 
@@ -136,13 +112,12 @@ func discoverMemoryFiles(cwd string, paths memoryPaths, settingsArg ...PromptSet
 	seen := make(map[string]struct{})
 
 	if strings.TrimSpace(paths.managedDir) != "" {
-		appendMemoryFile(&result, seen, filepath.Join(paths.managedDir, "CLAUDE.md"), MemoryTypeManaged, false, cwd, settings)
+		appendMemoryFile(&result, seen, filepath.Join(paths.managedDir, brand.InstructionsFile), MemoryTypeManaged, false, cwd, settings)
 		result = append(result, processMdRules(processRulesOptions{
-			rulesDir:        filepath.Join(paths.managedDir, ".claude", "rules"),
+			rulesDir:        filepath.Join(paths.managedDir, brand.ConfigDirName, "rules"),
 			typ:             MemoryTypeManaged,
 			processed:       seen,
 			includeExternal: false,
-			conditional:     false,
 			cwd:             cwd,
 			settings:        settings,
 		})...)
@@ -158,7 +133,6 @@ func discoverMemoryFiles(cwd string, paths memoryPaths, settingsArg ...PromptSet
 			typ:             MemoryTypeUser,
 			processed:       seen,
 			includeExternal: true,
-			conditional:     false,
 			cwd:             cwd,
 			settings:        settings,
 		})...)
@@ -167,35 +141,29 @@ func discoverMemoryFiles(cwd string, paths memoryPaths, settingsArg ...PromptSet
 	if shouldDiscoverAutoMemory(settings) {
 		for _, dir := range rootToCWD(cwd) {
 			appendInstructionFiles(&result, seen, dir, MemoryTypeProject, false, cwd, settings, true)
-			for _, configDir := range []string{brand.LegacyConfigDirName, brand.LegacyDeepSeekConfigDirName, brand.ConfigDirName} {
-				result = append(result, processMdRules(processRulesOptions{
-					rulesDir:        filepath.Join(dir, configDir, "rules"),
-					typ:             MemoryTypeProject,
-					processed:       seen,
-					includeExternal: false,
-					conditional:     false,
-					cwd:             cwd,
-					settings:        settings,
-				})...)
-			}
-			appendMemoryFile(&result, seen, filepath.Join(dir, "CLAUDE.local.md"), MemoryTypeLocal, false, cwd, settings)
+			result = append(result, processMdRules(processRulesOptions{
+				rulesDir:        filepath.Join(dir, brand.ConfigDirName, "rules"),
+				typ:             MemoryTypeProject,
+				processed:       seen,
+				includeExternal: false,
+				cwd:             cwd,
+				settings:        settings,
+			})...)
+			appendMemoryFile(&result, seen, filepath.Join(dir, brand.LocalInstructionsFile), MemoryTypeLocal, false, cwd, settings)
 		}
 	}
 
 	if shouldDiscoverAdditionalDirectoryMemory(settings) {
 		for _, dir := range nonEmptyStrings(settings.AdditionalDirectories) {
 			appendInstructionFiles(&result, seen, dir, MemoryTypeProject, false, cwd, settings, true)
-			for _, configDir := range []string{brand.LegacyConfigDirName, brand.LegacyDeepSeekConfigDirName, brand.ConfigDirName} {
-				result = append(result, processMdRules(processRulesOptions{
-					rulesDir:        filepath.Join(dir, configDir, "rules"),
-					typ:             MemoryTypeProject,
-					processed:       seen,
-					includeExternal: false,
-					conditional:     false,
-					cwd:             cwd,
-					settings:        settings,
-				})...)
-			}
+			result = append(result, processMdRules(processRulesOptions{
+				rulesDir:        filepath.Join(dir, brand.ConfigDirName, "rules"),
+				typ:             MemoryTypeProject,
+				processed:       seen,
+				includeExternal: false,
+				cwd:             cwd,
+				settings:        settings,
+			})...)
 		}
 	}
 
@@ -203,15 +171,7 @@ func discoverMemoryFiles(cwd string, paths memoryPaths, settingsArg ...PromptSet
 }
 
 func appendInstructionFiles(result *[]MemoryFileInfo, seen map[string]struct{}, dir string, typ MemoryType, includeExternal bool, cwd string, settings PromptSettings, includeConfigDirs bool) {
-	appendMemoryFile(result, seen, filepath.Join(dir, brand.LegacyInstructionsFile), typ, includeExternal, cwd, settings)
-	if includeConfigDirs {
-		appendMemoryFile(result, seen, filepath.Join(dir, brand.LegacyConfigDirName, brand.LegacyInstructionsFile), typ, includeExternal, cwd, settings)
-	}
 	appendMemoryFile(result, seen, filepath.Join(dir, brand.AgentsFile), typ, includeExternal, cwd, settings)
-	appendMemoryFile(result, seen, filepath.Join(dir, brand.LegacyDeepSeekInstructionsFile), typ, includeExternal, cwd, settings)
-	if includeConfigDirs {
-		appendMemoryFile(result, seen, filepath.Join(dir, brand.LegacyDeepSeekConfigDirName, brand.LegacyDeepSeekInstructionsFile), typ, includeExternal, cwd, settings)
-	}
 	appendMemoryFile(result, seen, filepath.Join(dir, brand.InstructionsFile), typ, includeExternal, cwd, settings)
 	if includeConfigDirs {
 		appendMemoryFile(result, seen, filepath.Join(dir, brand.ConfigDirName, brand.InstructionsFile), typ, includeExternal, cwd, settings)
@@ -222,10 +182,6 @@ func appendMemoryFile(result *[]MemoryFileInfo, seen map[string]struct{}, path s
 	*result = append(*result, processMemoryFileWithSettings(path, typ, seen, includeExternal, 0, "", cwd, settings)...)
 }
 
-func processMemoryFile(path string, typ MemoryType, processed map[string]struct{}, includeExternal bool, depth int, parent string, cwd string) []MemoryFileInfo {
-	return processMemoryFileWithSettings(path, typ, processed, includeExternal, depth, parent, cwd, defaultPromptSettings())
-}
-
 func processMemoryFileWithSettings(path string, typ MemoryType, processed map[string]struct{}, includeExternal bool, depth int, parent string, cwd string, settings PromptSettings) []MemoryFileInfo {
 	if processed == nil {
 		processed = make(map[string]struct{})
@@ -233,7 +189,7 @@ func processMemoryFileWithSettings(path string, typ MemoryType, processed map[st
 	if depth >= maxIncludeDepth {
 		return nil
 	}
-	if shouldExcludeClaudeMd(path, typ, settings) {
+	if shouldExcludeInstruction(path, typ, settings) {
 		return nil
 	}
 	normalized := normalizeMemoryPath(path)
@@ -250,24 +206,13 @@ func processMemoryFileWithSettings(path string, typ MemoryType, processed map[st
 		return nil
 	}
 	rawContent := string(data)
-	content, paths := parseMemoryFrontmatterPaths(rawContent)
+	content, _ := parseMemoryFrontmatterPaths(rawContent)
 	includePaths := extractIncludePaths(content, path)
-	contentDiffersFromDisk := content != rawContent
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return nil
 	}
-	info := MemoryFileInfo{
-		Path:                   path,
-		Type:                   typ,
-		Content:                content,
-		Parent:                 parent,
-		Globs:                  paths,
-		ContentDiffersFromDisk: contentDiffersFromDisk,
-	}
-	if info.ContentDiffersFromDisk {
-		info.RawContent = rawContent
-	}
+	info := MemoryFileInfo{Path: path, Type: typ, Content: content, Parent: parent}
 	result := []MemoryFileInfo{info}
 
 	for _, includePath := range includePaths {
@@ -321,8 +266,7 @@ func rootToCWD(cwd string) []string {
 	return dirs
 }
 
-// FormatMemoryFiles renders memory files using Claude Code's original block
-// style and source descriptions.
+// FormatMemoryFiles renders memory files with source descriptions.
 func FormatMemoryFiles(files []MemoryFileInfo) string {
 	var memories []string
 	for _, file := range files {
@@ -336,63 +280,6 @@ func FormatMemoryFiles(files []MemoryFileInfo) string {
 		return ""
 	}
 	return memoryInstructionPrompt + "\n\n" + strings.Join(memories, "\n\n")
-}
-
-// DiscoverMemoryFilesForTarget returns eager memory files plus conditional
-// .claude/rules entries whose frontmatter paths match targetPath.
-func DiscoverMemoryFilesForTarget(cwd, targetPath string) []MemoryFileInfo {
-	return DiscoverMemoryFilesForTargetWithSettings(cwd, targetPath, defaultPromptSettings())
-}
-
-// DiscoverMemoryFilesForTargetWithSettings is the settings-aware variant of
-// DiscoverMemoryFilesForTarget for callers with runtime settings.
-func DiscoverMemoryFilesForTargetWithSettings(cwd, targetPath string, settings PromptSettings) []MemoryFileInfo {
-	if !shouldDiscoverMemory(settings) {
-		return nil
-	}
-	result := DiscoverMemoryFilesWithSettings(cwd, settings)
-	processed := make(map[string]struct{}, len(result))
-	for _, file := range result {
-		processed[normalizeMemoryPath(file.Path)] = struct{}{}
-	}
-	if !shouldDiscoverAutoMemory(settings) {
-		return result
-	}
-	for _, dir := range rootToCWD(cwd) {
-		for _, configDir := range []string{brand.LegacyConfigDirName, brand.LegacyDeepSeekConfigDirName, brand.ConfigDirName} {
-			result = append(result, processConditionedMdRulesWithSettings(
-				targetPath,
-				filepath.Join(dir, configDir, "rules"),
-				MemoryTypeProject,
-				processed,
-				false,
-				cwd,
-				settings,
-			)...)
-		}
-	}
-	return result
-}
-
-// ExternalClaudeMdInclude describes an included file outside the current
-// working tree. Later approval UI can use this to request explicit consent.
-type ExternalClaudeMdInclude struct {
-	Path   string
-	Parent string
-}
-
-func GetExternalClaudeMdIncludes(files []MemoryFileInfo, cwd string) []ExternalClaudeMdInclude {
-	var externals []ExternalClaudeMdInclude
-	for _, file := range files {
-		if file.Type != MemoryTypeUser && file.Parent != "" && !pathInMemoryCwd(file.Path, cwd) {
-			externals = append(externals, ExternalClaudeMdInclude{Path: file.Path, Parent: file.Parent})
-		}
-	}
-	return externals
-}
-
-func HasExternalClaudeMdIncludes(files []MemoryFileInfo, cwd string) bool {
-	return len(GetExternalClaudeMdIncludes(files, cwd)) > 0
 }
 
 func pathInMemoryCwd(path, cwd string) bool {
@@ -422,54 +309,12 @@ func memoryTypeDescription(typ MemoryType) string {
 		return " (project instructions, checked into the codebase)"
 	case MemoryTypeLocal:
 		return " (user's private project instructions, not checked in)"
-	case MemoryTypeTeamMem:
-		return " (shared team memory, synced across the organization)"
-	case MemoryTypeAutoMem:
-		return " (user's auto-memory, persists across conversations)"
 	default:
 		return " (user's private global instructions for all projects)"
 	}
 }
 
-// DiscoverInstructions discovers and formats CLAUDE.md memory files.
+// DiscoverInstructions discovers and formats project instruction files.
 func DiscoverInstructions(cwd string) string {
 	return FormatMemoryFiles(DiscoverMemoryFiles(cwd))
-}
-
-// DiscoverClaudeMD keeps legacy callers working over the memory discovery core.
-func DiscoverClaudeMD(cwd string) string {
-	return DiscoverInstructions(cwd)
-}
-
-// DiscoverLegacyClaudeMD walks up the directory tree from cwd, collecting
-// legacy CLAUDE.md files only. It is retained for compatibility tests and
-// explicit migration flows.
-func DiscoverLegacyClaudeMD(cwd string) string {
-	const maxLevels = 10
-	var sections []string
-	dir := cwd
-	for i := 0; i < maxLevels; i++ {
-		for _, name := range []string{"CLAUDE.md", filepath.Join(".claude", "CLAUDE.md")} {
-			if data, err := os.ReadFile(filepath.Join(dir, name)); err == nil {
-				content := strings.TrimSpace(string(data))
-				if content != "" {
-					sections = append(sections, content)
-				}
-			}
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		if data, err := os.ReadFile(filepath.Join(home, ".claude", "CLAUDE.md")); err == nil {
-			content := strings.TrimSpace(string(data))
-			if content != "" {
-				sections = append(sections, content)
-			}
-		}
-	}
-	return strings.Join(sections, "\n\n---\n\n")
 }

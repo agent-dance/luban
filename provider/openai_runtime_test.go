@@ -33,13 +33,12 @@ func TestShouldUseOpenAIResponsesAPI(t *testing.T) {
 
 func TestResolveOpenAIAPIFormat(t *testing.T) {
 	tests := []struct {
-		name           string
-		authToken      string
-		requested      string
-		baseURL        string
-		model          string
-		forceResponses bool
-		wantResponses  bool
+		name          string
+		authToken     string
+		requested     string
+		baseURL       string
+		model         string
+		wantResponses bool
 	}{
 		{name: "official GPT 5 defaults to responses", baseURL: "https://api.openai.com/v1", model: "gpt-5.5", wantResponses: true},
 		{name: "official endpoint honors catalog responses format", baseURL: "https://api.openai.com/v1", model: "gpt-5.4-mini", wantResponses: true},
@@ -48,12 +47,11 @@ func TestResolveOpenAIAPIFormat(t *testing.T) {
 		{name: "custom endpoint can force responses", requested: "responses", baseURL: "https://gateway.example.com", model: "gpt-5.5", wantResponses: true},
 		{name: "explicit chat overrides catalog format", requested: "chat-completions", baseURL: "https://gateway.example.com", model: "gpt-5.4-mini"},
 		{name: "oauth always uses responses", authToken: "oauth-token", requested: "chat-completions", baseURL: openAIChatGPTCodexBaseURL, model: "gpt-5.5", wantResponses: true},
-		{name: "legacy force flag", baseURL: "https://gateway.example.com", model: "gpt-4o", forceResponses: true, wantResponses: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveOpenAIResponsesMode(tt.authToken, tt.requested, tt.baseURL, tt.model, tt.forceResponses)
+			got := resolveOpenAIResponsesMode(tt.authToken, tt.requested, tt.baseURL, tt.model)
 			if got != tt.wantResponses {
 				t.Fatalf("resolveOpenAIResponsesMode() = %v, want %v", got, tt.wantResponses)
 			}
@@ -85,7 +83,7 @@ func TestOpenAIModelRoutingNegotiatesCompatibleGatewayProtocol(t *testing.T) {
 	compatibleProvider, err := r.Create("deepseek", Config{
 		APIKey:  "test-deepseek-key",
 		BaseURL: "https://gateway.example.com/v1",
-		Model:   "deepseek-chat",
+		Model:   "deepseek-v4-flash",
 	}, "")
 	if err != nil {
 		t.Fatalf("create compatible provider: %v", err)
@@ -187,26 +185,7 @@ func TestOpenAIProtocolProviderFallsBackOnceWhenResponsesUnavailable(t *testing.
 	}
 }
 
-func TestShouldUseOpenAIResponsesLite(t *testing.T) {
-	tests := []struct {
-		baseURL string
-		model   string
-		want    bool
-	}{
-		{baseURL: "https://api.openai.com/v1", model: "gpt-5.6-sol", want: true},
-		{baseURL: openAIChatGPTCodexBaseURL, model: "gpt-5.6-terra", want: true},
-		{baseURL: "https://api.openai.com/v1", model: "gpt-5.6", want: true},
-		{baseURL: "https://api.openai.com/v1", model: "gpt-5.5"},
-		{baseURL: "https://gateway.example.com/v1", model: "gpt-5.6-sol"},
-	}
-	for _, test := range tests {
-		if got := shouldUseOpenAIResponsesLite(test.baseURL, test.model); got != test.want {
-			t.Fatalf("shouldUseOpenAIResponsesLite(%q, %q) = %v, want %v", test.baseURL, test.model, got, test.want)
-		}
-	}
-}
-
-func TestOpenAICompatibleChatUsesLegacyMaxTokensAndOverride(t *testing.T) {
+func TestOpenAICompatibleChatUsesMaxTokensAndOverride(t *testing.T) {
 	var captured map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -244,6 +223,56 @@ func TestOpenAICompatibleChatUsesLegacyMaxTokensAndOverride(t *testing.T) {
 	}
 	if got := captured["reasoning_effort"]; got != "max" {
 		t.Fatalf("reasoning_effort = %#v, want max", got)
+	}
+}
+
+func TestOpenAIChatAssignsCanonicalContentBlockIndexes(t *testing.T) {
+	tests := []struct {
+		name        string
+		delta       string
+		wantIndexes []int
+	}{
+		{
+			name:        "tool only starts at zero",
+			delta:       `{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"Read","arguments":"{}"}}]}`,
+			wantIndexes: []int{0},
+		},
+		{
+			name:        "text then tool is sequential",
+			delta:       `{"role":"assistant","content":"hello","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"Read","arguments":"{}"}}]}`,
+			wantIndexes: []int{0, 1},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = io.WriteString(w, "data: {\"id\":\"chatcmpl_blocks\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"test-model\",\"choices\":[{\"index\":0,\"delta\":"+test.delta+",\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n")
+			}))
+			defer srv.Close()
+
+			stream, err := NewOpenAI(Config{ProviderName: "custom", APIKey: "test-key", BaseURL: srv.URL, Model: "test-model"}).CreateStream(context.Background(), Params{
+				Messages: []types.Message{types.UserMessage("hello")},
+			})
+			if err != nil {
+				t.Fatalf("CreateStream: %v", err)
+			}
+			var got []int
+			for event := range stream {
+				if event.Type == types.EventContentBlockStart {
+					got = append(got, event.Index)
+				}
+			}
+			if len(got) != len(test.wantIndexes) {
+				t.Fatalf("content block indexes = %v, want %v", got, test.wantIndexes)
+			}
+			for index := range got {
+				if got[index] != test.wantIndexes[index] {
+					t.Fatalf("content block indexes = %v, want %v", got, test.wantIndexes)
+				}
+			}
+		})
 	}
 }
 
@@ -326,56 +355,6 @@ func TestResolveCredentialConfigAddsCodexHeadersForOpenAIOAuth(t *testing.T) {
 	}
 	if got := cfg.Headers["X-OpenAI-Fedramp"]; got != "true" {
 		t.Fatalf("X-OpenAI-Fedramp = %q", got)
-	}
-}
-
-func TestResolveCredentialConfigReadsLegacyAnthropicOAuthAlias(t *testing.T) {
-	cs, err := NewCredentialStoreAt(t.TempDir() + "/auth.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cs.Set(CredentialEntry{
-		Provider:    "oauth",
-		AuthMethod:  "oauth",
-		AccessToken: "legacy-anthropic-token",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	reg := NewProviderRegistry()
-	reg.SetCredentialStore(cs)
-
-	cfg, err := ResolveCredentialConfig(reg, "anthropic")
-	if err != nil {
-		t.Fatalf("ResolveCredentialConfig: %v", err)
-	}
-	if cfg.AuthToken != "legacy-anthropic-token" {
-		t.Fatalf("cfg.AuthToken = %q, want legacy token", cfg.AuthToken)
-	}
-}
-
-func TestResolveCredentialConfigReadsLegacyOpenAIResponsesAlias(t *testing.T) {
-	cs, err := NewCredentialStoreAt(t.TempDir() + "/auth.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cs.Set(CredentialEntry{
-		Provider:   "openai-responses",
-		AuthMethod: "api_key",
-		APIKey:     "legacy-openai-key",
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	reg := NewProviderRegistry()
-	reg.SetCredentialStore(cs)
-
-	cfg, err := ResolveCredentialConfig(reg, "openai")
-	if err != nil {
-		t.Fatalf("ResolveCredentialConfig: %v", err)
-	}
-	if cfg.APIKey != "legacy-openai-key" {
-		t.Fatalf("cfg.APIKey = %q, want legacy key", cfg.APIKey)
 	}
 }
 

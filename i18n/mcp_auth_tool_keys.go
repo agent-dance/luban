@@ -3,7 +3,6 @@ package i18n
 const (
 	KeyMCPAuthToolDescription          Key = "mcp.auth_tool.description"
 	KeyMCPAuthToolUninitialized        Key = "mcp.auth_tool.uninitialized"
-	KeyMCPAuthToolClaudeConnector      Key = "mcp.auth_tool.claude_connector"
 	KeyMCPAuthToolUnsupportedTransport Key = "mcp.auth_tool.unsupported_transport"
 	KeyMCPAuthToolStartFailed          Key = "mcp.auth_tool.start_failed"
 	KeyMCPAuthToolAuthorizationURL     Key = "mcp.auth_tool.authorization_url"
@@ -24,13 +23,6 @@ func init() {
 		"MCP server `%s` (%s) установлен, но требует аутентификации. Вызовите этот инструмент, чтобы запустить OAuth и получить URL авторизации для пользователя.")
 	add(KeyMCPAuthToolUninitialized,
 		"MCP auth tool is not initialized", "MCP 认证工具尚未初始化", "Das MCP-Authentifizierungstool ist nicht initialisiert", "MCP 認証ツールが初期化されていません", "MCP 인증 도구가 초기화되지 않았습니다", "Инструмент аутентификации MCP не инициализирован")
-	add(KeyMCPAuthToolClaudeConnector,
-		"This is a claude.ai MCP connector. Ask the user to run /mcp and select %q to authenticate.",
-		"这是 claude.ai MCP connector。请让用户运行 /mcp，并选择 %q 完成认证。",
-		"Dies ist ein claude.ai-MCP-Connector. Bitte den Benutzer, /mcp auszuführen und zur Authentifizierung %q auszuwählen.",
-		"これは claude.ai の MCP connector です。ユーザーに /mcp を実行して %q を選び、認証するよう案内してください。",
-		"claude.ai MCP connector입니다. 사용자에게 /mcp를 실행하고 %q을(를) 선택하여 인증하도록 안내하세요.",
-		"Это MCP connector claude.ai. Попросите пользователя выполнить /mcp и выбрать %q для аутентификации.")
 	add(KeyMCPAuthToolUnsupportedTransport,
 		"Server %q uses %s transport, which does not support OAuth from this tool. Ask the user to run /mcp and authenticate manually.",
 		"Server %q 使用 %s transport；此工具不支持通过该 transport 完成 OAuth。请让用户运行 /mcp 并手动认证。",

@@ -22,7 +22,7 @@ func TestProjectGenerationBindsSnapshotAndRejectsOldWorkspaceExecution(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManagerWithOverrideStore(store, dirs...)
+	manager := newManagerWithOverrideStore(store, dirs...)
 	bindingA, err := manager.SnapshotBinding("generation-session")
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +34,9 @@ func TestProjectGenerationBindsSnapshotAndRejectsOldWorkspaceExecution(t *testin
 		t.Fatalf("binding A catalog = %+v", bindingA.Snapshot.Skills)
 	}
 
-	manager.Refresh()
+	if _, err := manager.RefreshSnapshot("generation-session"); err != nil {
+		t.Fatal(err)
+	}
 	if got := manager.ProjectGeneration(); got != bindingA.ProjectGeneration {
 		t.Fatalf("ordinary refresh advanced project generation: %d -> %d", bindingA.ProjectGeneration, got)
 	}
@@ -82,6 +84,20 @@ func TestProjectGenerationBindsSnapshotAndRejectsOldWorkspaceExecution(t *testin
 	}
 }
 
+func TestResolveRequiresPinnedProjectGeneration(t *testing.T) {
+	manager := NewManager()
+	for _, origin := range []InvocationOrigin{InvocationOriginModel, InvocationOriginUser} {
+		_, err := manager.ResolveLatest(SkillResolveRequest{
+			SessionID: "generation-session",
+			Selector:  "missing",
+			Origin:    origin,
+		}, nil)
+		if err == nil {
+			t.Fatalf("%s-origin resolve accepted current-authority fallback", origin)
+		}
+	}
+}
+
 func TestProjectGenerationLinearizesOldReaderBeforeRetarget(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()
@@ -96,7 +112,7 @@ func TestProjectGenerationLinearizesOldReaderBeforeRetarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManagerWithOverrideStore(store, dirs...)
+	manager := newManagerWithOverrideStore(store, dirs...)
 	bindingA, err := manager.SnapshotBinding("linear-session")
 	if err != nil {
 		t.Fatal(err)
@@ -160,29 +176,29 @@ func TestProjectGenerationLinearizesOldReaderBeforeRetarget(t *testing.T) {
 }
 
 func TestProjectGenerationAllowsSameAuthorityDynamicDiscovery(t *testing.T) {
-	manager := NewManager()
-	initial := manager.ProjectGeneration()
-	manager.AddDir(t.TempDir(), SourceUser)
-	if got := manager.ProjectGeneration(); got != initial {
-		t.Fatalf("nonproject source advanced project generation: %d -> %d", initial, got)
-	}
+	userDir := t.TempDir()
 	projectDir := t.TempDir()
 	writeTask23Skill(t, projectDir, "same-run-project", "same authority")
-	manager.AddDir(projectDir, SourceProject)
-	if got := manager.ProjectGeneration(); got != initial {
-		t.Fatalf("same-authority SourceProject discovery advanced generation: %d -> %d", initial, got)
-	}
+	manager := newCatalogManagerForTest(
+		DirSource{Dir: userDir, Source: SourceUser},
+		DirSource{Dir: projectDir, Source: SourceProject},
+	)
+	initial := manager.ProjectGeneration()
 	dynamic := t.TempDir()
 	writeTask23Skill(t, dynamic, "nearby-project", "same authority nearby")
-	manager.AddDirectories([]string{dynamic, dynamic})
+	if err := manager.AddDirectoriesAtGeneration(initial, []string{dynamic, dynamic}); err != nil {
+		t.Fatal(err)
+	}
 	if got := manager.ProjectGeneration(); got != initial {
-		t.Fatalf("same-authority AddDirectories advanced generation: %d -> %d", initial, got)
+		t.Fatalf("same-authority AddDirectoriesAtGeneration advanced generation: %d -> %d", initial, got)
 	}
 	snapshot, err := manager.SnapshotAtGeneration("dynamic-session", initial)
 	if err != nil || !task23HasSkill(snapshot, "same-run-project") || !task23HasSkill(snapshot, "nearby-project") {
 		t.Fatalf("same-generation dynamic snapshot = %+v, err=%v", snapshot.Skills, err)
 	}
-	manager.AddDirectories([]string{dynamic})
+	if err := manager.AddDirectoriesAtGeneration(initial, []string{dynamic}); err != nil {
+		t.Fatal(err)
+	}
 	if got := manager.ProjectGeneration(); got != initial {
 		t.Fatalf("duplicate project directory advanced generation: %d -> %d", initial, got)
 	}
@@ -206,7 +222,7 @@ func TestStaleProjectGenerationCannotMutateNewWorkspaceDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManagerWithOverrideStore(store, dirs...)
+	manager := newManagerWithOverrideStore(store, dirs...)
 	bindingA, err := manager.SnapshotBinding("stale-mutator")
 	if err != nil {
 		t.Fatal(err)
@@ -220,20 +236,17 @@ func TestStaleProjectGenerationCannotMutateNewWorkspaceDiscovery(t *testing.T) {
 	}
 
 	if err := manager.AddDirectoriesAtGeneration(bindingA.ProjectGeneration, []string{lateA}); !errors.Is(err, ErrSkillProjectGenerationChanged) {
-		t.Fatalf("stale AddDirectories error = %v", err)
+		t.Fatalf("stale AddDirectoriesAtGeneration error = %v", err)
 	}
 	if err := manager.ActivateConditionalForPathAtGeneration(bindingA.ProjectGeneration, filepath.Join(lateA, "late-a")); !errors.Is(err, ErrSkillProjectGenerationChanged) {
 		t.Fatalf("stale path activation error = %v", err)
-	}
-	if err := manager.ActivateConditionalSkillAtGeneration(bindingA.ProjectGeneration, "base-b"); !errors.Is(err, ErrSkillProjectGenerationChanged) {
-		t.Fatalf("stale name activation error = %v", err)
 	}
 	unchanged, err := manager.SnapshotAtGeneration("stale-mutator", bindingB.ProjectGeneration)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if task23HasSkill(unchanged, "late-a") || len(manager.ActivatedConditionalSkillNames()) != 0 {
-		t.Fatalf("stale A mutator polluted B: skills=%+v activated=%v", unchanged.Skills, manager.ActivatedConditionalSkillNames())
+	if task23HasSkill(unchanged, "late-a") {
+		t.Fatalf("stale A mutator polluted B: skills=%+v", unchanged.Skills)
 	}
 
 	if err := manager.AddDirectoriesAtGeneration(bindingB.ProjectGeneration, []string{lateB}); err != nil {
@@ -242,16 +255,9 @@ func TestStaleProjectGenerationCannotMutateNewWorkspaceDiscovery(t *testing.T) {
 	if err := manager.ActivateConditionalForPathAtGeneration(bindingB.ProjectGeneration, filepath.Join(lateB, "late-b")); err != nil {
 		t.Fatal(err)
 	}
-	if err := manager.ActivateConditionalSkillAtGeneration(bindingB.ProjectGeneration, "late-b"); err != nil {
-		t.Fatal(err)
-	}
 	current, err := manager.SnapshotAtGeneration("stale-mutator", bindingB.ProjectGeneration)
 	if err != nil || !task23HasSkill(current, "late-b") || task23HasSkill(current, "late-a") {
 		t.Fatalf("live B mutation = %+v, err=%v", current.Skills, err)
-	}
-	activated := manager.ActivatedConditionalSkillNames()
-	if len(activated) != 1 || activated[0] != "late-b" {
-		t.Fatalf("live B activation = %v", activated)
 	}
 }
 
@@ -266,7 +272,7 @@ func TestSameProjectRetargetKeepsGenerationForLiveConsumers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManagerWithOverrideStore(store, dirs...)
+	manager := newManagerWithOverrideStore(store, dirs...)
 	if err := manager.ReplaceProjectSources(root); err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +304,7 @@ func TestProjectSourceAfterPublishRemainsInsideWriterTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManagerWithOverrideStore(store, dirs...)
+	manager := newManagerWithOverrideStore(store, dirs...)
 	planB, err := manager.PrepareProjectSources(rootB)
 	if err != nil {
 		t.Fatal(err)

@@ -54,58 +54,7 @@ func TestInitCreatesLUBANProjectFilesWithDeepSeekProviderDefault(t *testing.T) {
 	}
 }
 
-func TestResolveInstructionsFilePrefersLUBANAndSupportsLegacyFiles(t *testing.T) {
-	tests := []struct {
-		name       string
-		files      []string
-		want       string
-		wantCreate bool
-		migrated   bool
-	}{
-		{name: "LUBAN wins", files: []string{"CLAUDE.md", "AGENTS.md", "DEEPSEEK.md", "LUBAN.md"}, want: "LUBAN.md"},
-		{name: "DeepSeek legacy migrates", files: []string{"CLAUDE.md", "AGENTS.md", "DEEPSEEK.md"}, want: "LUBAN.md", wantCreate: true, migrated: true},
-		{name: "agents", files: []string{"CLAUDE.md", "AGENTS.md"}, want: "AGENTS.md"},
-		{name: "Claude legacy", files: []string{"CLAUDE.md"}, want: "CLAUDE.md"},
-		{name: "create LUBAN", want: "LUBAN.md", wantCreate: true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cwd := t.TempDir()
-			for _, name := range tt.files {
-				if err := os.WriteFile(filepath.Join(cwd, name), []byte(name), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-
-			got, created, err := resolveInstructionsFile(cwd)
-			if err != nil {
-				t.Fatalf("resolveInstructionsFile: %v", err)
-			}
-			if filepath.Base(got) != tt.want || created != tt.wantCreate {
-				t.Fatalf("got (%q, %t), want (%q, %t)", got, created, tt.want, tt.wantCreate)
-			}
-			if tt.wantCreate {
-				data, readErr := os.ReadFile(got)
-				if readErr != nil {
-					t.Fatal(readErr)
-				}
-				if tt.migrated {
-					if string(data) != "DEEPSEEK.md" {
-						t.Fatalf("migrated instructions = %q, want legacy contents", data)
-					}
-				} else if !strings.Contains(string(data), "LUBAN Code") || strings.Contains(string(data), "DeepSeek Code") {
-					t.Fatalf("unexpected created instructions:\n%s", data)
-				}
-			}
-		})
-	}
-}
-
 func TestCommandDescriptionsAndMCPHintUseLUBANBrand(t *testing.T) {
-	if got := (&memoryCmd{}).Description(); got != "Edit LUBAN Code instruction files" {
-		t.Fatalf("memory description = %q", got)
-	}
 	if got := (&configCmd{}).Description(); got != "Show or edit LUBAN Code settings" {
 		t.Fatalf("config description = %q", got)
 	}

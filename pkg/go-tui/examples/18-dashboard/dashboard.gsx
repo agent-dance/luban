@@ -223,7 +223,7 @@ templ (d *dashboardApp) Render() {
 			</div>
 		</div>
 
-		<div class="flex gap-1 flex-grow">
+		<div class="flex gap-1 grow">
 			<div class="flex-col border-rounded p-1 gap-1" flexGrow={1.0}>
 				<span class="text-gradient-cyan-magenta font-bold">Network Traffic</span>
 				<div class="flex gap-1">

@@ -126,14 +126,20 @@ func TestIntegration_NestedLayouts(t *testing.T) {
 // TestIntegration_FlexGrowShrink tests flex grow and shrink behavior
 func TestIntegration_FlexGrowShrink(t *testing.T) {
 	type tc struct {
-		children      []struct{ width int; grow, shrink float64 }
+		children []struct {
+			width        int
+			grow, shrink float64
+		}
 		parentWidth   int
 		expectedSizes []int
 	}
 
 	tests := map[string]tc{
 		"equal grow": {
-			children: []struct{ width int; grow, shrink float64 }{
+			children: []struct {
+				width        int
+				grow, shrink float64
+			}{
 				{0, 1, 1},
 				{0, 1, 1},
 			},
@@ -141,7 +147,10 @@ func TestIntegration_FlexGrowShrink(t *testing.T) {
 			expectedSizes: []int{50, 50},
 		},
 		"unequal grow": {
-			children: []struct{ width int; grow, shrink float64 }{
+			children: []struct {
+				width        int
+				grow, shrink float64
+			}{
 				{0, 1, 1},
 				{0, 2, 1},
 			},
@@ -149,7 +158,10 @@ func TestIntegration_FlexGrowShrink(t *testing.T) {
 			expectedSizes: []int{30, 60},
 		},
 		"fixed and grow": {
-			children: []struct{ width int; grow, shrink float64 }{
+			children: []struct {
+				width        int
+				grow, shrink float64
+			}{
 				{30, 0, 1},
 				{0, 1, 1},
 			},
@@ -157,7 +169,10 @@ func TestIntegration_FlexGrowShrink(t *testing.T) {
 			expectedSizes: []int{30, 70},
 		},
 		"no shrink overflow": {
-			children: []struct{ width int; grow, shrink float64 }{
+			children: []struct {
+				width        int
+				grow, shrink float64
+			}{
 				{60, 0, 0},
 				{60, 0, 0},
 			},
@@ -323,4 +338,3 @@ func TestIntegration_BackgroundAndBorder(t *testing.T) {
 		t.Errorf("border foreground = %d, want %d (Red)", borderCell.Style.Fg, Red)
 	}
 }
-

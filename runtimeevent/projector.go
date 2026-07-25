@@ -26,7 +26,6 @@ type RedactionLevel string
 
 const (
 	RedactionStrict     RedactionLevel = "strict"
-	RedactionPublic     RedactionLevel = "public"
 	RedactionDiagnostic RedactionLevel = "diagnostic"
 	RedactionRaw        RedactionLevel = "raw"
 )
@@ -44,21 +43,17 @@ var (
 	ErrMissingDiagnosticCode = errors.New("runtime event is missing a diagnostic code")
 )
 
-// ProjectionOptions declares all authority used for projection. AllowRawAudit
-// is intentionally separate from RedactionRaw so deserializing or forwarding a
-// raw redaction value cannot silently enable private data disclosure.
+// ProjectionOptions declares all authority used for projection. Audience and
+// Redaction are required; the projector never supplies implicit defaults.
+// AllowRawAudit is intentionally separate from RedactionRaw so
+// deserializing or forwarding a raw redaction value cannot silently enable
+// private data disclosure.
 type ProjectionOptions struct {
 	Audience      Audience
 	Redaction     RedactionLevel
 	Language      i18n.Language
 	LanguageSet   bool
 	AllowRawAudit bool
-}
-
-// ProjectedRemediation is localized only at the final projection boundary.
-type ProjectedRemediation struct {
-	Action  string `json:"action"`
-	Message string `json:"message"`
 }
 
 // ProjectedRuntimeEvent is the versioned wire schema. PrivateCause and
@@ -85,7 +80,6 @@ type ProjectedRuntimeEvent struct {
 	Message     string                    `json:"message"`
 	PublicKey   i18n.Key                  `json:"public_key,omitempty"`
 	PublicArgs  []any                     `json:"public_args,omitempty"`
-	Remediation *ProjectedRemediation     `json:"remediation,omitempty"`
 	EvidenceRef *types.RuntimeEvidenceRef `json:"evidence_ref,omitempty"`
 
 	PrivateCause    string         `json:"private_cause,omitempty"`
@@ -100,11 +94,11 @@ func NewAudienceProjector() AudienceProjector { return AudienceProjector{} }
 // Project validates event authority and emits only fields permitted by the
 // requested audience/redaction pair.
 func (AudienceProjector) Project(event types.RuntimeEvent, options ProjectionOptions) (ProjectedRuntimeEvent, error) {
-	options = defaultProjectionOptions(options)
 	if err := validateProjectionOptions(options); err != nil {
 		return ProjectedRuntimeEvent{}, i18n.WrapInternalError(i18n.KeyRuntimeEventProjectionRejected, err)
 	}
-	if err := validateRuntimeEvent(event); err != nil {
+	eventType, err := validateRuntimeEvent(event)
+	if err != nil {
 		return ProjectedRuntimeEvent{}, i18n.WrapInternalError(i18n.KeyRuntimeEventInvalid, err)
 	}
 
@@ -113,19 +107,10 @@ func (AudienceProjector) Project(event types.RuntimeEvent, options ProjectionOpt
 		lang = i18n.DetectOrLoadLanguage()
 	}
 	projected := ProjectedRuntimeEvent{
-		Type: eventType(event.Kind), SchemaVersion: types.RuntimeEventSchemaVersion,
+		Type: eventType, SchemaVersion: types.RuntimeEventSchemaVersion,
 		Audience: options.Audience, RedactionLevel: options.Redaction,
 		Kind: event.Kind, Outcome: event.Outcome,
 		Code: event.DiagnosticCode, Message: i18n.Format(lang, event.PublicKey, event.PublicArgs...),
-	}
-
-	if options.Redaction != RedactionStrict {
-		if event.Remediation != nil {
-			projected.Remediation = &ProjectedRemediation{
-				Action:  event.Remediation.Action,
-				Message: i18n.Format(lang, event.Remediation.PublicKey, event.Remediation.PublicArgs...),
-			}
-		}
 	}
 
 	if exposesStableIdentity(options) {
@@ -154,23 +139,6 @@ func (AudienceProjector) Project(event types.RuntimeEvent, options ProjectionOpt
 	return projected, nil
 }
 
-func defaultProjectionOptions(options ProjectionOptions) ProjectionOptions {
-	if options.Audience == "" {
-		options.Audience = AudienceUser
-	}
-	if options.Redaction == "" {
-		switch options.Audience {
-		case AudienceSDK:
-			options.Redaction = RedactionPublic
-		case AudienceAudit:
-			options.Redaction = RedactionDiagnostic
-		default:
-			options.Redaction = RedactionStrict
-		}
-	}
-	return options
-}
-
 func validateProjectionOptions(options ProjectionOptions) error {
 	switch options.Audience {
 	case AudienceUser, AudienceModel, AudienceAudit, AudienceSDK:
@@ -178,7 +146,7 @@ func validateProjectionOptions(options ProjectionOptions) error {
 		return fmt.Errorf("%w: %q", ErrInvalidAudience, options.Audience)
 	}
 	switch options.Redaction {
-	case RedactionStrict, RedactionPublic, RedactionDiagnostic, RedactionRaw:
+	case RedactionStrict, RedactionDiagnostic, RedactionRaw:
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidRedaction, options.Redaction)
 	}
@@ -197,45 +165,38 @@ func validateProjectionOptions(options ProjectionOptions) error {
 	return nil
 }
 
-func validateRuntimeEvent(event types.RuntimeEvent) error {
+func validateRuntimeEvent(event types.RuntimeEvent) (string, error) {
 	if event.SchemaVersion != types.RuntimeEventSchemaVersion {
-		return fmt.Errorf("%w: %q", ErrUnsupportedSchema, event.SchemaVersion)
+		return "", fmt.Errorf("%w: %q", ErrUnsupportedSchema, event.SchemaVersion)
 	}
 	if event.EventID == "" {
-		return ErrMissingEventID
+		return "", ErrMissingEventID
 	}
+	var eventType string
 	switch event.Kind {
-	case types.RuntimeEventKindError, types.RuntimeEventKindWarning, types.RuntimeEventKindToolResult:
+	case types.RuntimeEventKindError:
+		eventType = "error"
+	case types.RuntimeEventKindWarning:
+		eventType = "warning"
+	case types.RuntimeEventKindToolResult:
+		eventType = "tool_result"
 	default:
-		return fmt.Errorf("%w: %q", ErrInvalidEventKind, event.Kind)
+		return "", fmt.Errorf("%w: %q", ErrInvalidEventKind, event.Kind)
 	}
 	if event.PublicKey == "" {
-		return ErrMissingPublicKey
+		return "", ErrMissingPublicKey
 	}
 	if event.Kind != types.RuntimeEventKindWarning && !event.HasAuthoritativeOutcome() {
-		return ErrMissingOutcome
+		return "", ErrMissingOutcome
 	}
 	if event.DiagnosticCode == "" {
-		return ErrMissingDiagnosticCode
+		return "", ErrMissingDiagnosticCode
 	}
-	return nil
+	return eventType, nil
 }
 
 func exposesStableIdentity(options ProjectionOptions) bool {
 	return options.Audience == AudienceSDK || options.Audience == AudienceAudit
-}
-
-func eventType(kind types.RuntimeEventKind) string {
-	switch kind {
-	case types.RuntimeEventKindError:
-		return "error"
-	case types.RuntimeEventKindWarning:
-		return "warning"
-	case types.RuntimeEventKindToolResult:
-		return "tool_result"
-	default:
-		return "runtime_event"
-	}
 }
 
 func cloneEvidenceRef(ref *types.RuntimeEvidenceRef) *types.RuntimeEvidenceRef {

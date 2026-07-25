@@ -8,7 +8,7 @@ import (
 type mockTool struct{}
 
 func (m *mockTool) Name() string        { return "mock_tool" }
-func (m *mockTool) Description() string  { return "A mock tool for testing" }
+func (m *mockTool) Description() string { return "A mock tool for testing" }
 func (m *mockTool) Schema() JSONSchema {
 	return JSONSchema{
 		Type: "object",

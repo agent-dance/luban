@@ -39,7 +39,7 @@ type VertexConfig struct {
 // Variables read:
 //   - GOOGLE_CLOUD_PROJECT / ANTHROPIC_VERTEX_PROJECT_ID — GCP project ID
 //   - GOOGLE_CLOUD_REGION / CLOUD_ML_REGION / ANTHROPIC_VERTEX_REGION — GCP region
-//   - VERTEX_MODEL / CLAUDE_MODEL — model ID override
+//   - VERTEX_MODEL — model ID override
 //   - GOOGLE_APPLICATION_CREDENTIALS — path to service account JSON (used by ADC automatically)
 func VertexConfigFromEnv() VertexConfig {
 	projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
@@ -59,9 +59,6 @@ func VertexConfigFromEnv() VertexConfig {
 	}
 
 	model := os.Getenv("VERTEX_MODEL")
-	if model == "" {
-		model = os.Getenv("CLAUDE_MODEL")
-	}
 	if model == "" {
 		model = DefaultVertexModel
 	}

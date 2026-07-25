@@ -15,16 +15,12 @@ const (
 	EventContentBlockStop  StreamEventType = "content_block_stop"
 	EventMessageDelta      StreamEventType = "message_delta"
 	EventMessageStop       StreamEventType = "message_stop"
-	EventPing              StreamEventType = "ping"
 	EventError             StreamEventType = "error"
 )
 
 // StreamEvent represents a single event from the SSE stream
 type StreamEvent struct {
 	Type StreamEventType `json:"type"`
-
-	// For message_start
-	Message *APIMessage `json:"message,omitempty"`
 
 	// For content_block_start
 	Index        int           `json:"index,omitempty"`
@@ -78,18 +74,6 @@ type ContentDelta struct {
 	RawJSON   json.RawMessage `json:"raw_json,omitempty"`
 }
 
-// APIMessage represents the top-level message from the API
-type APIMessage struct {
-	ID           string         `json:"id"`
-	Type         string         `json:"type"`
-	Role         Role           `json:"role"`
-	Content      []ContentBlock `json:"content"`
-	Model        string         `json:"model"`
-	StopReason   StopReason     `json:"stop_reason"`
-	StopSequence *string        `json:"stop_sequence"`
-	Usage        Usage          `json:"usage"`
-}
-
 // Usage represents provider-normalized token usage. InputTokens is the complete
 // prompt size; cache fields are details within that total.
 type Usage struct {
@@ -136,24 +120,4 @@ func (e *APIError) Error() string {
 		return fmt.Sprintf("HTTP %d: %s", e.Status, e.Message)
 	}
 	return e.Message
-}
-
-// CreateMessageRequest represents the request body for the messages API
-type CreateMessageRequest struct {
-	Model         string           `json:"model"`
-	MaxTokens     int              `json:"max_tokens"`
-	System        string           `json:"system,omitempty"`
-	Messages      []Message        `json:"messages"`
-	Tools         []ToolDefinition `json:"tools,omitempty"`
-	Stream        bool             `json:"stream"`
-	StopSequences []string         `json:"stop_sequences,omitempty"`
-	Temperature   *float64         `json:"temperature,omitempty"`
-	TopP          *float64         `json:"top_p,omitempty"`
-	TopK          *int             `json:"top_k,omitempty"`
-	Metadata      *RequestMetadata `json:"metadata,omitempty"`
-}
-
-// RequestMetadata contains optional request metadata
-type RequestMetadata struct {
-	UserID string `json:"user_id,omitempty"`
 }

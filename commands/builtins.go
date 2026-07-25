@@ -5,12 +5,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/agent-dance/luban/brand"
-	compactpkg "github.com/agent-dance/luban/compact"
-	"github.com/agent-dance/luban/cost"
 	"github.com/agent-dance/luban/i18n"
+	compactpkg "github.com/agent-dance/luban/internal/runtime/compact"
+	"github.com/agent-dance/luban/internal/store/session"
 	"github.com/agent-dance/luban/provider"
-	"github.com/agent-dance/luban/session"
 )
 
 // RegisterBuiltins adds all built-in slash commands to r.
@@ -37,7 +35,7 @@ func RegisterBuiltins(r *Registry) {
 	r.Register(&reviewCmd{})
 	r.Register(&doctorCmd{})
 	r.Register(&languageCmd{})
-	r.Register(NewSkillsCommand(nil))
+	r.Register(NewSkillsCommand())
 	RegisterMCPCommand(r, nil)
 }
 
@@ -340,63 +338,60 @@ func (c *modelCmd) showModels(ctx *Context) error {
 
 	sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinModelCurrent, currentProvider, currentModel))
 
-	// If we have a ProviderRegistry, list available models grouped by provider.
-	if ctx.ProviderRegistry != nil {
-		sb.WriteString(i18n.Text(ctx.Language, i18n.KeyBuiltinModelAvailable))
-		catalog := ctx.ProviderRegistry.Catalog()
-		available := ctx.ProviderRegistry.Available()
+	sb.WriteString(i18n.Text(ctx.Language, i18n.KeyBuiltinModelAvailable))
+	catalog := ctx.ProviderRegistry.Catalog()
+	available := ctx.ProviderRegistry.Available()
 
-		for _, pInfo := range available {
-			models := catalog.ListByProvider(pInfo.Name)
-			if len(models) == 0 {
-				continue
+	for _, pInfo := range available {
+		models := catalog.ListByProvider(pInfo.Name)
+		if len(models) == 0 {
+			continue
+		}
+		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinModelProvider, pInfo.DisplayName, pInfo.Name))
+		for _, m := range models {
+			marker := "  "
+			if m.Provider == currentProvider && m.ID == currentModel {
+				marker = "→ "
 			}
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinModelProvider, pInfo.DisplayName, pInfo.Name))
-			for _, m := range models {
-				marker := "  "
-				if m.Provider == currentProvider && m.ID == currentModel {
-					marker = "→ "
-				}
-				extra := ""
-				if m.CanSeeImages {
-					extra += i18n.Text(ctx.Language, i18n.KeyBuiltinModelVision)
-				} else {
-					extra += i18n.Text(ctx.Language, i18n.KeyBuiltinModelText)
-				}
-				if len(m.ReasoningEfforts) > 0 {
-					extra += i18n.Format(ctx.Language, i18n.KeyBuiltinModelReasoningEfforts, strings.Join(m.ReasoningEfforts, "/"))
-				} else if m.CanReason {
-					extra += i18n.Text(ctx.Language, i18n.KeyBuiltinModelThinking)
-				}
-				if m.IsDefault {
-					extra += i18n.Text(ctx.Language, i18n.KeyBuiltinModelDefault)
-				}
-				ctxK := ""
-				if m.ContextWindow > 0 {
-					ctxK = provider.FormatContextWindow(m.ContextWindow)
-				}
-				costStr := ""
-				if m.CostPer1MIn > 0 {
-					costStr = formatModelPricePair(m.CostPer1MIn, m.CostPer1MOut, m.BillingCurrency())
-				}
+			extra := ""
+			if m.CanSeeImages {
+				extra += i18n.Text(ctx.Language, i18n.KeyBuiltinModelVision)
+			} else {
+				extra += i18n.Text(ctx.Language, i18n.KeyBuiltinModelText)
+			}
+			if len(m.ReasoningEfforts) > 0 {
+				extra += i18n.Format(ctx.Language, i18n.KeyBuiltinModelReasoningEfforts, strings.Join(m.ReasoningEfforts, "/"))
+			} else if m.CanReason {
+				extra += i18n.Text(ctx.Language, i18n.KeyBuiltinModelThinking)
+			}
+			if m.IsDefault {
+				extra += i18n.Text(ctx.Language, i18n.KeyBuiltinModelDefault)
+			}
+			ctxK := ""
+			if m.ContextWindow > 0 {
+				ctxK = provider.FormatContextWindow(m.ContextWindow)
+			}
+			costStr := ""
+			if m.CostPer1MIn > 0 {
+				costStr = formatModelPricePair(m.CostPer1MIn, m.CostPer1MOut, m.BillingCurrency())
+			}
 
-				line := fmt.Sprintf("    %s%s/%s", marker, pInfo.Name, m.ID)
-				if ctxK != "" || costStr != "" {
-					line += "  ["
+			line := fmt.Sprintf("    %s%s/%s", marker, pInfo.Name, m.ID)
+			if ctxK != "" || costStr != "" {
+				line += "  ["
+				if ctxK != "" {
+					line += ctxK
+				}
+				if costStr != "" {
 					if ctxK != "" {
-						line += ctxK
+						line += ", "
 					}
-					if costStr != "" {
-						if ctxK != "" {
-							line += ", "
-						}
-						line += costStr
-					}
-					line += "]"
+					line += costStr
 				}
-				line += extra
-				sb.WriteString(line + "\n")
+				line += "]"
 			}
+			line += extra
+			sb.WriteString(line + "\n")
 		}
 	}
 
@@ -426,21 +421,6 @@ func (c *modelCmd) switchModel(ctx *Context, args string) error {
 		return nil
 	}
 
-	// Cross-provider switch: need Registry and ProviderRef.
-	if ctx.ProviderRegistry == nil || ctx.ProviderRef == nil {
-		// Fallback: just switch the model name without provider change.
-		ctx.QueryLoop.SetModel(modelName)
-		if path, err := persistProjectSettings(ctx, map[string]interface{}{"provider": providerName, "model": modelName}); err != nil {
-			ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyBuiltinModelFallbackPersistError, modelName, err))
-			reportCommandDomainResult(ctx, CommandOutcomeWarning, "", i18n.Text(ctx.Language, i18n.KeyCommandPresentationModelSaveWarning))
-		} else if path != "" {
-			ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyBuiltinModelFallbackSaved, modelName, path))
-		} else {
-			ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyBuiltinModelFallback, modelName))
-		}
-		return nil
-	}
-
 	// Check if the provider exists in the registry.
 	pInfo, ok := ctx.ProviderRegistry.Get(providerName)
 	if !ok {
@@ -449,12 +429,12 @@ func (c *modelCmd) switchModel(ctx *Context, args string) error {
 	}
 
 	// Check whether the provider is model-selectable.
-	connection := ctx.ProviderRegistry.ConnectionState(pInfo.Name).Localized(ctx.Language)
+	connection := ctx.ProviderRegistry.ConnectionState(pInfo.Name)
 	if !connection.CanSelectModels {
-		if connection.SetupHint != "" {
-			return fmt.Errorf("%s", i18n.Format(ctx.Language, i18n.KeyBuiltinModelProviderNotReady, providerName, connection.SetupHint))
+		if setupHint := connection.SetupHintText(ctx.Language); setupHint != "" {
+			return fmt.Errorf("%s", i18n.Format(ctx.Language, i18n.KeyBuiltinModelProviderNotReady, providerName, setupHint))
 		}
-		return fmt.Errorf("%s", i18n.Format(ctx.Language, i18n.KeyBuiltinModelProviderNotReady, providerName, connection.Detail))
+		return fmt.Errorf("%s", i18n.Format(ctx.Language, i18n.KeyBuiltinModelProviderNotReady, providerName, connection.DetailText(ctx.Language)))
 	}
 
 	// Build a Config from the credential store for the target provider.
@@ -524,121 +504,6 @@ func formatModelPricePair(in, out float64, currency string) string {
 	return fmt.Sprintf("%s%.2f/%s%.2f", symbol, in, symbol, out)
 }
 
-// ---------------------------------------------------------------------------
-// /cost
-// ---------------------------------------------------------------------------
-
-type costCmd struct{}
-
-func (c *costCmd) Name() string        { return "cost" }
-func (c *costCmd) Aliases() []string   { return nil }
-func (c *costCmd) Description() string { return builtinCommandDescription("cost") }
-
-func (c *costCmd) Execute(ctx *Context, _ string) error {
-	usage := cost.TokenUsage{
-		InputTokens:              ctx.TotalInputTokens,
-		OutputTokens:             ctx.TotalOutputTokens,
-		CacheReadInputTokens:     ctx.TotalCacheReadTokens,
-		CacheCreationInputTokens: ctx.TotalCacheCreationTokens,
-		WebSearchRequests:        ctx.TotalWebSearchRequests,
-	}
-	totalTokens := usage.InputTokens + usage.OutputTokens
-
-	model := ctx.CurrentModel
-	breakdown, ok := cost.CalculateCost(model, usage)
-
-	// If we have catalog-based per-model data, try to recalculate total from that
-	if ctx.ProviderRegistry != nil {
-		catalog := ctx.ProviderRegistry.Catalog()
-		if info, found := catalog.ResolveForProvider(ctx.CurrentProvider, model); found && info.BillingCurrency() == "USD" && (info.CostPer1MIn > 0 || info.CostPer1MOut > 0) {
-			cacheReadRate := info.CacheReadPer1M
-			if cacheReadRate <= 0 {
-				cacheReadRate = info.CostPer1MIn
-			}
-			cacheCreationRate := info.CacheCreatePer1M
-			if cacheCreationRate <= 0 {
-				cacheCreationRate = info.CostPer1MIn
-			}
-			webSearchRate := 0.0
-			switch provider.CanonicalProviderName(ctx.CurrentProvider) {
-			case "anthropic", "bedrock", "vertex", "oauth":
-				webSearchRate = cost.WebSearchRequestPriceUSD
-			}
-			pricing := cost.ModelPricing{
-				InputPerMtok:         info.CostPer1MIn,
-				OutputPerMtok:        info.CostPer1MOut,
-				CacheReadPerMtok:     cacheReadRate,
-				CacheCreationPerMtok: cacheCreationRate,
-				WebSearchPerRequest:  webSearchRate,
-			}
-			breakdown = cost.CalculateCostFromPricing(pricing, usage)
-			ok = true
-		}
-	}
-	if ctx.SessionCostBreakdown != nil {
-		breakdown = *ctx.SessionCostBreakdown
-		ok = true
-	}
-	if ctx.CostUnknown {
-		ok = false
-	}
-
-	// Use TotalCostUSD if available (it's accumulated across model switches)
-	sessionCost := ctx.TotalCostUSD
-	if sessionCost == 0 && ok {
-		sessionCost = breakdown.TotalUSD
-	}
-
-	var sb strings.Builder
-	if ok {
-		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostSession, cost.FormatUSD(sessionCost)))
-		showBucketCosts := ctx.SessionCostBreakdown != nil || ctx.TotalCostUSD == 0
-		if showBucketCosts {
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostInputWithCost, formatTokens(usage.InputTokens), cost.FormatUSD(breakdown.InputUSD)))
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostOutputWithCost, formatTokens(usage.OutputTokens), cost.FormatUSD(breakdown.OutputUSD)))
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostCacheReadWithCost, formatTokens(usage.CacheReadInputTokens), cost.FormatUSD(breakdown.CacheReadUSD)))
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostCacheCreationWithCost, formatTokens(usage.CacheCreationInputTokens), cost.FormatUSD(breakdown.CacheCreationUSD)))
-		} else {
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostInput, formatTokens(usage.InputTokens)))
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostOutput, formatTokens(usage.OutputTokens)))
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostCacheRead, formatTokens(usage.CacheReadInputTokens)))
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostCacheCreation, formatTokens(usage.CacheCreationInputTokens)))
-		}
-		if usage.WebSearchRequests > 0 {
-			if showBucketCosts {
-				sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostWebSearchWithCost, formatTokens(usage.WebSearchRequests), cost.FormatUSD(breakdown.WebSearchUSD)))
-			} else {
-				sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostWebSearch, formatTokens(usage.WebSearchRequests)))
-			}
-		}
-		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostTotal, formatTokens(totalTokens)))
-		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostModel, model))
-	} else {
-		// Unknown model — show tokens only.
-		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostUsageOnly,
-			formatTokens(usage.InputTokens), formatTokens(usage.OutputTokens), formatTokens(totalTokens)))
-		if model != "" {
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostModelUnknown, model))
-		}
-	}
-
-	// Per-model breakdown (multi-model sessions)
-	if len(ctx.PerModelCosts) > 1 {
-		sb.WriteString(i18n.Text(ctx.Language, i18n.KeyBuiltinCostPerModel))
-		for _, mc := range ctx.PerModelCosts {
-			webSearch := ""
-			if mc.WebSearchRequests > 0 {
-				webSearch = i18n.Format(ctx.Language, i18n.KeyBuiltinCostPerModelWebSearch, mc.WebSearchRequests)
-			}
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinCostPerModelRow,
-				mc.Model, formatTokens(mc.InputTokens), formatTokens(mc.OutputTokens), webSearch, mc.TurnCount, cost.FormatUSD(mc.CostUSD)))
-		}
-	}
-
-	ctx.OnEvent(sb.String())
-	return nil
-}
-
 // formatTokens formats an integer token count with comma separators.
 func formatTokens(n int) string {
 	s := fmt.Sprintf("%d", n)
@@ -653,25 +518,6 @@ func formatTokens(n int) string {
 		result = append(result, byte(ch))
 	}
 	return string(result)
-}
-
-// ---------------------------------------------------------------------------
-// /version
-// ---------------------------------------------------------------------------
-
-type versionCmd struct{}
-
-func (c *versionCmd) Name() string        { return "version" }
-func (c *versionCmd) Aliases() []string   { return nil }
-func (c *versionCmd) Description() string { return builtinCommandDescription("version") }
-
-func (c *versionCmd) Execute(ctx *Context, _ string) error {
-	v := ctx.AppVersion
-	if v == "" {
-		v = "dev"
-	}
-	ctx.OnEvent(fmt.Sprintf("%s %s\n", brand.RuntimeName, v))
-	return nil
 }
 
 // ---------------------------------------------------------------------------

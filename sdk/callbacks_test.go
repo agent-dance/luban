@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/agent-dance/luban/engine"
 )
 
 // TestSetToolApproval_Allow verifies that a registered ToolApprovalFunc that
@@ -15,21 +13,21 @@ func TestSetToolApproval_Allow(t *testing.T) {
 	t.Parallel()
 
 	pr, pw := newPipe()
-	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw)
+	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw, InitialPermissionBridge)
 
-	srv.SetToolApproval(func(toolName string, input map[string]any) engine.PermissionDecision {
-		return engine.PermissionAllow
+	srv.SetToolApproval(func(toolName string, input map[string]any) PermissionDecision {
+		return PermissionAllow
 	})
 
 	h := srv.permissionHandler()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	decision, err := h.Check(ctx, engine.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "ls"}})
+	decision, err := h.Check(ctx, PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "ls"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if decision != engine.PermissionAllow {
+	if decision != PermissionAllow {
 		t.Fatalf("expected PermissionAllow, got %v", decision)
 	}
 }
@@ -40,21 +38,21 @@ func TestSetToolApproval_Deny(t *testing.T) {
 	t.Parallel()
 
 	pr, pw := newPipe()
-	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw)
+	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw, InitialPermissionBridge)
 
-	srv.SetToolApproval(func(toolName string, input map[string]any) engine.PermissionDecision {
-		return engine.PermissionDeny
+	srv.SetToolApproval(func(toolName string, input map[string]any) PermissionDecision {
+		return PermissionDeny
 	})
 
 	h := srv.permissionHandler()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	decision, err := h.Check(ctx, engine.PermissionRequest{ToolName: "Write", Input: map[string]any{"file_path": "/etc/passwd"}})
+	decision, err := h.Check(ctx, PermissionRequest{ToolName: "Write", Input: map[string]any{"file_path": "/etc/passwd"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if decision != engine.PermissionDeny {
+	if decision != PermissionDeny {
 		t.Fatalf("expected PermissionDeny, got %v", decision)
 	}
 }
@@ -65,9 +63,9 @@ func TestSetToolApproval_Abstain(t *testing.T) {
 	t.Parallel()
 
 	pr, pw := newPipe()
-	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw)
+	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw, InitialPermissionBridge)
 
-	srv.SetToolApproval(func(toolName string, _ map[string]any) engine.PermissionDecision {
+	srv.SetToolApproval(func(toolName string, _ map[string]any) PermissionDecision {
 		return PermissionAbstain // let bridge handle it
 	})
 
@@ -76,7 +74,7 @@ func TestSetToolApproval_Abstain(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := h.Check(ctx, engine.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "echo hi"}})
+	_, err := h.Check(ctx, PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "echo hi"}})
 	if err == nil {
 		t.Fatal("expected a timeout/ctx error when bridge has no responder, got nil")
 	}
@@ -91,11 +89,11 @@ func TestSetToolApproval_Nil(t *testing.T) {
 	t.Parallel()
 
 	pr, pw := newPipe()
-	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw)
+	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw, InitialPermissionBridge)
 
 	// First register a callback, then clear it.
-	srv.SetToolApproval(func(_ string, _ map[string]any) engine.PermissionDecision {
-		return engine.PermissionAllow
+	srv.SetToolApproval(func(_ string, _ map[string]any) PermissionDecision {
+		return PermissionAllow
 	})
 	srv.SetToolApproval(nil) // clear
 
@@ -103,7 +101,7 @@ func TestSetToolApproval_Nil(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, err := h.Check(ctx, engine.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "echo hi"}})
+	_, err := h.Check(ctx, PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "echo hi"}})
 	if err == nil {
 		t.Fatal("expected context/timeout error after clearing callback, got nil")
 	}
@@ -115,16 +113,16 @@ func TestSetToolApproval_ToolSpecific(t *testing.T) {
 	t.Parallel()
 
 	pr, pw := newPipe()
-	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw)
+	srv := NewSDKServer(newMockEngine(nil, "claude-3-5-sonnet-20241022"), pr, pw, InitialPermissionBridge)
 
 	var gotTool string
 	var gotCmd string
-	srv.SetToolApproval(func(toolName string, input map[string]any) engine.PermissionDecision {
+	srv.SetToolApproval(func(toolName string, input map[string]any) PermissionDecision {
 		gotTool = toolName
 		if cmd, ok := input["command"].(string); ok {
 			gotCmd = cmd
 		}
-		return engine.PermissionAllow
+		return PermissionAllow
 	})
 
 	h := srv.permissionHandler()
@@ -133,7 +131,7 @@ func TestSetToolApproval_ToolSpecific(t *testing.T) {
 
 	wantTool := "Bash"
 	wantCmd := "ls -la"
-	_, err := h.Check(ctx, engine.PermissionRequest{
+	_, err := h.Check(ctx, PermissionRequest{
 		ToolName: wantTool,
 		Input:    map[string]any{"command": wantCmd},
 	})

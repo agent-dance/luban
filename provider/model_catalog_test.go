@@ -17,6 +17,7 @@ func TestModelCatalog_RegisterAndGet(t *testing.T) {
 		ID:            "test-model",
 		Name:          "Test Model",
 		Provider:      "test",
+		CostCurrency:  "USD",
 		ContextWindow: 128000,
 		IsDefault:     true,
 	}
@@ -44,8 +45,8 @@ func TestModelCatalog_GetMissing(t *testing.T) {
 
 func TestModelCatalog_Resolve_ExactMatch(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "gpt-4o", Provider: "openai"})
-	c.Register(ModelInfo{ID: "gpt-4o-mini", Provider: "openai"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "gpt-4o", Provider: "openai"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "gpt-4o-mini", Provider: "openai"})
 
 	m, ok := c.Resolve("gpt-4o")
 	if !ok || m.ID != "gpt-4o" {
@@ -55,8 +56,8 @@ func TestModelCatalog_Resolve_ExactMatch(t *testing.T) {
 
 func TestModelCatalog_Resolve_PrefixMatch(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "gpt-4o", Provider: "openai"})
-	c.Register(ModelInfo{ID: "gpt-4o-mini", Provider: "openai"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "gpt-4o", Provider: "openai"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "gpt-4o-mini", Provider: "openai"})
 
 	// "gpt-4o-2024-05-13" should match "gpt-4o" (longest prefix with word boundary)
 	m, ok := c.Resolve("gpt-4o-2024-05-13")
@@ -71,14 +72,14 @@ func TestModelCatalog_Resolve_PrefixMatch(t *testing.T) {
 	}
 }
 
-func TestModelCatalog_Resolve_Alias(t *testing.T) {
+func TestModelCatalog_Resolve_CurrentProviderIdentifier(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "gpt-5.6-sol", Aliases: []string{"gpt-5.6"}, Provider: "openai"})
-	c.Register(ModelInfo{ID: "gpt-5.6-terra", Provider: "openai"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "gpt-5.6-sol", Aliases: []string{"gpt-5.6"}, Provider: "openai"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "gpt-5.6-terra", Provider: "openai"})
 
 	m, ok := c.ResolveForProvider("openai", "gpt-5.6")
 	if !ok || m.ID != "gpt-5.6-sol" {
-		t.Fatalf("alias resolved to %+v, found=%v; want gpt-5.6-sol", m, ok)
+		t.Fatalf("provider identifier resolved to %+v, found=%v; want gpt-5.6-sol", m, ok)
 	}
 
 	m, ok = c.Resolve("gpt-5.6-terra-2026-06-01")
@@ -89,7 +90,7 @@ func TestModelCatalog_Resolve_Alias(t *testing.T) {
 
 func TestModelCatalog_Resolve_NoMatch(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "gpt-4o", Provider: "openai"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "gpt-4o", Provider: "openai"})
 
 	_, ok := c.Resolve("completely-unknown")
 	if ok {
@@ -99,9 +100,9 @@ func TestModelCatalog_Resolve_NoMatch(t *testing.T) {
 
 func TestModelCatalog_ListByProvider(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "model-a", Provider: "p1"})
-	c.Register(ModelInfo{ID: "model-b", Provider: "p1", IsDefault: true})
-	c.Register(ModelInfo{ID: "model-c", Provider: "p2"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "model-a", Provider: "p1"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "model-b", Provider: "p1", IsDefault: true})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "model-c", Provider: "p2"})
 
 	list := c.ListByProvider("p1")
 	if len(list) != 2 {
@@ -115,9 +116,9 @@ func TestModelCatalog_ListByProvider(t *testing.T) {
 
 func TestModelCatalog_All_SortOrder(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "z-model", Provider: "beta"})
-	c.Register(ModelInfo{ID: "a-model", Provider: "alpha", IsDefault: true})
-	c.Register(ModelInfo{ID: "b-model", Provider: "alpha"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "z-model", Provider: "beta"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "a-model", Provider: "alpha", IsDefault: true})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "b-model", Provider: "alpha"})
 
 	all := c.All()
 	if len(all) != 3 {
@@ -137,8 +138,8 @@ func TestModelCatalog_All_SortOrder(t *testing.T) {
 
 func TestModelCatalog_DefaultForProvider(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "model-a", Provider: "test"})
-	c.Register(ModelInfo{ID: "model-b", Provider: "test", IsDefault: true})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "model-a", Provider: "test"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "model-b", Provider: "test", IsDefault: true})
 
 	def := c.DefaultForProvider("test")
 	if def != "model-b" {
@@ -154,9 +155,9 @@ func TestModelCatalog_DefaultForProvider(t *testing.T) {
 
 func TestModelCatalog_ResolveForProvider(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "shared-model", Provider: "anthropic", ContextWindow: 200000})
-	c.Register(ModelInfo{ID: "shared-model", Provider: "vertex", ContextWindow: 200000})
-	c.Register(ModelInfo{ID: "shared-model-lite", Provider: "vertex", ContextWindow: 128000})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "shared-model", Provider: "anthropic", ContextWindow: 200000})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "shared-model", Provider: "vertex", ContextWindow: 200000})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "shared-model-lite", Provider: "vertex", ContextWindow: 128000})
 
 	m, ok := c.ResolveForProvider("vertex", "shared-model")
 	if !ok || m.Provider != "vertex" || m.ID != "shared-model" {
@@ -171,8 +172,8 @@ func TestModelCatalog_ResolveForProvider(t *testing.T) {
 
 func TestModelCatalog_ModelIDsByProvider(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "b", Provider: "test"})
-	c.Register(ModelInfo{ID: "a", Provider: "test", IsDefault: true})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "b", Provider: "test"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "a", Provider: "test", IsDefault: true})
 
 	ids := c.ModelIDsByProvider("test")
 	if len(ids) != 2 {
@@ -361,24 +362,6 @@ func TestDefaultCatalog_DeepSeekV4PricingUsesOfficialCNY(t *testing.T) {
 	}
 }
 
-func TestDefaultCatalog_DeepSeekLegacyAliasesAreNotSelectable(t *testing.T) {
-	c := DefaultCatalog()
-	for _, id := range []string{"deepseek-chat", "deepseek-reasoner"} {
-		if _, ok := c.GetForProvider("deepseek", id); ok {
-			t.Fatalf("%s should not be registered as a selectable DeepSeek model", id)
-		}
-		if got := LookupMaxContext(id); got != defaultMaxContext {
-			t.Fatalf("LookupMaxContext(%q) = %d, want fallback %d", id, got, defaultMaxContext)
-		}
-	}
-
-	for _, id := range c.ModelIDsByProvider("deepseek") {
-		if id == "deepseek-chat" || id == "deepseek-reasoner" {
-			t.Fatalf("legacy alias %q leaked into selectable DeepSeek IDs", id)
-		}
-	}
-}
-
 func TestDefaultCatalog_OpenAIReasoningEfforts(t *testing.T) {
 	c := DefaultCatalog()
 	m, ok := c.GetForProvider("openai", "gpt-5.6-sol")
@@ -445,11 +428,11 @@ func TestDefaultCatalog_LatestOpenAIMetadata(t *testing.T) {
 			t.Fatalf("%s pricing = %.3f/%.3f/%.3f/%.3f, want %.3f/%.3f/%.3f/%.3f", tt.id, m.CostPer1MIn, m.CacheCreatePer1M, m.CacheReadPer1M, m.CostPer1MOut, tt.input, tt.cacheWrite, tt.cacheRead, tt.output)
 		}
 	}
-
 	alias, ok := c.ResolveForProvider("openai", "gpt-5.6")
 	if !ok || alias.ID != "gpt-5.6-sol" {
-		t.Fatalf("gpt-5.6 alias = %+v, found=%v; want gpt-5.6-sol", alias, ok)
+		t.Fatalf("gpt-5.6 provider identifier = %+v, found=%v; want gpt-5.6-sol", alias, ok)
 	}
+
 }
 
 func TestDefaultCatalog_LatestAnthropicMetadata(t *testing.T) {
@@ -573,8 +556,8 @@ func TestDefaultCatalog_VertexUsesShortModelID(t *testing.T) {
 
 func TestModelCatalog_RegisterOverwrite(t *testing.T) {
 	c := NewModelCatalog()
-	c.Register(ModelInfo{ID: "m1", Name: "Original", Provider: "test"})
-	c.Register(ModelInfo{ID: "m1", Name: "Updated", Provider: "test"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "m1", Name: "Original", Provider: "test"})
+	c.Register(ModelInfo{CostCurrency: "USD", ID: "m1", Name: "Updated", Provider: "test"})
 
 	m, ok := c.Get("m1")
 	if !ok {

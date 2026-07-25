@@ -92,7 +92,7 @@ type CapabilityProvider interface {
 }
 
 // Snapshot returns a currently valid immutable capability for backend. It
-// rejects legacy/name-only backends and mismatched backend identities.
+// rejects name-only backends and mismatched backend identities.
 func Snapshot(backend Backend) (Capability, bool) {
 	if backend == nil || backend.Name() == "none" {
 		return Capability{}, false
@@ -109,7 +109,7 @@ func Snapshot(backend Backend) (Capability, bool) {
 }
 
 // IsRealBackend reports whether backend provides an actual OS isolation
-// boundary. NoopBackend remains executable as a compatibility fallback, but it
+// boundary. NoopBackend remains an unsandboxed execution backend, but it
 // must never be treated as sandbox authority for permission auto-approval.
 func IsRealBackend(backend Backend) bool {
 	_, ok := Snapshot(backend)

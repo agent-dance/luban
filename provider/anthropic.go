@@ -41,6 +41,7 @@ const (
 // AnthropicProvider wraps the official Anthropic SDK as a Provider
 type AnthropicProvider struct {
 	client  anthropic.Client
+	name    string
 	model   string
 	baseURL string
 }
@@ -81,6 +82,7 @@ func NewAnthropic(cfg Config) *AnthropicProvider {
 
 	return &AnthropicProvider{
 		client:  anthropic.NewClient(opts...),
+		name:    firstNonEmpty(CanonicalProviderName(cfg.ProviderName), "anthropic"),
 		model:   model,
 		baseURL: cfg.BaseURL,
 	}
@@ -161,7 +163,7 @@ func isTruthyEnv(v string) bool {
 }
 
 func mergedAnthropicBetaHeader(existing string) string {
-	if isTruthyEnv(os.Getenv("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS")) {
+	if isTruthyEnv(os.Getenv("LUBAN_CODE_DISABLE_EXPERIMENTAL_BETAS")) {
 		return strings.TrimSpace(existing)
 	}
 
@@ -426,7 +428,7 @@ func (w *debugLineWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (p *AnthropicProvider) Name() string    { return "anthropic" }
+func (p *AnthropicProvider) Name() string    { return p.name }
 func (p *AnthropicProvider) ModelID() string { return p.model }
 
 // CountTokens uses Anthropic's token-count endpoint for near-limit Read
@@ -636,8 +638,7 @@ func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthro
 		case anthropic.MessageStartEvent:
 			summary.messageStarted = true
 			evt := types.StreamEvent{
-				Type:    types.EventMessageStart,
-				Message: &types.APIMessage{Role: types.RoleAssistant},
+				Type: types.EventMessageStart,
 			}
 			// Capture input token usage from the initial message
 			usage := anthropicUsageToTypes(e.Message.Usage)
@@ -751,9 +752,8 @@ func emitAnthropicNonStreamingFallback(
 	}
 
 	start := types.StreamEvent{
-		Type:    types.EventMessageStart,
-		Message: &types.APIMessage{Role: types.RoleAssistant},
-		Usage:   anthropicUsageToTypes(msg.Usage),
+		Type:  types.EventMessageStart,
+		Usage: anthropicUsageToTypes(msg.Usage),
 	}
 	if !sendEvent(ctx, ch, start) {
 		return nil
@@ -910,15 +910,6 @@ func parseAnthropicStreamError(err error) *types.APIError {
 		Type:    "stream_error",
 		Message: err.Error(),
 	}
-}
-
-// convertToAnthropicMessages converts internal messages to SDK format
-func convertToAnthropicMessages(msgs []types.Message, cacheTTLs ...string) []anthropic.MessageParam {
-	params := Params{Messages: msgs}
-	if len(cacheTTLs) > 0 {
-		params.PromptCacheTTL = cacheTTLs[0]
-	}
-	return convertToAnthropicMessagesForParams(params)
 }
 
 func convertToAnthropicMessagesForParams(params Params) []anthropic.MessageParam {

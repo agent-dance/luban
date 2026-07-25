@@ -1,6 +1,10 @@
 package hooks
 
-import "context"
+import (
+	"context"
+
+	executioncontract "github.com/agent-dance/luban/internal/contracts/execution"
+)
 
 // ExecutionObserver receives one immutable evidence record for every concrete
 // hook configuration that actually ran. The hook type is supplied separately
@@ -58,6 +62,16 @@ func CorrelateInput(ctx context.Context, input HookInput) HookInput {
 	fill(&input.TaskID, correlation.TaskID)
 	fill(&input.TaskOwner, correlation.TaskOwner)
 	fill(&input.Owner, correlation.Owner)
+	if execution, ok := executioncontract.ToolExecutionContextFromContext(ctx); ok {
+		fill(&input.ToolName, execution.ToolUse.Name)
+		fill(&input.ToolUseID, execution.ToolUse.ID)
+		fill(&input.SessionID, execution.SessionID)
+		fill(&input.ProjectRoot, execution.ProjectRoot)
+		fill(&input.TurnID, execution.TurnID)
+		fill(&input.WorkUnitID, execution.WorkUnitID)
+		fill(&input.AgentID, execution.ActorID)
+		fill(&input.AgentType, execution.ActorType)
+	}
 	return input
 }
 

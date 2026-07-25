@@ -161,7 +161,7 @@ func TestAnthropicPromptCacheTTLIsProviderAndModelGated(t *testing.T) {
 }
 
 func TestAnthropicOneHourCacheControlSerializesTTL(t *testing.T) {
-	_ = convertToAnthropicMessages(nil, "1h")
+	_ = convertToAnthropicMessagesForParams(Params{PromptCacheTTL: "1h"})
 	encoded, err := json.Marshal(anthropicCacheControl("1h"))
 	if err != nil {
 		t.Fatal(err)

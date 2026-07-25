@@ -57,8 +57,8 @@ const (
 	CommandRiskDestructive CommandRiskCategory = "destructive"
 )
 
-// CommandState is lifecycle-only. Outcome is kept separate so a legacy command
-// can complete execution without being mislabeled as a domain success.
+// CommandState is lifecycle-only. Outcome is kept separate so a command can
+// complete execution without being mislabeled as a domain success.
 type CommandState string
 
 const (
@@ -67,7 +67,7 @@ const (
 )
 
 // CommandOutcome is deliberately conservative for commands whose domain result
-// is still encoded only in OnEvent prose.
+// is encoded only in OnEvent prose.
 type CommandOutcome string
 
 const (
@@ -91,8 +91,7 @@ type CommandPresentationSection struct {
 }
 
 // CommandPresentation is a stable, renderer-neutral command lifecycle record.
-// Result is a bounded, redacted display projection; OnEvent retains the full
-// legacy text and remains the compatibility/machine path.
+// Result is a bounded, redacted display projection of command output.
 type CommandPresentation struct {
 	Version         int                          `json:"version"`
 	Command         string                       `json:"command"`
@@ -111,18 +110,12 @@ type CommandPresentation struct {
 	HasMore         bool                         `json:"has_more,omitempty"`
 	Sections        []CommandPresentationSection `json:"sections,omitempty"`
 	EvidenceRefs    []string                     `json:"evidence_refs,omitempty"`
-	// ResultMirrorsEvents is true when Result is the bounded projection of
-	// OnEvent output. LegacyOutputForwarded distinguishes a displayed legacy
-	// stream from a typed-only consumer, so renderers can avoid duplicate text
-	// without dropping the only available result.
-	ResultMirrorsEvents   bool `json:"result_mirrors_events,omitempty"`
-	LegacyOutputForwarded bool `json:"legacy_output_forwarded,omitempty"`
 }
 
-// CommandDomainResult is emitted by commands whose legacy Execute contract
+// CommandDomainResult is emitted by commands whose Execute contract
 // returns nil even when the requested domain action cannot be completed.
 // Result and NextAction are optional semantic overrides; leaving Result empty
-// preserves the bounded/redacted projection of the legacy OnEvent output.
+// preserves the bounded/redacted projection of OnEvent output.
 type CommandDomainResult struct {
 	Outcome      CommandOutcome               `json:"outcome"`
 	Result       string                       `json:"result,omitempty"`
@@ -132,7 +125,7 @@ type CommandDomainResult struct {
 }
 
 // CommandPresentationContract defines the stable semantics for one canonical
-// slash command. TerminalOutcomeReliable is false when legacy implementations
+// slash command. TerminalOutcomeReliable is false when implementations
 // can report a domain failure only through OnEvent text while returning nil.
 type CommandPresentationContract struct {
 	Command                 string                 `json:"command"`
@@ -141,8 +134,6 @@ type CommandPresentationContract struct {
 	Risk                    CommandRiskCategory    `json:"risk"`
 	DefaultAction           string                 `json:"default_action"`
 	DefaultTarget           string                 `json:"default_target,omitempty"`
-	CompletedNextAction     string                 `json:"completed_next_action"`
-	FailedNextAction        string                 `json:"failed_next_action"`
 	CompletedNextActionKey  i18n.Key               `json:"-"`
 	FailedNextActionKey     i18n.Key               `json:"-"`
 	TerminalOutcomeReliable bool                   `json:"terminal_outcome_reliable"`
@@ -179,18 +170,6 @@ var builtinCommandPresentationContracts = map[string]CommandPresentationContract
 	"skills":   commandContract("skills", CommandFamilyExtension, CommandDisplayInspector, CommandRiskMedium, "list", false),
 	"mcp":      commandContract("mcp", CommandFamilyIntegration, CommandDisplayInspector, CommandRiskHigh, "list", false),
 	"language": commandContract("language", CommandFamilyInterface, CommandDisplayReceipt, CommandRiskMedium, "show", false),
-
-	// Dormant implementations are intentionally not registered by
-	// RegisterBuiltins. Keeping their contracts here prevents a future
-	// re-registration from silently falling back to an untyped success line.
-	"connect":     commandContract("connect", CommandFamilyIntegration, CommandDisplayDecision, CommandRiskHigh, "connect", false),
-	"paste":       commandContract("paste", CommandFamilyInterface, CommandDisplayDecision, CommandRiskHigh, "paste", false),
-	"permissions": commandContract("permissions", CommandFamilyConfiguration, CommandDisplayInspector, CommandRiskHigh, "inspect", false),
-	"cost":        commandContract("cost", CommandFamilyRuntime, CommandDisplayInspector, CommandRiskLow, "inspect", true),
-	"version":     commandContract("version", CommandFamilyDiscovery, CommandDisplayReceipt, CommandRiskLow, "inspect", true),
-	"rename":      commandContract("rename", CommandFamilySession, CommandDisplayReceipt, CommandRiskMedium, "rename", false),
-	"memory":      commandContract("memory", CommandFamilyConfiguration, CommandDisplayDecision, CommandRiskMedium, "edit", false),
-	"diff":        commandContract("diff", CommandFamilyTranscript, CommandDisplayEvidence, CommandRiskLow, "inspect", false),
 }
 
 func commandContract(command string, family CommandFamily, display CommandDisplayCategory, risk CommandRiskCategory, action string, reliable bool) CommandPresentationContract {
@@ -203,8 +182,6 @@ func commandContract(command string, family CommandFamily, display CommandDispla
 func commandContractWithKeys(command string, family CommandFamily, display CommandDisplayCategory, risk CommandRiskCategory, action string, completedKey, failedKey i18n.Key, reliable bool) CommandPresentationContract {
 	return CommandPresentationContract{
 		Command: command, Family: family, Display: display, Risk: risk, DefaultAction: action,
-		CompletedNextAction:    i18n.Text(i18n.DetectOrLoadLanguage(), completedKey),
-		FailedNextAction:       i18n.Text(i18n.DetectOrLoadLanguage(), failedKey),
 		CompletedNextActionKey: completedKey, FailedNextActionKey: failedKey,
 		TerminalOutcomeReliable: reliable,
 	}
@@ -224,11 +201,7 @@ func wrapCommandPresentation(command Command) Command {
 		return command
 	}
 	contract, exact := commandPresentationContract(command)
-	presented := &presentedCommand{command: command, contract: contract, exact: exact}
-	if prompt, ok := command.(*MCPPromptCommand); ok {
-		return &presentedMCPPromptCommand{presentedCommand: presented, prompt: prompt}
-	}
-	return presented
+	return &presentedCommand{command: command, contract: contract, exact: exact}
 }
 
 func (c *presentedCommand) Name() string        { return c.command.Name() }
@@ -243,23 +216,6 @@ func (c *presentedCommand) PresentationContract() CommandPresentationContract {
 	return c.contract
 }
 
-// presentedMCPPromptCommand retains the optional discovery/typeahead surface
-// of MCPPromptCommand while adding the common presentation lifecycle.
-type presentedMCPPromptCommand struct {
-	*presentedCommand
-	prompt *MCPPromptCommand
-}
-
-func (c *presentedMCPPromptCommand) ArgumentHint() string { return c.prompt.ArgumentHint() }
-func (c *presentedMCPPromptCommand) ArgumentNames() []string {
-	return c.prompt.ArgumentNames()
-}
-func (c *presentedMCPPromptCommand) RequiredArgumentNames() []string {
-	return c.prompt.RequiredArgumentNames()
-}
-func (c *presentedMCPPromptCommand) IsMCP() bool            { return c.prompt.IsMCP() }
-func (c *presentedMCPPromptCommand) UserFacingName() string { return c.prompt.UserFacingName() }
-
 func (c *presentedCommand) Execute(ctx *Context, args string) error {
 	resolved := resolveCommandPresentation(c.contract, args)
 	if ctx == nil {
@@ -273,24 +229,16 @@ func (c *presentedCommand) Execute(ctx *Context, args string) error {
 		Display: resolved.display, Risk: resolved.risk, OutcomeReliable: c.contract.TerminalOutcomeReliable,
 	})
 
-	legacyOnEvent := ctx.OnEvent
-	legacyDomainResult := ctx.OnCommandDomainResult
 	var output strings.Builder
 	var domainResult CommandDomainResult
 	domainResultReported := false
 	executionContext := *ctx
 	executionContext.OnEvent = func(value string) {
 		output.WriteString(value)
-		if legacyOnEvent != nil {
-			legacyOnEvent(value)
-		}
 	}
 	executionContext.OnCommandDomainResult = func(value CommandDomainResult) {
 		domainResult = value
 		domainResultReported = true
-		if legacyDomainResult != nil {
-			legacyDomainResult(value)
-		}
 	}
 	err := c.command.Execute(&executionContext, args)
 
@@ -298,8 +246,6 @@ func (c *presentedCommand) Execute(ctx *Context, args string) error {
 	outcomeReliable := c.contract.TerminalOutcomeReliable
 	nextAction := i18n.Text(ctx.Language, i18n.KeyCommandPresentationInspectResult)
 	result := strings.TrimSpace(output.String())
-	resultMirrorsEvents := result != ""
-	legacyOutputForwarded := resultMirrorsEvents && legacyOnEvent != nil
 	sections := []CommandPresentationSection(nil)
 	evidenceRefs := []string(nil)
 	if errors.Is(err, ErrExit) {
@@ -314,16 +260,11 @@ func (c *presentedCommand) Execute(ctx *Context, args string) error {
 		outcomeReliable = true
 		nextAction = localizedCommandNextAction(ctx.Language, c.contract, true)
 		result = err.Error()
-		// The error replaces the bounded projection of any legacy progress
-		// already forwarded through OnEvent. Keeping the mirror bit here would
-		// suppress the only rendering of the actual terminal failure.
-		resultMirrorsEvents = false
 	} else if domainResultReported && commandOutcomeIsTerminal(domainResult.Outcome) {
 		outcome = domainResult.Outcome
 		outcomeReliable = true
 		if domainResult.Result != "" {
 			result = domainResult.Result
-			resultMirrorsEvents = false
 		}
 		sections = append(sections, domainResult.Sections...)
 		evidenceRefs = append(evidenceRefs, domainResult.EvidenceRefs...)
@@ -340,8 +281,6 @@ func (c *presentedCommand) Execute(ctx *Context, args string) error {
 	}
 	if result == "" {
 		result = i18n.Format(ctx.Language, i18n.KeyCommandPresentationCompleted, c.Name(), resolved.action)
-		resultMirrorsEvents = false
-		legacyOutputForwarded = false
 	}
 	result, sensitive, hasMore := boundedCommandPresentationText(result, maxCommandPresentationRunes)
 	sections, sectionSensitive, sectionHasMore := normalizeCommandPresentationSections(ctx.Language, sections, result)
@@ -354,7 +293,6 @@ func (c *presentedCommand) Execute(ctx *Context, args string) error {
 		Sensitive: sensitive || sectionSensitive || evidenceSensitive,
 		HasMore:   hasMore || sectionHasMore || evidenceHasMore || len(evidenceRefs) > 0,
 		Sections:  sections, EvidenceRefs: evidenceRefs,
-		ResultMirrorsEvents: resultMirrorsEvents, LegacyOutputForwarded: legacyOutputForwarded,
 	})
 	return err
 }
@@ -511,13 +449,11 @@ func normalizeCommandPresentationContract(contract CommandPresentationContract) 
 	if contract.DefaultAction == "" {
 		contract.DefaultAction = "execute"
 	}
-	if contract.CompletedNextActionKey == "" && contract.CompletedNextAction == "" {
+	if contract.CompletedNextActionKey == "" {
 		contract.CompletedNextActionKey = i18n.KeyCommandPresentationExtensionSuccess
-		contract.CompletedNextAction = i18n.Text(i18n.DetectOrLoadLanguage(), contract.CompletedNextActionKey)
 	}
-	if contract.FailedNextActionKey == "" && contract.FailedNextAction == "" {
+	if contract.FailedNextActionKey == "" {
 		contract.FailedNextActionKey = i18n.KeyCommandPresentationExtensionFailure
-		contract.FailedNextAction = i18n.Text(i18n.DetectOrLoadLanguage(), contract.FailedNextActionKey)
 	}
 	return contract
 }
@@ -529,18 +465,11 @@ func fallbackCommandPresentationContract(name string) CommandPresentationContrac
 
 func localizedCommandNextAction(lang i18n.Language, contract CommandPresentationContract, failed bool) string {
 	key := contract.CompletedNextActionKey
-	value := contract.CompletedNextAction
 	if failed {
 		key = contract.FailedNextActionKey
-		value = contract.FailedNextAction
 	}
 	if key != "" {
 		return i18n.Text(lang, key)
-	}
-	if value != "" {
-		// Extension contracts predating semantic keys remain compatible. First-party
-		// contracts always take the key path above.
-		return value
 	}
 	if failed {
 		return i18n.Text(lang, i18n.KeyCommandPresentationInspectError)
@@ -584,7 +513,7 @@ func resolveCommandPresentation(contract CommandPresentationContract, args strin
 		switch first {
 		case "", "status", "view":
 			resolved.action, resolved.risk = "status", CommandRiskLow
-		case "edit", "pause", "resume", "clear", "stop", "off", "reset", "none", "cancel":
+		case "edit", "pause", "resume", "clear":
 			resolved.action = first
 			resolved.target = boundedCommandTarget(rest)
 		case "set":
@@ -675,7 +604,7 @@ func resolveCommandPresentation(contract CommandPresentationContract, args strin
 		}
 		resolved.target = boundedCommandTarget(commandField(fields, 1))
 		switch resolved.action {
-		case "list", "status", "show", "get", "info", "help", "-h", "--help":
+		case "list", "show", "help", "-h", "--help":
 			resolved.risk, resolved.display = CommandRiskLow, CommandDisplayInspector
 		default:
 			resolved.risk, resolved.display = CommandRiskMedium, CommandDisplayReceipt
@@ -698,15 +627,6 @@ func resolveCommandPresentation(contract CommandPresentationContract, args strin
 		default:
 			resolved.risk, resolved.display = CommandRiskMedium, CommandDisplayReceipt
 		}
-	case "connect":
-		resolved.target = boundedCommandTarget(args)
-	case "permissions":
-		if first != "" {
-			resolved.action = first
-		}
-		resolved.target = boundedCommandTarget(rest)
-	case "rename":
-		resolved.target = boundedCommandTarget(args)
 	}
 	return resolved
 }
@@ -761,7 +681,7 @@ func boundedCommandIdentifier(value string, limit int) string {
 }
 
 // RedactCommandPresentationText returns a bounded display projection suitable
-// for typed command events. It does not change legacy OnEvent output.
+// for typed command events.
 func RedactCommandPresentationText(value string, limit int) string {
 	redacted, _, _ := boundedCommandPresentationText(value, limit)
 	return redacted
@@ -823,14 +743,22 @@ func commandPresentationLineSensitive(line string) bool {
 			return true
 		}
 	}
-	normalized := strings.ToLower(strings.NewReplacer(" ", "", "-", "_", "\t", "").Replace(line))
+	if strings.Contains(strings.NewReplacer(" ", "", "-", "", "_", "").Replace(lower), "beginprivatekey") {
+		return true
+	}
+	normalized := strings.NewReplacer("-", "", "_", "").Replace(lower)
 	for _, marker := range []string{
-		"password", "passwd", "api_key", "apikey", "access_token", "accesstoken", "refresh_token", "refreshtoken",
-		"authorization", "client_secret", "clientsecret", "private_key", "cookie", "bearer",
+		"password", "passwd", "apikey", "access token", "accesstoken", "refresh token", "refreshtoken",
+		"authorization", "client secret", "clientsecret", "private key", "privatekey", "cookie",
 	} {
-		if strings.Contains(normalized, marker) {
+		index := strings.Index(normalized, marker)
+		if index < 0 {
+			continue
+		}
+		remainder := strings.TrimSpace(normalized[index+len(marker):])
+		if strings.HasPrefix(remainder, "=") || strings.HasPrefix(remainder, ":") {
 			return true
 		}
 	}
-	return false
+	return strings.Contains(lower, "bearer ")
 }

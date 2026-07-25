@@ -116,7 +116,7 @@ func responsesSkillCatalogHistory() []types.Message {
 
 func captureResponsesSkillCatalogRequest(t *testing.T, chatGPTCodexBackend bool, params Params) map[string]any {
 	t.Helper()
-	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope, false)
+	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope)
 
 	var captured map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
@@ -133,6 +133,7 @@ func captureResponsesSkillCatalogRequest(t *testing.T, chatGPTCodexBackend bool,
 
 	responses := NewResponses(Config{APIKey: "test-key", BaseURL: server.URL, Model: "gpt-5"})
 	responses.chatGPTCodexBackend = chatGPTCodexBackend
+	responses.publicAPIEndpoint = !chatGPTCodexBackend
 	stream, err := responses.CreateStream(context.Background(), params)
 	if err != nil {
 		t.Fatalf("CreateStream: %v", err)

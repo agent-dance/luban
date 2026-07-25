@@ -10,8 +10,8 @@ import (
 
 type receiptProbeTool struct {
 	executed      int
-	firstConsume  PermissionCommitStatus
-	secondConsume PermissionCommitStatus
+	firstConsume  approvalcommit.PermissionCommitStatus
+	secondConsume approvalcommit.PermissionCommitStatus
 }
 
 func (t *receiptProbeTool) Name() string        { return "ReceiptProbe" }
@@ -26,8 +26,8 @@ func (t *receiptProbeTool) CheckPermissions(context.Context, map[string]any, typ
 }
 func (t *receiptProbeTool) Execute(ctx context.Context, input map[string]any) (types.ToolResult, error) {
 	t.executed++
-	t.firstConsume = ConsumePermissionCommit(ctx, t.Name(), input, "probe.policy")
-	t.secondConsume = ConsumePermissionCommit(ctx, t.Name(), input, "probe.policy")
+	t.firstConsume = approvalcommit.Consume(ctx, t.Name(), input, "probe.policy")
+	t.secondConsume = approvalcommit.Consume(ctx, t.Name(), input, "probe.policy")
 	return types.ToolResult{Content: "ok"}, nil
 }
 
@@ -62,7 +62,7 @@ func TestPermissionCommitRequiresPromotionAndToolConsumesReceiptOnce(t *testing.
 		Token: executionGrant, Binding: preflight.PermissionBinding, PolicyCode: preflight.ExecutionPolicyCode,
 	})
 	result, err = reg.ExecuteToolWithError(approved, tool.Name(), input)
-	if err != nil || result.IsError || tool.executed != 1 || tool.firstConsume != PermissionCommitValid || tool.secondConsume != PermissionCommitInvalid {
+	if err != nil || result.IsError || tool.executed != 1 || tool.firstConsume != approvalcommit.PermissionCommitValid || tool.secondConsume != approvalcommit.PermissionCommitInvalid {
 		t.Fatalf("receipt lifecycle: result=%#v tool=%#v err=%v", result, tool, err)
 	}
 	replay, err := reg.ExecuteToolWithError(approved, tool.Name(), input)
@@ -72,27 +72,15 @@ func TestPermissionCommitRequiresPromotionAndToolConsumesReceiptOnce(t *testing.
 }
 
 func TestPermissionCommitTriStateRejectsPresentInvalidReceipt(t *testing.T) {
-	record := permissionGrantRecord{
-		toolName: "ReceiptProbe", digest: [32]byte{1}, policyCode: "probe.policy", executable: true,
-	}
-	ctx := withPermissionCommit(context.Background(), record)
-	if status := ConsumePermissionCommit(ctx, "ReceiptProbe", map[string]any{"value": "changed"}, "probe.policy"); status != PermissionCommitInvalid {
+	ctx := approvalcommit.Bind(context.Background(), "ReceiptProbe", map[string]any{"value": "approved"}, "probe.policy")
+	if status := approvalcommit.Consume(ctx, "ReceiptProbe", map[string]any{"value": "changed"}, "probe.policy"); status != approvalcommit.PermissionCommitInvalid {
 		t.Fatalf("invalid receipt status=%v, want invalid", status)
 	}
-	if status := ConsumePermissionCommit(ctx, "ReceiptProbe", map[string]any{"value": "changed"}, "probe.policy"); status != PermissionCommitInvalid {
+	if status := approvalcommit.Consume(ctx, "ReceiptProbe", map[string]any{"value": "changed"}, "probe.policy"); status != approvalcommit.PermissionCommitInvalid {
 		t.Fatalf("consumed invalid receipt status=%v, want invalid", status)
 	}
-	if status := ConsumePermissionCommit(context.Background(), "ReceiptProbe", nil, "probe.policy"); status != PermissionCommitAbsent {
+	if status := approvalcommit.Consume(context.Background(), "ReceiptProbe", nil, "probe.policy"); status != approvalcommit.PermissionCommitAbsent {
 		t.Fatalf("absent receipt status=%v, want absent", status)
-	}
-}
-
-func TestPermissionGrantRejectsUnhashableInput(t *testing.T) {
-	reg := New()
-	if token := reg.issuePermissionGrant(
-		"ReceiptProbe", map[string]any{"unsupported": func() {}}, types.ToolPermissionBinding{}, "probe.policy", false,
-	); token != "" {
-		t.Fatalf("unhashable input received grant %q", token)
 	}
 }
 

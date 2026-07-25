@@ -10,8 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/agent-dance/luban/commands"
-	svcmcp "github.com/agent-dance/luban/services/mcp"
-	"github.com/agent-dance/luban/types"
+	"github.com/agent-dance/luban/provider"
 )
 
 func TestBuiltinCommandPresentationContractsCoverRegistry(t *testing.T) {
@@ -35,7 +34,7 @@ func TestBuiltinCommandPresentationContractsCoverRegistry(t *testing.T) {
 			t.Errorf("/%s uses fallback presentation contract", command.Name())
 		}
 		if contract.Command != command.Name() || contract.Family == "" || contract.Display == "" || contract.Risk == "" ||
-			contract.DefaultAction == "" || contract.CompletedNextAction == "" || contract.FailedNextAction == "" {
+			contract.DefaultAction == "" || contract.CompletedNextActionKey == "" || contract.FailedNextActionKey == "" {
 			t.Errorf("/%s has incomplete presentation contract: %+v", command.Name(), contract)
 		}
 	}
@@ -44,27 +43,12 @@ func TestBuiltinCommandPresentationContractsCoverRegistry(t *testing.T) {
 	}
 }
 
-func TestDormantCommandImplementationsHaveContractsWithoutBeingRegistered(t *testing.T) {
-	registry := commands.NewRegistry()
-	commands.RegisterBuiltins(registry)
-	dormant := []string{"connect", "paste", "permissions", "cost", "version", "rename", "memory", "diff"}
-	for _, name := range dormant {
-		if registry.Find(name) != nil {
-			t.Errorf("/%s unexpectedly registered", name)
-		}
-		contract, exact := commands.LookupCommandPresentationContract(name)
-		if !exact || contract.Command != name || contract.DefaultAction == "" || contract.Display == "" || contract.Risk == "" {
-			t.Errorf("dormant /%s contract = %+v exact=%t", name, contract, exact)
-		}
-	}
-}
-
-func TestCommandPresentationEmitsTypedLifecycleWithoutChangingLegacyText(t *testing.T) {
+func TestCommandPresentationEmitsTypedLifecycleWithoutLeakingRawEvents(t *testing.T) {
 	registry := commands.NewRegistry()
 	commands.RegisterBuiltins(registry)
 
-	var legacyOnly strings.Builder
-	if err := registry.Find("help").Execute(&commands.Context{OnEvent: func(value string) { legacyOnly.WriteString(value) }}, ""); err != nil {
+	var rawOnly strings.Builder
+	if err := registry.Find("help").Execute(&commands.Context{OnEvent: func(value string) { rawOnly.WriteString(value) }}, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -79,8 +63,8 @@ func TestCommandPresentationEmitsTypedLifecycleWithoutChangingLegacyText(t *test
 	if err := registry.Find("help").Execute(ctx, ""); err != nil {
 		t.Fatal(err)
 	}
-	if withPresentation.String() != legacyOnly.String() {
-		t.Fatalf("typed callback changed legacy text\nwith callback: %q\nlegacy only: %q", withPresentation.String(), legacyOnly.String())
+	if withPresentation.String() != rawOnly.String() {
+		t.Fatalf("typed callback changed raw event output\nwith callback: %q\nraw only: %q", withPresentation.String(), rawOnly.String())
 	}
 	if len(events) != 2 {
 		t.Fatalf("presentation events = %d, want start + terminal: %+v", len(events), events)
@@ -93,7 +77,7 @@ func TestCommandPresentationEmitsTypedLifecycleWithoutChangingLegacyText(t *test
 		terminal.Result == "" || terminal.NextAction == "" || terminal.Display != commands.CommandDisplayInspector {
 		t.Fatalf("terminal event = %+v", terminal)
 	}
-	if terminal.Version != 2 || !terminal.ResultMirrorsEvents || !terminal.LegacyOutputForwarded || len(terminal.Sections) == 0 {
+	if terminal.Version != 2 || len(terminal.Sections) == 0 {
 		t.Fatalf("terminal mirror/schema contract = %+v", terminal)
 	}
 }
@@ -118,39 +102,39 @@ func TestCommandPresentationFailureIsExplicitAndActionable(t *testing.T) {
 	}
 }
 
-type legacyProgressThenErrorCommand struct{ err error }
+type progressThenErrorCommand struct{ err error }
 
 type typedCommandOutcomeError struct{ outcome commands.CommandOutcome }
 
 func (e typedCommandOutcomeError) Error() string                           { return string(e.outcome) }
 func (e typedCommandOutcomeError) CommandOutcome() commands.CommandOutcome { return e.outcome }
 
-func (*legacyProgressThenErrorCommand) Name() string        { return "legacy-error" }
-func (*legacyProgressThenErrorCommand) Aliases() []string   { return nil }
-func (*legacyProgressThenErrorCommand) Description() string { return "Emit progress before failing" }
-func (c *legacyProgressThenErrorCommand) Execute(ctx *commands.Context, _ string) error {
-	ctx.OnEvent("legacy progress body")
+func (*progressThenErrorCommand) Name() string        { return "progress-error" }
+func (*progressThenErrorCommand) Aliases() []string   { return nil }
+func (*progressThenErrorCommand) Description() string { return "Emit progress before failing" }
+func (c *progressThenErrorCommand) Execute(ctx *commands.Context, _ string) error {
+	ctx.OnEvent("progress body")
 	return c.err
 }
 
-func TestCommandPresentationRendersErrorAfterForwardedLegacyProgress(t *testing.T) {
+func TestCommandPresentationRendersErrorAfterCapturedProgress(t *testing.T) {
 	registry := commands.NewRegistry()
-	registry.Register(&legacyProgressThenErrorCommand{err: errors.New("terminal failure")})
-	var legacy string
+	registry.Register(&progressThenErrorCommand{err: errors.New("terminal failure")})
+	var raw string
 	var events []commands.CommandPresentation
-	err := registry.Find("legacy-error").Execute(&commands.Context{
-		OnEvent:               func(value string) { legacy += value },
+	err := registry.Find("progress-error").Execute(&commands.Context{
+		OnEvent:               func(value string) { raw += value },
 		OnCommandPresentation: func(event commands.CommandPresentation) { events = append(events, event) },
 	}, "")
 	if err == nil {
 		t.Fatal("command unexpectedly succeeded")
 	}
 	terminal := events[len(events)-1]
-	if terminal.Result != "terminal failure" || terminal.ResultMirrorsEvents || !terminal.LegacyOutputForwarded {
+	if terminal.Result != "terminal failure" {
 		t.Fatalf("terminal error ownership = %+v", terminal)
 	}
-	if legacy != "legacy progress body" {
-		t.Fatalf("legacy progress changed or duplicated: %q", legacy)
+	if raw != "" {
+		t.Fatalf("raw command output escaped the presentation boundary: %q", raw)
 	}
 }
 
@@ -168,9 +152,9 @@ func TestCommandPresentationClassifiesStandardTerminalErrors(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			registry := commands.NewRegistry()
-			registry.Register(&legacyProgressThenErrorCommand{err: test.err})
+			registry.Register(&progressThenErrorCommand{err: test.err})
 			var events []commands.CommandPresentation
-			_ = registry.Find("legacy-error").Execute(&commands.Context{
+			_ = registry.Find("progress-error").Execute(&commands.Context{
 				OnEvent:               func(string) {},
 				OnCommandPresentation: func(event commands.CommandPresentation) { events = append(events, event) },
 			}, "")
@@ -191,23 +175,23 @@ func TestModelPersistenceFailureUsesWarningOutcome(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	var legacy string
+	var raw string
 	var events []commands.CommandPresentation
 	err = registry.Find("model").Execute(&commands.Context{
 		CWD:                   file.Name(),
 		QueryLoop:             &stubQL{model: "old-model"},
-		OnEvent:               func(value string) { legacy += value },
+		OnEvent:               func(value string) { raw += value },
 		OnCommandPresentation: func(event commands.CommandPresentation) { events = append(events, event) },
 	}, "new-model")
 	if err != nil {
 		t.Fatal(err)
 	}
 	terminal := events[len(events)-1]
-	if terminal.Outcome != commands.CommandOutcomeWarning || !terminal.OutcomeReliable || !terminal.ResultMirrorsEvents {
+	if terminal.Outcome != commands.CommandOutcomeWarning || !terminal.OutcomeReliable {
 		t.Fatalf("model persistence terminal = %+v", terminal)
 	}
-	if !strings.Contains(legacy, "Warning: failed to persist model:") {
-		t.Fatalf("legacy warning missing: %q", legacy)
+	if !strings.Contains(terminal.Result, "Warning: failed to persist model:") || raw != "" {
+		t.Fatalf("warning presentation = %+v, raw=%q", terminal, raw)
 	}
 }
 
@@ -241,7 +225,7 @@ func (c *typedDomainOutcomeCommand) Name() string        { return "typed-domain"
 func (c *typedDomainOutcomeCommand) Aliases() []string   { return nil }
 func (c *typedDomainOutcomeCommand) Description() string { return "Emit a typed domain outcome" }
 func (c *typedDomainOutcomeCommand) Execute(ctx *commands.Context, _ string) error {
-	ctx.OnEvent("legacy diagnostic body")
+	ctx.OnEvent("diagnostic body")
 	ctx.OnCommandDomainResult(commands.CommandDomainResult{
 		Outcome: c.outcome, Result: "typed domain result", NextAction: "take the typed next action",
 		Sections:     []commands.CommandPresentationSection{{Label: "Checks", Text: "3 passed"}},
@@ -266,9 +250,9 @@ func TestCommandPresentationPreservesEveryTypedTerminalOutcomeAndSections(t *tes
 			registry := commands.NewRegistry()
 			registry.Register(&typedDomainOutcomeCommand{outcome: outcome})
 			var events []commands.CommandPresentation
-			var legacy string
+			var raw string
 			err := registry.Find("typed-domain").Execute(&commands.Context{
-				OnEvent: func(value string) { legacy += value },
+				OnEvent: func(value string) { raw += value },
 				OnCommandPresentation: func(event commands.CommandPresentation) {
 					events = append(events, event)
 				},
@@ -280,8 +264,8 @@ func TestCommandPresentationPreservesEveryTypedTerminalOutcomeAndSections(t *tes
 			if terminal.Outcome != outcome || !terminal.OutcomeReliable || terminal.Result != "typed domain result" {
 				t.Fatalf("terminal = %+v", terminal)
 			}
-			if terminal.ResultMirrorsEvents || !terminal.LegacyOutputForwarded || legacy != "legacy diagnostic body" {
-				t.Fatalf("domain override ownership = %+v legacy=%q", terminal, legacy)
+			if raw != "" {
+				t.Fatalf("raw domain output escaped presentation: %+v raw=%q", terminal, raw)
 			}
 			if len(terminal.Sections) != 1 || terminal.Sections[0].Label != "Checks" || len(terminal.EvidenceRefs) != 1 || !terminal.HasMore {
 				t.Fatalf("sections/evidence lost: %+v", terminal)
@@ -305,7 +289,9 @@ func TestTypedDomainOutcomesCoverTextReturningBuiltins(t *testing.T) {
 		{name: "init", context: func(t *testing.T) *commands.Context { return &commands.Context{CWD: t.TempDir()} }, want: commands.CommandOutcomeSucceeded},
 		{name: "resume", context: func(*testing.T) *commands.Context { return &commands.Context{} }, want: commands.CommandOutcomeFailed},
 		{name: "review", context: func(t *testing.T) *commands.Context { return &commands.Context{CWD: t.TempDir()} }, want: commands.CommandOutcomeFailed},
-		{name: "doctor", context: func(t *testing.T) *commands.Context { return &commands.Context{CWD: t.TempDir(), QueryLoop: &stubQL{}} }, want: commands.CommandOutcomeUnknown},
+		{name: "doctor", context: func(t *testing.T) *commands.Context {
+			return &commands.Context{CWD: t.TempDir(), QueryLoop: &stubQL{}, ProviderRegistry: provider.DefaultRegistry()}
+		}, want: commands.CommandOutcomeUnknown},
 		{name: "mcp", args: "get absent", context: func(t *testing.T) *commands.Context { return &commands.Context{CWD: t.TempDir()} }, want: commands.CommandOutcomeFailed},
 		{name: "language", args: "show", context: func(*testing.T) *commands.Context {
 			return &commands.Context{SwitchLanguage: func(string) string { return "Language: English" }}
@@ -335,7 +321,7 @@ func TestTypedDomainOutcomesCoverTextReturningBuiltins(t *testing.T) {
 	}
 }
 
-func TestCommandPresentationRedactsSensitiveLegacyResult(t *testing.T) {
+func TestCommandPresentationRedactsSensitiveResult(t *testing.T) {
 	registry := commands.NewRegistry()
 	commands.RegisterBuiltins(registry)
 	var events []commands.CommandPresentation
@@ -359,12 +345,15 @@ func TestCommandPresentationRedactsSensitiveLegacyResult(t *testing.T) {
 }
 
 func TestCommandPresentationRedactorCoversAuthTokensAndDeviceCodes(t *testing.T) {
-	redacted := commands.RedactCommandPresentationText("token: must-not-leak\nUser Code: ABCD-EFGH\ntotal tokens: 42", 0)
+	redacted := commands.RedactCommandPresentationText("token: must-not-leak\nUser Code: ABCD-EFGH\ntotal tokens: 42\nCredentials: ANTHROPIC_API_KEY not set", 0)
 	if strings.Contains(redacted, "must-not-leak") || strings.Contains(redacted, "ABCD-EFGH") {
 		t.Fatalf("auth material leaked: %q", redacted)
 	}
 	if !strings.Contains(redacted, "total tokens: 42") {
 		t.Fatalf("safe usage metric was redacted: %q", redacted)
+	}
+	if !strings.Contains(redacted, "ANTHROPIC_API_KEY not set") {
+		t.Fatalf("credential identifier without a value was redacted: %q", redacted)
 	}
 }
 
@@ -459,19 +448,14 @@ func (*ansiPresentationCommand) Execute(ctx *commands.Context, _ string) error {
 	return nil
 }
 
-func TestCommandPresentationStripsANSIWithoutChangingLegacyText(t *testing.T) {
+func TestCommandPresentationStripsANSIFromResult(t *testing.T) {
 	registry := commands.NewRegistry()
 	registry.Register(&ansiPresentationCommand{})
-	var legacy string
 	var events []commands.CommandPresentation
 	if err := registry.Find("ansi-output").Execute(&commands.Context{
-		OnEvent:               func(value string) { legacy += value },
 		OnCommandPresentation: func(event commands.CommandPresentation) { events = append(events, event) },
 	}, ""); err != nil {
 		t.Fatal(err)
-	}
-	if !strings.Contains(legacy, "\x1b[31m") {
-		t.Fatalf("legacy output lost ANSI styling: %q", legacy)
 	}
 	terminal := events[len(events)-1]
 	if strings.Contains(terminal.Result, "\x1b[") || terminal.Result != "failed-looking text" {
@@ -483,9 +467,9 @@ func TestCommandPresentationResultIsBoundedAndRetainsHeadAndTail(t *testing.T) {
 	registry := commands.NewRegistry()
 	registry.Register(&longPresentationCommand{})
 	var events []commands.CommandPresentation
-	var legacy strings.Builder
+	var raw strings.Builder
 	if err := registry.Find("long-output").Execute(&commands.Context{
-		OnEvent:               func(value string) { legacy.WriteString(value) },
+		OnEvent:               func(value string) { raw.WriteString(value) },
 		OnCommandPresentation: func(event commands.CommandPresentation) { events = append(events, event) },
 	}, ""); err != nil {
 		t.Fatal(err)
@@ -497,56 +481,7 @@ func TestCommandPresentationResultIsBoundedAndRetainsHeadAndTail(t *testing.T) {
 	if utf8.RuneCountInString(terminal.Result) > 1200 {
 		t.Fatalf("bounded result has %d runes", utf8.RuneCountInString(terminal.Result))
 	}
-	if !terminal.ResultMirrorsEvents || !terminal.LegacyOutputForwarded || legacy.Len() <= len(terminal.Result) || !strings.Contains(legacy.String(), "TAIL_SENTINEL") {
-		t.Fatalf("full legacy evidence was not retained alongside bounded typed result: terminal=%+v legacy=%d", terminal, legacy.Len())
-	}
-}
-
-type presentationPromptRunner struct{}
-
-func (presentationPromptRunner) ExecutePromptCommand(context.Context, svcmcp.PromptCommandDescriptor, string) ([]types.Message, error) {
-	return nil, nil
-}
-
-func TestMCPPromptPresentationPreservesDiscoveryInterfaces(t *testing.T) {
-	registry := commands.NewRegistry()
-	registry.Register(&commands.MCPPromptCommand{
-		Descriptor: svcmcp.PromptCommandDescriptor{
-			Name: "mcp__docs__summarize", ServerName: "docs", PromptName: "summarize",
-			ArgumentHint: "<url>", ArgumentNames: []string{"url"}, RequiredArguments: []string{"url"},
-		},
-		Runner: presentationPromptRunner{},
-	})
-	command := registry.Find("mcp__docs__summarize")
-	discovery, ok := command.(interface {
-		ArgumentHint() string
-		ArgumentNames() []string
-		RequiredArgumentNames() []string
-		IsMCP() bool
-		UserFacingName() string
-	})
-	if !ok {
-		t.Fatalf("presentation wrapper dropped MCP discovery interfaces: %T", command)
-	}
-	if discovery.ArgumentHint() != "<url>" || !reflect.DeepEqual(discovery.ArgumentNames(), []string{"url"}) ||
-		!reflect.DeepEqual(discovery.RequiredArgumentNames(), []string{"url"}) || !discovery.IsMCP() ||
-		discovery.UserFacingName() != "docs:summarize (MCP)" {
-		t.Fatalf("MCP discovery metadata changed through wrapper")
-	}
-	contract, exact := registry.PresentationContract(command.Name())
-	if !exact || contract.Family != commands.CommandFamilyIntegration || contract.DefaultTarget != "docs:summarize (MCP)" {
-		t.Fatalf("MCP prompt contract = %+v exact=%t", contract, exact)
-	}
-	var events []commands.CommandPresentation
-	if err := command.Execute(&commands.Context{
-		QueryLoop:             &stubQL{},
-		OnCommandPresentation: func(event commands.CommandPresentation) { events = append(events, event) },
-	}, "https://example.com"); err != nil {
-		t.Fatal(err)
-	}
-	terminal := events[len(events)-1]
-	if terminal.Outcome != commands.CommandOutcomeSucceeded || terminal.Action != "run-prompt" ||
-		terminal.Target != "docs:summarize (MCP)" {
-		t.Fatalf("MCP prompt presentation = %+v", terminal)
+	if raw.Len() != 0 {
+		t.Fatalf("raw long output escaped presentation: %d bytes", raw.Len())
 	}
 }

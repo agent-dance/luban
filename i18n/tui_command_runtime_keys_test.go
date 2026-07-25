@@ -10,9 +10,13 @@ func TestTUICommandRuntimeCatalogIsComplete(t *testing.T) {
 		KeyTUIToolErrorHeader, KeyTUIToolPermissionDenied,
 		KeyRuntimeActivityKindCommand, KeyRuntimeActivityNeedsInput,
 		KeyRuntimeProviderDisconnected, KeyRuntimeDecisionScopeRule,
+		KeyRuntimePermissionReviewNormalizedPath, KeyRuntimePermissionReviewAllowedDir,
+		KeyRuntimePermissionReviewAccess, KeyRuntimePermissionAccessReadOnly,
+		KeyRuntimePermissionAccessWrite, KeyRuntimePermissionAccessExecute,
+		KeyRuntimePermissionReviewMatchedRule, KeyRuntimePermissionReviewRequiredScope,
 		KeyRuntimePresentationLevelEvidence, KeyRuntimeCodePlainText,
 		KeyRuntimeSkillVisibilityManualOnly, KeyRuntimeSkillScopeManaged,
-		KeyRuntimeProjectInstructionsTemplate, KeyRuntimeMCPPromptRunFailed,
+		KeyRuntimeProjectInstructionsTemplate,
 		KeyRuntimeCommandActivityActionFailed, KeyRuntimeCommandDetailFailed,
 		KeyRuntimeCommandSearchFailed, KeyRuntimeCommandExportFailed,
 		KeyRuntimeCommandEditorFailed, KeyRuntimeCommandMouseFailed,
@@ -50,6 +54,20 @@ func TestTUICommandRuntimeLabelsUseRequestedLanguage(t *testing.T) {
 	}
 	if got := RuntimeSkillSourceLabel(LangZH, "mcp"); got != "MCP" {
 		t.Fatalf("MCP protocol label changed: %q", got)
+	}
+}
+
+func TestPermissionReviewCopyUsesRequestedLanguageAndPreservesIdentifiers(t *testing.T) {
+	path := "/workspace/projekt/bericht.txt"
+	if got, want := Format(LangDE, KeyRuntimePermissionReviewNormalizedPath, path), "Normalisierter Pfad: "+path; got != want {
+		t.Fatalf("normalized path detail = %q, want %q", got, want)
+	}
+	rule := "shell.policy.ask.dynamic_target"
+	if got, want := Format(LangZH, KeyRuntimePermissionReviewMatchedRule, rule), "命中的规则："+rule; got != want {
+		t.Fatalf("matched rule detail = %q, want %q", got, want)
+	}
+	if got := Format(LangJA, KeyRuntimePermissionReviewAccess, Text(LangJA, KeyRuntimePermissionAccessWrite)); got != "アクセス: 書き込み" {
+		t.Fatalf("access detail = %q", got)
 	}
 }
 

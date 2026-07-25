@@ -106,6 +106,8 @@ const (
 	KeyREPLTUICredentialStoreMissing Key = "repl.tui.credentials.store_missing"
 	KeyREPLTUICredentialSaveFailed   Key = "repl.tui.credentials.save_failed"
 	KeyREPLTUIProviderConnected      Key = "repl.tui.provider.connected"
+	KeyREPLTUIFetchingModels         Key = "repl.tui.provider.fetching_models"
+	KeyREPLTUIProviderDeleted        Key = "repl.tui.provider.deleted"
 	KeyREPLTUIOAuthWaiting           Key = "repl.tui.oauth.waiting"
 	KeyREPLTUIOAuthStarting          Key = "repl.tui.oauth.starting"
 	KeyREPLTUIOAuthFailed            Key = "repl.tui.oauth.failed"
@@ -216,6 +218,8 @@ func init() {
 		KeyREPLTUICredentialStoreMissing: repl("Credential store is unavailable", "Credential store 不可用", "Credential Store ist nicht verfügbar", "Credential store を利用できません", "Credential store를 사용할 수 없습니다", "Credential store недоступен"),
 		KeyREPLTUICredentialSaveFailed:   repl("Failed to save credentials: %s", "保存凭据失败：%s", "Anmeldedaten konnten nicht gespeichert werden: %s", "認証情報を保存できませんでした: %s", "자격 증명을 저장하지 못했습니다: %s", "Не удалось сохранить данные доступа: %s"),
 		KeyREPLTUIProviderConnected:      repl("Connected to %s - select a model", "已连接到 %s，请选择 model", "Mit %s verbunden - Model auswählen", "%s に接続しました - model を選択してください", "%s에 연결됨 - model을 선택하세요", "Подключено к %s - выберите model"),
+		KeyREPLTUIFetchingModels:         repl("Fetching models…", "正在获取模型列表…", "Modelle werden abgerufen…", "モデル一覧を取得中…", "모델 목록을 가져오는 중…", "Получаем список моделей…"),
+		KeyREPLTUIProviderDeleted:        repl("Deleted provider %s", "已删除供应商 %s", "Anbieter %s gelöscht", "プロバイダー %s を削除しました", "공급자 %s 삭제됨", "Поставщик %s удалён"),
 		KeyREPLTUIOAuthWaiting:           repl("Waiting for OAuth authorization in your browser...", "正在等待浏览器中的 OAuth 授权...", "Warte auf die OAuth-Autorisierung im Browser ...", "ブラウザでの OAuth 認証を待っています...", "브라우저의 OAuth 인증을 기다리는 중...", "Ожидание авторизации OAuth в браузере..."),
 		KeyREPLTUIOAuthStarting:          repl("Starting OAuth flow for %s - check your browser...", "正在为 %s 启动 OAuth flow，请查看浏览器...", "OAuth-Flow für %s wird gestartet - bitte Browser prüfen ...", "%s の OAuth flow を開始しています - ブラウザを確認してください...", "%s의 OAuth flow 시작 중 - 브라우저를 확인하세요...", "Запускается OAuth flow для %s - проверьте браузер..."),
 		KeyREPLTUIOAuthFailed:            repl("OAuth failed for %s: %s", "%s 的 OAuth 失败：%s", "OAuth für %s fehlgeschlagen: %s", "%s の OAuth に失敗しました: %s", "%s의 OAuth 실패: %s", "OAuth для %s завершился ошибкой: %s"),

@@ -10,8 +10,8 @@ import (
 // Returns conservative defaults when detection fails.
 func DetectCapabilities() Capabilities {
 	caps := Capabilities{
-		Colors:    Color16,  // Safe default for most terminals
-		Unicode:   true,     // Assume modern terminal
+		Colors:    Color16, // Safe default for most terminals
+		Unicode:   true,    // Assume modern terminal
 		TrueColor: false,
 		AltScreen: true,
 	}

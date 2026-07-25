@@ -216,6 +216,7 @@ func WithBackground(style Style) Option {
 func WithText(content string) Option {
 	return func(e *Element) {
 		e.text = content
+		e.styledSpans = nil
 	}
 }
 
@@ -242,10 +243,8 @@ func WithTextPrefix(prefix string, prefixStyle Style) Option {
 // Each span carries its own text and style, enabling inline formatting
 // (bold, italic, colored code, links, etc.) within a single Element.
 //
-// When StyledSpans are set, they take priority over plain text + textStyle
-// during rendering. The concatenated text is also stored in e.text so that
-// layout measurement (IntrinsicSize, HeightForWidth, wrapText) works without
-// any changes — those functions only look at e.text.
+// The concatenated text is stored as the canonical layout and plain-text
+// accessor value, while the spans provide per-run rendering styles.
 //
 // Example:
 //
@@ -258,8 +257,7 @@ func WithTextPrefix(prefix string, prefixStyle Style) Option {
 func WithStyledSpans(spans []StyledSpan) Option {
 	return func(e *Element) {
 		e.styledSpans = spans
-		// Rebuild e.text from spans so layout measurement (IntrinsicSize,
-		// HeightForWidth, wrapText) continues to work unchanged.
+		// Rebuild the canonical text used by layout and plain-text accessors.
 		var total int
 		for _, s := range spans {
 			total += len(s.Text)

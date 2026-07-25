@@ -27,9 +27,6 @@ func projectionFixture(private error) types.RuntimeEvent {
 	)
 	event.PrivateMetadata = map[string]any{"authorization": "private-token"}
 	event.EvidenceRef = &types.RuntimeEvidenceRef{ID: "evidence-private", Digest: "digest-private"}
-	event.Remediation = &types.RuntimeRemediation{
-		Action: "retry", PublicKey: i18n.KeyRuntimeErrorPublicSummary,
-	}
 	return event
 }
 
@@ -38,22 +35,18 @@ func TestAudienceRedactionMatrix(t *testing.T) {
 	event := projectionFixture(private)
 	projector := NewAudienceProjector()
 	tests := []struct {
-		name            string
-		options         ProjectionOptions
-		wantIdentity    bool
-		wantOutcome     bool
-		wantEvidence    bool
-		wantRemediation bool
+		name         string
+		options      ProjectionOptions
+		wantIdentity bool
+		wantOutcome  bool
+		wantEvidence bool
 	}{
-		{"user-strict", ProjectionOptions{Audience: AudienceUser, Redaction: RedactionStrict}, false, true, false, false},
-		{"user-public", ProjectionOptions{Audience: AudienceUser, Redaction: RedactionPublic}, false, true, false, true},
-		{"model-strict", ProjectionOptions{Audience: AudienceModel, Redaction: RedactionStrict}, false, true, false, false},
-		{"model-public", ProjectionOptions{Audience: AudienceModel, Redaction: RedactionPublic}, false, true, false, true},
-		{"sdk-strict", ProjectionOptions{Audience: AudienceSDK, Redaction: RedactionStrict}, true, true, false, false},
-		{"sdk-public", ProjectionOptions{Audience: AudienceSDK, Redaction: RedactionPublic}, true, true, false, true},
-		{"sdk-diagnostic", ProjectionOptions{Audience: AudienceSDK, Redaction: RedactionDiagnostic}, true, true, true, true},
-		{"audit-strict", ProjectionOptions{Audience: AudienceAudit, Redaction: RedactionStrict}, true, true, false, false},
-		{"audit-diagnostic", ProjectionOptions{Audience: AudienceAudit, Redaction: RedactionDiagnostic}, true, true, true, true},
+		{"user-strict", ProjectionOptions{Audience: AudienceUser, Redaction: RedactionStrict}, false, true, false},
+		{"model-strict", ProjectionOptions{Audience: AudienceModel, Redaction: RedactionStrict}, false, true, false},
+		{"sdk-strict", ProjectionOptions{Audience: AudienceSDK, Redaction: RedactionStrict}, true, true, false},
+		{"sdk-diagnostic", ProjectionOptions{Audience: AudienceSDK, Redaction: RedactionDiagnostic}, true, true, true},
+		{"audit-strict", ProjectionOptions{Audience: AudienceAudit, Redaction: RedactionStrict}, true, true, false},
+		{"audit-diagnostic", ProjectionOptions{Audience: AudienceAudit, Redaction: RedactionDiagnostic}, true, true, true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -69,9 +62,6 @@ func TestAudienceRedactionMatrix(t *testing.T) {
 			}
 			if (projection.EvidenceRef != nil) != test.wantEvidence {
 				t.Fatalf("evidence disclosure = %v, want %v", projection.EvidenceRef != nil, test.wantEvidence)
-			}
-			if (projection.Remediation != nil) != test.wantRemediation {
-				t.Fatalf("remediation disclosure = %v, want %v", projection.Remediation != nil, test.wantRemediation)
 			}
 			encoded, err := json.Marshal(projection)
 			if err != nil {
@@ -109,21 +99,33 @@ func TestRawAuditRequiresExplicitOptIn(t *testing.T) {
 	}
 }
 
-func TestProjectionRendersAtFinalLanguageBoundary(t *testing.T) {
+func TestProjectionRendersMessageAtFinalLanguageBoundary(t *testing.T) {
 	event := projectionFixture(errors.New("private"))
 	projector := NewAudienceProjector()
 	for _, lang := range i18n.AllLanguages() {
 		projection, err := projector.Project(event, ProjectionOptions{
-			Audience: AudienceUser, Redaction: RedactionPublic, Language: lang, LanguageSet: true,
+			Audience: AudienceUser, Redaction: RedactionStrict, Language: lang, LanguageSet: true,
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if want := i18n.Text(lang, i18n.KeyRuntimeErrorPublicSummary); projection.Message != want {
 			t.Fatalf("%s message = %q, want %q", lang.Code(), projection.Message, want)
-		} else if projection.Remediation == nil || projection.Remediation.Message != want {
-			t.Fatalf("%s remediation = %#v, want %q", lang.Code(), projection.Remediation, want)
 		}
+	}
+}
+
+func TestProjectionRequiresExplicitAudienceAndRedaction(t *testing.T) {
+	event := projectionFixture(errors.New("private"))
+	projector := NewAudienceProjector()
+
+	_, err := projector.Project(event, ProjectionOptions{Redaction: RedactionStrict})
+	if !errors.Is(err, ErrInvalidAudience) {
+		t.Fatalf("missing audience error = %v", err)
+	}
+	_, err = projector.Project(event, ProjectionOptions{Audience: AudienceUser})
+	if !errors.Is(err, ErrInvalidRedaction) {
+		t.Fatalf("missing redaction error = %v", err)
 	}
 }
 
@@ -159,12 +161,12 @@ func TestSDKProjectionPreservesStableIdentityAndSchema(t *testing.T) {
 
 func TestProjectionRejectsMissingAuthoritativeOutcome(t *testing.T) {
 	event := types.NewToolResultRuntimeEvent(
-		types.RuntimeIdentity{EventID: "event-legacy"},
-		types.ToolResultBlock{ToolUseID: "tool-legacy", IsError: true, Content: `{"error":true}`},
+		types.RuntimeIdentity{EventID: "event-incomplete"},
+		types.ToolResultBlock{ToolUseID: "tool-incomplete", IsError: true, Content: `{"error":true}`},
 		i18n.KeyRuntimeErrorPublicSummary,
 		nil,
 	)
-	_, err := NewAudienceProjector().Project(event, ProjectionOptions{Audience: AudienceSDK})
+	_, err := NewAudienceProjector().Project(event, ProjectionOptions{Audience: AudienceSDK, Redaction: RedactionStrict})
 	if !errors.Is(err, ErrMissingOutcome) {
 		t.Fatalf("missing outcome error = %v", err)
 	}
@@ -178,7 +180,7 @@ func TestAudienceProjectorIsConcurrentAndDoesNotMutateEvent(t *testing.T) {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			projection, err := projector.Project(event, ProjectionOptions{Audience: AudienceSDK})
+			projection, err := projector.Project(event, ProjectionOptions{Audience: AudienceSDK, Redaction: RedactionStrict})
 			if err != nil || projection.ContextGeneration != 11 {
 				t.Errorf("projection = %#v, err = %v", projection, err)
 			}

@@ -8,7 +8,11 @@ import (
 )
 
 func TestMessageInternalRuntimeClassification(t *testing.T) {
-	if UserMessage("human").IsInternalRuntimeMessage() {
+	ordinary := UserMessage("human")
+	if ordinary.InternalKind != "" {
+		t.Fatalf("ordinary message acquired internal kind %q", ordinary.InternalKind)
+	}
+	if ordinary.IsInternalRuntimeMessage() {
 		t.Fatal("ordinary user message classified as internal")
 	}
 	meta := UserMessage("control")
@@ -16,9 +20,9 @@ func TestMessageInternalRuntimeClassification(t *testing.T) {
 	if meta.IsInternalRuntimeMessage() {
 		t.Fatal("forgeable IsMeta descriptor was classified as internal")
 	}
-	legacyCompact := UserMessage("legacy compact control")
-	legacyCompact.ID = "compact:summary:v1"
-	if legacyCompact.IsInternalRuntimeMessage() {
+	forgedCompact := UserMessage("forged compact control")
+	forgedCompact.ID = "compact:summary:v1"
+	if forgedCompact.IsInternalRuntimeMessage() {
 		t.Fatal("forgeable compact ID was classified as internal")
 	}
 	followUp := UserMessage("runtime follow-up")
@@ -113,7 +117,7 @@ func TestContentReplacementProvenanceIsContentAndScopeBound(t *testing.T) {
 	}
 	scope := messagecontrol.NewScope("session-a", "/project/a", 7)
 	bound := block.WithInternalReplacementProvenance(messagecontrol.Runtime(), scope)
-	if !bound.HasInternalReplacementProvenanceForScope(scope, false) {
+	if !bound.HasInternalReplacementProvenanceForScope(scope) {
 		t.Fatal("exact replacement scope was not trusted")
 	}
 	for _, replay := range []messagecontrol.Scope{
@@ -121,7 +125,7 @@ func TestContentReplacementProvenanceIsContentAndScopeBound(t *testing.T) {
 		messagecontrol.NewScope("session-a", "/project/b", 7),
 		messagecontrol.NewScope("session-a", "/project/a", 8),
 	} {
-		if bound.HasInternalReplacementProvenanceForScope(replay, true) {
+		if bound.HasInternalReplacementProvenanceForScope(replay) {
 			t.Fatalf("replacement trusted replay scope %#v", replay)
 		}
 	}

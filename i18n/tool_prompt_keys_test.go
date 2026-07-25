@@ -12,7 +12,7 @@ func TestToolPromptSemanticCopyCoversEveryLanguage(t *testing.T) {
 		KeyAskUserOtherOption, KeyAskUserTUISingleHint, KeyAskUserTUIMultiHint,
 		KeyAskUserTUICustomHint, KeyAskUserProgress,
 		KeyAskUserTUINotesPrompt, KeyAskUserTUINotesHint, KeyAskUserTUINotesAvailable,
-		KeyBashSandboxBuildError, KeyBashSandboxFallback,
+		KeyBashSandboxBuildError,
 	}
 	for _, key := range keys {
 		for _, lang := range AllLanguages() {

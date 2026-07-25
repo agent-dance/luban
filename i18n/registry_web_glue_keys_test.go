@@ -24,7 +24,7 @@ func TestRegistryWebGlueKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestRegistryWebGlueEnglishCompatibility(t *testing.T) {
+func TestRegistryWebGlueEnglishContract(t *testing.T) {
 	cause := errors.New("raw-cause")
 	tests := []struct {
 		key  Key

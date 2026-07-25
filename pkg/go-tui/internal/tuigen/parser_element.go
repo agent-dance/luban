@@ -102,8 +102,8 @@ func (p *Parser) parseBodyNode() Node {
 			return stmt
 		}
 	case TokenError:
-		// Lexer already reported the diagnostic (e.g. "@let is no longer supported").
-		// Just advance past the error token without emitting a second error.
+		// The lexer already reported the diagnostic. Advance past the error
+		// token without emitting a second error.
 		p.advance()
 	default:
 		p.errors.AddErrorf(p.position(), "unexpected token %s in body", p.current.Type)

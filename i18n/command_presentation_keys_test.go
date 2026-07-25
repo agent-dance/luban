@@ -8,8 +8,6 @@ func TestCommandPresentationSemanticCopyCoversEveryLanguage(t *testing.T) {
 		KeyCommandPresentationInspectError, KeyCommandPresentationExitRequested,
 		KeyCommandPresentationCompleted, KeyCommandPresentationResult,
 		KeyCommandPresentationExtensionSuccess, KeyCommandPresentationExtensionFailure,
-		KeyCommandPresentationMCPPromptDescription,
-		KeyCommandPresentationMCPPromptSuccess, KeyCommandPresentationMCPPromptFailure,
 		KeyCommandPresentationModelSaveWarning, KeyCommandPresentationProviderWarning,
 		KeyCommandOutcomeSucceeded, KeyCommandOutcomeWarning, KeyCommandOutcomePartial,
 		KeyCommandOutcomeFailed, KeyCommandOutcomeDenied, KeyCommandOutcomeCancelled,

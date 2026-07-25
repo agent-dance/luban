@@ -4,7 +4,6 @@ package i18n
 // Agent/profile identifiers, paths, status values, protocol field names, and
 // raw causes remain format arguments so their canonical values are preserved.
 const (
-	KeyToolAgentDeepPermissionModeUnsupported        Key = "tool.agent.deep.permission_mode_unsupported"
 	KeyToolAgentDeepPermissionSnapshotUnavailable    Key = "tool.agent.deep.permission_snapshot_unavailable"
 	KeyToolAgentDeepResumeContextUntrusted           Key = "tool.agent.deep.resume_context_untrusted"
 	KeyToolAgentDeepRunOutcome                       Key = "tool.agent.deep.run_outcome"
@@ -25,12 +24,10 @@ const (
 	KeyToolAgentDeepSubagentTypeNotAllowed           Key = "tool.agent.deep.subagent_type_not_allowed"
 	KeyToolAgentDeepForkContextRequired              Key = "tool.agent.deep.fork_context_required"
 	KeyToolAgentDeepForkNestedUnavailable            Key = "tool.agent.deep.fork_nested_unavailable"
-	KeyToolAgentDeepRemoteRuntimeRequired            Key = "tool.agent.deep.remote_runtime_required"
 	KeyToolAgentDeepIsolationUnsupported             Key = "tool.agent.deep.isolation_unsupported"
 	KeyToolAgentDeepUnknownSubagentType              Key = "tool.agent.deep.unknown_subagent_type"
 	KeyToolAgentDeepMCPServersRequired               Key = "tool.agent.deep.mcp_servers_required"
 	KeyToolAgentDeepFrontmatterParseFailed           Key = "tool.agent.deep.frontmatter_parse_failed"
-	KeyToolAgentDeepCustomPermissionModeUnsupported  Key = "tool.agent.deep.custom_permission_mode_unsupported"
 	KeyToolAgentDeepCustomPromptEmpty                Key = "tool.agent.deep.custom_prompt_empty"
 	KeyToolAgentDeepMCPServerNamedError              Key = "tool.agent.deep.mcp_server_named_error"
 	KeyToolAgentDeepMCPServerConfigExpected          Key = "tool.agent.deep.mcp_server_config_expected"
@@ -40,7 +37,6 @@ const (
 	KeyToolAgentDeepJSONNameEmpty                    Key = "tool.agent.deep.json_name_empty"
 	KeyToolAgentDeepJSONDescriptionMissing           Key = "tool.agent.deep.json_description_missing"
 	KeyToolAgentDeepJSONPromptMissing                Key = "tool.agent.deep.json_prompt_missing"
-	KeyToolAgentDeepJSONPermissionModeUnsupported    Key = "tool.agent.deep.json_permission_mode_unsupported"
 	KeyToolAgentDeepJSONModelEmpty                   Key = "tool.agent.deep.json_model_empty"
 	KeyToolAgentDeepJSONMaxTurnsUnsupported          Key = "tool.agent.deep.json_max_turns_unsupported"
 	KeyToolAgentDeepJSONMCPServersInvalid            Key = "tool.agent.deep.json_mcp_servers_invalid"
@@ -67,7 +63,6 @@ const (
 )
 
 var toolAgentDeepKeys = [...]Key{
-	KeyToolAgentDeepPermissionModeUnsupported,
 	KeyToolAgentDeepPermissionSnapshotUnavailable,
 	KeyToolAgentDeepResumeContextUntrusted,
 	KeyToolAgentDeepRunOutcome,
@@ -88,12 +83,10 @@ var toolAgentDeepKeys = [...]Key{
 	KeyToolAgentDeepSubagentTypeNotAllowed,
 	KeyToolAgentDeepForkContextRequired,
 	KeyToolAgentDeepForkNestedUnavailable,
-	KeyToolAgentDeepRemoteRuntimeRequired,
 	KeyToolAgentDeepIsolationUnsupported,
 	KeyToolAgentDeepUnknownSubagentType,
 	KeyToolAgentDeepMCPServersRequired,
 	KeyToolAgentDeepFrontmatterParseFailed,
-	KeyToolAgentDeepCustomPermissionModeUnsupported,
 	KeyToolAgentDeepCustomPromptEmpty,
 	KeyToolAgentDeepMCPServerNamedError,
 	KeyToolAgentDeepMCPServerConfigExpected,
@@ -103,7 +96,6 @@ var toolAgentDeepKeys = [...]Key{
 	KeyToolAgentDeepJSONNameEmpty,
 	KeyToolAgentDeepJSONDescriptionMissing,
 	KeyToolAgentDeepJSONPromptMissing,
-	KeyToolAgentDeepJSONPermissionModeUnsupported,
 	KeyToolAgentDeepJSONModelEmpty,
 	KeyToolAgentDeepJSONMaxTurnsUnsupported,
 	KeyToolAgentDeepJSONMCPServersInvalid,
@@ -131,21 +123,13 @@ var toolAgentDeepKeys = [...]Key{
 
 func init() {
 	entries := map[Key][6]string{
-		KeyToolAgentDeepPermissionModeUnsupported: {
-			"permissionMode is no longer supported; subagents inherit the parent permission policy captured at spawn",
-			"不再支持 permissionMode；subagent 会继承启动时捕获的父级权限策略",
-			"permissionMode wird nicht mehr unterstützt; Subagents übernehmen die beim Start erfasste Berechtigungsrichtlinie des Elternprozesses",
-			"permissionMode はサポートされなくなりました。subagent は起動時に取得した親の権限ポリシーを継承します",
-			"permissionMode는 더 이상 지원되지 않습니다. subagent는 시작 시 캡처된 상위 권한 정책을 상속합니다",
-			"permissionMode больше не поддерживается; subagent наследуют родительскую политику разрешений, зафиксированную при запуске",
-		},
 		KeyToolAgentDeepPermissionSnapshotUnavailable: {
-			"cannot resume legacy subagent without its complete parent permission snapshot",
-			"缺少完整的父级权限快照，无法恢复旧版 subagent",
-			"Der ältere Subagent kann ohne vollständigen Berechtigungs-Snapshot des Elternprozesses nicht fortgesetzt werden",
-			"完全な親権限スナップショットがないため、旧形式の subagent を再開できません",
-			"완전한 상위 권한 스냅샷이 없어 기존 subagent를 재개할 수 없습니다",
-			"Невозможно возобновить устаревший subagent без полного снимка родительских разрешений",
+			"cannot resume subagent without its complete parent permission snapshot",
+			"缺少完整的父级权限快照，无法恢复 subagent",
+			"Der Subagent kann ohne vollständigen Berechtigungs-Snapshot des Elternprozesses nicht fortgesetzt werden",
+			"完全な親権限スナップショットがないため、subagent を再開できません",
+			"완전한 상위 권한 스냅샷이 없어 subagent를 재개할 수 없습니다",
+			"Невозможно возобновить subagent без полного снимка родительских разрешений",
 		},
 		KeyToolAgentDeepResumeContextUntrusted: {
 			"cannot resume subagent from untrusted or modified persisted security metadata",
@@ -299,14 +283,6 @@ func init() {
 			"Agent 오류: fork된 worker 내부에서는 다시 fork할 수 없습니다. 사용 가능한 tool로 작업을 직접 완료하세요",
 			"Ошибка Agent: fork недоступен внутри уже ответвлённого worker. Выполните задачу напрямую с помощью доступных tool",
 		},
-		KeyToolAgentDeepRemoteRuntimeRequired: {
-			`Agent error: isolation="remote" requires a RemoteRuntimeProvider; configure AgentTool.RemoteRuntime to enable remote sub-agents`,
-			`Agent 错误：isolation="remote" 需要 RemoteRuntimeProvider；请配置 AgentTool.RemoteRuntime 以启用远程 sub-agent`,
-			`Agent-Fehler: isolation="remote" erfordert einen RemoteRuntimeProvider; konfiguriere AgentTool.RemoteRuntime, um Remote-Subagents zu aktivieren`,
-			`Agent エラー: isolation="remote" には RemoteRuntimeProvider が必要です。リモート sub-agent を有効にするには AgentTool.RemoteRuntime を設定してください`,
-			`Agent 오류: isolation="remote"에는 RemoteRuntimeProvider가 필요합니다. 원격 sub-agent를 사용하려면 AgentTool.RemoteRuntime을 구성하세요`,
-			`Ошибка Agent: для isolation="remote" требуется RemoteRuntimeProvider; настройте AgentTool.RemoteRuntime, чтобы включить удалённые sub-agent`,
-		},
 		KeyToolAgentDeepIsolationUnsupported: {
 			"Agent error: unsupported isolation mode %q",
 			"Agent 错误：不支持 isolation 模式 %q",
@@ -338,14 +314,6 @@ func init() {
 			"Agent エラー: %s の Agent frontmatter を解析できませんでした: %v",
 			"Agent 오류: %s의 Agent frontmatter를 파싱하지 못했습니다: %v",
 			"Ошибка Agent: не удалось разобрать frontmatter Agent в %s: %v",
-		},
-		KeyToolAgentDeepCustomPermissionModeUnsupported: {
-			"Agent error: custom agent %q: %v",
-			"Agent 错误：自定义 Agent %q：%v",
-			"Agent-Fehler: Benutzerdefinierter Agent %q: %v",
-			"Agent エラー: カスタム Agent %q: %v",
-			"Agent 오류: 사용자 지정 Agent %q: %v",
-			"Ошибка Agent: пользовательский Agent %q: %v",
 		},
 		KeyToolAgentDeepCustomPromptEmpty: {
 			"Agent error: custom agent %q has an empty prompt",
@@ -418,14 +386,6 @@ func init() {
 			"Agent エラー: JSON Agent %q に prompt がありません",
 			"Agent 오류: JSON Agent %q에 prompt가 없습니다",
 			"Ошибка Agent: у JSON Agent %q отсутствует prompt",
-		},
-		KeyToolAgentDeepJSONPermissionModeUnsupported: {
-			"Agent error: JSON agent %q: %v",
-			"Agent 错误：JSON Agent %q：%v",
-			"Agent-Fehler: JSON-Agent %q: %v",
-			"Agent エラー: JSON Agent %q: %v",
-			"Agent 오류: JSON Agent %q: %v",
-			"Ошибка Agent: JSON Agent %q: %v",
 		},
 		KeyToolAgentDeepJSONModelEmpty: {
 			"Agent error: JSON agent %q uses empty model",

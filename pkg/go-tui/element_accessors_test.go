@@ -222,6 +222,19 @@ func TestElement_SetText_MarksDirty(t *testing.T) {
 	}
 }
 
+func TestElement_SetTextReplacesStyledSpans(t *testing.T) {
+	e := New(WithStyledSpans([]StyledSpan{{Text: "styled", Style: NewStyle().Bold()}}))
+
+	e.SetText("plain")
+
+	if got := e.Text(); got != "plain" {
+		t.Fatalf("Text() = %q, want plain", got)
+	}
+	if e.HasStyledSpans() {
+		t.Fatal("SetText retained stale styled spans")
+	}
+}
+
 func TestElement_AddChild_MarksDirty(t *testing.T) {
 	// Reset global dirty flag
 	_ = testApp.checkAndClearDirty()
@@ -273,4 +286,3 @@ func TestElement_Wrap(t *testing.T) {
 		})
 	}
 }
-

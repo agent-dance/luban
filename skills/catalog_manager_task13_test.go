@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestCatalogManagerSameNameWinnerShadowResolveAndCompatibility(t *testing.T) {
+func TestCatalogManagerSameNameWinnerAndShadowResolve(t *testing.T) {
 	high := t.TempDir()
 	low := t.TempDir()
 	task13WriteSkill(t, high, "high", "shared", "high priority", "high body")
@@ -21,11 +21,11 @@ func TestCatalogManagerSameNameWinnerShadowResolveAndCompatibility(t *testing.T)
 	store, err := NewFileOverrideStoreAt(OverrideStorePaths{
 		UserSettings:    filepath.Join(settingsRoot, "user", "settings.json"),
 		ProjectSettings: filepath.Join(settingsRoot, "project", "settings.json"),
-	}, nil, nil)
+	}, nil, NewMemorySessionOverrideLayer())
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManagerWithOverrideStore(store,
+	manager := newManagerWithOverrideStore(store,
 		DirSource{Dir: high, Source: SourceProject},
 		DirSource{Dir: low, Source: SourceUser},
 	)
@@ -51,24 +51,24 @@ func TestCatalogManagerSameNameWinnerShadowResolveAndCompatibility(t *testing.T)
 	if shadow.ModelVisible || shadow.UserInvocable || shadow.Executable {
 		t.Fatalf("shadowed entry remained invocable: %#v", shadow)
 	}
+	generation := manager.ProjectGeneration()
 
-	resolved, found, err := manager.Resolve("session", "shared")
-	if err != nil || !found || resolved.Effective.ID != winner.ID || resolved.Skill.Content != "high body" {
-		t.Fatalf("Resolve(name) = %#v, %t, %v", resolved, found, err)
+	resolvedResult, err := manager.ResolveLatest(SkillResolveRequest{
+		SessionID: "session", Selector: "shared", Origin: InvocationOriginUser,
+		ExpectedProjectGeneration: generation,
+	}, nil)
+	if err != nil || resolvedResult.Outcome != SkillResolveResolved || resolvedResult.Resolved == nil || resolvedResult.Resolved.Effective.ID != winner.ID || resolvedResult.Resolved.Skill.Content != "high body" {
+		t.Fatalf("ResolveLatest(name) = %#v, %v", resolvedResult, err)
 	}
-	shadowResolved, found, err := manager.Resolve("session", string(shadow.ID))
-	if err != nil || !found || shadowResolved.Effective.ShadowedBy != winner.ID || shadowResolved.Skill.Content != "low body" {
-		t.Fatalf("Resolve(shadow ID) = %#v, %t, %v", shadowResolved, found, err)
+	shadowResult, err := manager.ResolveLatest(SkillResolveRequest{
+		SessionID: "session", Selector: string(shadow.ID), Origin: InvocationOriginUser,
+		ExpectedProjectGeneration: generation,
+	}, nil)
+	if err != nil || shadowResult.Outcome != SkillResolveShadowed || shadowResult.Resolved == nil || shadowResult.Resolved.Effective.ShadowedBy != winner.ID || shadowResult.Resolved.Skill.Content != "low body" {
+		t.Fatalf("ResolveLatest(shadow ID) = %#v, %v", shadowResult, err)
 	}
-	if legacy := manager.Get("shared"); legacy == nil || legacy.Content != "high body" {
-		t.Fatalf("legacy Get = %#v", legacy)
-	}
-	if legacy := manager.All(); len(legacy) != 1 || legacy[0].Content != "high body" {
-		t.Fatalf("legacy All = %#v", legacy)
-	}
-
 	snapshot.Skills[0].Name = "mutated"
-	resolved.Skill.Content = "mutated"
+	resolvedResult.Resolved.Skill.Content = "mutated"
 	again, err := manager.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
@@ -76,13 +76,17 @@ func TestCatalogManagerSameNameWinnerShadowResolveAndCompatibility(t *testing.T)
 	if again.Revision != 1 || again.Skills[0].Name == "mutated" {
 		t.Fatalf("snapshot exposed manager storage: %#v", again)
 	}
-	againResolved, _, err := manager.Resolve("session", "shared")
-	if err != nil || againResolved.Skill.Content != "high body" {
+	againResolved, err := manager.ResolveLatest(SkillResolveRequest{
+		SessionID: "session", Selector: "shared", Origin: InvocationOriginUser,
+		ExpectedProjectGeneration: generation,
+	}, nil)
+	if err != nil || againResolved.Resolved == nil || againResolved.Resolved.Skill.Content != "high body" {
 		t.Fatalf("resolved content exposed manager storage: %#v, %v", againResolved, err)
 	}
 
 	latest, err := manager.ResolveLatest(SkillResolveRequest{
 		SessionID: "session", Selector: string(shadow.ID), Origin: InvocationOriginUser,
+		ExpectedProjectGeneration: generation,
 	}, nil)
 	if err != nil || latest.Outcome != SkillResolveShadowed || latest.Resolved == nil || latest.Resolved.Effective.ID != shadow.ID {
 		t.Fatalf("ResolveLatest(shadow) = %#v, %v", latest, err)
@@ -103,7 +107,7 @@ func TestCatalogManagerSameNameWinnerShadowResolveAndCompatibility(t *testing.T)
 func TestManagerRevisionChangesOnlyWithEffectiveStateAndAdvancesOnReadd(t *testing.T) {
 	root := t.TempDir()
 	skillDir := task13WriteSkill(t, root, "review", "review", "review files", "first")
-	manager := NewManager(DirSource{Dir: root, Source: SourceProject})
+	manager := newCatalogManagerForTest(DirSource{Dir: root, Source: SourceProject})
 
 	first := task13Snapshot(t, manager, "session")
 	unchanged, err := manager.RefreshSnapshot("session")
@@ -189,7 +193,7 @@ func TestCatalogManagerProjectToggleCASAndLastNonOff(t *testing.T) {
 	if disabled.Outcome != ProjectVisibilityToggleCommitted || disabled.Skill.Visibility != VisibilityOff {
 		t.Fatalf("disable result = %#v", disabled)
 	}
-	persisted, err := store.Snapshot("")
+	persisted, err := store.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,11 +246,11 @@ func TestCatalogManagerProjectToggleRejectsSessionManagedAndUnknown(t *testing.T
 		managed := map[SkillID]VisibilityOverride{row.ID: {
 			SkillID: row.ID, Scope: SkillScopeManaged, Visibility: VisibilityAuto,
 		}}
-		managedStore, err := NewFileOverrideStoreAt(baseStore.paths, managed, nil)
+		managedStore, err := NewFileOverrideStoreAt(baseStore.paths, managed, NewMemorySessionOverrideLayer())
 		if err != nil {
 			t.Fatal(err)
 		}
-		manager := NewManagerWithOverrideStore(managedStore, baseManager.dirs...)
+		manager := newManagerWithOverrideStore(managedStore, baseManager.dirs...)
 		current := task13Snapshot(t, manager, "session")
 		managedRow, _ := current.Find(row.ID)
 		if managedRow.Mutable || managedRow.ReadOnlyReason == "" {
@@ -295,7 +299,7 @@ func TestCatalogManagerProjectToggleFailureTruth(t *testing.T) {
 		if err == nil || result.Outcome != ProjectVisibilityToggleRejected || result.Reason != ProjectVisibilityToggleReasonLiveApplyRolledBack {
 			t.Fatalf("result = %#v, %v", result, err)
 		}
-		stored, snapshotErr := base.Snapshot("")
+		stored, snapshotErr := base.Snapshot("session")
 		if snapshotErr != nil {
 			t.Fatal(snapshotErr)
 		}
@@ -309,13 +313,13 @@ func TestCatalogManagerProjectToggleFailureTruth(t *testing.T) {
 		manager, base, row := task13SingleManager(t, fault)
 		before := task13Snapshot(t, manager, "session")
 		result, err := manager.ToggleProjectVisibility("session", row.ID, before.Revision)
-		if err == nil || result.Outcome != ProjectVisibilityToggleDegraded || result.Reason != ProjectVisibilityToggleReasonRollbackFailed || !result.RefreshRequired() {
+		if err == nil || result.Outcome != ProjectVisibilityToggleDegraded || result.Reason != ProjectVisibilityToggleReasonRollbackFailed {
 			t.Fatalf("result = %#v, %v", result, err)
 		}
 		if result.Skill == nil || result.Skill.Visibility != VisibilityOff || result.CurrentRevision == before.Revision {
 			t.Fatalf("degraded result was not authoritatively refreshed: %#v", result)
 		}
-		stored, snapshotErr := base.Snapshot("")
+		stored, snapshotErr := base.Snapshot("session")
 		if snapshotErr != nil || stored.Project[row.ID].Visibility != VisibilityOff {
 			t.Fatalf("persisted state = %#v, %v", stored.Project[row.ID], snapshotErr)
 		}
@@ -337,6 +341,7 @@ func TestCatalogManagerProjectToggleFailureTruth(t *testing.T) {
 
 func TestCatalogManagerResolveLatestLinearizesExecutionAndTypedDenials(t *testing.T) {
 	manager, _, row := task13SingleManager(t, nil)
+	generation := manager.ProjectGeneration()
 	before := task13Snapshot(t, manager, "session")
 	entered := make(chan struct{})
 	release := make(chan struct{})
@@ -345,6 +350,7 @@ func TestCatalogManagerResolveLatestLinearizesExecutionAndTypedDenials(t *testin
 	go func() {
 		result, err := manager.ResolveLatest(SkillResolveRequest{
 			SessionID: "session", Selector: string(row.ID), ExpectedRevision: row.Revision, Origin: InvocationOriginUser,
+			ExpectedProjectGeneration: generation,
 		}, func(resolved ResolvedSkill) error {
 			if resolved.Effective.ID != row.ID || resolved.Skill == nil {
 				return errors.New("callback received mismatched resolution")
@@ -384,6 +390,7 @@ func TestCatalogManagerResolveLatestLinearizesExecutionAndTypedDenials(t *testin
 
 	denied, err := manager.ResolveLatest(SkillResolveRequest{
 		SessionID: "session", Selector: string(row.ID), Origin: InvocationOriginUser,
+		ExpectedProjectGeneration: generation,
 	}, nil)
 	if err != nil || denied.Outcome != SkillResolvePolicyDenied {
 		t.Fatalf("policy denial = %#v, %v", denied, err)
@@ -393,12 +400,14 @@ func TestCatalogManagerResolveLatestLinearizesExecutionAndTypedDenials(t *testin
 	}
 	stale, err := manager.ResolveLatest(SkillResolveRequest{
 		SessionID: "session", Selector: string(row.ID), ExpectedRevision: row.Revision, Origin: InvocationOriginUser,
+		ExpectedProjectGeneration: generation,
 	}, nil)
 	if err != nil || stale.Outcome != SkillResolveStale {
 		t.Fatalf("stale denial = %#v, %v", stale, err)
 	}
 	notFound, err := manager.ResolveLatest(SkillResolveRequest{
 		SessionID: "session", Selector: "missing", Origin: InvocationOriginModel,
+		ExpectedProjectGeneration: manager.ProjectGeneration(),
 	}, nil)
 	if err != nil || notFound.Outcome != SkillResolveNotFound {
 		t.Fatalf("not-found result = %#v, %v", notFound, err)
@@ -407,6 +416,7 @@ func TestCatalogManagerResolveLatestLinearizesExecutionAndTypedDenials(t *testin
 
 func TestCatalogManagerResolveLatestReadersRunConcurrentlyWhileWriterWaits(t *testing.T) {
 	manager, _, row := task13SingleManager(t, nil)
+	generation := manager.ProjectGeneration()
 	before := task13Snapshot(t, manager, "session")
 	entered := make(chan int, 2)
 	release := make(chan struct{})
@@ -416,6 +426,7 @@ func TestCatalogManagerResolveLatestReadersRunConcurrentlyWhileWriterWaits(t *te
 		go func(worker int) {
 			result, err := manager.ResolveLatest(SkillResolveRequest{
 				SessionID: "session", Selector: string(row.ID), Origin: InvocationOriginUser,
+				ExpectedProjectGeneration: generation,
 			}, func(ResolvedSkill) error {
 				entered <- worker
 				<-release
@@ -488,7 +499,7 @@ func TestCatalogManagerExecutionReceiptMetadataContract(t *testing.T) {
 		t.Fatalf("absent receipt = found %t, err %v", found, err)
 	}
 	encoded := metadata[SkillExecutionReceiptMetadataKey]
-	if _, err := UnmarshalSkillExecutionReceipt(encoded[:len(encoded)-1] + `,"extra":true}`); err == nil {
+	if _, err := unmarshalSkillExecutionReceipt(encoded[:len(encoded)-1] + `,"extra":true}`); err == nil {
 		t.Fatal("receipt with unknown field was accepted")
 	}
 	receipt.ContextEpoch = 0
@@ -499,6 +510,7 @@ func TestCatalogManagerExecutionReceiptMetadataContract(t *testing.T) {
 
 func TestCatalogManagerConcurrentSnapshotResolveRefreshAndToggle(t *testing.T) {
 	manager, _, row := task13SingleManager(t, nil)
+	generation := manager.ProjectGeneration()
 	var wait sync.WaitGroup
 	for worker := 0; worker < 4; worker++ {
 		wait.Add(1)
@@ -510,8 +522,11 @@ func TestCatalogManagerConcurrentSnapshotResolveRefreshAndToggle(t *testing.T) {
 					t.Errorf("Snapshot: %v", err)
 					return
 				}
-				if _, _, err := manager.Resolve(sessionID, string(row.ID)); err != nil {
-					t.Errorf("Resolve: %v", err)
+				if _, err := manager.ResolveLatest(SkillResolveRequest{
+					SessionID: sessionID, Selector: string(row.ID), Origin: InvocationOriginUser,
+					ExpectedProjectGeneration: generation,
+				}, nil); err != nil {
+					t.Errorf("ResolveLatest: %v", err)
 					return
 				}
 				if iteration%5 == 0 {
@@ -575,7 +590,7 @@ func task13SingleManager(t *testing.T, fault *task13FaultStore) (*Manager, *File
 	base, err := NewFileOverrideStoreAt(OverrideStorePaths{
 		UserSettings:    filepath.Join(settingsRoot, "user", "settings.json"),
 		ProjectSettings: filepath.Join(settingsRoot, "project", "settings.json"),
-	}, nil, nil)
+	}, nil, NewMemorySessionOverrideLayer())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +599,7 @@ func task13SingleManager(t *testing.T, fault *task13FaultStore) (*Manager, *File
 		fault.base = base
 		store = fault
 	}
-	manager := NewManagerWithOverrideStore(store, DirSource{Dir: root, Source: SourceProject})
+	manager := newManagerWithOverrideStore(store, DirSource{Dir: root, Source: SourceProject})
 	snapshot := task13Snapshot(t, manager, "session")
 	if len(snapshot.Skills) != 1 {
 		t.Fatalf("single manager snapshot = %#v", snapshot)
@@ -614,10 +629,6 @@ func (store *task13FaultStore) Snapshot(sessionID string) (OverrideSnapshot, err
 
 func (store *task13FaultStore) Set(sessionID string, override VisibilityOverride) error {
 	return store.base.Set(sessionID, override)
-}
-
-func (store *task13FaultStore) Toggle(sessionID string, scope SkillScope, id SkillID) (VisibilityOverride, error) {
-	return store.base.Toggle(sessionID, scope, id)
 }
 
 func (store *task13FaultStore) Reset(sessionID string, scope SkillScope, id SkillID) error {

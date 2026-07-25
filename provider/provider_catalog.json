@@ -8,29 +8,31 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 2.0,
-    "CostPer1MOut": 10.0,
+    "CostPer1MIn": 2,
+    "CostPer1MOut": 10,
     "ID": "claude-sonnet-5",
     "IsDefault": true,
     "MaxOutput": 128000,
     "Name": "Claude Sonnet 5",
-    "Provider": "anthropic"
+    "Provider": "anthropic",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
     "CacheControl": true,
     "CacheCreatePer1M": 12.5,
-    "CacheReadPer1M": 1.0,
+    "CacheReadPer1M": 1,
     "CanReason": true,
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 10.0,
-    "CostPer1MOut": 50.0,
+    "CostPer1MIn": 10,
+    "CostPer1MOut": 50,
     "ID": "claude-fable-5",
     "MaxOutput": 128000,
     "Name": "Claude Fable 5",
-    "Provider": "anthropic"
+    "Provider": "anthropic",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -41,12 +43,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 200000,
-    "CostPer1MIn": 1.0,
-    "CostPer1MOut": 5.0,
+    "CostPer1MIn": 1,
+    "CostPer1MOut": 5,
     "ID": "claude-haiku-4-5-20251001",
     "MaxOutput": 64000,
     "Name": "Claude Haiku 4.5",
-    "Provider": "anthropic"
+    "Provider": "anthropic",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -57,12 +60,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 25.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 25,
     "ID": "claude-opus-4-7",
     "MaxOutput": 128000,
     "Name": "Claude Opus 4.7",
-    "Provider": "anthropic"
+    "Provider": "anthropic",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -73,12 +77,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 25.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 25,
     "ID": "claude-opus-4-8",
     "MaxOutput": 128000,
     "Name": "Claude Opus 4.8",
-    "Provider": "anthropic"
+    "Provider": "anthropic",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -89,12 +94,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 3.0,
-    "CostPer1MOut": 15.0,
+    "CostPer1MIn": 3,
+    "CostPer1MOut": 15,
     "ID": "claude-sonnet-4-6",
     "MaxOutput": 64000,
     "Name": "Claude Sonnet 4.6",
-    "Provider": "anthropic"
+    "Provider": "anthropic",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -105,29 +111,31 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 2.0,
-    "CostPer1MOut": 10.0,
+    "CostPer1MIn": 2,
+    "CostPer1MOut": 10,
     "ID": "anthropic.claude-sonnet-5",
     "IsDefault": true,
     "MaxOutput": 128000,
     "Name": "Claude Sonnet 5 (Bedrock)",
-    "Provider": "bedrock"
+    "Provider": "bedrock",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
     "CacheControl": true,
     "CacheCreatePer1M": 12.5,
-    "CacheReadPer1M": 1.0,
+    "CacheReadPer1M": 1,
     "CanReason": true,
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 10.0,
-    "CostPer1MOut": 50.0,
+    "CostPer1MIn": 10,
+    "CostPer1MOut": 50,
     "ID": "anthropic.claude-fable-5",
     "MaxOutput": 128000,
     "Name": "Claude Fable 5 (Bedrock)",
-    "Provider": "bedrock"
+    "Provider": "bedrock",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -138,12 +146,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 200000,
-    "CostPer1MIn": 1.0,
-    "CostPer1MOut": 5.0,
+    "CostPer1MIn": 1,
+    "CostPer1MOut": 5,
     "ID": "anthropic.claude-haiku-4-5-20251001-v1:0",
     "MaxOutput": 64000,
     "Name": "Claude Haiku 4.5 (Bedrock)",
-    "Provider": "bedrock"
+    "Provider": "bedrock",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -154,12 +163,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 25.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 25,
     "ID": "anthropic.claude-opus-4-7",
     "MaxOutput": 128000,
     "Name": "Claude Opus 4.7 (Bedrock)",
-    "Provider": "bedrock"
+    "Provider": "bedrock",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -170,12 +180,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 25.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 25,
     "ID": "anthropic.claude-opus-4-8",
     "MaxOutput": 128000,
     "Name": "Claude Opus 4.8 (Bedrock)",
-    "Provider": "bedrock"
+    "Provider": "bedrock",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -186,12 +197,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 3.0,
-    "CostPer1MOut": 15.0,
+    "CostPer1MIn": 3,
+    "CostPer1MOut": 15,
     "ID": "anthropic.claude-sonnet-4-6",
     "MaxOutput": 64000,
     "Name": "Claude Sonnet 4.6 (Bedrock)",
-    "Provider": "bedrock"
+    "Provider": "bedrock",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -201,8 +213,8 @@
     "CanUseTools": true,
     "ContextWindow": 1048576,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 1.0,
-    "CostPer1MOut": 2.0,
+    "CostPer1MIn": 1,
+    "CostPer1MOut": 2,
     "ID": "deepseek-v4-flash",
     "IsDefault": true,
     "MaxOutput": 393216,
@@ -217,8 +229,8 @@
     "CanUseTools": true,
     "ContextWindow": 1048576,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 3.0,
-    "CostPer1MOut": 6.0,
+    "CostPer1MIn": 3,
+    "CostPer1MOut": 6,
     "ID": "deepseek-v4-pro",
     "MaxOutput": 393216,
     "Name": "DeepSeek V4 Pro",
@@ -233,12 +245,13 @@
     "CanUseTools": true,
     "ContextWindow": 1048576,
     "CostPer1MIn": 1.5,
-    "CostPer1MOut": 9.0,
+    "CostPer1MOut": 9,
     "ID": "gemini-3.5-flash",
     "IsDefault": true,
     "MaxOutput": 65536,
     "Name": "Gemini 3.5 Flash",
-    "Provider": "gemini"
+    "Provider": "gemini",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -253,7 +266,8 @@
     "ID": "gemini-2.5-flash",
     "MaxOutput": 65536,
     "Name": "Gemini 2.5 Flash",
-    "Provider": "gemini"
+    "Provider": "gemini",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -268,7 +282,8 @@
     "ID": "gemini-2.5-flash-lite",
     "MaxOutput": 65536,
     "Name": "Gemini 2.5 Flash-Lite",
-    "Provider": "gemini"
+    "Provider": "gemini",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -279,11 +294,12 @@
     "CanUseTools": true,
     "ContextWindow": 1048576,
     "CostPer1MIn": 1.25,
-    "CostPer1MOut": 10.0,
+    "CostPer1MOut": 10,
     "ID": "gemini-2.5-pro",
     "MaxOutput": 65536,
     "Name": "Gemini 2.5 Pro",
-    "Provider": "gemini"
+    "Provider": "gemini",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -298,7 +314,8 @@
     "ID": "gemini-3.1-flash-lite",
     "MaxOutput": 65536,
     "Name": "Gemini 3.1 Flash-Lite",
-    "Provider": "gemini"
+    "Provider": "gemini",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -308,12 +325,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1048576,
-    "CostPer1MIn": 2.0,
-    "CostPer1MOut": 12.0,
+    "CostPer1MIn": 2,
+    "CostPer1MOut": 12,
     "ID": "gemini-3.1-pro-preview",
     "MaxOutput": 65536,
     "Name": "Gemini 3.1 Pro Preview",
-    "Provider": "gemini"
+    "Provider": "gemini",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -327,7 +345,8 @@
     "IsDefault": true,
     "MaxOutput": 32768,
     "Name": "Llama 3.3 70B",
-    "Provider": "groq"
+    "Provider": "groq",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -340,7 +359,8 @@
     "ID": "llama-3.1-8b-instant",
     "MaxOutput": 8192,
     "Name": "Llama 3.1 8B",
-    "Provider": "groq"
+    "Provider": "groq",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -355,7 +375,8 @@
     "ID": "openai/gpt-oss-120b",
     "MaxOutput": 65536,
     "Name": "GPT-OSS 120B",
-    "Provider": "groq"
+    "Provider": "groq",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -370,7 +391,8 @@
     "ID": "openai/gpt-oss-20b",
     "MaxOutput": 65536,
     "Name": "GPT-OSS 20B",
-    "Provider": "groq"
+    "Provider": "groq",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -386,7 +408,8 @@
     "Provider": "kimi",
     "ReasoningEfforts": [
       "max"
-    ]
+    ],
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -397,8 +420,8 @@
     "CanUseTools": true,
     "ContextWindow": 262144,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 4.0,
-    "CostPer1MOut": 21.0,
+    "CostPer1MIn": 4,
+    "CostPer1MOut": 21,
     "ID": "kimi-k2.5",
     "MaxOutput": 0,
     "Name": "Kimi K2.5",
@@ -414,7 +437,7 @@
     "ContextWindow": 262144,
     "CostCurrency": "CNY",
     "CostPer1MIn": 6.5,
-    "CostPer1MOut": 27.0,
+    "CostPer1MOut": 27,
     "ID": "kimi-k2.6",
     "MaxOutput": 0,
     "Name": "Kimi K2.6",
@@ -430,7 +453,7 @@
     "ContextWindow": 262144,
     "CostCurrency": "CNY",
     "CostPer1MIn": 6.5,
-    "CostPer1MOut": 27.0,
+    "CostPer1MOut": 27,
     "ID": "kimi-k2.7-code",
     "MaxOutput": 0,
     "Name": "Kimi K2.7 Code",
@@ -445,8 +468,8 @@
     "CanUseTools": true,
     "ContextWindow": 262144,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 13.0,
-    "CostPer1MOut": 54.0,
+    "CostPer1MIn": 13,
+    "CostPer1MOut": 54,
     "ID": "kimi-k2.7-code-highspeed",
     "MaxOutput": 0,
     "Name": "Kimi K2.7 Code HighSpeed",
@@ -459,8 +482,8 @@
     "CanUseTools": true,
     "ContextWindow": 128000,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 10.0,
-    "CostPer1MOut": 30.0,
+    "CostPer1MIn": 10,
+    "CostPer1MOut": 30,
     "ID": "moonshot-v1-128k",
     "MaxOutput": 0,
     "Name": "Moonshot V1 128K",
@@ -480,7 +503,8 @@
     "IsDefault": true,
     "MaxOutput": 524288,
     "Name": "MiniMax M3",
-    "Provider": "minimax"
+    "Provider": "minimax",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -491,7 +515,8 @@
     "ID": "MiniMax-M2.1",
     "MaxOutput": 80000,
     "Name": "MiniMax M2.1",
-    "Provider": "minimax"
+    "Provider": "minimax",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -502,7 +527,8 @@
     "ID": "MiniMax-M2.1-highspeed",
     "MaxOutput": 80000,
     "Name": "MiniMax M2.1 HighSpeed",
-    "Provider": "minimax"
+    "Provider": "minimax",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -513,7 +539,8 @@
     "ID": "MiniMax-M2.5",
     "MaxOutput": 80000,
     "Name": "MiniMax M2.5",
-    "Provider": "minimax"
+    "Provider": "minimax",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -524,7 +551,8 @@
     "ID": "MiniMax-M2.5-highspeed",
     "MaxOutput": 80000,
     "Name": "MiniMax M2.5 HighSpeed",
-    "Provider": "minimax"
+    "Provider": "minimax",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -540,7 +568,8 @@
     "ID": "MiniMax-M2.7",
     "MaxOutput": 204800,
     "Name": "MiniMax M2.7",
-    "Provider": "minimax"
+    "Provider": "minimax",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -556,7 +585,8 @@
     "ID": "MiniMax-M2.7-highspeed",
     "MaxOutput": 204800,
     "Name": "MiniMax M2.7 HighSpeed",
-    "Provider": "minimax"
+    "Provider": "minimax",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -575,7 +605,8 @@
     "IsDefault": true,
     "MaxOutput": 0,
     "Name": "Mistral Large 3",
-    "Provider": "mistral"
+    "Provider": "mistral",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -590,7 +621,8 @@
     "ID": "codestral-2508",
     "MaxOutput": 0,
     "Name": "Codestral",
-    "Provider": "mistral"
+    "Provider": "mistral",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -599,11 +631,12 @@
     "CanUseTools": true,
     "ContextWindow": 128000,
     "CostPer1MIn": 0.4,
-    "CostPer1MOut": 2.0,
+    "CostPer1MOut": 2,
     "ID": "mistral-medium-2505",
     "MaxOutput": 0,
     "Name": "Mistral Medium 3",
-    "Provider": "mistral"
+    "Provider": "mistral",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -612,11 +645,12 @@
     "CanUseTools": true,
     "ContextWindow": 128000,
     "CostPer1MIn": 0.4,
-    "CostPer1MOut": 2.0,
+    "CostPer1MOut": 2,
     "ID": "mistral-medium-2508",
     "MaxOutput": 0,
     "Name": "Mistral Medium 3.1",
-    "Provider": "mistral"
+    "Provider": "mistral",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -635,7 +669,8 @@
     "ID": "mistral-medium-3-5",
     "MaxOutput": 0,
     "Name": "Mistral Medium 3.5",
-    "Provider": "mistral"
+    "Provider": "mistral",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -650,7 +685,8 @@
     "ID": "mistral-small-2603",
     "MaxOutput": 0,
     "Name": "Mistral Small 4",
-    "Provider": "mistral"
+    "Provider": "mistral",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "responses",
@@ -663,8 +699,8 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 353400,
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 30.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 30,
     "ID": "gpt-5.6-sol",
     "IsDefault": true,
     "MaxOutput": 128000,
@@ -676,7 +712,8 @@
       "high",
       "xhigh",
       "max"
-    ]
+    ],
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "responses",
@@ -686,7 +723,7 @@
     "CanUseTools": true,
     "ContextWindow": 258400,
     "CostPer1MIn": 2.5,
-    "CostPer1MOut": 15.0,
+    "CostPer1MOut": 15,
     "ID": "gpt-5.4",
     "MaxOutput": 128000,
     "Name": "GPT-5.4",
@@ -696,7 +733,8 @@
       "medium",
       "high",
       "xhigh"
-    ]
+    ],
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "responses",
@@ -716,7 +754,8 @@
       "medium",
       "high",
       "xhigh"
-    ]
+    ],
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "responses",
@@ -725,8 +764,8 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 258400,
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 30.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 30,
     "ID": "gpt-5.5",
     "MaxOutput": 128000,
     "Name": "GPT-5.5",
@@ -736,7 +775,8 @@
       "medium",
       "high",
       "xhigh"
-    ]
+    ],
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "responses",
@@ -746,8 +786,8 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 353400,
-    "CostPer1MIn": 1.0,
-    "CostPer1MOut": 6.0,
+    "CostPer1MIn": 1,
+    "CostPer1MOut": 6,
     "ID": "gpt-5.6-luna",
     "MaxOutput": 128000,
     "Name": "GPT-5.6 Luna",
@@ -758,7 +798,8 @@
       "high",
       "xhigh",
       "max"
-    ]
+    ],
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "responses",
@@ -769,7 +810,7 @@
     "CanUseTools": true,
     "ContextWindow": 353400,
     "CostPer1MIn": 2.5,
-    "CostPer1MOut": 15.0,
+    "CostPer1MOut": 15,
     "ID": "gpt-5.6-terra",
     "MaxOutput": 128000,
     "Name": "GPT-5.6 Terra",
@@ -780,7 +821,8 @@
       "high",
       "xhigh",
       "max"
-    ]
+    ],
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -791,29 +833,31 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 2.0,
-    "CostPer1MOut": 10.0,
+    "CostPer1MIn": 2,
+    "CostPer1MOut": 10,
     "ID": "claude-sonnet-5",
     "IsDefault": true,
     "MaxOutput": 128000,
     "Name": "Claude Sonnet 5 (Vertex)",
-    "Provider": "vertex"
+    "Provider": "vertex",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
     "CacheControl": true,
     "CacheCreatePer1M": 12.5,
-    "CacheReadPer1M": 1.0,
+    "CacheReadPer1M": 1,
     "CanReason": true,
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 10.0,
-    "CostPer1MOut": 50.0,
+    "CostPer1MIn": 10,
+    "CostPer1MOut": 50,
     "ID": "claude-fable-5",
     "MaxOutput": 128000,
     "Name": "Claude Fable 5 (Vertex)",
-    "Provider": "vertex"
+    "Provider": "vertex",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -824,12 +868,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 200000,
-    "CostPer1MIn": 1.0,
-    "CostPer1MOut": 5.0,
+    "CostPer1MIn": 1,
+    "CostPer1MOut": 5,
     "ID": "claude-haiku-4-5@20251001",
     "MaxOutput": 64000,
     "Name": "Claude Haiku 4.5 (Vertex)",
-    "Provider": "vertex"
+    "Provider": "vertex",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -840,12 +885,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 25.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 25,
     "ID": "claude-opus-4-7",
     "MaxOutput": 128000,
     "Name": "Claude Opus 4.7 (Vertex)",
-    "Provider": "vertex"
+    "Provider": "vertex",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -856,12 +902,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 25.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 25,
     "ID": "claude-opus-4-8",
     "MaxOutput": 128000,
     "Name": "Claude Opus 4.8 (Vertex)",
-    "Provider": "vertex"
+    "Provider": "vertex",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "messages",
@@ -872,12 +919,13 @@
     "CanSeeImages": true,
     "CanUseTools": true,
     "ContextWindow": 1000000,
-    "CostPer1MIn": 3.0,
-    "CostPer1MOut": 15.0,
+    "CostPer1MIn": 3,
+    "CostPer1MOut": 15,
     "ID": "claude-sonnet-4-6",
     "MaxOutput": 64000,
     "Name": "Claude Sonnet 4.6 (Vertex)",
-    "Provider": "vertex"
+    "Provider": "vertex",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "responses",
@@ -895,19 +943,20 @@
       "medium",
       "high",
       "xhigh"
-    ]
+    ],
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
     "CacheControl": true,
-    "CacheReadPer1M": 2.0,
+    "CacheReadPer1M": 2,
     "CanReason": true,
     "CanSeeImages": false,
     "CanUseTools": true,
     "ContextWindow": 1000000,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 8.0,
-    "CostPer1MOut": 28.0,
+    "CostPer1MIn": 8,
+    "CostPer1MOut": 28,
     "ID": "glm-5.2",
     "IsDefault": true,
     "MaxOutput": 128000,
@@ -923,7 +972,8 @@
     "ID": "glm-4.7",
     "MaxOutput": 128000,
     "Name": "GLM-4.7",
-    "Provider": "zhipu"
+    "Provider": "zhipu",
+    "CostCurrency": "USD"
   },
   {
     "APIFormat": "chat-completions",
@@ -935,7 +985,7 @@
     "ContextWindow": 200000,
     "CostCurrency": "CNY",
     "CostPer1MIn": 0.5,
-    "CostPer1MOut": 3.0,
+    "CostPer1MOut": 3,
     "ID": "glm-4.7-flashx",
     "MaxOutput": 128000,
     "Name": "GLM-4.7 FlashX",
@@ -944,14 +994,14 @@
   {
     "APIFormat": "chat-completions",
     "CacheControl": true,
-    "CacheReadPer1M": 1.0,
+    "CacheReadPer1M": 1,
     "CanReason": true,
     "CanSeeImages": false,
     "CanUseTools": true,
     "ContextWindow": 200000,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 4.0,
-    "CostPer1MOut": 18.0,
+    "CostPer1MIn": 4,
+    "CostPer1MOut": 18,
     "ID": "glm-5",
     "MaxOutput": 128000,
     "Name": "GLM-5",
@@ -966,8 +1016,8 @@
     "CanUseTools": true,
     "ContextWindow": 200000,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 5.0,
-    "CostPer1MOut": 22.0,
+    "CostPer1MIn": 5,
+    "CostPer1MOut": 22,
     "ID": "glm-5-turbo",
     "MaxOutput": 128000,
     "Name": "GLM-5 Turbo",
@@ -982,8 +1032,8 @@
     "CanUseTools": true,
     "ContextWindow": 200000,
     "CostCurrency": "CNY",
-    "CostPer1MIn": 6.0,
-    "CostPer1MOut": 24.0,
+    "CostPer1MIn": 6,
+    "CostPer1MOut": 24,
     "ID": "glm-5.1",
     "MaxOutput": 128000,
     "Name": "GLM-5.1",

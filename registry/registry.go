@@ -13,7 +13,6 @@ import (
 type Registry struct {
 	mu                 sync.RWMutex
 	tools              map[string]types.Tool
-	aliases            map[string]string
 	order              []string // preserve registration order
 	toolGenerations    map[string]uint64
 	nextToolGeneration uint64
@@ -25,8 +24,8 @@ type Registry struct {
 // registryDispatchBinder is implemented by security-sensitive tools that may
 // still be returned as their concrete type from Get. Binding is monotonic: once
 // a tool has entered a Registry, its Execute method must require the private
-// commit installed by ExecuteToolWithError. This preserves concrete-type SDK
-// compatibility without leaving Get/All as an authorization bypass.
+// commit installed by ExecuteToolWithError. This keeps concrete-type SDK access
+// from turning Get/All into an authorization bypass.
 type registryDispatchBinder interface {
 	RequireRegistryDispatch()
 }
@@ -87,7 +86,6 @@ func (r *Registry) RuntimeContextWithinSessionBarrier() (types.ToolRuntimeContex
 func New() *Registry {
 	return &Registry{
 		tools:            make(map[string]types.Tool),
-		aliases:          make(map[string]string),
 		toolGenerations:  make(map[string]uint64),
 		permissionGrants: make(map[string]permissionGrantRecord),
 	}
@@ -118,37 +116,23 @@ func (r *Registry) Register(tool types.Tool) {
 	}
 	r.tools[name] = tool
 	r.order = append(r.order, name)
-	if aliased, ok := tool.(types.AliasedTool); ok {
-		for _, alias := range aliased.Aliases() {
-			r.aliases[alias] = name
-		}
-	}
 }
 
-// Unregister removes a tool and every alias that resolves to it.
+// Unregister removes a tool by its canonical name.
 func (r *Registry) Unregister(name string) bool {
 	if r == nil || name == "" {
 		return false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	canonical := name
-	if resolved, ok := r.aliases[name]; ok {
-		canonical = resolved
-	}
-	if _, ok := r.tools[canonical]; !ok {
+	if _, ok := r.tools[name]; !ok {
 		return false
 	}
-	delete(r.tools, canonical)
-	delete(r.toolGenerations, canonical)
-	for alias, target := range r.aliases {
-		if target == canonical {
-			delete(r.aliases, alias)
-		}
-	}
+	delete(r.tools, name)
+	delete(r.toolGenerations, name)
 	kept := r.order[:0]
 	for _, registered := range r.order {
-		if registered != canonical {
+		if registered != name {
 			kept = append(kept, registered)
 		}
 	}
@@ -160,27 +144,17 @@ func (r *Registry) Unregister(name string) bool {
 func (r *Registry) Get(name string) types.Tool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if tool, ok := r.tools[name]; ok {
-		return tool
-	}
-	if canonical, ok := r.aliases[name]; ok {
-		return r.tools[canonical]
-	}
-	return nil
+	return r.tools[name]
 }
 
 func (r *Registry) getWithGeneration(name string) (types.Tool, string, uint64) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	canonical := name
-	if resolved, ok := r.aliases[name]; ok {
-		canonical = resolved
-	}
-	tool := r.tools[canonical]
+	tool := r.tools[name]
 	if tool == nil {
 		return nil, "", 0
 	}
-	return tool, canonical, r.toolGenerations[canonical]
+	return tool, name, r.toolGenerations[name]
 }
 
 func (r *Registry) generationMatches(canonical string, generation uint64) bool {
@@ -218,7 +192,7 @@ func (r *Registry) ExecuteTool(ctx context.Context, name string, input map[strin
 	if err != nil {
 		return types.ToolResultBlock{
 			Type:    types.ContentTypeToolResult,
-			Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyToolLegacyDRegistryExecuteFailed, name, err.Error()),
+			Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRegistryToolExecuteFailed, name, err.Error()),
 			IsError: true,
 		}
 	}
@@ -235,14 +209,14 @@ func (r *Registry) ExecuteToolWithError(ctx context.Context, name string, input 
 	if tool == nil {
 		return types.ToolResultBlock{
 			Type:    types.ContentTypeToolResult,
-			Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyToolLegacyDRegistryUnknownTool, name, r.EnabledNames()),
+			Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRegistryToolUnknown, name, r.EnabledNames()),
 			IsError: true,
 		}, nil
 	}
 	if !r.IsToolEnabled(tool) {
 		return types.ToolResultBlock{
 			Type:    types.ContentTypeToolResult,
-			Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyToolLegacyDRegistryToolDisabled, tool.Name()),
+			Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolDisabled, tool.Name()),
 			IsError: true,
 		}, nil
 	}
@@ -279,7 +253,7 @@ func (r *Registry) ExecuteToolWithError(ctx context.Context, name string, input 
 			r.RevokePermissionGrant(decision.PermissionGrant)
 			message := decision.Message
 			if message == "" {
-				message = i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyToolLegacyDRegistryPermissionRequired, tool.Name())
+				message = i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolPermissionRequired, tool.Name())
 			}
 			return types.ToolResultBlock{Type: types.ContentTypeToolResult, Content: message, IsError: true}, nil
 		case types.PermissionBehaviorPassthrough:
@@ -287,7 +261,7 @@ func (r *Registry) ExecuteToolWithError(ctx context.Context, name string, input 
 				r.RevokePermissionGrant(decision.PermissionGrant)
 				return types.ToolResultBlock{
 					Type:    types.ContentTypeToolResult,
-					Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyToolLegacyDRegistryPermissionRequired, tool.Name()),
+					Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolPermissionRequired, tool.Name()),
 					IsError: true,
 				}, nil
 			}
@@ -308,11 +282,11 @@ func (r *Registry) ExecuteToolWithError(ctx context.Context, name string, input 
 	if !validGrant {
 		return types.ToolResultBlock{
 			Type:    types.ContentTypeToolResult,
-			Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyToolLegacyDRegistryPermissionRequired, tool.Name()),
+			Content: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolPermissionRequired, tool.Name()),
 			IsError: true,
 		}, nil
 	}
-	ctx = withPermissionCommit(ctx, record)
+	ctx = approvalcommit.Bind(ctx, record.toolName, input, record.policyCode)
 	result, err := tool.Execute(ctx, input)
 	if err != nil {
 		return types.ToolResultBlock{}, err
@@ -347,7 +321,6 @@ func (r *Registry) Clone() *Registry {
 
 	newReg := &Registry{
 		tools:              make(map[string]types.Tool, len(r.tools)),
-		aliases:            make(map[string]string, len(r.aliases)),
 		order:              make([]string, len(r.order)),
 		toolGenerations:    make(map[string]uint64, len(r.toolGenerations)),
 		nextToolGeneration: r.nextToolGeneration,
@@ -356,9 +329,6 @@ func (r *Registry) Clone() *Registry {
 	}
 	for k, v := range r.tools {
 		newReg.tools[k] = v
-	}
-	for k, v := range r.aliases {
-		newReg.aliases[k] = v
 	}
 	for k, v := range r.toolGenerations {
 		newReg.toolGenerations[k] = v
@@ -379,7 +349,6 @@ func (r *Registry) NewDerived() *Registry {
 	r.mu.RUnlock()
 	return &Registry{
 		tools:            make(map[string]types.Tool),
-		aliases:          make(map[string]string),
 		toolGenerations:  make(map[string]uint64),
 		permissionGrants: make(map[string]permissionGrantRecord),
 		runtimeProvider:  provider,

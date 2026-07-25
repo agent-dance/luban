@@ -23,21 +23,8 @@ func (contractTestTool) Schema() JSONSchema {
 func (contractTestTool) Execute(context.Context, map[string]any) (ToolResult, error) {
 	return ToolResult{}, nil
 }
-func (contractTestTool) ToolContract() ToolContract {
-	return ToolContract{
-		OutputSchema: &JSONSchema{
-			Type: "object",
-			Properties: map[string]any{
-				"value": map[string]any{"type": "string"},
-			},
-			Required:             []string{"value"},
-			AdditionalProperties: false,
-		},
-		Strict:             true,
-		ReadOnly:           true,
-		ConcurrencySafe:    true,
-		MaxResultSizeChars: 1234,
-	}
+func (contractTestTool) ToolMetadata(map[string]any) ToolMetadata {
+	return ToolMetadata{MaxResultSizeChars: 1234}
 }
 func (contractTestTool) MapToolResultToToolResultBlock(data any, toolUseID string) ToolResultBlock {
 	out := data.(contractTestOutput)
@@ -61,19 +48,10 @@ func TestStrictObjectSchemaContract(t *testing.T) {
 	}
 }
 
-func TestToolContractDefinitionCarriesOutputSchemaAndMetadata(t *testing.T) {
+func TestToolDefinitionDerivesStrictFromInputSchema(t *testing.T) {
 	def := ToDefinition(contractTestTool{})
-	if def.OutputSchema == nil || def.OutputSchema.Type != "object" {
-		t.Fatalf("output schema missing from definition: %#v", def.OutputSchema)
-	}
 	if !def.Strict {
-		t.Fatal("strict API flag was not preserved")
-	}
-	if !def.Metadata.ReadOnly || !def.Metadata.ConcurrencySafe {
-		t.Fatalf("tool metadata not preserved: %#v", def.Metadata)
-	}
-	if def.Metadata.MaxResultSizeChars != 1234 {
-		t.Fatalf("max result size = %d, want 1234", def.Metadata.MaxResultSizeChars)
+		t.Fatal("strict API flag was not derived from the input schema")
 	}
 }
 

@@ -7,7 +7,6 @@ func TestHookRuntimeErrorKeysCoverEveryLanguage(t *testing.T) {
 		KeyHookURLInvalid, KeyHookSchemeNotAllowed, KeyHookHostnameMissing, KeyHookDNSLookupFailed,
 		KeyHookBlockedIP, KeyHookSSRFBlocked, KeyHookRedirectLimit, KeyHookRedirectBlocked,
 		KeyHookRequestBuildFailed, KeyHookResponseReadFailed, KeyHookResponseTruncated, KeyHookAttemptsFailed,
-		KeyHookConfigLegacyParse, KeyHookConfigMapParse, KeyHookConfigUnexpected,
 		KeyHookConfigSettingsParse, KeyHookConfigEventInvalid, KeyHookConfigKindUnknown,
 		KeyHookLifecycleApplyMissing, KeyHookLifecycleRollback, KeyHookLifecycleBlocked, KeyHookBlockedDefault,
 	}

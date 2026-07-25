@@ -273,34 +273,6 @@ func (c *colorMixer) HandleMouse(me tui.MouseEvent) bool {
 
 `HandleClicks` only responds to left-button presses. It checks each binding in order, calling the first handler whose ref element contains the click coordinates. It returns `true` if a click was handled.
 
-## App-Level Key Handling
-
-For keys that should be caught before any component sees them, use a global key handler. Set it as an app option or at runtime:
-
-```go
-// At creation
-app, err := tui.NewApp(
-    tui.WithRootComponent(MyApp()),
-    tui.WithGlobalKeyHandler(func(ke tui.KeyEvent) bool {
-        if ke.Key == tui.KeyCtrlC {
-            // handle globally
-            return true // consumed, components won't see it
-        }
-        return false // pass through to components
-    }),
-)
-
-// At runtime
-app.SetGlobalKeyHandler(func(ke tui.KeyEvent) bool {
-    // ...
-    return false
-})
-```
-
-Return `true` to consume the event. Return `false` to let it continue to the component tree.
-
-Most apps won't need this. The `KeyMap` system on components covers almost every case. Global handlers are for when you need to intercept keys regardless of which component has focus or what mode the app is in.
-
 ## Complete Example
 
 This keyboard explorer tracks which keys have been pressed, using `On(tui.AnyRune, ...)` as a catch-all for printable characters and `On` with Key constants for special keys:

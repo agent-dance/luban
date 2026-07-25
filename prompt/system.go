@@ -5,12 +5,13 @@ import (
 	"os"
 	"strings"
 
+	"github.com/agent-dance/luban/brand"
 	"github.com/agent-dance/luban/types"
 )
 
 // Config holds system prompt assembly configuration
 type Config struct {
-	// CustomInstructions is additional instructions (e.g. from CLAUDE.md)
+	// CustomInstructions is additional instructions (for example, from LUBAN.md).
 	CustomInstructions string
 	// ToolDescriptions will be auto-generated from tools if empty
 	ToolDescriptions string
@@ -24,8 +25,6 @@ type Config struct {
 	ModelDescription string
 	// KnowledgeCutoff is the assistant knowledge cutoff, if known.
 	KnowledgeCutoff string
-	// GitContext is the formatted git context string (branch, commits, status)
-	GitContext string
 	// Language is the preferred natural language for assistant responses.
 	Language string
 	// OutputStyle names the runtime-selected response style.
@@ -67,8 +66,8 @@ func (p SystemPrompt) Texts() []string {
 	return texts
 }
 
-// String joins system prompt blocks using the legacy separator.
-func (p SystemPrompt) String() string {
+// JoinedText joins system prompt blocks for providers that require one string.
+func (p SystemPrompt) JoinedText() string {
 	return strings.Join(p.Texts(), "\n\n")
 }
 
@@ -76,7 +75,7 @@ func (p SystemPrompt) String() string {
 // sections. Use the Static part as the first element of provider.Params.SystemParts
 // so it receives a cache_control breakpoint; append Dynamic as the second element.
 func BuildSystemPromptParts(tools []types.Tool, cfg Config) SystemPromptParts {
-	if isTruthyPromptEnv(os.Getenv("CLAUDE_CODE_SIMPLE")) {
+	if isTruthyPromptEnv(os.Getenv("LUBAN_CODE_SIMPLE")) {
 		return SystemPromptParts{
 			Dynamic: buildSimpleSystemPrompt(cfg),
 		}
@@ -107,8 +106,7 @@ func BuildSystemPromptParts(tools []types.Tool, cfg Config) SystemPromptParts {
 }
 
 // BuildSystemPromptBlocks constructs the system prompt as ordered text blocks.
-// This is the preferred builder for new callers. BuildSystemPrompt remains as a
-// compatibility wrapper for legacy string-only paths.
+// This is the preferred builder for provider callers.
 func BuildSystemPromptBlocks(tools []types.Tool, cfg Config) SystemPrompt {
 	p := BuildSystemPromptParts(tools, cfg)
 	blocks := make(SystemPrompt, 0, 2)
@@ -131,15 +129,9 @@ func BuildSystemPromptBlocks(tools []types.Tool, cfg Config) SystemPrompt {
 	return blocks
 }
 
-// BuildSystemPrompt constructs the full system prompt for the Anthropic API.
-// This is the original single-string API kept for backward compatibility.
-// Prefer BuildSystemPromptParts + provider.Params.SystemParts for better cache utilisation.
+// BuildSystemPrompt constructs the full system prompt as plain text.
 func BuildSystemPrompt(tools []types.Tool, cfg Config) string {
-	return BuildSystemPromptBlocks(tools, cfg).String()
-}
-
-func baseIdentity() string {
-	return strings.Join(staticPromptSections(nil), "\n\n")
+	return BuildSystemPromptBlocks(tools, cfg).JoinedText()
 }
 
 func buildSimpleSystemPrompt(cfg Config) string {
@@ -150,7 +142,7 @@ func buildSimpleSystemPrompt(cfg Config) string {
 			cwd = "."
 		}
 	}
-	return fmt.Sprintf("You are %s, an agentic coding CLI.\n\nCWD: %s", productName(), cwd)
+	return fmt.Sprintf("You are %s, an agentic coding CLI.\n\nCWD: %s", brand.DisplayName, cwd)
 }
 
 func isTruthyPromptEnv(value string) bool {
@@ -160,13 +152,4 @@ func isTruthyPromptEnv(value string) bool {
 	default:
 		return false
 	}
-}
-
-func buildToolDescriptions(tools []types.Tool) string {
-	var sb strings.Builder
-	sb.WriteString("# Available Tools\n\n")
-	for _, t := range tools {
-		sb.WriteString(fmt.Sprintf("## %s\n%s\n\n", t.Name(), t.Description()))
-	}
-	return sb.String()
 }

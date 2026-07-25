@@ -25,7 +25,6 @@ const (
 	KeyToolActionGetTask           Key = "tool.presentation.action.get_task"
 	KeyToolActionStopTask          Key = "tool.presentation.action.stop_task"
 	KeyToolActionReadTaskOutput    Key = "tool.presentation.action.read_task_output"
-	KeyToolActionUpdateTodos       Key = "tool.presentation.action.update_todos"
 	KeyToolActionGetGoal           Key = "tool.presentation.action.get_goal"
 	KeyToolActionCreateGoal        Key = "tool.presentation.action.create_goal"
 	KeyToolActionUpdateGoal        Key = "tool.presentation.action.update_goal"
@@ -78,7 +77,6 @@ func init() {
 		KeyToolActionGetTask:           toolPresentationAction("Get task", "获取任务", "Aufgabe abrufen", "タスクを取得", "작업 가져오기", "Получить задачу"),
 		KeyToolActionStopTask:          toolPresentationAction("Stop task", "停止任务", "Aufgabe stoppen", "タスクを停止", "작업 중지", "Остановить задачу"),
 		KeyToolActionReadTaskOutput:    toolPresentationAction("Read task output", "读取任务输出", "Aufgabenausgabe lesen", "タスク出力を読み取り", "작업 출력 읽기", "Прочитать вывод задачи"),
-		KeyToolActionUpdateTodos:       toolPresentationAction("Update checklist", "更新清单", "Checkliste aktualisieren", "チェックリストを更新", "체크리스트 업데이트", "Обновить список"),
 		KeyToolActionGetGoal:           toolPresentationAction("Get goal", "获取目标", "Ziel abrufen", "目標を取得", "목표 가져오기", "Получить цель"),
 		KeyToolActionCreateGoal:        toolPresentationAction("Create goal", "创建目标", "Ziel erstellen", "目標を作成", "목표 만들기", "Создать цель"),
 		KeyToolActionUpdateGoal:        toolPresentationAction("Update goal", "更新目标", "Ziel aktualisieren", "目標を更新", "목표 업데이트", "Обновить цель"),

@@ -7,111 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/agent-dance/luban/i18n"
 )
-
-// ---------------------------------------------------------------------------
-// /diff  (/d)
-// ---------------------------------------------------------------------------
-
-type diffCmd struct{}
-
-func (c *diffCmd) Name() string      { return "diff" }
-func (c *diffCmd) Aliases() []string { return []string{"d"} }
-func (c *diffCmd) Description() string {
-	return builtinCommandDescription("diff")
-}
-
-func (c *diffCmd) Execute(ctx *Context, _ string) error {
-	cwd := ctx.CWD
-	if cwd == "" {
-		cwd, _ = os.Getwd()
-	}
-
-	// Verify git is available.
-	gitPath, err := exec.LookPath("git")
-	if err != nil {
-		ctx.OnEvent(i18n.Text(ctx.Language, i18n.KeyCommandDiffGitMissing))
-		return nil
-	}
-
-	// Verify we are inside a git repository.
-	if !isGitRepo(gitPath, cwd) {
-		ctx.OnEvent(i18n.Text(ctx.Language, i18n.KeyCommandDiffNotRepository))
-		return nil
-	}
-
-	// -----------------------------------------------------------------------
-	// 1. Collect summary stats via --stat (staged + unstaged).
-	// -----------------------------------------------------------------------
-	statOut := runGit(gitPath, cwd, "diff", "HEAD", "--stat")
-	cachedStatOut := ""
-	// If HEAD doesn't exist yet (initial commit, no commits at all) fall back
-	// to showing the index against the empty tree.
-	if statOut == "" {
-		// Check if there are staged files at all.
-		cachedStatOut = runGit(gitPath, cwd, "diff", "--cached", "--stat")
-	}
-
-	// -----------------------------------------------------------------------
-	// 2. Untracked files (not yet `git add`-ed).
-	// -----------------------------------------------------------------------
-	untrackedFiles := untrackedList(gitPath, cwd)
-
-	// -----------------------------------------------------------------------
-	// 3. Full diff output (staged + unstaged against HEAD).
-	// -----------------------------------------------------------------------
-	diffOut := runGit(gitPath, cwd, "diff", "HEAD")
-	if diffOut == "" {
-		// No HEAD yet — show staged diff against empty tree.
-		diffOut = runGit(gitPath, cwd, "diff", "--cached")
-	}
-
-	// -----------------------------------------------------------------------
-	// 4. Determine if anything changed at all.
-	// -----------------------------------------------------------------------
-	hasStatOutput := strings.TrimSpace(statOut) != "" || strings.TrimSpace(cachedStatOut) != ""
-	hasDiff := strings.TrimSpace(diffOut) != ""
-	hasUntracked := len(untrackedFiles) > 0
-
-	if !hasStatOutput && !hasDiff && !hasUntracked {
-		ctx.OnEvent(i18n.Text(ctx.Language, i18n.KeyCommandDiffClean))
-		return nil
-	}
-
-	var sb strings.Builder
-
-	// -----------------------------------------------------------------------
-	// 5. Summary header.
-	// -----------------------------------------------------------------------
-	sb.WriteString("\n")
-	summaryLine := buildSummaryLine(statOut + cachedStatOut)
-	if summaryLine != "" {
-		sb.WriteString(bold(i18n.Text(ctx.Language, i18n.KeyCommandDiffSummary)))
-		sb.WriteString(summaryLine)
-		sb.WriteString("\n")
-	}
-
-	// Untracked files section.
-	if hasUntracked {
-		sb.WriteString(bold(i18n.Text(ctx.Language, i18n.KeyCommandDiffUntracked)))
-		for _, f := range untrackedFiles {
-			sb.WriteString("  ")
-			sb.WriteString(colorize(colorGreen, f))
-			sb.WriteString("\n")
-		}
-	}
-
-	if hasDiff {
-		sb.WriteString("\n")
-		sb.WriteString(coloriseDiff(diffOut))
-	}
-
-	sb.WriteString("\n")
-	ctx.OnEvent(sb.String())
-	return nil
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -134,23 +30,6 @@ func isGitRepo(gitPath, dir string) bool {
 	defer cancel()
 	out, err := exec.CommandContext(ctxT, gitPath, "-C", dir, "rev-parse", "--is-inside-work-tree").Output()
 	return err == nil && strings.TrimSpace(string(out)) == "true"
-}
-
-// untrackedList returns the list of untracked files via `git status --porcelain`.
-func untrackedList(gitPath, dir string) []string {
-	raw := runGit(gitPath, dir, "status", "--porcelain")
-	var files []string
-	for _, line := range strings.Split(raw, "\n") {
-		if len(line) < 3 {
-			continue
-		}
-		xy := line[:2]
-		// Porcelain codes: "??" = untracked, "!!" = ignored (skip ignored).
-		if xy == "??" {
-			files = append(files, strings.TrimSpace(line[3:]))
-		}
-	}
-	return files
 }
 
 // buildSummaryLine parses the last line of `git diff --stat` output which
@@ -263,6 +142,3 @@ func isTTY() bool {
 	}
 	return (fi.Mode() & os.ModeCharDevice) != 0
 }
-
-// Ensure strconv is used (imported for FORCE_COLOR parsing).
-var _ = strconv.ParseBool

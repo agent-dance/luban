@@ -20,14 +20,13 @@ func TestToolAgentDeepKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolAgentDeepEnglishCompatibility(t *testing.T) {
+func TestToolAgentDeepEnglishContract(t *testing.T) {
 	cause := errors.New("raw-cause-42")
 	tests := map[Key]struct {
 		args []any
 		want string
 	}{
-		KeyToolAgentDeepPermissionModeUnsupported:        {want: "permissionMode is no longer supported; subagents inherit the parent permission policy captured at spawn"},
-		KeyToolAgentDeepPermissionSnapshotUnavailable:    {want: "cannot resume legacy subagent without its complete parent permission snapshot"},
+		KeyToolAgentDeepPermissionSnapshotUnavailable:    {want: "cannot resume subagent without its complete parent permission snapshot"},
 		KeyToolAgentDeepResumeContextUntrusted:           {want: "cannot resume subagent from untrusted or modified persisted security metadata"},
 		KeyToolAgentDeepRunOutcome:                       {args: []any{"failed", "raw reason"}, want: "agent run failed: raw reason"},
 		KeyToolAgentDeepBackgroundManagerUnavailable:     {want: "background manager is not available"},
@@ -47,12 +46,10 @@ func TestToolAgentDeepEnglishCompatibility(t *testing.T) {
 		KeyToolAgentDeepSubagentTypeNotAllowed:           {args: []any{"plan", "explore, executor"}, want: `Agent error: subagent_type "plan" is not allowed by this agent's Agent(...) tool restriction. Allowed agents: explore, executor`},
 		KeyToolAgentDeepForkContextRequired:              {want: "Agent error: fork subagent requires parent tool execution context"},
 		KeyToolAgentDeepForkNestedUnavailable:            {want: "Agent error: fork is not available inside a forked worker. Complete the task directly using available tools"},
-		KeyToolAgentDeepRemoteRuntimeRequired:            {want: `Agent error: isolation="remote" requires a RemoteRuntimeProvider; configure AgentTool.RemoteRuntime to enable remote sub-agents`},
 		KeyToolAgentDeepIsolationUnsupported:             {args: []any{"container"}, want: `Agent error: unsupported isolation mode "container"`},
 		KeyToolAgentDeepUnknownSubagentType:              {args: []any{"mystery", "explore, plan"}, want: `Agent error: unknown subagent_type "mystery". Available agents: explore, plan`},
 		KeyToolAgentDeepMCPServersRequired:               {args: []any{"reviewer", "github, slack"}, want: `Agent error: agent "reviewer" requires MCP servers with tools: github, slack`},
 		KeyToolAgentDeepFrontmatterParseFailed:           {args: []any{"/tmp/agent.md", cause}, want: "Agent error: failed to parse agent frontmatter in /tmp/agent.md: raw-cause-42"},
-		KeyToolAgentDeepCustomPermissionModeUnsupported:  {args: []any{"reviewer", cause}, want: `Agent error: custom agent "reviewer": raw-cause-42`},
 		KeyToolAgentDeepCustomPromptEmpty:                {args: []any{"reviewer"}, want: `Agent error: custom agent "reviewer" has an empty prompt`},
 		KeyToolAgentDeepMCPServerNamedError:              {args: []any{"github", cause}, want: "github: raw-cause-42"},
 		KeyToolAgentDeepMCPServerConfigExpected:          {want: "expected server name or inline server config"},
@@ -62,7 +59,6 @@ func TestToolAgentDeepEnglishCompatibility(t *testing.T) {
 		KeyToolAgentDeepJSONNameEmpty:                    {want: "Agent error: JSON agent name must not be empty"},
 		KeyToolAgentDeepJSONDescriptionMissing:           {args: []any{"reviewer"}, want: `Agent error: JSON agent "reviewer" is missing description`},
 		KeyToolAgentDeepJSONPromptMissing:                {args: []any{"reviewer"}, want: `Agent error: JSON agent "reviewer" is missing prompt`},
-		KeyToolAgentDeepJSONPermissionModeUnsupported:    {args: []any{"reviewer", cause}, want: `Agent error: JSON agent "reviewer": raw-cause-42`},
 		KeyToolAgentDeepJSONModelEmpty:                   {args: []any{"reviewer"}, want: `Agent error: JSON agent "reviewer" uses empty model`},
 		KeyToolAgentDeepJSONMaxTurnsUnsupported:          {args: []any{"reviewer", 0}, want: `Agent error: JSON agent "reviewer" uses unsupported maxTurns 0`},
 		KeyToolAgentDeepJSONMCPServersInvalid:            {args: []any{"reviewer", cause}, want: `Agent error: JSON agent "reviewer" has invalid mcpServers: raw-cause-42`},

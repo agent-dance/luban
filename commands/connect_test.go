@@ -1,14 +1,12 @@
 package commands_test
 
 import (
-	"context"
 	"strings"
 	"testing"
 
 	"github.com/agent-dance/luban/commands"
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/provider"
-	"github.com/agent-dance/luban/types"
 )
 
 func TestRegisterBuiltins_RemovesConnect(t *testing.T) {
@@ -70,22 +68,22 @@ func TestModelCmd_ShowModelsWithRegistry(t *testing.T) {
 	r := commands.NewRegistry()
 	commands.RegisterBuiltins(r)
 
-	var output string
+	var output strings.Builder
 	ctx := &commands.Context{
-		QueryLoop:        &stubQL{model: "claude-sonnet-4-20250514"},
-		OnEvent:          func(s string) { output += s },
-		CurrentProvider:  "anthropic",
-		ProviderRegistry: provider.DefaultRegistry(),
+		QueryLoop:             &stubQL{model: "claude-sonnet-4-20250514"},
+		OnCommandPresentation: captureCompletedCommand(&output),
+		CurrentProvider:       "anthropic",
+		ProviderRegistry:      provider.DefaultRegistry(),
 	}
 
 	if err := r.Find("model").Execute(ctx, ""); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output, "Current: anthropic/claude-sonnet-4-20250514") {
-		t.Fatalf("expected current model info, got: %s", output)
+	if !strings.Contains(output.String(), "Current: anthropic/claude-sonnet-4-20250514") {
+		t.Fatalf("expected current model info, got: %s", output.String())
 	}
-	if !strings.Contains(output, "Available models") {
-		t.Fatalf("expected available models section, got: %s", output)
+	if !strings.Contains(output.String(), "Available models") {
+		t.Fatalf("expected available models section, got: %s", output.String())
 	}
 }
 
@@ -95,10 +93,10 @@ func TestModelCmd_SwitchWithinProvider(t *testing.T) {
 	commands.RegisterBuiltins(r)
 
 	ql := &stubQL{model: "claude-sonnet-4-20250514"}
-	var output string
+	var output strings.Builder
 	ctx := &commands.Context{
-		QueryLoop: ql,
-		OnEvent:   func(s string) { output += s },
+		QueryLoop:             ql,
+		OnCommandPresentation: captureCompletedCommand(&output),
 	}
 
 	if err := r.Find("model").Execute(ctx, "claude-opus-4-20250514"); err != nil {
@@ -107,8 +105,8 @@ func TestModelCmd_SwitchWithinProvider(t *testing.T) {
 	if ql.model != "claude-opus-4-20250514" {
 		t.Fatalf("expected model switch, got %q", ql.model)
 	}
-	if !strings.Contains(output, "Model switched to: claude-opus-4-20250514") {
-		t.Fatalf("unexpected output: %s", output)
+	if !strings.Contains(output.String(), "Model switched to: claude-opus-4-20250514") {
+		t.Fatalf("unexpected output: %s", output.String())
 	}
 }
 
@@ -123,7 +121,6 @@ func TestModelCmd_ProviderSlashModel_UnknownProvider(t *testing.T) {
 		QueryLoop:        ql,
 		OnEvent:          func(s string) { output += s },
 		ProviderRegistry: provider.DefaultRegistry(),
-		ProviderRef:      provider.NewProviderRef(&stubProvider{}),
 	}
 
 	err := r.Find("model").Execute(ctx, "fakeprovider/some-model")
@@ -133,6 +130,9 @@ func TestModelCmd_ProviderSlashModel_UnknownProvider(t *testing.T) {
 	if !strings.Contains(err.Error(), "unknown provider") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if ql.provider != nil || ql.model != "old-model" {
+		t.Fatalf("unknown provider mutated runtime: provider=%v model=%q", ql.provider, ql.model)
+	}
 }
 
 func TestModelCmd_ProviderSlashModel_BedrockWithoutCredentials(t *testing.T) {
@@ -141,11 +141,11 @@ func TestModelCmd_ProviderSlashModel_BedrockWithoutCredentials(t *testing.T) {
 	r := commands.NewRegistry()
 	commands.RegisterBuiltins(r)
 
+	ql := &stubQL{model: "old-model"}
 	ctx := &commands.Context{
-		QueryLoop:        &stubQL{model: "old-model"},
+		QueryLoop:        ql,
 		OnEvent:          func(s string) {},
 		ProviderRegistry: provider.DefaultRegistry(),
-		ProviderRef:      provider.NewProviderRef(&stubProvider{}),
 	}
 
 	err := r.Find("model").Execute(ctx, "bedrock/anthropic.claude-sonnet-4-6")
@@ -154,6 +154,31 @@ func TestModelCmd_ProviderSlashModel_BedrockWithoutCredentials(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not ready") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if ql.provider != nil || ql.model != "old-model" {
+		t.Fatalf("unready provider mutated runtime: provider=%v model=%q", ql.provider, ql.model)
+	}
+}
+
+func TestModelCmd_ProviderSlashModel_UsesCanonicalHotSwap(t *testing.T) {
+	r := commands.NewRegistry()
+	commands.RegisterBuiltins(r)
+
+	ql := &stubQL{model: "old-model"}
+	ctx := &commands.Context{
+		QueryLoop:        ql,
+		OnEvent:          func(string) {},
+		ProviderRegistry: provider.DefaultRegistry(),
+	}
+
+	if err := r.Find("model").Execute(ctx, "ollama/llama3.1"); err != nil {
+		t.Fatal(err)
+	}
+	if ql.provider == nil || ql.provider.Name() != "ollama" {
+		t.Fatalf("canonical provider was not installed: %v", ql.provider)
+	}
+	if ql.model != "llama3.1" || ql.provider.ModelID() != "llama3.1" {
+		t.Fatalf("canonical model mismatch: loop=%q provider=%q", ql.model, ql.provider.ModelID())
 	}
 }
 
@@ -192,15 +217,6 @@ func TestParseProviderModel(t *testing.T) {
 			}
 		}
 	}
-}
-
-// stubProvider implements provider.Provider for testing.
-type stubProvider struct{}
-
-func (p *stubProvider) Name() string    { return "stub" }
-func (p *stubProvider) ModelID() string { return "stub-model" }
-func (p *stubProvider) CreateStream(_ context.Context, _ provider.Params) (<-chan types.StreamEvent, error) {
-	return nil, nil
 }
 
 func clearCommandAWSEnv(t *testing.T) {

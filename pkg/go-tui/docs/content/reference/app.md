@@ -134,26 +134,6 @@ func WithEventQueueSize(size int) AppOption
 
 Sets the capacity of the internal event queue buffer. Default is 256. Must be at least 1.
 
-### WithGlobalKeyHandler
-
-```go
-func WithGlobalKeyHandler(fn func(KeyEvent) bool) AppOption
-```
-
-Sets a handler that runs before key events reach the component tree (legacy path). If the handler returns `true`, the event is consumed and not dispatched further.
-
-When using the component model (struct components with `KeyMap()`), key dispatch goes through the dispatch table instead. Prefer `KeyMap()` on your components over global handlers.
-
-```go
-tui.WithGlobalKeyHandler(func(ke tui.KeyEvent) bool {
-    if ke.Key == tui.KeyEscape {
-        ke.App().Stop()
-        return true
-    }
-    return false
-})
-```
-
 ### WithMouse
 
 ```go
@@ -401,7 +381,7 @@ func (a *App) Dispatch(event Event) bool
 Routes a single event through the dispatch system. Returns `true` if the event was consumed.
 
 - **UpdateEvent**: executes the queued closure.
-- **KeyEvent**: goes through the dispatch table (component model) or global key handler (legacy path), then falls through to the focus manager.
+- **KeyEvent**: goes through the component dispatch table, then falls through to the focus manager.
 - **MouseEvent**: translated for inline mode, dispatched to MouseListener components, then hit-tested against elements.
 - **ResizeEvent**: updates buffer size, marks root dirty, schedules a full redraw.
 
@@ -442,14 +422,6 @@ for {
     }
 }
 ```
-
-### SetGlobalKeyHandler
-
-```go
-func (a *App) SetGlobalKeyHandler(fn func(KeyEvent) bool)
-```
-
-Sets (or replaces) a handler that runs before key events reach the focus manager. If the handler returns `true`, the event is consumed.
 
 ### QueueUpdate
 
@@ -555,7 +527,7 @@ Returns a no-op writer (silently discards all bytes) when not in inline mode.
 ```go
 go func() {
     w := app.StreamAbove()
-    // Plain write (backward compatible with io.WriteCloser)
+    // Plain byte stream
     fmt.Fprint(w, "hello ")
     // Styled write
     w.WriteStyled("important", tui.NewStyle().Bold().Foreground(tui.Red))
@@ -572,7 +544,7 @@ go func() {
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
-| `Write` | `Write(p []byte) (int, error)` | Plain byte write (backward compatible). Does not track column position. |
+| `Write` | `Write(p []byte) (int, error)` | Plain byte write. Does not track column position. |
 | `Close` | `Close() error` | Finalizes the partial line. |
 | `WriteStyled` | `WriteStyled(text string, style Style) (int, error)` | Writes text with ANSI style prefix and reset suffix. Tracks column position. |
 | `WriteGradient` | `WriteGradient(text string, g Gradient, base ...Style) (int, error)` | Writes each character with an interpolated gradient foreground color. Optional base style provides attributes (bold, italic) and background. Tracks column position. |

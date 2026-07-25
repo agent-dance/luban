@@ -7,8 +7,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/agent-dance/luban/goal"
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/runtime/goal"
 )
 
 type goalCmd struct{}
@@ -69,7 +69,7 @@ func (*goalCmd) Execute(ctx *Context, args string) error {
 		return transitionGoal(ctx, "resume", func(current goal.Goal) (goal.Goal, error) {
 			return goal.Resume(current, time.Now())
 		}, i18n.Text(ctx.Language, i18n.KeyCommandGoalActive))
-	case "clear", "stop", "off", "reset", "none", "cancel":
+	case "clear":
 		if rest != "" {
 			return goalUsageError(ctx)
 		}

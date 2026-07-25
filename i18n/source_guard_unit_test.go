@@ -112,15 +112,15 @@ func TestI18nSourceGuardUnitDisplaySinksAndFields(t *testing.T) {
 		"  output \"fmt\"",
 		"  \"os\"",
 		"  loc \"github.com/agent-dance/luban/i18n\"",
-		"  eventloop \"github.com/agent-dance/luban/loop\"",
+		"  permissioncontract \"github.com/agent-dance/luban/internal/contracts/permission\"",
 		"  terminal \"github.com/grindlemire/go-tui\"",
 		")",
 		"func render(renderer interface{ Info(string) }, lang loc.Language, raw string) {",
 		"  renderer.Info(\"Ready to continue\")",
 		"  terminal.WithText(\"Error details\")",
 		"  output.Fprintln(os.Stderr, \"Startup failed\")",
-		"  _ = eventloop.PermissionRequest{Impact: \"Run the requested tool\"}",
-		"  request := eventloop.PermissionRequest{}",
+		"  _ = permissioncontract.PermissionRequest{Impact: \"Run the requested tool\"}",
+		"  request := permissioncontract.PermissionRequest{}",
 		"  request.Action = \"Execute the approved plan\"",
 		"  renderer.Info(loc.Text(lang, loc.Key(\"sample.ready\")))",
 		"  renderer.Info(raw)",
@@ -190,9 +190,9 @@ func TestI18nSourceGuardUnitRejectsNonEnglishDirectCopy(t *testing.T) {
 func TestI18nSourceGuardUnitTombstoneSummaryIsDisplayCopy(t *testing.T) {
 	source := guardUnitSource(
 		"package sample",
-		"import eventloop \"github.com/agent-dance/luban/loop\"",
+		"import stream \"github.com/agent-dance/luban/internal/contracts/stream\"",
 		"func render() {",
-		"  _ = eventloop.TombstoneEvent{Summary: \"Assistant message replaced by retry\"}",
+		"  _ = stream.TombstoneEvent{Summary: \"Assistant message replaced by retry\"}",
 		"}",
 	)
 	violations := guardUnitScan(source, false)
@@ -201,64 +201,17 @@ func TestI18nSourceGuardUnitTombstoneSummaryIsDisplayCopy(t *testing.T) {
 	}
 }
 
-func TestI18nSourceGuardUnitToolRuntimeLocalizersHideRawArguments(t *testing.T) {
-	source := guardUnitSource(
-		"package tools",
-		"import (",
-		"  loc \"github.com/agent-dance/luban/i18n\"",
-		"  tooltypes \"github.com/agent-dance/luban/types\"",
-		")",
-		"func toolRuntimeFormat(key loc.Key, args ...any) string { return \"\" }",
-		"func render() {",
-		"  _ = tooltypes.ToolResult{Content: toolRuntimeFormat(loc.Key(\"sample.required_field\"), \"cron\")}",
-		"}",
-	)
-	violations := guardScan([]guardInput{{
-		Path:        "tools/sample.go",
-		PackagePath: guardToolsImportPath,
-		Source:      []byte(source),
-	}})
-	if got := guardUnitRuleCount(violations, ruleDisplayLiteral); got != 0 {
-		t.Fatalf("localized tool runtime call leaked raw arguments as copy: %d violations:\n%s", got, guardUnitViolationReport(violations))
-	}
-}
-
-func TestI18nSourceGuardUnitToolResponseHelpers(t *testing.T) {
-	source := guardUnitSource(
-		"package sample",
-		"import (",
-		"  \"fmt\"",
-		"  toolkit \"github.com/agent-dance/luban/tools\"",
-		")",
-		"func render(raw string, rawErr error) {",
-		"  _ = toolkit.ErrorResponse(fmt.Errorf(\"operation failed: %s\", raw))",
-		"  _ = toolkit.ErrorResponsef(\"unable to read file: %s\", raw)",
-		"  _, _ = toolkit.StringResponse(\"Operation completed\")",
-		"  _ = toolkit.ErrorResponse(rawErr)",
-		"  _, _ = toolkit.StringResponse(raw)",
-		"  _, _ = toolkit.ResponseJSON(map[string]string{\"status\": \"success\"})",
-		"}",
-	)
-	violations := guardUnitScan(source, false)
-	if got := guardUnitRuleCount(violations, ruleDisplayLiteral); got != 3 {
-		t.Fatalf("tool response helper violations = %d, want 3:\n%s", got, guardUnitViolationReport(violations))
-	}
-}
-
 func TestI18nSourceGuardUnitToolResultBoundariesRequireNarrowExceptions(t *testing.T) {
 	source := guardUnitSource(
 		"package sample",
-		"import (",
-		"  toolkit \"github.com/agent-dance/luban/tools\"",
-		"  tooltypes \"github.com/agent-dance/luban/types\"",
-		")",
+		"import tooltypes \"github.com/agent-dance/luban/types\"",
 		"func render() {",
 		"  // i18n:allow display-literal protocol -- this JSON object is the tool response wire contract",
 		"  _ = tooltypes.ToolResult{Content: `{\"status\":\"ok\"}`}",
 		"  // i18n:allow display-literal identifier -- HTTP is a stable protocol identifier in this result",
-		"  _, _ = toolkit.StringResponse(\"HTTP\")",
+		"  _ = tooltypes.ToolResult{Content: \"HTTP\"}",
 		"  // i18n:allow display-literal path -- this path is a stable machine-readable tool result",
-		"  _, _ = toolkit.StringResponse(\"/tmp/tool-output\")",
+		"  _ = tooltypes.ToolResult{Content: \"/tmp/tool-output\"}",
 		"}",
 	)
 	if violations := guardUnitScan(source, false); len(violations) != 0 {

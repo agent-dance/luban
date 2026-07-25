@@ -1,46 +1,37 @@
 package sdk
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/agent-dance/luban/internal/store/session"
+	"github.com/agent-dance/luban/types"
 )
 
-// overrideSessionsDir redirects the sessions dir to a temp directory for the
-// duration of a test, then restores the original override on cleanup.
-func overrideSessionsDir(t *testing.T, dir string) {
+func currentSessionsRepository(t *testing.T) *session.Repository {
 	t.Helper()
-	prev := sessionsDirOverride
-	sessionsDirOverride = func() (string, error) { return dir, nil }
-	t.Cleanup(func() { sessionsDirOverride = prev })
+	t.Setenv("HOME", t.TempDir())
+	return session.DefaultRepository()
 }
 
-// writeSession writes a minimal JSONL session file to dir/id.jsonl.
-func writeSession(t *testing.T, dir, id string, messages []map[string]any) {
+func writeCurrentSession(t *testing.T, repo *session.Repository, projectDir, id, title, model string, updatedAt time.Time, messages []types.Message) {
 	t.Helper()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatalf("mkdir: %v", err)
+	if err := repo.Save(id, projectDir, messages); err != nil {
+		t.Fatalf("save session: %v", err)
 	}
-	f, err := os.Create(filepath.Join(dir, id+".jsonl"))
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-	defer f.Close()
-	enc := json.NewEncoder(f)
-	for _, m := range messages {
-		if err := enc.Encode(m); err != nil {
-			t.Fatalf("encode: %v", err)
-		}
+	if err := repo.SaveMeta(id, projectDir, session.SessionMeta{
+		Title:     title,
+		CreatedAt: updatedAt.Add(-time.Minute),
+		UpdatedAt: updatedAt,
+		Model:     model,
+	}); err != nil {
+		t.Fatalf("save session metadata: %v", err)
 	}
 }
 
-// ─── ListSessions ─────────────────────────────────────────────────────────────
-
-func TestListSessions_Empty(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
+func TestListSessionsEmpty(t *testing.T) {
+	currentSessionsRepository(t)
 
 	sessions, err := ListSessions()
 	if err != nil {
@@ -51,30 +42,15 @@ func TestListSessions_Empty(t *testing.T) {
 	}
 }
 
-func TestListSessions_NonExistentDir(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "no-such-dir")
-	overrideSessionsDir(t, dir)
-
-	sessions, err := ListSessions()
-	if err != nil {
-		t.Fatalf("should return nil,nil for missing dir: %v", err)
-	}
-	if sessions != nil {
-		t.Fatalf("expected nil slice, got %v", sessions)
-	}
-}
-
-func TestListSessions_Multiple(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
-
+func TestListSessionsUsesCurrentProjectStoresAndOrdersNewestFirst(t *testing.T) {
+	repo := currentSessionsRepository(t)
+	projectDir := repo.ProjectDirForCWD(filepath.Join(t.TempDir(), "project"))
+	base := time.Now().Add(-time.Hour).UTC()
 	ids := []string{"aaa111", "bbb222", "ccc333"}
-	for _, id := range ids {
-		writeSession(t, dir, id, []map[string]any{
-			{"role": "user", "content": "hello from " + id},
+	for index, id := range ids {
+		writeCurrentSession(t, repo, projectDir, id, "title "+id, "model-"+id, base.Add(time.Duration(index)*time.Minute), []types.Message{
+			types.UserMessage("hello from " + id),
 		})
-		// Stagger mtime so ordering is deterministic.
-		time.Sleep(2 * time.Millisecond)
 	}
 
 	sessions, err := ListSessions()
@@ -84,120 +60,70 @@ func TestListSessions_Multiple(t *testing.T) {
 	if len(sessions) != 3 {
 		t.Fatalf("expected 3 sessions, got %d", len(sessions))
 	}
-	// Newest-first: last written should be first.
 	if sessions[0].ID != "ccc333" {
-		t.Errorf("expected ccc333 first, got %q", sessions[0].ID)
+		t.Fatalf("expected ccc333 first, got %q", sessions[0].ID)
+	}
+	if sessions[0].ProjectDir != projectDir || sessions[0].Title != "title ccc333" || sessions[0].Model != "model-ccc333" {
+		t.Fatalf("current repository metadata was not projected: %#v", sessions[0])
 	}
 }
 
-func TestListSessions_IgnoresNonJSONL(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
-
-	writeSession(t, dir, "valid-session", nil)
-	// Create files that should be ignored.
-	for _, name := range []string{"README.md", ".hidden", "data.json", "dir"} {
-		_ = os.WriteFile(filepath.Join(dir, name), []byte("noise"), 0o600)
-	}
-	_ = os.Mkdir(filepath.Join(dir, "subdir"), 0o700)
-
-	sessions, err := ListSessions()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(sessions) != 1 {
-		t.Fatalf("expected exactly 1 session, got %d", len(sessions))
-	}
-	if sessions[0].ID != "valid-session" {
-		t.Errorf("unexpected session ID %q", sessions[0].ID)
-	}
-}
-
-// ─── GetSession ───────────────────────────────────────────────────────────────
-
-func TestGetSession_Success(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
-
-	msgs := []map[string]any{
-		{"role": "user", "content": "What is 2+2?"},
-		{"role": "assistant", "content": "4"},
-	}
-	writeSession(t, dir, "mysession01", msgs)
+func TestGetSessionProjectsCurrentRepositoryMetadata(t *testing.T) {
+	repo := currentSessionsRepository(t)
+	projectDir := repo.ProjectDirForCWD(filepath.Join(t.TempDir(), "project"))
+	updatedAt := time.Now().UTC().Truncate(time.Second)
+	writeCurrentSession(t, repo, projectDir, "mysession01", "Please summarise the budget", "model-current", updatedAt, []types.Message{
+		types.UserMessage("What is 2+2?"),
+		types.AssistantMessage("4"),
+	})
 
 	info, err := GetSession("mysession01")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if info.ID != "mysession01" {
-		t.Errorf("ID mismatch: got %q", info.ID)
+	if info.ID != "mysession01" || info.ProjectDir != projectDir {
+		t.Fatalf("unexpected session identity: %#v", info)
 	}
-	if info.MessageCount != 2 {
-		t.Errorf("expected MessageCount 2, got %d", info.MessageCount)
+	if info.MessageCount != 2 || info.Title != "Please summarise the budget" || info.Model != "model-current" {
+		t.Fatalf("unexpected current session metadata: %#v", info)
 	}
-	if info.Title == "" {
-		t.Error("expected non-empty title")
+	if info.CreatedAt.IsZero() || info.UpdatedAt.IsZero() {
+		t.Fatalf("current repository timestamps were not projected: %#v", info)
 	}
 }
 
-func TestGetSession_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
+func TestGetSessionNotFound(t *testing.T) {
+	currentSessionsRepository(t)
 
-	_, err := GetSession("doesnotexist")
-	if err == nil {
+	if _, err := GetSession("doesnotexist"); err == nil {
 		t.Fatal("expected error for missing session")
 	}
 }
 
-func TestGetSession_TitleFromFirstUserMessage(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
-
-	msgs := []map[string]any{
-		{"role": "assistant", "content": "hi"},
-		{"role": "user", "content": "Please summarise the budget"},
-	}
-	writeSession(t, dir, "titled-session", msgs)
-
-	info, err := GetSession("titled-session")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if info.Title != "Please summarise the budget" {
-		t.Errorf("unexpected title: %q", info.Title)
-	}
-}
-
-// ─── DeleteSession ────────────────────────────────────────────────────────────
-
-func TestDeleteSession_Success(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
-
-	writeSession(t, dir, "todelete", nil)
+func TestDeleteSessionDeletesCurrentRepositorySession(t *testing.T) {
+	repo := currentSessionsRepository(t)
+	projectDir := repo.ProjectDirForCWD(filepath.Join(t.TempDir(), "project"))
+	writeCurrentSession(t, repo, projectDir, "todelete", "", "", time.Now().UTC(), []types.Message{
+		types.UserMessage("delete me"),
+	})
 
 	if err := DeleteSession("todelete"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "todelete.jsonl")); !os.IsNotExist(err) {
-		t.Error("file should have been deleted")
+	if _, err := GetSession("todelete"); err == nil {
+		t.Fatal("deleted session remained discoverable")
 	}
 }
 
-func TestDeleteSession_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
+func TestDeleteSessionNotFound(t *testing.T) {
+	currentSessionsRepository(t)
 
-	err := DeleteSession("ghost-session")
-	if err == nil {
+	if err := DeleteSession("ghost-session"); err == nil {
 		t.Fatal("expected error for non-existent session")
 	}
 }
 
-// ─── Path traversal prevention ────────────────────────────────────────────────
-
-func TestValidateSessionID_Rejects(t *testing.T) {
+func TestValidateSessionIDRejects(t *testing.T) {
 	cases := []string{
 		"",
 		"../etc/passwd",
@@ -216,7 +142,7 @@ func TestValidateSessionID_Rejects(t *testing.T) {
 	}
 }
 
-func TestValidateSessionID_Accepts(t *testing.T) {
+func TestValidateSessionIDAccepts(t *testing.T) {
 	cases := []string{
 		"abc123",
 		"A1b2C3",
@@ -231,22 +157,18 @@ func TestValidateSessionID_Accepts(t *testing.T) {
 	}
 }
 
-func TestGetSession_PathTraversal(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
+func TestGetSessionRejectsPathTraversal(t *testing.T) {
+	currentSessionsRepository(t)
 
-	_, err := GetSession("../../../etc/passwd")
-	if err == nil {
+	if _, err := GetSession("../../../etc/passwd"); err == nil {
 		t.Fatal("expected error for path traversal attempt")
 	}
 }
 
-func TestDeleteSession_PathTraversal(t *testing.T) {
-	dir := t.TempDir()
-	overrideSessionsDir(t, dir)
+func TestDeleteSessionRejectsPathTraversal(t *testing.T) {
+	currentSessionsRepository(t)
 
-	err := DeleteSession("../../../etc/passwd")
-	if err == nil {
+	if err := DeleteSession("../../../etc/passwd"); err == nil {
 		t.Fatal("expected error for path traversal attempt")
 	}
 }

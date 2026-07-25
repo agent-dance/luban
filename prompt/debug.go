@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// PromptDump is the machine-readable prompt construction snapshot used by
-// parity/debug tooling. Text fields are redacted before hashes are computed.
+// PromptDump is a machine-readable prompt construction snapshot. Text fields
+// are redacted before hashes are computed.
 type PromptDump struct {
 	Blocks  []PromptDumpBlock   `json:"blocks"`
 	Context []PromptDumpContext `json:"context,omitempty"`

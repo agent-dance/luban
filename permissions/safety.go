@@ -56,22 +56,6 @@ type SafetyConfig struct {
 	// Block is consumed by SafetyCheck and RequiredAsk by
 	// MandatoryApprovalCheck; normal Allow still proceeds through rules/mode.
 	ShellPolicyAnalyzer func(command string, context types.PolicyContext) types.PolicyDecision
-
-	// Deprecated compatibility adapters. New runtimes must install only
-	// ShellPolicyAnalyzer so all layers consume the same decision model.
-	// DangerousCommandChecker checks if a bash command is dangerous.
-	// Returns a warning description if dangerous, empty string if safe.
-	DangerousCommandChecker func(command string) string
-
-	// BashProtectedPathChecker checks if a bash command writes to a protected path.
-	// Returns (true, path) if a write to a protected path is detected.
-	BashProtectedPathChecker func(command string) (bool, string)
-
-	// BashNeedsApprovalChecker identifies sandboxed/read-only looking commands
-	// that still require an interactive approval step due to structural risks
-	// like cd+git, process substitution, or bare-repo git execution.
-	// Returns (true, reason) when permission prompting must not be skipped.
-	BashNeedsApprovalChecker func(command string) (bool, string)
 }
 
 var (
@@ -97,25 +81,14 @@ func getSafetyConfig() SafetyConfig {
 // to protected-path checks. The value is the input field name that holds the file path.
 var writeTools = map[string]string{
 	"Write":        "file_path",
-	"FileWrite":    "file_path",
 	"Edit":         "file_path",
-	"FileEdit":     "file_path",
-	"FileDelete":   "file_path",
-	"FileAppend":   "file_path",
 	"NotebookEdit": "notebook_path",
-}
-
-// multiPathTools have two path fields that both need checking.
-var multiPathTools = map[string][2]string{
-	"FileMove": {"source", "destination"},
-	"FileLink": {"target", "link_path"}, // both symlink target and link location must be checked
 }
 
 // readTools are tool names that perform read-only operations.
 // These are explicitly allowed even on protected paths.
 var readTools = map[string]bool{
-	"Read":     true,
-	"FileRead": true,
+	"Read": true,
 }
 
 // SafetyCheck performs a hard safety check on a tool invocation.
@@ -138,16 +111,6 @@ func SafetyCheck(toolName string, input map[string]any) (Decision, string) {
 		}
 	}
 
-	// For multi-path tools (FileMove, FileLink), check both path fields.
-	if fields, ok := multiPathTools[toolName]; ok {
-		for _, field := range fields {
-			filePath, _ := input[field].(string)
-			if filePath != "" && IsProtectedPath(filePath) {
-				return DecisionDeny, permissionFormat(i18n.KeyPermissionSafetyProtectedPath, filePath)
-			}
-		}
-	}
-
 	// For Bash tool, check dangerous commands and protected path writes.
 	if toolName == "Bash" {
 		command, _ := input["command"].(string)
@@ -156,30 +119,12 @@ func SafetyCheck(toolName string, input map[string]any) (Decision, string) {
 		}
 
 		cfg := getSafetyConfig()
-		if cfg.ShellPolicyAnalyzer != nil {
-			decision := cfg.ShellPolicyAnalyzer(command, defaultShellPolicyContext())
-			if decision.IsBlock() {
-				return DecisionDeny, renderPolicyDecision(decision)
-			}
-			return DecisionAllow, ""
-		}
-
-		// Fail-closed: if neither the unified analyzer nor the compatibility
-		// checkers are injected, deny all Bash commands.
-		// This prevents silent bypass when SetSafetyConfig is accidentally
-		// skipped or called after the first Check().
-		if cfg.DangerousCommandChecker == nil || cfg.BashProtectedPathChecker == nil {
+		if cfg.ShellPolicyAnalyzer == nil {
 			return DecisionDeny, permissionText(i18n.KeyPermissionSafetyUnavailable)
 		}
-
-		// Check for dangerous commands (rm -rf /, fork bombs, etc.)
-		if warning := cfg.DangerousCommandChecker(command); warning != "" {
-			return DecisionDeny, permissionFormat(i18n.KeyPermissionSafetyDangerousCommand, warning)
-		}
-
-		// Check for bash writes to protected paths (redirections)
-		if hit, target := cfg.BashProtectedPathChecker(command); hit {
-			return DecisionDeny, permissionFormat(i18n.KeyPermissionSafetyShellProtectedPath, target)
+		decision := cfg.ShellPolicyAnalyzer(command, defaultShellPolicyContext())
+		if decision.IsBlock() {
+			return DecisionDeny, renderPolicyDecision(decision)
 		}
 	}
 
@@ -204,32 +149,6 @@ func dangerousPowerShellCommandReason(command string) string {
 		}
 	}
 	return ""
-}
-
-// AdvisoryCheck performs non-deny permission escalation checks.
-// It is used for Bash-only structural cases that must still prompt even when
-// sandbox auto-allow or read-only auto-allow would otherwise apply.
-func AdvisoryCheck(toolName string, input map[string]any) (Decision, string) {
-	if toolName != "Bash" {
-		return DecisionAllow, ""
-	}
-
-	command, _ := input["command"].(string)
-	if command == "" {
-		return DecisionAllow, ""
-	}
-
-	cfg := getSafetyConfig()
-	if cfg.ShellPolicyAnalyzer != nil {
-		return DecisionAllow, ""
-	}
-	if cfg.BashNeedsApprovalChecker != nil {
-		if needsApproval, reason := cfg.BashNeedsApprovalChecker(command); needsApproval {
-			return DecisionAsk, reason
-		}
-	}
-
-	return DecisionAllow, ""
 }
 
 // MandatoryApprovalCheck identifies invocation-scoped ask checks. Interactive

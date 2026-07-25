@@ -23,17 +23,12 @@ func TestToolPlanModeInstructionCatalogCoversEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolPlanModeInstructionEnglishCompatibility(t *testing.T) {
+func TestToolPlanModeInstructionEnglishRendering(t *testing.T) {
 	const message = "Entered plan mode. You should now focus on exploring the codebase and designing an implementation approach."
 	tests := []struct {
 		key  Key
 		want string
 	}{
-		{
-			KeyToolPlanModeInterviewInstructions,
-			message + "\n\n" +
-				"DO NOT write or edit any files except the plan file. Detailed workflow instructions will follow.",
-		},
 		{
 			KeyToolPlanModeInstructions,
 			message + "\n\n" +

@@ -24,7 +24,7 @@ func TestCompactResultStoreKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestCompactResultStoreEnglishCompatibility(t *testing.T) {
+func TestCompactResultStoreEnglishContract(t *testing.T) {
 	cause := errors.New("raw-os-error")
 	cases := []struct {
 		key  Key

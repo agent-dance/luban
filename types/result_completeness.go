@@ -35,18 +35,9 @@ type ToolResultCompleteness struct {
 	Pagination *ToolResultPagination      `json:"pagination,omitempty"`
 }
 
-// IsZero reports whether an older producer supplied no provenance.
+// IsZero reports whether a producer supplied no completeness provenance.
 func (c ToolResultCompleteness) IsZero() bool {
 	return c.Source == ToolResultCompletenessUnknown && c.View == ToolResultCompletenessUnknown && c.Pagination == nil
-}
-
-// IsIncomplete reports whether the produced result or its current projection
-// omits information.
-func (c ToolResultCompleteness) IsIncomplete() bool {
-	return c.Source == ToolResultCompletenessSourceTruncated ||
-		c.Source == ToolResultCompletenessCaptureDropped ||
-		c.View == ToolResultCompletenessPagination ||
-		c.View == ToolResultCompletenessDisplayPreview
 }
 
 // RetainedResultIncomplete reports loss in the tool-produced result itself.

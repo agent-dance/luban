@@ -20,7 +20,7 @@ func TestToolWebPolicyKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolWebPolicyEnglishCompatibility(t *testing.T) {
+func TestToolWebPolicyEnglishContract(t *testing.T) {
 	if got := Text(LangEN, KeyToolWebPolicyRegionBlocked); got != "Web search is only available in the US" {
 		t.Fatalf("region blocked = %q", got)
 	}

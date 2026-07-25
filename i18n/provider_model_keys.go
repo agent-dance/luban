@@ -32,6 +32,10 @@ const (
 	KeyProviderPickerActionsDefault          Key = "provider.picker.actions.default"
 	KeyProviderPickerActionsConnected        Key = "provider.picker.actions.connected"
 	KeyProviderPickerActionsConfigure        Key = "provider.picker.actions.configure"
+	KeyProviderPickerActionsCreate           Key = "provider.picker.actions.create"
+	KeyProviderPickerActionsConnectedCustom  Key = "provider.picker.actions.connected_custom"
+	KeyProviderPickerActionsConfigureCustom  Key = "provider.picker.actions.configure_custom"
+	KeyProviderPickerOther                   Key = "provider.picker.other"
 	KeyProviderPickerModelCount              Key = "provider.picker.model_count"
 	KeyProviderConnectTitle                  Key = "provider.connect.title"
 	KeyProviderReconnectTitle                Key = "provider.reconnect.title"
@@ -53,6 +57,12 @@ const (
 	KeyProviderConnectBaseURL                Key = "provider.connect.base_url"
 	KeyProviderConnectRequired               Key = "provider.connect.required"
 	KeyProviderConnectAPIKey                 Key = "provider.connect.api_key"
+	KeyProviderConnectAPIStyle               Key = "provider.connect.api_style"
+	KeyProviderConnectName                   Key = "provider.connect.name"
+	KeyProviderConnectNameDefault            Key = "provider.connect.name_default"
+	KeyProviderDeleteTitle                   Key = "provider.delete.title"
+	KeyProviderDeleteWarning                 Key = "provider.delete.warning"
+	KeyProviderDeleteConfirm                 Key = "provider.delete.confirm"
 	KeyModelTagVision                        Key = "model.tag.vision"
 	KeyModelTagText                          Key = "model.tag.text"
 	KeyModelTagEffort                        Key = "model.tag.effort"
@@ -132,6 +142,10 @@ func init() {
 	add(KeyProviderPickerActionsDefault, "↑/↓ navigate, Enter select, Esc close", "↑/↓ 移动，Enter 选择，Esc 关闭", "↑/↓ navigieren, Enter auswählen, Esc schließen", "↑/↓ 移動、Enter 選択、Esc 閉じる", "↑/↓ 이동, Enter 선택, Esc 닫기", "↑/↓ навигация, Enter выбрать, Esc закрыть")
 	add(KeyProviderPickerActionsConnected, "↑/↓ navigate, Enter select, R reconnect, Esc close", "↑/↓ 移动，Enter 选择，R 重新连接，Esc 关闭", "↑/↓ navigieren, Enter auswählen, R erneut verbinden, Esc schließen", "↑/↓ 移動、Enter 選択、R 再接続、Esc 閉じる", "↑/↓ 이동, Enter 선택, R 다시 연결, Esc 닫기", "↑/↓ навигация, Enter выбрать, R переподключить, Esc закрыть")
 	add(KeyProviderPickerActionsConfigure, "↑/↓ navigate, Enter select, R configure, Esc close", "↑/↓ 移动，Enter 选择，R 配置，Esc 关闭", "↑/↓ navigieren, Enter auswählen, R konfigurieren, Esc schließen", "↑/↓ 移動、Enter 選択、R 設定、Esc 閉じる", "↑/↓ 이동, Enter 선택, R 구성, Esc 닫기", "↑/↓ навигация, Enter выбрать, R настроить, Esc закрыть")
+	add(KeyProviderPickerActionsCreate, "↑/↓ navigate, Enter create, Esc close", "↑/↓ 移动，Enter 创建，Esc 关闭", "↑/↓ navigieren, Enter erstellen, Esc schließen", "↑/↓ 移動、Enter 作成、Esc 閉じる", "↑/↓ 이동, Enter 생성, Esc 닫기", "↑/↓ навигация, Enter создать, Esc закрыть")
+	add(KeyProviderPickerActionsConnectedCustom, "↑/↓ navigate, Enter select, R reconnect, D delete, Esc close", "↑/↓ 移动，Enter 选择，R 重新连接，D 删除，Esc 关闭", "↑/↓ navigieren, Enter auswählen, R erneut verbinden, D löschen, Esc schließen", "↑/↓ 移動、Enter 選択、R 再接続、D 削除、Esc 閉じる", "↑/↓ 이동, Enter 선택, R 다시 연결, D 삭제, Esc 닫기", "↑/↓ навигация, Enter выбрать, R переподключить, D удалить, Esc закрыть")
+	add(KeyProviderPickerActionsConfigureCustom, "↑/↓ navigate, Enter configure, D delete, Esc close", "↑/↓ 移动，Enter 配置，D 删除，Esc 关闭", "↑/↓ navigieren, Enter konfigurieren, D löschen, Esc schließen", "↑/↓ 移動、Enter 設定、D 削除、Esc 閉じる", "↑/↓ 이동, Enter 구성, D 삭제, Esc 닫기", "↑/↓ навигация, Enter настроить, D удалить, Esc закрыть")
+	add(KeyProviderPickerOther, "Other gateway…", "其他中转站…", "Anderes Gateway…", "その他のゲートウェイ…", "기타 게이트웨이…", "Другой шлюз…")
 	add(KeyProviderPickerModelCount, " (%d models)", "（%d 个模型）", " (%d Modelle)", "（%d モデル）", " (모델 %d개)", " (%d моделей)")
 	add(KeyProviderConnectTitle, "Connect %s — Esc to go back", "连接 %s — 按 Esc 返回", "%s verbinden — Esc zum Zurückgehen", "%s に接続 — Esc で戻る", "%s 연결 — Esc로 돌아가기", "Подключить %s — Esc для возврата")
 	add(KeyProviderReconnectTitle, "Reconnect %s — Esc to go back", "重新连接 %s — 按 Esc 返回", "%s erneut verbinden — Esc zum Zurückgehen", "%s に再接続 — Esc で戻る", "%s 다시 연결 — Esc로 돌아가기", "Переподключить %s — Esc для возврата")
@@ -148,11 +162,17 @@ func init() {
 	add(KeyProviderAuthGCPDescription, "Use Application Default Credentials", "使用 Application Default Credentials", "Application Default Credentials verwenden", "Application Default Credentials を使用", "Application Default Credentials 사용", "Использовать Application Default Credentials")
 	add(KeyProviderConnectExternalHint, "Configure this Provider outside the TUI, then reopen /model.", "请在 TUI 外配置此 Provider，然后重新打开 /model。", "Konfiguriere diesen Provider außerhalb der TUI und öffne danach /model erneut.", "TUI の外でこの Provider を設定し、/model を開き直してください。", "TUI 외부에서 이 Provider를 구성한 뒤 /model을 다시 여세요.", "Настройте этот Provider вне TUI, затем снова откройте /model.")
 	add(KeyProviderConnectSelectMethod, "  Select an authentication method: ↑/↓ navigate, Enter select", "  选择认证方式：↑/↓ 移动，Enter 选择", "  Authentifizierungsmethode auswählen: ↑/↓ navigieren, Enter auswählen", "  認証方法を選択：↑/↓ 移動、Enter 選択", "  인증 방법 선택: ↑/↓ 이동, Enter 선택", "  Выберите способ авторизации: ↑/↓ навигация, Enter выбрать")
-	add(KeyProviderConnectInputHint, "  Base URL and API key: Tab switches fields, Enter confirms", "  Base URL 和 API key：按 Tab 切换字段，按 Enter 确认", "  Base URL und API-Schlüssel: Tab wechselt das Feld, Enter bestätigt", "  Base URL と API キー：Tab で項目切替、Enter で確定", "  Base URL 및 API 키: Tab으로 필드 전환, Enter로 확인", "  Base URL и API-ключ: Tab переключает поле, Enter подтверждает")
+	add(KeyProviderConnectInputHint, "  Connection settings: Tab switches fields, Enter confirms", "  连接配置：按 Tab 切换字段，按 Enter 确认", "  Verbindungseinstellungen: Tab wechselt das Feld, Enter bestätigt", "  接続設定：Tab で項目切替、Enter で確定", "  연결 설정: Tab으로 필드 전환, Enter로 확인", "  Настройки подключения: Tab переключает поле, Enter подтверждает")
 	add(KeyProviderConnectDefaultEndpoint, "_ (Provider default)", "_（Provider 默认值）", "_ (Provider-Standard)", "_（Provider のデフォルト）", "_ (Provider 기본값)", "_ (по умолчанию у Provider)")
 	add(KeyProviderConnectBaseURL, "Base URL: %s", "Base URL：%s", "Base URL: %s", "Base URL：%s", "Base URL: %s", "Base URL: %s")
 	add(KeyProviderConnectRequired, "_ (required)", "_（必填）", "_ (erforderlich)", "_（必須）", "_ (필수)", "_ (обязательно)")
 	add(KeyProviderConnectAPIKey, "API key: %s", "API key：%s", "API-Schlüssel: %s", "API キー：%s", "API 키: %s", "API-ключ: %s")
+	add(KeyProviderConnectAPIStyle, "API style: %s  (←/→ switch)", "API 风格：%s（←/→ 切换）", "API-Stil: %s  (←/→ wechseln)", "API スタイル：%s（←/→ 切替）", "API 스타일: %s  (←/→ 전환)", "Стиль API: %s  (←/→ сменить)")
+	add(KeyProviderConnectName, "Provider name: %s", "供应商名称：%s", "Anbietername: %s", "プロバイダー名：%s", "공급자 이름: %s", "Имя поставщика: %s")
+	add(KeyProviderConnectNameDefault, "optional; defaults to the Base URL domain", "可选；默认使用 Base URL 域名", "optional; standardmäßig die Domain der Base URL", "省略可。既定値は Base URL のドメイン", "선택 사항. 기본값은 Base URL 도메인", "необязательно; по умолчанию домен Base URL")
+	add(KeyProviderDeleteTitle, "Delete provider %s?", "删除供应商 %s？", "Anbieter %s löschen?", "プロバイダー %s を削除しますか？", "공급자 %s을(를) 삭제할까요?", "Удалить поставщика %s?")
+	add(KeyProviderDeleteWarning, "This removes its saved credentials and discovered models.", "这会移除已保存的凭据和动态获取的模型。", "Dadurch werden die gespeicherten Zugangsdaten und gefundenen Modelle entfernt.", "保存済みの認証情報と検出されたモデルが削除されます。", "저장된 자격 증명과 검색된 모델이 제거됩니다.", "Сохранённые данные доступа и найденные модели будут удалены.")
+	add(KeyProviderDeleteConfirm, "Press D again, Y, or Enter to confirm; Esc cancels.", "再次按 D、按 Y 或 Enter 确认；Esc 取消。", "Zum Bestätigen erneut D, Y oder Enter drücken; Esc bricht ab.", "もう一度 D、Y、または Enter で確定、Esc でキャンセル。", "D를 다시 누르거나 Y 또는 Enter로 확인하고 Esc로 취소하세요.", "Для подтверждения снова нажмите D, Y или Enter; Esc — отмена.")
 
 	add(KeyModelTagVision, "vision", "视觉", "Bildverarbeitung", "画像", "비전", "изображения")
 	add(KeyModelTagText, "text", "文本", "Text", "テキスト", "텍스트", "текст")

@@ -9,20 +9,9 @@ import (
 	"github.com/agent-dance/luban/i18n"
 )
 
-// NewFromEnv creates the appropriate provider based on environment variables.
-// Missing credentials return an unconfigured provider from the registry so the
-// terminal can still open and persist settings before the first model call.
-func NewFromEnv() (Provider, error) {
-	return NewFromEnvWithOverrides("", "")
-}
-
 // NewFromEnvWithOverrides creates a provider from environment variables, but allows
 // explicit overrides for provider name and model. This avoids mutating global env
 // with os.Setenv, which is not concurrency-safe.
-//
-// Internally this uses the DefaultRegistry() to look up the provider factory,
-// but the external behaviour (env-var precedence, auto-detection, error messages)
-// is 100% backward-compatible.
 //
 // When a CredentialStore is attached to the registry, provider factories can
 // also look up credentials from the store (see registry_builtins.go).
@@ -31,9 +20,6 @@ func NewFromEnvWithOverrides(providerOverride, modelOverride string) (Provider, 
 
 	registry := DefaultRegistry()
 	normalized := strings.ToLower(strings.TrimSpace(providerType))
-	if normalized == "oauth" {
-		normalized = CanonicalProviderName(normalized)
-	}
 
 	// Check registry for the provider.
 	if _, ok := registry.Get(normalized); ok {
@@ -58,10 +44,10 @@ func resolveProviderType(providerOverride string) string {
 		providerType = os.Getenv("PROVIDER")
 	}
 	// Support the TypeScript-compatible env flags for enterprise cloud providers.
-	if providerType == "" && os.Getenv("CLAUDE_CODE_USE_BEDROCK") == "1" {
+	if providerType == "" && os.Getenv("LUBAN_CODE_USE_BEDROCK") == "1" {
 		providerType = "bedrock"
 	}
-	if providerType == "" && os.Getenv("CLAUDE_CODE_USE_VERTEX") == "1" {
+	if providerType == "" && os.Getenv("LUBAN_CODE_USE_VERTEX") == "1" {
 		providerType = "vertex"
 	}
 	if providerType == "" && os.Getenv("DEEPSEEK_API_KEY") != "" {
@@ -73,9 +59,6 @@ func resolveProviderType(providerOverride string) string {
 		providerType = "openai"
 	}
 	if providerType == "" && os.Getenv("ANTHROPIC_API_KEY") != "" {
-		providerType = "anthropic"
-	}
-	if providerType == "" && os.Getenv("OAUTH_ACCESS_TOKEN") != "" {
 		providerType = "anthropic"
 	}
 	if providerType == "" {

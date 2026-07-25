@@ -8,10 +8,10 @@ import (
 // MockEventReader through FocusManager to mock Focusable elements.
 func TestIntegration_MockReaderToFocusManager(t *testing.T) {
 	type tc struct {
-		events           []Event
-		expectedHandled  []bool
-		focusedAfter     string
-		focusCycles      int // number of Next() calls to make
+		events          []Event
+		expectedHandled []bool
+		focusedAfter    string
+		focusCycles     int // number of Next() calls to make
 	}
 
 	tests := map[string]tc{

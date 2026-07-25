@@ -154,7 +154,6 @@ func main() {
         // tui.WithMouse(),
         // tui.WithFrameRate(60),
         // tui.WithInlineHeight(10),
-        // tui.WithGlobalKeyHandler(func(ke tui.KeyEvent) bool { return false }),
     )
     if err != nil {
         fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -568,7 +567,6 @@ tui.WithRootComponent(comp)              // Required: root component
 tui.WithMouse()                          // Enable mouse support
 tui.WithFrameRate(fps int)               // Default: 60
 tui.WithInlineHeight(rows int)           // Inline mode (not fullscreen)
-tui.WithGlobalKeyHandler(func(KeyEvent) bool)  // Global key intercept
 tui.WithInputLatency(d time.Duration)    // Coalesce rapid input
 tui.WithEventQueueSize(n int)            // Event queue buffer size
 ```
@@ -657,7 +655,7 @@ Inline mode limitations: modals (`<modal>`) are not supported because the buffer
 ```go
 go func() {
     w := app.StreamAbove()
-    // Plain write (backward compatible)
+    // Plain byte stream
     fmt.Fprint(w, "hello ")
     // Styled write
     w.WriteStyled("bold text", tui.NewStyle().Bold().Foreground(tui.Red))

@@ -80,17 +80,6 @@ func buildAuthURL(cfg OAuthConfig, challenge, state, redirectURI string) (string
 	return u.String(), nil
 }
 
-// StartOAuthFlow runs a complete PKCE authorization code flow:
-//  1. Generates PKCE verifier + challenge and a random CSRF state.
-//  2. Starts a local HTTP server on a random port for the OAuth callback.
-//  3. Returns the authorization URL via authURLOut (caller opens it in a browser).
-//  4. Waits for the redirect callback and exchanges the code for tokens.
-//
-// Pass a nil authURLOut to discard the URL (useful in tests).
-func StartOAuthFlow(ctx context.Context, cfg OAuthConfig) (*TokenResponse, error) {
-	return startOAuthFlowInternal(ctx, cfg, nil)
-}
-
 // StartOAuthFlowWithURL is like StartOAuthFlow but sends the authorization URL
 // to authURLOut so the caller can display it before blocking.
 func StartOAuthFlowWithURL(ctx context.Context, cfg OAuthConfig, authURLOut chan<- string) (*TokenResponse, error) {
@@ -157,7 +146,16 @@ func startOAuthFlowInternal(ctx context.Context, cfg OAuthConfig, authURLOut cha
 
 	srv := &http.Server{Handler: mux}
 	go func() { _ = srv.Serve(ln) }()
-	defer srv.Close()
+	defer func() {
+		// Let an in-flight callback finish writing its browser response before
+		// closing the connection. Close can otherwise race a fast token exchange
+		// and leave the browser (or test client) with an EOF.
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			_ = srv.Close()
+		}
+	}()
 
 	// Build and optionally emit the authorization URL.
 	authURL, err := buildAuthURL(cfg, challenge, state, redirectURI)

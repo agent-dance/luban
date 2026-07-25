@@ -1,43 +1,45 @@
 package i18n
 
 const (
-	KeyUsageSession                            Key = "usage.session"
-	KeyUsageSessionUnknownCost                 Key = "usage.session.unknown_cost"
-	KeyUsageSessionNoCache                     Key = "usage.session.no_cache"
-	KeyUsageSessionNoCacheUnknownCost          Key = "usage.session.no_cache.unknown_cost"
-	KeyUsageSessionCompacted                   Key = "usage.session.compacted"
-	KeyUsageSessionCompactedUnknownCost        Key = "usage.session.compacted.unknown_cost"
-	KeyUsageSessionCompactedNoCache            Key = "usage.session.compacted.no_cache"
-	KeyUsageSessionCompactedNoCacheUnknownCost Key = "usage.session.compacted.no_cache.unknown_cost"
-	KeyUsageSessionUnavailable                 Key = "usage.session.unavailable"
-	KeyUsageContext                            Key = "usage.model_context"
-	KeyUsageContextCompact                     Key = "usage.model_context.compact"
-	KeyUsageContextPlain                       Key = "usage.model_context.plain"
-	KeyUsageContextEstimate                    Key = "usage.model_context.estimated"
-	KeyUsageContextEstimateCompact             Key = "usage.model_context.estimated.compact"
-	KeyUsageContextEstimatePlain               Key = "usage.model_context.estimated.plain"
-	KeyUsageContextLowerBound                  Key = "usage.model_context.lower_bound"
-	KeyUsageContextLowerBoundCompact           Key = "usage.model_context.lower_bound.compact"
-	KeyUsageContextLowerBoundPlain             Key = "usage.model_context.lower_bound.plain"
-	KeyUsageContextUnknown                     Key = "usage.model_context.unknown"
+	KeyUsageSession                                  Key = "usage.session"
+	KeyUsageSessionUnknownCost                       Key = "usage.session.unknown_cost"
+	KeyUsageSessionNoCache                           Key = "usage.session.no_cache"
+	KeyUsageSessionNoCacheUnknownCost                Key = "usage.session.no_cache.unknown_cost"
+	KeyUsageSessionCompacted                         Key = "usage.session.compacted"
+	KeyUsageSessionCompactedUnknownCost              Key = "usage.session.compacted.unknown_cost"
+	KeyUsageSessionCompactedNoCache                  Key = "usage.session.compacted.no_cache"
+	KeyUsageSessionCompactedNoCacheUnknownCost       Key = "usage.session.compacted.no_cache.unknown_cost"
+	KeyUsageSessionNarrow                            Key = "usage.session.narrow"
+	KeyUsageSessionNarrowUnknownCost                 Key = "usage.session.narrow.unknown_cost"
+	KeyUsageSessionNarrowNoCache                     Key = "usage.session.narrow.no_cache"
+	KeyUsageSessionNarrowNoCacheUnknownCost          Key = "usage.session.narrow.no_cache.unknown_cost"
+	KeyUsageSessionCompactedNarrow                   Key = "usage.session.compacted.narrow"
+	KeyUsageSessionCompactedNarrowUnknownCost        Key = "usage.session.compacted.narrow.unknown_cost"
+	KeyUsageSessionCompactedNarrowNoCache            Key = "usage.session.compacted.narrow.no_cache"
+	KeyUsageSessionCompactedNarrowNoCacheUnknownCost Key = "usage.session.compacted.narrow.no_cache.unknown_cost"
+	KeyUsageSessionUnavailable                       Key = "usage.session.unavailable"
+	KeyUsageContext                                  Key = "usage.model_context"
+	KeyUsageContextCompact                           Key = "usage.model_context.compact"
+	KeyUsageContextPlain                             Key = "usage.model_context.plain"
+	KeyUsageContextEstimated                         Key = "usage.model_context.estimated"
+	KeyUsageContextEstimatedCompact                  Key = "usage.model_context.estimated.compact"
+	KeyUsageContextEstimatedPlain                    Key = "usage.model_context.estimated.plain"
+	KeyUsageContextLowerBound                        Key = "usage.model_context.lower_bound"
+	KeyUsageContextLowerBoundCompact                 Key = "usage.model_context.lower_bound.compact"
+	KeyUsageContextLowerBoundPlain                   Key = "usage.model_context.lower_bound.plain"
+	KeyUsageContextUnknown                           Key = "usage.model_context.unknown"
 
-	KeyUsageLastRequest                Key = "usage.last_request"
-	KeyUsageLastRequestUnknown         Key = "usage.last_request.unknown"
-	KeyUsageCumulativeSession          Key = "usage.cumulative_session"
-	KeyUsageCumulativeUnknown          Key = "usage.cumulative_session.unknown_cost"
-	KeyUsageCumulativeUnavailable      Key = "usage.cumulative_session.unavailable"
-	KeyUsageScopedCompact              Key = "usage.scoped.compact"
-	KeyUsageScopedCompactUnknownCost   Key = "usage.scoped.compact.unknown_cost"
-	KeyUsageEffectiveContext           Key = "usage.effective_model_context"
-	KeyUsageEffectiveContextCompact    Key = "usage.effective_model_context.compact"
-	KeyUsageEffectiveContextPlain      Key = "usage.effective_model_context.plain"
-	KeyUsageEffectiveEstimate          Key = "usage.effective_model_context.estimated"
-	KeyUsageEffectiveEstimateCompact   Key = "usage.effective_model_context.estimated.compact"
-	KeyUsageEffectiveEstimatePlain     Key = "usage.effective_model_context.estimated.plain"
-	KeyUsageEffectiveLowerBound        Key = "usage.effective_model_context.lower_bound"
-	KeyUsageEffectiveLowerBoundCompact Key = "usage.effective_model_context.lower_bound.compact"
-	KeyUsageEffectiveLowerBoundPlain   Key = "usage.effective_model_context.lower_bound.plain"
-	KeyUsageEffectiveUnknown           Key = "usage.effective_model_context.unknown"
+	KeyUsageLastRequest              Key = "usage.last_request"
+	KeyUsageLastRequestUnknown       Key = "usage.last_request.unknown"
+	KeyUsageCumulativeSession        Key = "usage.cumulative_session"
+	KeyUsageCumulativeUnknown        Key = "usage.cumulative_session.unknown_cost"
+	KeyUsageCumulativeUnavailable    Key = "usage.cumulative_session.unavailable"
+	KeyUsageScopedCompact            Key = "usage.scoped.compact"
+	KeyUsageScopedCompactUnknownCost Key = "usage.scoped.compact.unknown_cost"
+	KeyUsageEffectiveContext         Key = "usage.effective_model_context"
+	KeyUsageEffectiveContextCompact  Key = "usage.effective_model_context.compact"
+	KeyUsageEffectiveContextPlain    Key = "usage.effective_model_context.plain"
+	KeyUsageEffectiveUnknown         Key = "usage.effective_model_context.unknown"
 )
 
 func init() {
@@ -47,26 +49,26 @@ func init() {
 		}
 	}
 	add(KeyUsageSession,
-		"Session: in %s · %d%% cached · out %s · $%.4f",
-		"会话：输入 %s · 已缓存 %d%% · 输出 %s · $%.4f",
-		"Sitzung: %s ein · %d%% im Cache · %s aus · $%.4f",
-		"セッション: 入力 %s · %d%% キャッシュ済み · 出力 %s · $%.4f",
-		"세션: 입력 %s · %d%% 캐시됨 · 출력 %s · $%.4f",
-		"Сеанс: вход %s · %d%% из кэша · выход %s · $%.4f")
+		"Session: in %s · %d%% cached · out %s · %s%.4f",
+		"会话：输入 %s · 缓存 %d%% · 输出 %s · %s%.4f",
+		"Sitzung: %s ein · %d%% im Cache · %s aus · %s%.4f",
+		"セッション: 入力 %s · キャッシュ %d%% · 出力 %s · %s%.4f",
+		"세션: 입력 %s · 캐시 %d%% · 출력 %s · %s%.4f",
+		"Сеанс: вход %s · %d%% из кэша · выход %s · %s%.4f")
 	add(KeyUsageSessionUnknownCost,
 		"Session: in %s · %d%% cached · out %s · cost unknown",
-		"会话：输入 %s · 已缓存 %d%% · 输出 %s · 费用未知",
+		"会话：输入 %s · 缓存 %d%% · 输出 %s · 费用未知",
 		"Sitzung: %s ein · %d%% im Cache · %s aus · Kosten unbekannt",
-		"セッション: 入力 %s · %d%% キャッシュ済み · 出力 %s · 料金不明",
-		"세션: 입력 %s · %d%% 캐시됨 · 출력 %s · 비용 알 수 없음",
+		"セッション: 入力 %s · キャッシュ %d%% · 出力 %s · 料金不明",
+		"세션: 입력 %s · 캐시 %d%% · 출력 %s · 비용 알 수 없음",
 		"Сеанс: вход %s · %d%% из кэша · выход %s · стоимость неизвестна")
 	add(KeyUsageSessionNoCache,
-		"Session: in %s · out %s · $%.4f",
-		"会话：输入 %s · 输出 %s · $%.4f",
-		"Sitzung: %s ein · %s aus · $%.4f",
-		"セッション: 入力 %s · 出力 %s · $%.4f",
-		"세션: 입력 %s · 출력 %s · $%.4f",
-		"Сеанс: вход %s · выход %s · $%.4f")
+		"Session: in %s · out %s · %s%.4f",
+		"会话：输入 %s · 输出 %s · %s%.4f",
+		"Sitzung: %s ein · %s aus · %s%.4f",
+		"セッション: 入力 %s · 出力 %s · %s%.4f",
+		"세션: 입력 %s · 출력 %s · %s%.4f",
+		"Сеанс: вход %s · выход %s · %s%.4f")
 	add(KeyUsageSessionNoCacheUnknownCost,
 		"Session: in %s · out %s · cost unknown",
 		"会话：输入 %s · 输出 %s · 费用未知",
@@ -75,26 +77,26 @@ func init() {
 		"세션: 입력 %s · 출력 %s · 비용 알 수 없음",
 		"Сеанс: вход %s · выход %s · стоимость неизвестна")
 	add(KeyUsageSessionCompacted,
-		"Session: in %s (%s total) · %d%% cached · out %s · $%.4f",
-		"会话：输入 %s（累计 %s）· 已缓存 %d%% · 输出 %s · $%.4f",
-		"Sitzung: %s ein (%s gesamt) · %d%% im Cache · %s aus · $%.4f",
-		"セッション: 入力 %s（合計 %s）· %d%% キャッシュ済み · 出力 %s · $%.4f",
-		"세션: 입력 %s (총 %s) · %d%% 캐시됨 · 출력 %s · $%.4f",
-		"Сеанс: вход %s (всего %s) · %d%% из кэша · выход %s · $%.4f")
+		"Session: in %s (%s total) · %d%% cached · out %s · %s%.4f",
+		"会话：输入 %s（累计 %s）· 缓存 %d%% · 输出 %s · %s%.4f",
+		"Sitzung: %s ein (%s gesamt) · %d%% im Cache · %s aus · %s%.4f",
+		"セッション: 入力 %s（合計 %s）· キャッシュ %d%% · 出力 %s · %s%.4f",
+		"세션: 입력 %s (총 %s) · 캐시 %d%% · 출력 %s · %s%.4f",
+		"Сеанс: вход %s (всего %s) · %d%% из кэша · выход %s · %s%.4f")
 	add(KeyUsageSessionCompactedUnknownCost,
 		"Session: in %s (%s total) · %d%% cached · out %s · cost unknown",
-		"会话：输入 %s（累计 %s）· 已缓存 %d%% · 输出 %s · 费用未知",
+		"会话：输入 %s（累计 %s）· 缓存 %d%% · 输出 %s · 费用未知",
 		"Sitzung: %s ein (%s gesamt) · %d%% im Cache · %s aus · Kosten unbekannt",
-		"セッション: 入力 %s（合計 %s）· %d%% キャッシュ済み · 出力 %s · 料金不明",
-		"세션: 입력 %s (총 %s) · %d%% 캐시됨 · 출력 %s · 비용 알 수 없음",
+		"セッション: 入力 %s（合計 %s）· キャッシュ %d%% · 出力 %s · 料金不明",
+		"세션: 입력 %s (총 %s) · 캐시 %d%% · 출력 %s · 비용 알 수 없음",
 		"Сеанс: вход %s (всего %s) · %d%% из кэша · выход %s · стоимость неизвестна")
 	add(KeyUsageSessionCompactedNoCache,
-		"Session: in %s (%s total) · out %s · $%.4f",
-		"会话：输入 %s（累计 %s）· 输出 %s · $%.4f",
-		"Sitzung: %s ein (%s gesamt) · %s aus · $%.4f",
-		"セッション: 入力 %s（合計 %s）· 出力 %s · $%.4f",
-		"세션: 입력 %s (총 %s) · 출력 %s · $%.4f",
-		"Сеанс: вход %s (всего %s) · выход %s · $%.4f")
+		"Session: in %s (%s total) · out %s · %s%.4f",
+		"会话：输入 %s（累计 %s）· 输出 %s · %s%.4f",
+		"Sitzung: %s ein (%s gesamt) · %s aus · %s%.4f",
+		"セッション: 入力 %s（合計 %s）· 出力 %s · %s%.4f",
+		"세션: 입력 %s (총 %s) · 출력 %s · %s%.4f",
+		"Сеанс: вход %s (всего %s) · выход %s · %s%.4f")
 	add(KeyUsageSessionCompactedNoCacheUnknownCost,
 		"Session: in %s (%s total) · out %s · cost unknown",
 		"会话：输入 %s（累计 %s）· 输出 %s · 费用未知",
@@ -105,6 +107,30 @@ func init() {
 	add(KeyUsageSessionUnavailable,
 		"Session: usage unknown", "会话：用量未知", "Sitzung: Nutzung unbekannt",
 		"セッション: 使用量不明", "세션: 사용량 알 수 없음", "Сеанс: использование неизвестно")
+	add(KeyUsageSessionNarrow,
+		"S: in %s · %d%% cached · out %s · %s%.2f", "会话：输入 %s · 缓存 %d%% · 输出 %s · %s%.2f", "S: %s ein · %d%% im Cache · %s aus · %s%.2f",
+		"セッション: 入力 %s · キャッシュ %d%% · 出力 %s · %s%.2f", "세션: 입력 %s · 캐시 %d%% · 출력 %s · %s%.2f", "С: вход %s · %d%% из кэша · выход %s · %s%.2f")
+	add(KeyUsageSessionNarrowUnknownCost,
+		"S: in %s · %d%% cached · out %s · cost unknown", "会话：输入 %s · 缓存 %d%% · 输出 %s · 费用未知", "S: %s ein · %d%% im Cache · %s aus · Kosten unbekannt",
+		"セッション: 入力 %s · キャッシュ %d%% · 出力 %s · 料金不明", "세션: 입력 %s · 캐시 %d%% · 출력 %s · 비용 알 수 없음", "С: вход %s · %d%% из кэша · выход %s · стоимость неизвестна")
+	add(KeyUsageSessionNarrowNoCache,
+		"S: in %s · out %s · %s%.2f", "会话：输入 %s · 输出 %s · %s%.2f", "S: %s ein · %s aus · %s%.2f",
+		"セッション: 入力 %s · 出力 %s · %s%.2f", "세션: 입력 %s · 출력 %s · %s%.2f", "С: вход %s · выход %s · %s%.2f")
+	add(KeyUsageSessionNarrowNoCacheUnknownCost,
+		"S: in %s · out %s · cost unknown", "会话：输入 %s · 输出 %s · 费用未知", "S: %s ein · %s aus · Kosten unbekannt",
+		"セッション: 入力 %s · 出力 %s · 料金不明", "세션: 입력 %s · 출력 %s · 비용 알 수 없음", "С: вход %s · выход %s · стоимость неизвестна")
+	add(KeyUsageSessionCompactedNarrow,
+		"S: in %s/%s · %d%% cached · out %s · %s%.2f", "会话：输入 %s/%s · 缓存 %d%% · 输出 %s · %s%.2f", "S: %s/%s ein · %d%% im Cache · %s aus · %s%.2f",
+		"セッション: 入力 %s/%s · キャッシュ %d%% · 出力 %s · %s%.2f", "세션: 입력 %s/%s · 캐시 %d%% · 출력 %s · %s%.2f", "С: вход %s/%s · %d%% из кэша · выход %s · %s%.2f")
+	add(KeyUsageSessionCompactedNarrowUnknownCost,
+		"S: in %s/%s · %d%% cached · out %s · cost unknown", "会话：输入 %s/%s · 缓存 %d%% · 输出 %s · 费用未知", "S: %s/%s ein · %d%% im Cache · %s aus · Kosten unbekannt",
+		"セッション: 入力 %s/%s · キャッシュ %d%% · 出力 %s · 料金不明", "세션: 입력 %s/%s · 캐시 %d%% · 출력 %s · 비용 알 수 없음", "С: вход %s/%s · %d%% из кэша · выход %s · стоимость неизвестна")
+	add(KeyUsageSessionCompactedNarrowNoCache,
+		"S: in %s/%s · out %s · %s%.2f", "会话：输入 %s/%s · 输出 %s · %s%.2f", "S: %s/%s ein · %s aus · %s%.2f",
+		"セッション: 入力 %s/%s · 出力 %s · %s%.2f", "세션: 입력 %s/%s · 출력 %s · %s%.2f", "С: вход %s/%s · выход %s · %s%.2f")
+	add(KeyUsageSessionCompactedNarrowNoCacheUnknownCost,
+		"S: in %s/%s · out %s · cost unknown", "会话：输入 %s/%s · 输出 %s · 费用未知", "S: %s/%s ein · %s aus · Kosten unbekannt",
+		"セッション: 入力 %s/%s · 出力 %s · 料金不明", "세션: 입력 %s/%s · 출력 %s · 비용 알 수 없음", "С: вход %s/%s · выход %s · стоимость неизвестна")
 	add(KeyUsageContext,
 		"Context: %s %d%% (%s/%s)", "上下文：%s %d%%（%s/%s）", "Kontext: %s %d%% (%s/%s)",
 		"コンテキスト: %s %d%%（%s/%s）", "컨텍스트: %s %d%% (%s/%s)", "Контекст: %s %d%% (%s/%s)")
@@ -114,24 +140,24 @@ func init() {
 	add(KeyUsageContextPlain,
 		"Context: %d%% (%s/%s)", "上下文：%d%%（%s/%s）", "Kontext: %d%% (%s/%s)",
 		"コンテキスト: %d%%（%s/%s）", "컨텍스트: %d%% (%s/%s)", "Контекст: %d%% (%s/%s)")
-	add(KeyUsageContextEstimate,
+	add(KeyUsageContextEstimated,
 		"Context: %s ≈%d%% (%s/%s)", "上下文：%s ≈%d%%（%s/%s）", "Kontext: %s ≈%d%% (%s/%s)",
 		"コンテキスト: %s ≈%d%%（%s/%s）", "컨텍스트: %s ≈%d%% (%s/%s)", "Контекст: %s ≈%d%% (%s/%s)")
-	add(KeyUsageContextEstimateCompact,
+	add(KeyUsageContextEstimatedCompact,
 		"Context: %s ≈%d%%", "上下文：%s ≈%d%%", "Kontext: %s ≈%d%%",
 		"コンテキスト: %s ≈%d%%", "컨텍스트: %s ≈%d%%", "Контекст: %s ≈%d%%")
-	add(KeyUsageContextEstimatePlain,
+	add(KeyUsageContextEstimatedPlain,
 		"Context: ≈%d%% (%s/%s)", "上下文：≈%d%%（%s/%s）", "Kontext: ≈%d%% (%s/%s)",
 		"コンテキスト: ≈%d%%（%s/%s）", "컨텍스트: ≈%d%% (%s/%s)", "Контекст: ≈%d%% (%s/%s)")
 	add(KeyUsageContextLowerBound,
-		"Context: %s ≥%d%% (at least %s/%s)", "上下文：%s ≥%d%%（至少 %s/%s）", "Kontext: %s ≥%d%% (mindestens %s/%s)",
-		"コンテキスト: %s ≥%d%%（少なくとも %s/%s）", "컨텍스트: %s ≥%d%% (최소 %s/%s)", "Контекст: %s ≥%d%% (не менее %s/%s)")
+		"Context: %s ≥%d%% (%s/%s)", "上下文：%s ≥%d%%（%s/%s）", "Kontext: %s ≥%d%% (%s/%s)",
+		"コンテキスト: %s ≥%d%%（%s/%s）", "컨텍스트: %s ≥%d%% (%s/%s)", "Контекст: %s ≥%d%% (%s/%s)")
 	add(KeyUsageContextLowerBoundCompact,
 		"Context: %s ≥%d%%", "上下文：%s ≥%d%%", "Kontext: %s ≥%d%%",
 		"コンテキスト: %s ≥%d%%", "컨텍스트: %s ≥%d%%", "Контекст: %s ≥%d%%")
 	add(KeyUsageContextLowerBoundPlain,
-		"Context: ≥%d%% (at least %s/%s)", "上下文：≥%d%%（至少 %s/%s）", "Kontext: ≥%d%% (mindestens %s/%s)",
-		"コンテキスト: ≥%d%%（少なくとも %s/%s）", "컨텍스트: ≥%d%% (최소 %s/%s)", "Контекст: ≥%d%% (не менее %s/%s)")
+		"Context: ≥%d%% (%s/%s)", "上下文：≥%d%%（%s/%s）", "Kontext: ≥%d%% (%s/%s)",
+		"コンテキスト: ≥%d%%（%s/%s）", "컨텍스트: ≥%d%% (%s/%s)", "Контекст: ≥%d%% (%s/%s)")
 	add(KeyUsageContextUnknown,
 		"Context: unknown", "上下文：未知", "Kontext: unbekannt", "コンテキスト: 不明", "컨텍스트: 알 수 없음", "Контекст: неизвестен")
 	add(KeyUsageLastRequest,
@@ -204,48 +230,6 @@ func init() {
 		"モデルの有効コンテキスト: %d%%（%s/%s）",
 		"모델 유효 컨텍스트: %d%% (%s/%s)",
 		"Эффективный контекст модели: %d%% (%s/%s)")
-	add(KeyUsageEffectiveEstimate,
-		"Estimated effective context: %s %d%% (%s/%s)",
-		"有效上下文估算：%s %d%%（%s/%s）",
-		"Geschätzter effektiver Kontext: %s %d%% (%s/%s)",
-		"有効コンテキストの推定: %s %d%%（%s/%s）",
-		"유효 컨텍스트 추정: %s %d%% (%s/%s)",
-		"Оценка эффективного контекста: %s %d%% (%s/%s)")
-	add(KeyUsageEffectiveEstimateCompact,
-		"Est. effective ctx: %s %d%%",
-		"有效上下文估算：%s %d%%",
-		"Gesch. effektiver Kontext: %s %d%%",
-		"有効コンテキスト推定: %s %d%%",
-		"유효 컨텍스트 추정: %s %d%%",
-		"Оценка контекста: %s %d%%")
-	add(KeyUsageEffectiveEstimatePlain,
-		"Estimated effective context: %d%% (%s/%s)",
-		"有效上下文估算：%d%%（%s/%s）",
-		"Geschätzter effektiver Kontext: %d%% (%s/%s)",
-		"有効コンテキストの推定: %d%%（%s/%s）",
-		"유효 컨텍스트 추정: %d%% (%s/%s)",
-		"Оценка эффективного контекста: %d%% (%s/%s)")
-	add(KeyUsageEffectiveLowerBound,
-		"Effective context lower bound: %s %d%% (at least %s/%s)",
-		"有效上下文下界：%s %d%%（至少 %s/%s）",
-		"Untergrenze des effektiven Kontexts: %s %d%% (mindestens %s/%s)",
-		"有効コンテキストの下限: %s %d%%（少なくとも %s/%s）",
-		"유효 컨텍스트 하한: %s %d%% (최소 %s/%s)",
-		"Нижняя граница эффективного контекста: %s %d%% (не менее %s/%s)")
-	add(KeyUsageEffectiveLowerBoundCompact,
-		"Effective ctx ≥ %s %d%%",
-		"有效上下文 ≥ %s %d%%",
-		"Effektiver Kontext ≥ %s %d%%",
-		"有効コンテキスト ≥ %s %d%%",
-		"유효 컨텍스트 ≥ %s %d%%",
-		"Эффективный контекст ≥ %s %d%%")
-	add(KeyUsageEffectiveLowerBoundPlain,
-		"Effective context lower bound: %d%% (at least %s/%s)",
-		"有效上下文下界：%d%%（至少 %s/%s）",
-		"Untergrenze des effektiven Kontexts: %d%% (mindestens %s/%s)",
-		"有効コンテキストの下限: %d%%（少なくとも %s/%s）",
-		"유효 컨텍스트 하한: %d%% (최소 %s/%s)",
-		"Нижняя граница эффективного контекста: %d%% (не менее %s/%s)")
 	add(KeyUsageEffectiveUnknown,
 		"Effective model context: unknown",
 		"模型有效上下文：未知",

@@ -6,23 +6,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agent-dance/luban/goal"
+	"github.com/agent-dance/luban/internal/runtime/goal"
 	"github.com/agent-dance/luban/types"
 )
 
 // UserContext is model-visible context injected as a leading meta user message.
-// It mirrors Claude Code's user context layer: CLAUDE-style instructions and
-// current-date context are not part of the base system prompt.
 type UserContext struct {
-	ClaudeMd    string
-	CurrentDate string
-	goalContext string
+	Instructions string
+	CurrentDate  string
+	goalContext  string
 }
 
 // UserContextBuilder constructs user context for a conversation.
 type UserContextBuilder struct {
-	ClaudeMd string
-	Date     time.Time
+	Instructions string
+	Date         time.Time
 }
 
 // Build returns a UserContext with stable key ordering for prompt injection.
@@ -32,14 +30,14 @@ func (b UserContextBuilder) Build() UserContext {
 		date = time.Now()
 	}
 	return UserContext{
-		ClaudeMd:    strings.TrimSpace(b.ClaudeMd),
-		CurrentDate: fmt.Sprintf("Today's date is %s.", date.Format("2006-01-02")),
+		Instructions: strings.TrimSpace(b.Instructions),
+		CurrentDate:  fmt.Sprintf("Today's date is %s.", date.Format("2006-01-02")),
 	}
 }
 
-// FromConfig seeds a user context builder from legacy prompt configuration.
+// FromConfig seeds a user context builder from prompt configuration.
 func (b UserContextBuilder) FromConfig(cfg Config) UserContextBuilder {
-	b.ClaudeMd = cfg.CustomInstructions
+	b.Instructions = cfg.CustomInstructions
 	return b
 }
 
@@ -90,8 +88,8 @@ func quoteGoalReason(reason string) string {
 // Entries returns context entries in original-equivalent injection order.
 func (c UserContext) Entries() []ContextEntry {
 	var entries []ContextEntry
-	if strings.TrimSpace(c.ClaudeMd) != "" {
-		entries = append(entries, ContextEntry{Key: "claudeMd", Value: strings.TrimSpace(c.ClaudeMd)})
+	if strings.TrimSpace(c.Instructions) != "" {
+		entries = append(entries, ContextEntry{Key: "instructions", Value: strings.TrimSpace(c.Instructions)})
 	}
 	if strings.TrimSpace(c.CurrentDate) != "" {
 		entries = append(entries, ContextEntry{Key: "currentDate", Value: strings.TrimSpace(c.CurrentDate)})
@@ -162,12 +160,6 @@ type SystemContextBuilder struct {
 // Build returns a SystemContext.
 func (b SystemContextBuilder) Build() SystemContext {
 	return SystemContext{GitStatus: strings.TrimSpace(b.GitStatus)}
-}
-
-// FromConfig seeds a system context builder from legacy prompt configuration.
-func (b SystemContextBuilder) FromConfig(cfg Config) SystemContextBuilder {
-	b.GitStatus = cfg.GitContext
-	return b
 }
 
 // Entries returns context entries in trailing system block order.

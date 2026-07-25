@@ -4,11 +4,13 @@ import (
 	"context"
 	"testing"
 
+	"github.com/agent-dance/luban/internal/contracts/toolmeta"
 	"github.com/agent-dance/luban/types"
 )
 
 type mockTool struct {
-	name string
+	name     string
+	metadata types.ToolMetadata
 }
 
 func (m *mockTool) Name() string        { return m.name }
@@ -19,20 +21,14 @@ func (m *mockTool) Schema() types.JSONSchema {
 func (m *mockTool) Execute(ctx context.Context, input map[string]any) (types.ToolResult, error) {
 	return types.ToolResult{Content: "executed " + m.name}, nil
 }
-
-type aliasedMockTool struct {
-	mockTool
-	aliases []string
-}
-
-func (m *aliasedMockTool) Aliases() []string { return m.aliases }
+func (m *mockTool) ToolMetadata(map[string]any) types.ToolMetadata { return m.metadata }
 
 type deferredMockTool struct {
 	mockTool
-	meta ToolDiscoveryMetadata
+	meta toolmeta.Metadata
 }
 
-func (m *deferredMockTool) ToolDiscoveryMetadata() ToolDiscoveryMetadata { return m.meta }
+func (m *deferredMockTool) ToolDiscoveryMetadata() toolmeta.Metadata { return m.meta }
 
 type barrierUnawareRuntimeProvider struct {
 	called bool
@@ -94,40 +90,15 @@ func TestGetUnknown(t *testing.T) {
 	}
 }
 
-func TestGetAlias(t *testing.T) {
+func TestUnregisterRemovesCanonicalTool(t *testing.T) {
 	reg := New()
-	reg.Register(&aliasedMockTool{
-		mockTool: mockTool{name: "Read"},
-		aliases:  []string{"FileRead"},
-	})
-
-	if got := reg.Get("Read"); got == nil || got.Name() != "Read" {
-		t.Fatalf("expected canonical lookup to return Read, got %#v", got)
-	}
-	if got := reg.Get("FileRead"); got == nil || got.Name() != "Read" {
-		t.Fatalf("expected alias lookup to resolve to Read, got %#v", got)
-	}
-
-	names := reg.Names()
-	if len(names) != 1 || names[0] != "Read" {
-		t.Fatalf("Names() = %v, want [Read]", names)
-	}
-
-	defs := reg.Definitions()
-	if len(defs) != 1 || defs[0].Name != "Read" {
-		t.Fatalf("Definitions() = %#v, want canonical Read only", defs)
-	}
-}
-
-func TestUnregisterRemovesCanonicalToolAndAliases(t *testing.T) {
-	reg := New()
-	reg.Register(&aliasedMockTool{mockTool: mockTool{name: "PowerShell"}, aliases: []string{"PS"}})
+	reg.Register(&mockTool{name: "PowerShell"})
 	reg.Register(&mockTool{name: "Read"})
-	if !reg.Unregister("PS") {
-		t.Fatal("Unregister(alias) = false, want true")
+	if !reg.Unregister("PowerShell") {
+		t.Fatal("Unregister(PowerShell) = false, want true")
 	}
-	if reg.Get("PowerShell") != nil || reg.Get("PS") != nil {
-		t.Fatalf("unregistered tool remains: canonical=%v alias=%v", reg.Get("PowerShell"), reg.Get("PS"))
+	if reg.Get("PowerShell") != nil {
+		t.Fatalf("unregistered tool remains: %v", reg.Get("PowerShell"))
 	}
 	if names := reg.Names(); len(names) != 1 || names[0] != "Read" {
 		t.Fatalf("registry order after unregister = %v", names)
@@ -191,7 +162,7 @@ func TestVisibleDefinitions_HidesDeferredToolsUntilLoaded(t *testing.T) {
 	reg.Register(&mockTool{name: "ToolSearch"})
 	reg.Register(&deferredMockTool{
 		mockTool: mockTool{name: "TaskCreate"},
-		meta:     ToolDiscoveryMetadata{ShouldDefer: true},
+		meta:     toolmeta.Metadata{ShouldDefer: true},
 	})
 
 	defs := reg.VisibleDefinitions(nil)

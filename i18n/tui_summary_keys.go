@@ -41,7 +41,7 @@ const (
 	KeyTUIOutcomeCancelled          Key = "tui.outcome.cancelled"
 	KeyTUIOutcomeTimedOut           Key = "tui.outcome.timed_out"
 	KeyTUIOutcomeConflict           Key = "tui.outcome.identity_conflict"
-	KeyTUIOutcomeOrphan             Key = "tui.outcome.unmatched_legacy_event"
+	KeyTUIOutcomeOrphan             Key = "tui.outcome.orphan"
 	KeyTUIOutcomeUnknown            Key = "tui.outcome.unknown"
 	KeyTUIConnectAPIKeyRequired     Key = "tui.connect.api_key_required"
 	KeyTUIConnectSavingCredentials  Key = "tui.connect.saving_credentials"
@@ -53,7 +53,7 @@ var tuiOutcomeKeys = map[string]Key{
 	"failed": KeyTUIOutcomeFailed, "partial": KeyTUIOutcomePartial,
 	"denied": KeyTUIOutcomeDenied, "cancelled": KeyTUIOutcomeCancelled,
 	"timed_out": KeyTUIOutcomeTimedOut, "identity_conflict": KeyTUIOutcomeConflict,
-	"unmatched_legacy_event": KeyTUIOutcomeOrphan, "unknown": KeyTUIOutcomeUnknown,
+	"orphan": KeyTUIOutcomeOrphan, "unknown": KeyTUIOutcomeUnknown,
 }
 
 func init() {
@@ -102,7 +102,7 @@ func init() {
 	add(KeyTUIOutcomeCancelled, "cancelled", "已取消", "abgebrochen", "キャンセル", "취소됨", "отменено")
 	add(KeyTUIOutcomeTimedOut, "timed out", "已超时", "Zeitüberschreitung", "タイムアウト", "시간 초과", "истекло время ожидания")
 	add(KeyTUIOutcomeConflict, "identity conflict", "身份冲突", "Identitätskonflikt", "識別情報の競合", "ID 충돌", "конфликт идентичности")
-	add(KeyTUIOutcomeOrphan, "unmatched legacy event", "无法匹配的旧版事件", "nicht zugeordnetes Legacy-Ereignis", "対応する記録がない旧形式イベント", "일치하지 않는 레거시 이벤트", "несопоставленное устаревшее событие")
+	add(KeyTUIOutcomeOrphan, "orphaned event", "孤立事件", "verwaistes Ereignis", "孤立したイベント", "고립된 이벤트", "изолированное событие")
 	add(KeyTUIOutcomeUnknown, "unknown", "未知", "unbekannt", "不明", "알 수 없음", "неизвестно")
 	add(KeyTUIConnectAPIKeyRequired, "Please enter an API key", "请输入 API key", "Bitte gib einen API-Schlüssel ein", "API キーを入力してください", "API 키를 입력하세요", "Введите API-ключ")
 	add(KeyTUIConnectSavingCredentials, "Saving credentials…", "正在保存凭据…", "Zugangsdaten werden gespeichert…", "認証情報を保存しています…", "자격 증명 저장 중…", "Сохранение учётных данных…")

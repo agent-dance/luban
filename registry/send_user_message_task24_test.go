@@ -1,11 +1,11 @@
 package registry_test
 
 import (
-	"strings"
 	"testing"
 
+	"github.com/agent-dance/luban/i18n"
+	toolinteraction "github.com/agent-dance/luban/internal/tools/interaction"
 	"github.com/agent-dance/luban/registry"
-	"github.com/agent-dance/luban/tools"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -14,12 +14,12 @@ type task24RuntimeProvider struct{ runtime types.ToolRuntimeContext }
 func (p task24RuntimeProvider) ToolRuntimeContext() types.ToolRuntimeContext { return p.runtime }
 
 func TestToolVisibilitySendUserMessageAlwaysLoaded(t *testing.T) {
-	tool := tools.NewSendUserMessageTool()
+	tool := toolinteraction.NewSendUserMessageTool(func() string { return t.TempDir() })
 	metadata := registry.DiscoveryMetadata(tool)
 	if !metadata.AlwaysLoad {
-		t.Fatal("SendUserMessage must remain always loaded when Brief is enabled")
+		t.Fatal("SendUserMessage must remain always loaded when enabled")
 	}
-	if !strings.Contains(metadata.SearchHint, "primary visible output channel") {
+	if metadata.SearchHint != i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyToolSendUserMessageDiscoveryHint) {
 		t.Fatalf("search hint = %q", metadata.SearchHint)
 	}
 	if registry.IsDeferredTool(tool) {
@@ -27,15 +27,21 @@ func TestToolVisibilitySendUserMessageAlwaysLoaded(t *testing.T) {
 	}
 }
 
-func TestToolVisibilitySendUserMessageEnvironmentOverridesRuntimeOptOut(t *testing.T) {
-	t.Setenv("CLAUDE_CODE_BRIEF", "true")
+func TestToolVisibilitySendUserMessageRequiresRuntimeFeature(t *testing.T) {
+	t.Setenv("LUBAN_CODE_SEND_USER_MESSAGE", "true")
 	reg := registry.New()
-	tool := tools.NewSendUserMessageTool()
+	tool := toolinteraction.NewSendUserMessageTool(func() string { return t.TempDir() })
 	reg.Register(tool)
 	reg.SetRuntimeContextProvider(task24RuntimeProvider{runtime: types.ToolRuntimeContext{
-		Features: map[string]bool{types.ToolFeatureBrief: false},
+		Features: map[string]bool{types.ToolFeatureSendUserMessage: false},
+	}})
+	if reg.IsToolEnabled(tool) {
+		t.Fatal("tool-local environment fallback must not override runtime feature opt-out")
+	}
+	reg.SetRuntimeContextProvider(task24RuntimeProvider{runtime: types.ToolRuntimeContext{
+		Features: map[string]bool{types.ToolFeatureSendUserMessage: true},
 	}})
 	if !reg.IsToolEnabled(tool) {
-		t.Fatal("CLAUDE_CODE_BRIEF must override a stale runtime feature opt-out")
+		t.Fatal("runtime feature opt-in must enable SendUserMessage")
 	}
 }

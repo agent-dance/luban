@@ -79,7 +79,7 @@ func TestClearConversationCreatesNewSessionAndPreservesOldAudit(t *testing.T) {
 			// The application callback owns the atomic switch. The command must not
 			// erase or overwrite the old session in order to implement clear.
 			activeSession = newID
-			ql.SetMessages(nil)
+			ql.SetMessagesPreservingToolUseLedger(nil)
 			return nil
 		},
 	}

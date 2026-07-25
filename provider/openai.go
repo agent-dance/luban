@@ -390,10 +390,7 @@ func NewOpenAI(cfg Config) *OpenAIProvider {
 	// providers still receive it as a best-effort fallback per the shared cache
 	// lineage policy, with a single guarded retry when the field is rejected.
 	cacheRouting := resolveOpenAIChatCacheRouting(cfg, dialect, baseURL)
-	cacheUserNamespace := ""
-	if cfg.UserScopedPromptCache {
-		cacheUserNamespace = promptCacheUserNamespace(cfg)
-	}
+	cacheUserNamespace := promptCacheUserNamespace(cfg)
 	cacheRoutingRejections := &cacheRoutingRejectionMemory{ttl: 30 * time.Minute}
 	var transport http.RoundTripper = http.DefaultTransport
 	if len(cfg.Headers) > 0 {
@@ -637,11 +634,6 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 	return ch, nil
 }
 
-// processStream reads chunks from the go-openai stream and emits types.StreamEvent values.
-func processStream(ctx context.Context, stream *openai.ChatCompletionStream, ch chan<- types.StreamEvent) {
-	processStreamWithDialect(ctx, stream, ch, DialectStandard)
-}
-
 // processStreamWithDialect reads chunks from the go-openai stream and emits types.StreamEvent values,
 // applying dialect-specific transformations (e.g. DeepSeek <think> tag parsing).
 func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletionStream, ch chan<- types.StreamEvent, dialect OpenAIDialect) {
@@ -657,8 +649,7 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 
 	// Emit the mandatory message_start event.
 	if !send(types.StreamEvent{
-		Type:    types.EventMessageStart,
-		Message: &types.APIMessage{Role: types.RoleAssistant},
+		Type: types.EventMessageStart,
 	}) {
 		return
 	}
@@ -676,7 +667,7 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 	nativeReasoning := false
 	thinkBlockIdx := -1 // block index for the current thinking block
 	nextBlockIdx := 0   // next available block index
-	textBlockIdx := 0   // block index of the currently open text block (DeepSeek)
+	textBlockIdx := 0   // block index of the currently open text block
 	carry := ""         // leftover from previous chunk that might contain a partial tag
 	systemFingerprint := ""
 
@@ -881,9 +872,11 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 			} else {
 				// Standard path: no dialect-specific processing
 				if !textStarted {
+					textBlockIdx = nextBlockIdx
+					nextBlockIdx++
 					if !send(types.StreamEvent{
 						Type:         types.EventContentBlockStart,
-						Index:        0,
+						Index:        textBlockIdx,
 						ContentBlock: &types.ContentDelta{Type: types.ContentTypeText},
 					}) {
 						return
@@ -892,7 +885,7 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 				}
 				if !send(types.StreamEvent{
 					Type:  types.EventContentBlockDelta,
-					Index: 0,
+					Index: textBlockIdx,
 					Delta: &types.ContentDelta{Type: "text_delta", Text: content},
 				}) {
 					return
@@ -923,19 +916,12 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 				// First delta for this tool call: close any open text block, then
 				// announce a new tool_use content block.
 				if textStarted {
-					tbIdx := 0
-					if dialect == DialectDeepSeek {
-						tbIdx = textBlockIdx
-					}
-					if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: tbIdx}) {
+					if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: textBlockIdx}) {
 						return
 					}
 					textStarted = false
 				}
 				blockIdx := nextBlockIdx
-				if dialect != DialectDeepSeek {
-					blockIdx = idx + 1 // legacy: offset by 1 for text block at 0
-				}
 				nextBlockIdx = blockIdx + 1
 				toolCalls[idx] = &toolAcc{id: tc.ID, name: tc.Function.Name, blockIdx: blockIdx}
 				if !send(types.StreamEvent{
@@ -983,11 +969,7 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 				inThinkTag = false
 			}
 			if textStarted {
-				tbIdx := 0
-				if dialect == DialectDeepSeek {
-					tbIdx = textBlockIdx
-				}
-				if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: tbIdx}) {
+				if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: textBlockIdx}) {
 					return
 				}
 			}
@@ -1061,16 +1043,6 @@ func splitAtPartialTag(content, tag string) (safe, remainder string) {
 }
 
 // ── Message conversion ────────────────────────────────────────────────────────
-
-// convertMessagesToOpenAIWithSystem converts our message types to go-openai format,
-// using the pre-resolved systemPrompt string (which has already merged System and SystemParts).
-func convertMessagesToOpenAIWithSystem(params Params, systemPrompt string) []openai.ChatCompletionMessage {
-	return convertMessagesToOpenAIWithSystemAndDeveloperProjection(
-		params,
-		systemPrompt,
-		openAIChatDeveloperNative,
-	)
-}
 
 // convertMessagesToOpenAIWithSystemAndDeveloperProjection preserves the
 // internal conversation order while projecting developer instructions to the
@@ -1208,15 +1180,6 @@ func normalizeEmptyOpenAIToolResults(messages []openai.ChatCompletionMessage) []
 		message.Content = fmt.Sprintf("(%s completed with no output)", toolName)
 	}
 	return messages
-}
-
-// convertMessagesToOpenAI converts our message types to go-openai format.
-// Handles system prompts, user messages, assistant messages with tool calls,
-// and tool-result messages.
-//
-// Deprecated: use convertMessagesToOpenAIWithSystem to pass an explicit resolved prompt.
-func convertMessagesToOpenAI(params Params) []openai.ChatCompletionMessage {
-	return convertMessagesToOpenAIWithSystem(params, params.JoinedSystemPrompt())
 }
 
 // convertUserMessage handles user messages, splitting tool results into separate
@@ -1367,12 +1330,6 @@ func convertAssistantMessage(msg types.Message) openai.ChatCompletionMessage {
 }
 
 // ── Tool conversion ───────────────────────────────────────────────────────────
-
-// convertToolsToOpenAI converts our ToolDefinition slice to go-openai Tool format.
-// Ensures every object schema has a "properties" field — OpenAI rejects schemas without it.
-func convertToolsToOpenAI(tools []types.ToolDefinition) []openai.Tool {
-	return convertToolsToOpenAIWithStrictMode(tools, true)
-}
 
 func convertToolsToOpenAIWithStrictMode(tools []types.ToolDefinition, allowStrict bool) []openai.Tool {
 	result := make([]openai.Tool, 0, len(tools))

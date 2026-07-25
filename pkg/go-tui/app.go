@@ -36,7 +36,7 @@ type App struct {
 	inputEvents            chan Event  // Terminal input events (key, mouse, resize)
 	updates                chan Event  // Background events (watchers, QueueUpdate, Suspend)
 	merged                 chan Event  // Fan-in of inputEvents + updates with input priority
-	watcherQueue           chan func() // Bridge channel for Watcher interface compatibility
+	watcherQueue           chan func() // Watcher callbacks bridged into UpdateEvents
 	stopCh                 chan struct{}
 	stopped                bool
 	stopping               atomic.Bool
@@ -58,11 +58,10 @@ type App struct {
 	mouseMu                sync.RWMutex
 	mouseCaptured          atomic.Bool
 	opened                 atomic.Bool
-	signalCleanup          func()              // Cleans up signal handlers (set by Open)
-	selfSuspended          atomic.Bool         // True during self-initiated suspend; prevents double resume from SIGCONT handler
-	selfResumeSignal       atomic.Bool         // Consumes the SIGCONT paired with a self-initiated suspend.
-	terminalSuspended      atomic.Bool         // True only after this app has torn terminal ownership down.
-	globalKeyHandler       func(KeyEvent) bool // Returns true if event consumed
+	signalCleanup          func()      // Cleans up signal handlers (set by Open)
+	selfSuspended          atomic.Bool // True during self-initiated suspend; prevents double resume from SIGCONT handler
+	selfResumeSignal       atomic.Bool // Consumes the SIGCONT paired with a self-initiated suspend.
+	terminalSuspended      atomic.Bool // True only after this app has torn terminal ownership down.
 
 	// Configuration (set via options)
 	inputLatency     time.Duration // Polling timeout for event reader (default: blocking, use positive duration for polling)
@@ -522,13 +521,6 @@ func mergeStopChannels(ch1, ch2 <-chan struct{}) <-chan struct{} {
 		close(merged)
 	}()
 	return merged
-}
-
-// SetGlobalKeyHandler sets a handler that runs before dispatching to focused element.
-// If the handler returns true, the event is consumed and not dispatched further.
-// Use this for app-level key bindings like quit.
-func (a *App) SetGlobalKeyHandler(fn func(KeyEvent) bool) {
-	a.globalKeyHandler = fn
 }
 
 // Root returns the current root element.

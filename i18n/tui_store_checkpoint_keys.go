@@ -7,6 +7,7 @@ const (
 	KeyTUIObservationRetainEvidenceIndex     Key = "tui.observation.retain_evidence_index"
 	KeyTUIActivityStateLifecycleIncompatible Key = "tui.activity.state_lifecycle_incompatible"
 	KeyTUIActivityStateOutcomeIncompatible   Key = "tui.activity.state_outcome_incompatible"
+	KeyTUIActivityRunAttemptInvalid          Key = "tui.activity.run_attempt_invalid"
 	KeyTUISessionViewMarshalTranscript       Key = "tui.session_view.marshal_transcript"
 	KeyTUISessionViewMarshalCheckpoint       Key = "tui.session_view.marshal_checkpoint"
 	KeyTUISessionViewPrepareCheckpointDir    Key = "tui.session_view.prepare_checkpoint_directory"
@@ -19,13 +20,13 @@ const (
 	KeyTUISessionViewOpenCheckpoint          Key = "tui.session_view.open_checkpoint"
 	KeyTUISessionViewDecodeCheckpointFile    Key = "tui.session_view.decode_checkpoint_file"
 	KeyTUISessionViewTrailingCheckpointData  Key = "tui.session_view.trailing_checkpoint_data"
-	KeyCommandSkillInvokerNotConfigured      Key = "command.skill_invoker.not_configured"
 )
 
 var tuiStoreCheckpointKeys = [...]Key{
 	KeyTUIObservationRetainEvidenceIndex,
 	KeyTUIActivityStateLifecycleIncompatible,
 	KeyTUIActivityStateOutcomeIncompatible,
+	KeyTUIActivityRunAttemptInvalid,
 	KeyTUISessionViewMarshalTranscript,
 	KeyTUISessionViewMarshalCheckpoint,
 	KeyTUISessionViewPrepareCheckpointDir,
@@ -38,7 +39,6 @@ var tuiStoreCheckpointKeys = [...]Key{
 	KeyTUISessionViewOpenCheckpoint,
 	KeyTUISessionViewDecodeCheckpointFile,
 	KeyTUISessionViewTrailingCheckpointData,
-	KeyCommandSkillInvokerNotConfigured,
 }
 
 func init() {
@@ -70,6 +70,13 @@ func init() {
 		"アクティビティの状態/結果が一致しません：状態 %q は結果 %s と互換性がありません",
 		"활동 상태/결과가 일치하지 않습니다: 상태 %q은(는) 결과 %s와 호환되지 않습니다",
 		"Состояние и результат действия не согласованы: состояние %q несовместимо с результатом %s")
+	add(KeyTUIActivityRunAttemptInvalid,
+		"invalid activity attempt for run %q: got %d; attempt must be positive",
+		"运行 %q 的活动尝试次数无效：当前为 %d；尝试次数必须为正数",
+		"Ungültiger Aktivitätsversuch für Lauf %q: %d erhalten; der Versuch muss positiv sein",
+		"実行 %q のアクティビティ試行回数が無効です：%d が指定されました。試行回数は正の値である必要があります",
+		"실행 %q의 활동 시도 횟수가 잘못되었습니다: %d이(가) 지정되었습니다. 시도 횟수는 양수여야 합니다",
+		"Недопустимый номер попытки действия для запуска %q: получено %d; номер попытки должен быть положительным")
 	add(KeyTUISessionViewMarshalTranscript,
 		"marshal session view transcript: %v",
 		"序列化 session 视图的对话记录失败：%v",
@@ -154,11 +161,4 @@ func init() {
 		"session ビューのチェックポイントに予期しない後続データがあります",
 		"session 보기 체크포인트에 예기치 않은 후행 데이터가 있습니다",
 		"Контрольная точка представления session содержит лишние данные в конце")
-	add(KeyCommandSkillInvokerNotConfigured,
-		"skill invoker is not configured",
-		"未配置 skill 调用器",
-		"Der Skill-Aufrufer ist nicht konfiguriert",
-		"skill 呼び出し機能が設定されていません",
-		"skill 호출기가 구성되지 않았습니다",
-		"Средство вызова skill не настроено")
 }

@@ -33,7 +33,6 @@ func TestNew_DefaultValues(t *testing.T) {
 
 func TestNew_WithOptions(t *testing.T) {
 	type tc struct {
-		name    string
 		opts    []Option
 		check   func(*Element) bool
 		message string
@@ -480,8 +479,8 @@ func TestElement_WithWrap(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			e := New(tt.opts...)
-			if e.wrapsText() != tt.wantWrap {
-				t.Errorf("wrapsText() = %v, want %v", e.wrapsText(), tt.wantWrap)
+			if e.Wrap() != tt.wantWrap {
+				t.Errorf("Wrap() = %v, want %v", e.Wrap(), tt.wantWrap)
 			}
 		})
 	}

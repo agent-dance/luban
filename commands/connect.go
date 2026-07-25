@@ -1,10 +1,8 @@
 package commands
 
 import (
-	"bufio"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -15,189 +13,17 @@ import (
 	"github.com/agent-dance/luban/provider"
 )
 
-// connectCmd implements the /connect command for unified auth management.
-//
-// Usage:
-//
-//	/connect                — list all providers with connection status
-//	/connect <provider>     — connect to a provider by entering an API key
-//	/connect <provider> --delete — remove stored credentials for a provider
-//	/connect <provider> --oauth  — connect using OAuth PKCE flow
-//	/connect <provider> --device — connect using Device Authorization Grant
-type connectCmd struct{}
-
-func (c *connectCmd) Name() string      { return "connect" }
-func (c *connectCmd) Aliases() []string { return nil }
-func (c *connectCmd) Description() string {
-	return builtinCommandDescription("connect")
-}
-
-func (c *connectCmd) Execute(ctx *Context, args string) error {
-	if ctx.ProviderRegistry == nil {
-		ctx.OnEvent(i18n.Text(ctx.Language, i18n.KeyConnectRegistryUnavailable))
-		return nil
-	}
-
-	args = strings.TrimSpace(args)
-	if args == "" {
-		return c.listProviders(ctx)
-	}
-
-	parts := strings.Fields(args)
-	providerName := provider.CanonicalProviderName(parts[0])
-
-	// Handle flags.
-	for _, flag := range parts[1:] {
-		switch flag {
-		case "--delete", "delete":
-			return c.deleteCredentials(ctx, providerName)
-		case "--oauth", "oauth":
-			return c.connectOAuth(ctx, providerName)
-		case "--device", "device":
-			return c.connectDevice(ctx, providerName)
-		}
-	}
-
-	return c.connectProvider(ctx, providerName)
-}
-
-// listProviders shows visible providers and their connection status.
-func (c *connectCmd) listProviders(ctx *Context) error {
-	all := ctx.ProviderRegistry.Visible()
-
-	var sb strings.Builder
-	sb.WriteString(i18n.Text(ctx.Language, i18n.KeyConnectListHeader))
-	sb.WriteString(strings.Repeat("─", 50) + "\n")
-
-	for _, info := range all {
-		status := "❌"
-		connection := ctx.ProviderRegistry.ConnectionState(info.Name).Localized(ctx.Language)
-		detail := connection.Detail
-		switch connection.State {
-		case provider.ConnectionStateConnected:
-			status = "✅"
-		case provider.ConnectionStateLocal:
-			status = "◌"
-		case provider.ConnectionStateUnknown:
-			status = "?"
-		}
-		displayName := info.DisplayName
-		if displayName == "" {
-			displayName = info.Name
-		}
-		sb.WriteString(fmt.Sprintf("  %s %-12s — %s\n", status, displayName, detail))
-	}
-
-	sb.WriteString(i18n.Text(ctx.Language, i18n.KeyConnectListHint))
-	ctx.OnEvent(sb.String())
-	return nil
-}
-
-// connectProvider prompts for an API key and saves it to the credential store.
-// For providers that support OAuth, suggests the --oauth flag.
-func (c *connectCmd) connectProvider(ctx *Context, name string) error {
-	name = provider.CanonicalProviderName(name)
-	info, ok := ctx.ProviderRegistry.Get(name)
-	if !ok {
-		return fmt.Errorf("%s", i18n.Format(ctx.Language, i18n.KeyConnectUnknownProviderAvailable,
-			name, strings.Join(ctx.ProviderRegistry.VisibleNames(), ", ")))
-	}
-
-	connection := ctx.ProviderRegistry.ConnectionState(info.Name).Localized(ctx.Language)
-	if connection.CanSelectModels {
-		displayName := info.DisplayName
-		if displayName == "" {
-			displayName = info.Name
-		}
-		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectReady, displayName, connection.Detail))
-		return nil
-	}
-
-	// Hint about OAuth if supported.
-	for _, method := range info.AuthMethods {
-		if method == "oauth_pkce" {
-			ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectOAuthHint, info.DisplayName, name))
-			break
-		}
-		if method == "device_code" {
-			ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectDeviceHint, info.DisplayName, name))
-			break
-		}
-	}
-
-	if !providerSupportsAuthMethod(info, "api_key") && info.EnvKey == "" {
-		if connection.SetupHint != "" {
-			ctx.OnEvent(connection.SetupHint + "\n")
-			return nil
-		}
-		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectInlineAPIKeyUnsupported, info.DisplayName))
-		return nil
-	}
-
-	if ctx.CredentialStore == nil {
-		return fmt.Errorf("%s", i18n.Text(ctx.Language, i18n.KeyConnectCredentialStoreCannotSave))
-	}
-
-	// Prompt for API key.
-	displayName := info.DisplayName
-	if displayName == "" {
-		displayName = info.Name
-	}
-	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectAPIKeyPrompt, displayName, info.EnvKey))
-
-	// Read the API key. In REPL mode the Confirm func is not ideal for
-	// free-text input; we read directly from stdin.
-	scanner := bufio.NewScanner(os.Stdin)
-	if !scanner.Scan() {
-		ctx.OnEvent(i18n.Text(ctx.Language, i18n.KeyConnectCancelled))
-		return nil
-	}
-	apiKey := strings.TrimSpace(scanner.Text())
-	if apiKey == "" {
-		ctx.OnEvent(i18n.Text(ctx.Language, i18n.KeyConnectNoAPIKey))
-		return nil
-	}
-
-	// Save to credential store.
-	entry := provider.CredentialEntry{
-		Provider:   info.Name,
-		AuthMethod: "api_key",
-		APIKey:     apiKey,
-		LastUsed:   time.Now(),
-	}
-	if err := ctx.CredentialStore.Set(entry); err != nil {
-		return connectWrappedError(ctx.Language, i18n.KeyConnectSaveCredentialsFailed, err)
-	}
-
-	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectCredentialsSaved, displayName))
-	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectModelHint, info.Name))
-	return nil
-}
-
-func providerSupportsAuthMethod(info provider.ProviderInfo, method string) bool {
-	for _, candidate := range info.AuthMethods {
-		if candidate == method {
-			return true
-		}
-	}
-	return false
-}
-
-// RunProviderOAuthConnect runs the same OAuth flow used by "/connect <provider> --oauth".
-// It is exported so non-command UI surfaces can reuse the command implementation
-// without parsing a synthetic slash command string.
+// RunProviderOAuthConnect runs an OAuth flow for a provider.
 func RunProviderOAuthConnect(ctx *Context, name string) error {
-	return (&connectCmd{}).connectOAuth(ctx, name)
+	return connectOAuth(ctx, name)
 }
 
-// RunProviderDeviceConnect runs the same device auth flow used by
-// "/connect <provider> --device".
+// RunProviderDeviceConnect runs a device authorization flow for a provider.
 func RunProviderDeviceConnect(ctx *Context, name string) error {
-	return (&connectCmd{}).connectDevice(ctx, name)
+	return connectDevice(ctx, name)
 }
 
-// connectOAuth runs an OAuth PKCE flow for a provider.
-func (c *connectCmd) connectOAuth(ctx *Context, name string) error {
+func connectOAuth(ctx *Context, name string) error {
 	name = provider.CanonicalProviderName(name)
 	info, ok := ctx.ProviderRegistry.Get(name)
 	if !ok {
@@ -221,7 +47,7 @@ func (c *connectCmd) connectOAuth(ctx *Context, name string) error {
 	}
 
 	if name == "openai" {
-		return c.connectOpenAIOAuth(ctx, info)
+		return connectOpenAIOAuth(ctx, info)
 	}
 
 	// Get the OAuth configuration for this provider.
@@ -305,7 +131,7 @@ func (c *connectCmd) connectOAuth(ctx *Context, name string) error {
 	}
 }
 
-func (c *connectCmd) connectOpenAIOAuth(ctx *Context, info provider.ProviderInfo) error {
+func connectOpenAIOAuth(ctx *Context, info provider.ProviderInfo) error {
 	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectOAuthStarting, info.DisplayName))
 	ctx.OnEvent(i18n.Text(ctx.Language, i18n.KeyConnectBrowserOpening))
 
@@ -371,7 +197,7 @@ func (c *connectCmd) connectOpenAIOAuth(ctx *Context, info provider.ProviderInfo
 }
 
 // connectDevice runs an RFC 8628 Device Authorization Grant flow.
-func (c *connectCmd) connectDevice(ctx *Context, name string) error {
+func connectDevice(ctx *Context, name string) error {
 	name = provider.CanonicalProviderName(name)
 	info, ok := ctx.ProviderRegistry.Get(name)
 	if !ok {
@@ -441,28 +267,6 @@ func (c *connectCmd) connectDevice(ctx *Context, name string) error {
 
 	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectDeviceSuccess, info.DisplayName))
 	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectModelHint, info.Name))
-	return nil
-}
-
-// deleteCredentials removes stored credentials for a provider.
-func (c *connectCmd) deleteCredentials(ctx *Context, name string) error {
-	name = provider.CanonicalProviderName(name)
-	_, ok := ctx.ProviderRegistry.Get(name)
-	if !ok {
-		return fmt.Errorf("%s", i18n.Format(ctx.Language, i18n.KeyConnectUnknownProvider, name))
-	}
-
-	if ctx.CredentialStore == nil {
-		return fmt.Errorf("%s", i18n.Text(ctx.Language, i18n.KeyConnectCredentialStoreUnavailable))
-	}
-
-	for _, lookupName := range provider.CredentialLookupNames(name) {
-		if err := ctx.CredentialStore.Delete(lookupName); err != nil {
-			return connectWrappedError(ctx.Language, i18n.KeyConnectDeleteCredentialsFailed, err)
-		}
-	}
-
-	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyConnectCredentialsRemoved, name))
 	return nil
 }
 

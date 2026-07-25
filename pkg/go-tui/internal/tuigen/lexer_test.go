@@ -1,9 +1,6 @@
 package tuigen
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestLexer_BasicTokens(t *testing.T) {
 	type tc struct {
@@ -154,55 +151,6 @@ func TestLexer_Keywords(t *testing.T) {
 	}
 }
 
-func TestLexer_AtControlFlowRejected(t *testing.T) {
-	type tc struct {
-		input    string
-		wantType TokenType // @for/@if/@else emit bare tokens; @let emits TokenError
-		wantErr  string
-	}
-
-	tests := map[string]tc{
-		"@for emits error and TokenFor": {
-			input:    "@for",
-			wantType: TokenFor,
-			wantErr:  "@for is no longer supported",
-		},
-		"@if emits error and TokenIf": {
-			input:    "@if",
-			wantType: TokenIf,
-			wantErr:  "@if is no longer supported",
-		},
-		"@else emits error and TokenElse": {
-			input:    "@else",
-			wantType: TokenElse,
-			wantErr:  "@else is no longer supported",
-		},
-		"@let emits error and TokenError": {
-			input:    "@let",
-			wantType: TokenError,
-			wantErr:  "@let is no longer supported",
-		},
-	}
-
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			l := NewLexer("test.gsx", tt.input)
-			tok := l.Next()
-			if tok.Type != tt.wantType {
-				t.Errorf("Type = %v, want %v", tok.Type, tt.wantType)
-			}
-			errList := l.Errors()
-			if !errList.HasErrors() {
-				t.Fatal("expected error, got none")
-			}
-			errs := errList.Errors()
-			if !strings.Contains(errs[0].Message, tt.wantErr) {
-				t.Errorf("error = %q, want containing %q", errs[0].Message, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestLexer_AtComponentCallStillWorks(t *testing.T) {
 	type tc struct {
 		input    string
@@ -238,12 +186,12 @@ func TestLexer_Identifiers(t *testing.T) {
 	}
 
 	tests := map[string]tc{
-		"simple":         {input: "foo", literal: "foo"},
-		"with numbers":   {input: "foo123", literal: "foo123"},
-		"with underscore": {input: "foo_bar", literal: "foo_bar"},
+		"simple":            {input: "foo", literal: "foo"},
+		"with numbers":      {input: "foo123", literal: "foo123"},
+		"with underscore":   {input: "foo_bar", literal: "foo_bar"},
 		"starts underscore": {input: "_foo", literal: "_foo"},
-		"uppercase":      {input: "FooBar", literal: "FooBar"},
-		"mixed":          {input: "myVar2_test", literal: "myVar2_test"},
+		"uppercase":         {input: "FooBar", literal: "FooBar"},
+		"mixed":             {input: "myVar2_test", literal: "myVar2_test"},
 	}
 
 	for name, tt := range tests {
@@ -268,15 +216,15 @@ func TestLexer_Numbers(t *testing.T) {
 	}
 
 	tests := map[string]tc{
-		"integer":       {input: "123", expectedType: TokenInt, literal: "123"},
-		"zero":          {input: "0", expectedType: TokenInt, literal: "0"},
-		"large":         {input: "999999", expectedType: TokenInt, literal: "999999"},
-		"float":         {input: "1.23", expectedType: TokenFloat, literal: "1.23"},
-		"float no int":  {input: ".5", expectedType: TokenFloat, literal: ".5"},
-		"exponent":      {input: "1e10", expectedType: TokenFloat, literal: "1e10"},
-		"exponent neg":  {input: "1e-5", expectedType: TokenFloat, literal: "1e-5"},
-		"exponent pos":  {input: "1E+5", expectedType: TokenFloat, literal: "1E+5"},
-		"full float":    {input: "3.14e-10", expectedType: TokenFloat, literal: "3.14e-10"},
+		"integer":      {input: "123", expectedType: TokenInt, literal: "123"},
+		"zero":         {input: "0", expectedType: TokenInt, literal: "0"},
+		"large":        {input: "999999", expectedType: TokenInt, literal: "999999"},
+		"float":        {input: "1.23", expectedType: TokenFloat, literal: "1.23"},
+		"float no int": {input: ".5", expectedType: TokenFloat, literal: ".5"},
+		"exponent":     {input: "1e10", expectedType: TokenFloat, literal: "1e10"},
+		"exponent neg": {input: "1e-5", expectedType: TokenFloat, literal: "1e-5"},
+		"exponent pos": {input: "1E+5", expectedType: TokenFloat, literal: "1E+5"},
+		"full float":   {input: "3.14e-10", expectedType: TokenFloat, literal: "3.14e-10"},
 	}
 
 	for name, tt := range tests {
@@ -524,4 +472,3 @@ func TestLexer_Underscore(t *testing.T) {
 		})
 	}
 }
-

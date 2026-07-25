@@ -7,9 +7,6 @@ import (
 func TestClassifyRisk(t *testing.T) {
 	t.Parallel()
 
-	exact := func(r RiskLevel) *RiskLevel { return &r }
-	_ = exact
-
 	tests := []struct {
 		name    string
 		tool    string
@@ -21,9 +18,7 @@ func TestClassifyRisk(t *testing.T) {
 		{"Read tool", "Read", map[string]any{"file_path": "foo.go"}, RiskLow, RiskLow},
 		{"Glob tool", "Glob", map[string]any{"pattern": "**/*.go"}, RiskLow, RiskLow},
 		{"Grep tool", "Grep", map[string]any{"pattern": "TODO"}, RiskLow, RiskLow},
-		{"LSP diagnostics", "lsp_diagnostics", nil, RiskLow, RiskLow},
-		{"LSP hover", "lsp_hover", nil, RiskLow, RiskLow},
-		{"LSP goto def", "lsp_goto_definition", nil, RiskLow, RiskLow},
+		{"LSP tool", "LSP", nil, RiskLow, RiskLow},
 
 		// ── Bash: Low ────────────────────────────────────────────────────────
 		{"ls", "Bash", map[string]any{"command": "ls -la"}, RiskLow, RiskLow},
@@ -74,10 +69,6 @@ func TestClassifyRisk(t *testing.T) {
 		{"find exec", "Bash", map[string]any{"command": "find . -exec rm {} \\;"}, RiskHigh, RiskHigh},
 		{"rg preprocessor", "Bash", map[string]any{"command": "rg --pre bash TODO ."}, RiskHigh, RiskHigh},
 
-		// ── Network tools ────────────────────────────────────────────────────
-		{"HttpGet", "HttpGet", map[string]any{"url": "https://example.com"}, RiskMedium, RiskMedium},
-		{"HttpPost", "HttpPost", map[string]any{"url": "https://example.com"}, RiskMedium, RiskMedium},
-		{"Ping", "Ping", map[string]any{"host": "example.com"}, RiskMedium, RiskMedium},
 		{"SendMessage teammate", "SendMessage", map[string]any{"to": "worker-1", "message": "hi"}, RiskLow, RiskLow},
 		{"SendMessage structured", "SendMessage", map[string]any{"to": "worker-1", "message": map[string]any{"type": "shutdown_request"}}, RiskMedium, RiskMedium},
 
@@ -92,41 +83,23 @@ func TestClassifyRisk(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got := ClassifyRisk(tc.tool, tc.input)
+			got := classifyRisk(tc.tool, tc.input)
 			if got < tc.wantMin || got > tc.wantMax {
 				if tc.wantMin == tc.wantMax {
-					t.Errorf("ClassifyRisk(%q, %v) = %v (%s), want %v (%s)",
-						tc.tool, tc.input, got, got.String(), tc.wantMin, tc.wantMin.String())
+					t.Errorf("classifyRisk(%q, %v) = %v, want %v",
+						tc.tool, tc.input, got, tc.wantMin)
 				} else {
-					t.Errorf("ClassifyRisk(%q, %v) = %v (%s), want [%v..%v]",
-						tc.tool, tc.input, got, got.String(), tc.wantMin, tc.wantMax)
+					t.Errorf("classifyRisk(%q, %v) = %v, want [%v..%v]",
+						tc.tool, tc.input, got, tc.wantMin, tc.wantMax)
 				}
 			}
 		})
 	}
 }
 
-func TestRiskLevel_String(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		r    RiskLevel
-		want string
-	}{
-		{RiskLow, "Low"},
-		{RiskMedium, "Medium"},
-		{RiskHigh, "High"},
-		{RiskLevel(99), "Unknown"},
-	}
-	for _, tc := range cases {
-		if got := tc.r.String(); got != tc.want {
-			t.Errorf("RiskLevel(%d).String() = %q, want %q", tc.r, got, tc.want)
-		}
-	}
-}
-
 func TestClassifyRisk_EmptyBash(t *testing.T) {
 	t.Parallel()
-	got := ClassifyRisk("Bash", map[string]any{"command": ""})
+	got := classifyRisk("Bash", map[string]any{"command": ""})
 	if got < RiskLow || got > RiskHigh {
 		t.Errorf("unexpected risk level for empty command: %v", got)
 	}
@@ -134,7 +107,7 @@ func TestClassifyRisk_EmptyBash(t *testing.T) {
 
 func TestClassifyRisk_UnknownTool(t *testing.T) {
 	t.Parallel()
-	got := ClassifyRisk("SomeFutureTool", map[string]any{})
+	got := classifyRisk("SomeFutureTool", map[string]any{})
 	if got < RiskMedium {
 		t.Errorf("unknown tool returned %v, want at least Medium", got)
 	}
@@ -202,8 +175,8 @@ func TestIsReadOnlyBashCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsReadOnlyBashCommand(tt.cmd); got != tt.want {
-				t.Fatalf("IsReadOnlyBashCommand(%q) = %v, want %v", tt.cmd, got, tt.want)
+			if got := isReadOnlyBashCommand(tt.cmd); got != tt.want {
+				t.Fatalf("isReadOnlyBashCommand(%q) = %v, want %v", tt.cmd, got, tt.want)
 			}
 		})
 	}
@@ -225,8 +198,8 @@ func TestIsReadOnlyPowerShellCommand(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsReadOnlyPowerShellCommand(tt.cmd); got != tt.want {
-				t.Fatalf("IsReadOnlyPowerShellCommand(%q) = %v, want %v", tt.cmd, got, tt.want)
+			if got := isReadOnlyPowerShellCommand(tt.cmd); got != tt.want {
+				t.Fatalf("isReadOnlyPowerShellCommand(%q) = %v, want %v", tt.cmd, got, tt.want)
 			}
 		})
 	}

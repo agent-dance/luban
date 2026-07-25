@@ -15,32 +15,24 @@ func TestHookTypeFromFilename(t *testing.T) {
 		expected HookType
 	}{
 		{"pre-tool-use-check", HookPreToolUse},
-		{"pretooluse-lint", HookPreToolUse},
 		{"post-tool-use-log", HookPostToolUse},
-		{"posttooluse-audit", HookPostToolUse},
 		{"session-start-init", HookSessionStart},
-		{"sessionstart-setup", HookSessionStart},
 		{"session-end-cleanup", HookSessionEnd},
-		{"sessionend-save", HookSessionEnd},
 		{"user-prompt-filter", HookUserPromptSubmit},
-		{"userprompt-validate", HookUserPromptSubmit},
 		// T5: stop, pre-query, post-query, notification prefixes
 		{"stop-on-finish", HookStop},
 		{"stop", HookStop},
+		{"stop-failure-audit", HookStopFailure},
 		{"pre-query-validate", HookPreQuery},
-		{"prequery-check", HookPreQuery},
 		{"post-query-log", HookPostQuery},
-		{"postquery-audit", HookPostQuery},
 		{"notification-alert", HookNotification},
 		{"notification", HookNotification},
 		{"pre-compact-prepare", HookPreCompact},
-		{"precompact-prepare", HookPreCompact},
 		{"post-compact-cleanup", HookPostCompact},
-		{"postcompact-cleanup", HookPostCompact},
 		{"subagent-start-reviewer", HookSubagentStart},
-		{"subagentstart-reviewer", HookSubagentStart},
 		{"subagent-stop-reviewer", HookSubagentStop},
-		{"subagentstop-reviewer", HookSubagentStop},
+		{"pretooluse-lint", ""},
+		{"taskcreated-worker", ""},
 		{"random-script", ""},
 		{"", ""},
 	}
@@ -219,11 +211,8 @@ func TestCommandHookPreservesContextErrorWhenProcessHasNoStderr(t *testing.T) {
 	if !strings.Contains(output.ExecutionError, context.Canceled.Error()) {
 		t.Fatalf("execution error = %q, want context cancellation evidence", output.ExecutionError)
 	}
-	if !strings.Contains(output.Stderr, context.Canceled.Error()) {
-		t.Fatalf("stderr = %q, want context cancellation evidence", output.Stderr)
-	}
-	if output.StderrBytes != int64(len(output.Stderr)) {
-		t.Fatalf("stderr byte count = %d, want %d", output.StderrBytes, len(output.Stderr))
+	if output.Stderr != "" || output.StderrBytes != 0 {
+		t.Fatalf("raw stderr = %q (%d bytes), want empty", output.Stderr, output.StderrBytes)
 	}
 }
 
@@ -248,7 +237,13 @@ func TestCommandHookReportsRawOutputAndTruncation(t *testing.T) {
 func TestLoadFromSettingsValid(t *testing.T) {
 	dir := t.TempDir()
 	settingsPath := filepath.Join(dir, "settings.json")
-	os.WriteFile(settingsPath, []byte(`{"hooks":[{"type":"PreToolUse","command":"echo hi","timeout":5}]}`), 0644)
+	os.WriteFile(settingsPath, []byte(`{
+		"hooks": {
+			"PreToolUse": [{
+				"hooks": [{"type": "command", "command": "echo hi", "timeout": 5}]
+			}]
+		}
+	}`), 0644)
 
 	runner, err := LoadFromSettings(settingsPath)
 	if err != nil {
@@ -434,8 +429,11 @@ func TestExecuteHookUnknownKindReturnsError(t *testing.T) {
 	if output.ExitCode != -1 {
 		t.Errorf("expected ExitCode=-1, got %d", output.ExitCode)
 	}
-	if output.Stderr == "" {
-		t.Error("expected non-empty Stderr describing unknown kind")
+	if output.ExecutionError == "" {
+		t.Error("expected non-empty ExecutionError describing unknown kind")
+	}
+	if output.Stderr != "" {
+		t.Errorf("unknown kind synthesized raw stderr %q", output.Stderr)
 	}
 }
 

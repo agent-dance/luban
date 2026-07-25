@@ -12,7 +12,7 @@ func TestRuleBasedFallthroughToAsk(t *testing.T) {
 	}
 	c := NewChecker(ModeRuleBased, rules)
 	// No promptFunc → fallthrough to askOrCache → DecisionDeny
-	if d := c.Check("Bash", map[string]any{"command": "mkdir build"}); d != DecisionDeny {
+	if d := checkDecision(c, "Bash", map[string]any{"command": "mkdir build"}); d != DecisionDeny {
 		t.Errorf("expected Deny for unmatched tool, got %d", d)
 	}
 }
@@ -21,13 +21,13 @@ func TestDenyDecisionNotCached(t *testing.T) {
 	installNoopSafetyChecks(t)
 	callCount := 0
 	c := NewChecker(ModeAskAlways, nil)
-	c.SetPromptFunc(func(toolName string, input map[string]any) Decision {
+	setStructuredPromptDecision(c, func(toolName string, input map[string]any) Decision {
 		callCount++
 		return DecisionDeny
 	})
 
-	c.Check("Bash", map[string]any{"command": "mkdir build"})
-	c.Check("Bash", map[string]any{"command": "mkdir build"})
+	checkDecision(c, "Bash", map[string]any{"command": "mkdir build"})
+	checkDecision(c, "Bash", map[string]any{"command": "mkdir build"})
 
 	if callCount != 2 {
 		t.Errorf("expected 2 calls (deny not cached), got %d", callCount)
@@ -38,22 +38,22 @@ func TestCacheKeyFilePathExact(t *testing.T) {
 	installNoopSafetyChecks(t)
 	callCount := 0
 	c := NewChecker(ModeAskAlways, nil)
-	c.SetPromptFunc(func(toolName string, input map[string]any) Decision {
+	setStructuredPromptDecision(c, func(toolName string, input map[string]any) Decision {
 		callCount++
 		return DecisionAllow
 	})
 
 	// Different files in the same directory must each be prompted independently
 	// (no directory-level caching — prevents permission bypass).
-	c.Check("Write", map[string]any{"file_path": "/tmp/a.txt"})
-	c.Check("Write", map[string]any{"file_path": "/tmp/b.txt"})
+	checkDecision(c, "Write", map[string]any{"file_path": "/tmp/a.txt"})
+	checkDecision(c, "Write", map[string]any{"file_path": "/tmp/b.txt"})
 
 	if callCount != 2 {
 		t.Errorf("expected 2 calls (each file prompted separately), got %d", callCount)
 	}
 
 	// Same file should be cached after first approval.
-	c.Check("Write", map[string]any{"file_path": "/tmp/a.txt"})
+	checkDecision(c, "Write", map[string]any{"file_path": "/tmp/a.txt"})
 	if callCount != 2 {
 		t.Errorf("expected 2 calls (same file cached), got %d", callCount)
 	}
@@ -63,19 +63,19 @@ func TestCacheKeyUnknownToolIncludesInput(t *testing.T) {
 	installNoopSafetyChecks(t)
 	callCount := 0
 	c := NewChecker(ModeAskAlways, nil)
-	c.SetPromptFunc(func(toolName string, input map[string]any) Decision {
+	setStructuredPromptDecision(c, func(toolName string, input map[string]any) Decision {
 		callCount++
 		return DecisionAllow
 	})
 
-	c.Check("CustomTool", map[string]any{"x": "1"})
-	c.Check("CustomTool", map[string]any{"y": "2"})
+	checkDecision(c, "CustomTool", map[string]any{"x": "1"})
+	checkDecision(c, "CustomTool", map[string]any{"y": "2"})
 
 	if callCount != 2 {
 		t.Errorf("expected 2 calls (different inputs require separate approval), got %d", callCount)
 	}
 
-	c.Check("CustomTool", map[string]any{"x": "1"})
+	checkDecision(c, "CustomTool", map[string]any{"x": "1"})
 	if callCount != 2 {
 		t.Errorf("expected 2 calls (identical input cached), got %d", callCount)
 	}
@@ -84,7 +84,7 @@ func TestCacheKeyUnknownToolIncludesInput(t *testing.T) {
 func TestPermissionsConcurrentCheck(t *testing.T) {
 	installNoopSafetyChecks(t)
 	c := NewChecker(ModeAskAlways, nil)
-	c.SetPromptFunc(func(toolName string, input map[string]any) Decision {
+	setStructuredPromptDecision(c, func(toolName string, input map[string]any) Decision {
 		return DecisionAllow
 	})
 
@@ -93,7 +93,7 @@ func TestPermissionsConcurrentCheck(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			c.Check("Bash", map[string]any{"command": "ls"})
+			checkDecision(c, "Bash", map[string]any{"command": "ls"})
 		}()
 	}
 	wg.Wait()

@@ -32,8 +32,7 @@ type ProviderInfo struct {
 	// Values: "api_key", "oauth_pkce", "device_code", "aws_credentials", "gcp_adc"
 	AuthMethods []string
 
-	// Hidden marks compatibility/internal aliases that remain resolvable but
-	// are not shown in user-facing provider pickers.
+	// Hidden marks internal providers omitted from user-facing pickers.
 	Hidden bool
 
 	// Popularity is a sorting weight (higher = more popular, shown first).
@@ -46,36 +45,36 @@ type ProviderInfo struct {
 	// Empty means the provider does not have a well-known default or uses
 	// the provider-specific SDK default.
 	DefaultBaseURL string
+
+	// APIStyles lists the wire protocols offered by a compatible aggregate
+	// provider. Empty means the provider uses its native, fixed protocol.
+	APIStyles []APIStyle
+
+	// DefaultBaseURLs maps each compatible protocol to its default endpoint.
+	// It is populated for named aggregate providers and empty for user-defined
+	// gateways, which must supply their own Base URL.
+	DefaultBaseURLs map[APIStyle]string
+
+	// DynamicModels marks providers whose model catalog is discovered from the
+	// configured endpoint after authentication.
+	DynamicModels bool
+
+	// UserDefined marks providers created through the "other gateway" flow.
+	UserDefined bool
 }
 
-// CanonicalProviderName maps legacy/internal provider aliases to the provider
-// identity users should see in settings, commands, and picker labels.
+// CanonicalProviderName normalizes a provider identifier.
 func CanonicalProviderName(name string) string {
-	normalized := strings.ToLower(strings.TrimSpace(name))
-	switch normalized {
-	case "openai-responses":
-		return "openai"
-	case "oauth":
-		return "anthropic"
-	default:
-		return normalized
-	}
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
-// CredentialLookupNames returns credential-store keys that should be consulted
-// for a provider, with the canonical key first and legacy aliases afterward.
+// CredentialLookupNames returns the canonical credential-store key.
 func CredentialLookupNames(providerName string) []string {
 	canonical := CanonicalProviderName(providerName)
-	switch canonical {
-	case "":
+	if canonical == "" {
 		return nil
-	case "openai":
-		return []string{"openai", "openai-responses"}
-	case "anthropic":
-		return []string{"anthropic", "oauth"}
-	default:
-		return []string{canonical}
 	}
+	return []string{canonical}
 }
 
 // ProviderFactory creates a Provider from a Config and optional model override.
@@ -103,7 +102,7 @@ type ProviderRegistry struct {
 	providers map[string]ProviderInfo
 	factories map[string]ProviderFactory
 	catalog   *ModelCatalog
-	credStore *CredentialStore // optional; checked by Available()/hasCredentials()
+	credStore *CredentialStore // optional; checked by Available()
 	oauthHook OAuthHook        // optional; used by OAuth provider factory
 }
 
@@ -189,7 +188,7 @@ func (r *ProviderRegistry) Available() []ProviderInfo {
 	all := r.Visible()
 	var result []ProviderInfo
 	for _, info := range all {
-		if r.hasCredentials(info) {
+		if r.isModelSelectable(info) {
 			result = append(result, info)
 		}
 	}
@@ -197,11 +196,64 @@ func (r *ProviderRegistry) Available() []ProviderInfo {
 }
 
 // SetCredentialStore attaches a CredentialStore to the registry.
-// When set, Available() and hasCredentials() also check the store.
+// When set, Available() also checks the store.
 func (r *ProviderRegistry) SetCredentialStore(cs *CredentialStore) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.credStore = cs
+	r.mu.Unlock()
+
+	if cs == nil {
+		return
+	}
+	for _, entry := range cs.All() {
+		if entry.UserDefined {
+			r.RegisterCompatibleProvider(CompatibleProviderDefinition{
+				Name:        entry.Provider,
+				DisplayName: CompatibleProviderDisplayName(entry.DisplayName, entry.BaseURL),
+				BaseURLs:    map[APIStyle]string{},
+				UserDefined: true,
+			})
+		}
+		if len(entry.Models) > 0 {
+			r.ReplaceProviderModels(entry.Provider, entry.Models)
+		}
+	}
+}
+
+// ReplaceProviderModels refreshes the shared catalog and the corresponding
+// ProviderInfo snapshot as one registry-level operation.
+func (r *ProviderRegistry) ReplaceProviderModels(providerName string, models []ModelInfo) {
+	providerName = CanonicalProviderName(providerName)
+	r.catalog.ReplaceProviderModels(providerName, models)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	info, ok := r.providers[providerName]
+	if !ok {
+		return
+	}
+	info.Models = r.catalog.ModelIDsByProvider(providerName)
+	info.DefaultModel = r.catalog.DefaultForProvider(providerName)
+	if info.DefaultModel == "" && len(info.Models) > 0 {
+		info.DefaultModel = info.Models[0]
+	}
+	r.providers[providerName] = info
+}
+
+// UnregisterUserProvider removes a user-created provider and its discovered
+// models. Built-in providers cannot be removed through this method.
+func (r *ProviderRegistry) UnregisterUserProvider(name string) bool {
+	name = CanonicalProviderName(name)
+	r.mu.Lock()
+	info, ok := r.providers[name]
+	if !ok || !info.UserDefined {
+		r.mu.Unlock()
+		return false
+	}
+	delete(r.providers, name)
+	delete(r.factories, name)
+	r.mu.Unlock()
+	r.catalog.RemoveProvider(name)
+	return true
 }
 
 // CredentialStore returns the attached CredentialStore, or nil.
@@ -226,9 +278,7 @@ func (r *ProviderRegistry) OAuthHookRef() OAuthHook {
 	return r.oauthHook
 }
 
-// hasCredentials is the compatibility gate behind Available().
-// It now means "model-selectable", not "has an API key".
-func (r *ProviderRegistry) hasCredentials(info ProviderInfo) bool {
+func (r *ProviderRegistry) isModelSelectable(info ProviderInfo) bool {
 	return r.connectionStateForInfo(info).CanSelectModels
 }
 

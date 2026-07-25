@@ -73,20 +73,23 @@ func TestCacheRoutingPreferenceControlsOpenAICompatibleWireFields(t *testing.T) 
 		{name: "on DeepSeek", provider: "deepseek", preference: CacheRoutingOn, wantField: "user_id"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			request := captureOpenAICompatibleCacheRequest(t, Config{
+			config := Config{
 				ProviderName:           test.provider,
 				Model:                  "cache-test-model",
 				CacheRoutingPreference: test.preference,
-			}, Params{
+			}
+			params := Params{
 				Messages:       []types.Message{types.UserMessage("hello")},
 				PromptCacheKey: "cache-lineage",
 				UsePromptCache: true,
-			})
+			}
+			request := captureOpenAICompatibleCacheRequest(t, config, params)
 			for _, field := range []string{"prompt_cache_key", "user_id"} {
 				got, found := request[field]
 				if field == test.wantField {
-					if !found || got != "cache-lineage" {
-						t.Fatalf("%s = %#v, found=%v", field, got, found)
+					want := expectedOpenAICompatibleCacheRoutingKey(config, params)
+					if !found || got != want {
+						t.Fatalf("%s = %#v, found=%v, want %q", field, got, found, want)
 					}
 				} else if found {
 					t.Fatalf("unexpected %s = %#v", field, got)
@@ -98,6 +101,18 @@ func TestCacheRoutingPreferenceControlsOpenAICompatibleWireFields(t *testing.T) 
 
 func TestCacheRoutingOnDoesNotSilentlyDropRejectedBestEffortKey(t *testing.T) {
 	attempts := 0
+	config := Config{
+		ProviderName:           "groq",
+		APIKey:                 "test-key",
+		Model:                  "cache-test-model",
+		CacheRoutingPreference: CacheRoutingOn,
+	}
+	params := Params{
+		Messages:       []types.Message{types.UserMessage("hello")},
+		PromptCacheKey: "forced-lineage",
+		UsePromptCache: true,
+	}
+	wantCacheKey := expectedOpenAICompatibleCacheRoutingKey(config, params)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		attempts++
 		body, _ := io.ReadAll(request.Body)
@@ -105,7 +120,7 @@ func TestCacheRoutingOnDoesNotSilentlyDropRejectedBestEffortKey(t *testing.T) {
 		if err := json.Unmarshal(body, &payload); err != nil {
 			t.Errorf("decode request: %v", err)
 		}
-		if got := payload["prompt_cache_key"]; got != "forced-lineage" {
+		if got := payload["prompt_cache_key"]; got != wantCacheKey {
 			t.Errorf("prompt_cache_key = %#v", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -114,18 +129,9 @@ func TestCacheRoutingOnDoesNotSilentlyDropRejectedBestEffortKey(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAI(Config{
-		ProviderName:           "groq",
-		APIKey:                 "test-key",
-		BaseURL:                server.URL,
-		Model:                  "cache-test-model",
-		CacheRoutingPreference: CacheRoutingOn,
-	})
-	_, err := client.CreateStream(context.Background(), Params{
-		Messages:       []types.Message{types.UserMessage("hello")},
-		PromptCacheKey: "forced-lineage",
-		UsePromptCache: true,
-	})
+	config.BaseURL = server.URL
+	client := NewOpenAI(config)
+	_, err := client.CreateStream(context.Background(), params)
 	if err == nil {
 		t.Fatal("forced cache routing unexpectedly ignored rejection")
 	}
@@ -136,6 +142,13 @@ func TestCacheRoutingOnDoesNotSilentlyDropRejectedBestEffortKey(t *testing.T) {
 
 func TestBestEffortDoesNotLearnPromptCacheKeyValueValidationAsUnsupported(t *testing.T) {
 	attempts := 0
+	config := Config{ProviderName: "groq", APIKey: "test-key", Model: "cache-test-model"}
+	params := Params{
+		Messages:       []types.Message{types.UserMessage("hello")},
+		PromptCacheKey: "invalid-value",
+		UsePromptCache: true,
+	}
+	wantCacheKey := expectedOpenAICompatibleCacheRoutingKey(config, params)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		attempts++
 		body, _ := io.ReadAll(request.Body)
@@ -143,7 +156,7 @@ func TestBestEffortDoesNotLearnPromptCacheKeyValueValidationAsUnsupported(t *tes
 		if err := json.Unmarshal(body, &payload); err != nil {
 			t.Errorf("decode request: %v", err)
 		}
-		if got := payload["prompt_cache_key"]; got != "invalid-value" {
+		if got := payload["prompt_cache_key"]; got != wantCacheKey {
 			t.Errorf("prompt_cache_key = %#v", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -152,12 +165,8 @@ func TestBestEffortDoesNotLearnPromptCacheKeyValueValidationAsUnsupported(t *tes
 	}))
 	defer server.Close()
 
-	client := NewOpenAI(Config{ProviderName: "groq", APIKey: "test-key", BaseURL: server.URL, Model: "cache-test-model"})
-	params := Params{
-		Messages:       []types.Message{types.UserMessage("hello")},
-		PromptCacheKey: "invalid-value",
-		UsePromptCache: true,
-	}
+	config.BaseURL = server.URL
+	client := NewOpenAI(config)
 	for index := 0; index < 2; index++ {
 		if _, err := client.CreateStream(context.Background(), params); err == nil {
 			t.Fatalf("CreateStream %d unexpectedly succeeded", index+1)
@@ -294,7 +303,11 @@ func TestBestEffortRejectionMemoryIsIsolatedByModel(t *testing.T) {
 	if _, found := requests[2]["prompt_cache_key"]; found {
 		t.Fatalf("remembered model-a request retained prompt_cache_key: %#v", requests[2])
 	}
-	if got := requests[3]["prompt_cache_key"]; got != "cache-lineage" {
-		t.Fatalf("model-b prompt_cache_key = %#v, want isolated probe", got)
+	wantModelB := expectedOpenAICompatibleCacheRoutingKey(
+		Config{ProviderName: "groq", APIKey: "test-key", Model: "model-a"},
+		Params{Model: "model-b", PromptCacheKey: "cache-lineage"},
+	)
+	if got := requests[3]["prompt_cache_key"]; got != wantModelB {
+		t.Fatalf("model-b prompt_cache_key = %#v, want isolated probe %q", got, wantModelB)
 	}
 }

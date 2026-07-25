@@ -27,6 +27,7 @@ func TestTUIStoreCheckpointEnglishContractsAndRawValues(t *testing.T) {
 		{KeyTUIObservationRetainEvidenceIndex, []any{cause}, "retain observation evidence index: raw-os-json-cause"},
 		{KeyTUIActivityStateLifecycleIncompatible, []any{"running", "completed"}, `activity state/outcome mismatch: state "running" is incompatible with lifecycle completed`},
 		{KeyTUIActivityStateOutcomeIncompatible, []any{"running", "failed"}, `activity state/outcome mismatch: state "running" is incompatible with outcome failed`},
+		{KeyTUIActivityRunAttemptInvalid, []any{"run-17", 0}, `invalid activity attempt for run "run-17": got 0; attempt must be positive`},
 		{KeyTUISessionViewMarshalTranscript, []any{cause}, "marshal session view transcript: raw-os-json-cause"},
 		{KeyTUISessionViewMarshalCheckpoint, []any{cause}, "marshal session view checkpoint: raw-os-json-cause"},
 		{KeyTUISessionViewPrepareCheckpointDir, []any{cause}, "prepare session view checkpoint directory: raw-os-json-cause"},
@@ -39,7 +40,6 @@ func TestTUIStoreCheckpointEnglishContractsAndRawValues(t *testing.T) {
 		{KeyTUISessionViewOpenCheckpoint, []any{cause}, "open session view checkpoint: raw-os-json-cause"},
 		{KeyTUISessionViewDecodeCheckpointFile, []any{cause}, "decode session view checkpoint: raw-os-json-cause"},
 		{KeyTUISessionViewTrailingCheckpointData, nil, "decode session view checkpoint trailing data"},
-		{KeyCommandSkillInvokerNotConfigured, nil, "skill invoker is not configured"},
 	}
 	for _, check := range checks {
 		if got := Format(LangEN, check.key, check.args...); got != check.want {

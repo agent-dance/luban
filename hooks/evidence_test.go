@@ -44,28 +44,28 @@ func TestHTTPHookTruncationKeepsCapturedPrefixAndMetadata(t *testing.T) {
 	if output.Stdout != strings.Repeat("z", 16) || !output.StdoutTruncated || output.StdoutBytes != 17 {
 		t.Fatalf("truncated HTTP evidence = stdout %q bytes %d truncated %t", output.Stdout, output.StdoutBytes, output.StdoutTruncated)
 	}
-	if !strings.Contains(output.Stderr, "truncated") {
+	if !strings.Contains(output.ExecutionError, "truncated") {
 		t.Fatalf("truncation error missing from evidence: %+v", output)
 	}
 }
 
-func TestHTTPHookValidationFailureCountsStderrEvidence(t *testing.T) {
+func TestHTTPHookValidationFailurePreservesExecutionError(t *testing.T) {
 	output := executeHTTPHook(context.Background(), Hook{Kind: HookKindHTTP, URL: "file:///tmp/hook"}, HookInput{})
-	if output.Stderr == "" {
-		t.Fatal("validation failure did not preserve stderr evidence")
+	if output.ExecutionError == "" {
+		t.Fatal("validation failure did not preserve execution error")
 	}
-	if output.StderrBytes != int64(len(output.Stderr)) {
-		t.Fatalf("stderr byte count = %d, want %d", output.StderrBytes, len(output.Stderr))
+	if output.Stderr != "" || output.StderrBytes != 0 {
+		t.Fatalf("validation failure synthesized raw stderr: %q (%d bytes)", output.Stderr, output.StderrBytes)
 	}
 }
 
-func TestUnknownHookKindCountsStderrEvidence(t *testing.T) {
+func TestUnknownHookKindPreservesExecutionError(t *testing.T) {
 	output := NewRunner([]Hook{{Type: HookPreToolUse, Kind: HookKind("future")}}).
 		Run(context.Background(), HookPreToolUse, HookInput{})[0]
-	if output.Stderr == "" {
-		t.Fatal("unknown kind did not preserve stderr evidence")
+	if output.ExecutionError == "" {
+		t.Fatal("unknown kind did not preserve execution error")
 	}
-	if output.StderrBytes != int64(len(output.Stderr)) {
-		t.Fatalf("stderr byte count = %d, want %d", output.StderrBytes, len(output.Stderr))
+	if output.Stderr != "" || output.StderrBytes != 0 {
+		t.Fatalf("unknown kind synthesized raw stderr: %q (%d bytes)", output.Stderr, output.StderrBytes)
 	}
 }

@@ -555,7 +555,6 @@ Here's how events flow through the system.
 3. **Preemptive pass**: bindings marked as preemptive (e.g., modal catch-all when `trapFocus` is true) fire first. If any stops the event, normal dispatch is skipped entirely.
 4. Bindings are checked in order. The first match fires. If `Stop` is true, dispatch ends.
 5. If no binding stopped the event, it falls through to `App.Dispatch()` and the focus manager for element-level handlers.
-6. In legacy mode (no components), `WithGlobalKeyHandler` runs first. If it returns `true`, the event is consumed.
 
 **Mouse events:**
 
@@ -568,39 +567,6 @@ Here's how events flow through the system.
 
 1. The terminal reports a size change.
 2. `App.Dispatch()` handles it directly: resizes the buffer, marks the root dirty, and schedules a full redraw.
-
-## Global Key Handler
-
-For apps not using the component model, you can set a global key handler that runs before focus-based dispatch.
-
-### WithGlobalKeyHandler (AppOption)
-
-```go
-func WithGlobalKeyHandler(fn func(KeyEvent) bool) AppOption
-```
-
-Sets a handler that runs before key events reach the focus manager. Return `true` to consume the event.
-
-```go
-app, err := tui.NewApp(
-    tui.WithRootComponent(MyApp()),
-    tui.WithGlobalKeyHandler(func(ke tui.KeyEvent) bool {
-        if ke.Key == tui.KeyCtrlC {
-            // handle Ctrl+C globally
-            return true
-        }
-        return false
-    }),
-)
-```
-
-### SetGlobalKeyHandler
-
-```go
-func (a *App) SetGlobalKeyHandler(fn func(KeyEvent) bool)
-```
-
-Sets or replaces the global key handler at runtime. Pass `nil` to remove it.
 
 ## See Also
 

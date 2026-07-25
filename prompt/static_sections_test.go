@@ -16,7 +16,7 @@ func TestStaticPromptSectionOrder(t *testing.T) {
 		&mockTool{name: "Write", desc: "Write files"},
 		&mockTool{name: "Glob", desc: "Find files"},
 		&mockTool{name: "Grep", desc: "Search files"},
-		&mockTool{name: "TodoWrite", desc: "Track todos"},
+		&mockTool{name: "TaskCreate", desc: "Create tasks"},
 	}, Config{CWD: "/repo"})
 
 	wantOrder := []string{
@@ -43,7 +43,7 @@ func TestUsingToolsSectionDependsOnEnabledTools(t *testing.T) {
 		notWant []string
 	}{
 		{
-			name: "read edit write search and todo guidance",
+			name: "read edit write search and task guidance",
 			tools: []types.Tool{
 				&mockTool{name: "Bash", desc: "Run commands"},
 				&mockTool{name: "Read", desc: "Read files"},
@@ -51,7 +51,7 @@ func TestUsingToolsSectionDependsOnEnabledTools(t *testing.T) {
 				&mockTool{name: "Write", desc: "Write files"},
 				&mockTool{name: "Glob", desc: "Find files"},
 				&mockTool{name: "Grep", desc: "Search files"},
-				&mockTool{name: "TodoWrite", desc: "Track todos"},
+				&mockTool{name: "TaskCreate", desc: "Create tasks"},
 			},
 			want: []string{
 				"To read files use Read instead of cat",
@@ -59,27 +59,23 @@ func TestUsingToolsSectionDependsOnEnabledTools(t *testing.T) {
 				"To create files use Write instead of cat with heredoc",
 				"To search for files use Glob instead of find",
 				"To search the content of files use Grep instead of grep",
-				"Break down and manage your work with the TodoWrite tool",
+				"Break down and manage your work with the TaskCreate tool",
 			},
 			notWant: []string{
-				"Break down and manage your work with the TaskCreate tool",
 				"## Read",
 				"Read files",
 			},
 		},
 		{
-			name: "task create preferred over todo write",
+			name: "task create guidance",
 			tools: []types.Tool{
 				&mockTool{name: "TaskCreate", desc: "Create tasks"},
-				&mockTool{name: "TodoWrite", desc: "Track todos"},
 			},
 			want: []string{
 				"Break down and manage your work with the TaskCreate tool",
 			},
 			notWant: []string{
-				"Break down and manage your work with the TodoWrite tool",
 				"Create tasks",
-				"Track todos",
 			},
 		},
 		{
@@ -128,24 +124,8 @@ func TestUsingToolsSectionDependsOnEnabledTools(t *testing.T) {
 	}
 }
 
-func TestBrandPromptTextCentralizesProductReplacement(t *testing.T) {
-	got := brandPromptText("You are Claude Code. Claude Code helps with code.")
-	if strings.Contains(got, "Claude Code") {
-		t.Fatalf("expected original product name to be replaced, got %q", got)
-	}
-	if count := strings.Count(got, brand.DisplayName); count != 2 {
-		t.Fatalf("expected two %q occurrences, got %d in %q", brand.DisplayName, count, got)
-	}
-	if !strings.Contains(introSection(), "You are "+brand.DisplayName) {
-		t.Fatal("expected intro section to use centralized brand replacement")
-	}
-	if strings.Contains(introSection(), "Anthropic's official CLI") {
-		t.Fatal("LUBAN Code must not claim to be Anthropic's official CLI")
-	}
-}
-
 func TestSimpleModeMinimalPromptShape(t *testing.T) {
-	t.Setenv("CLAUDE_CODE_SIMPLE", "true")
+	t.Setenv("LUBAN_CODE_SIMPLE", "true")
 	blocks := BuildSystemPromptBlocks([]types.Tool{
 		&mockTool{name: "Read", desc: "Read files"},
 	}, Config{CWD: "/simple"})

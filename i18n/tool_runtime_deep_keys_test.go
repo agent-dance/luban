@@ -17,8 +17,6 @@ func TestToolRuntimeDeepKeysCoverEveryLanguageAndPreserveRawValues(t *testing.T)
 		{KeyToolRuntimeBackgroundTaskNotFound, []any{"Task", "ID", "task-17"}, []string{"Task", "ID", "task-17"}},
 		{KeyToolRuntimeBackgroundOutputDirCreateFailed, []any{errors.New("raw-path-cause")}, []string{"raw-path-cause"}},
 		{KeyToolRuntimeBackgroundCommandStartFailed, []any{errors.New("raw-bash-cause")}, []string{"raw-bash-cause"}},
-		{KeyToolRuntimeCronSentinelReserved, []any{"sentinel", "<<dynamic>>", "ScheduleWakeup", "<<static>>", "Cron"}, []string{"sentinel", "<<dynamic>>", "ScheduleWakeup", "<<static>>", "Cron"}},
-		{KeyToolRuntimeCronPromptSentinelUnknown, []any{"prompt sentinel", "<<unknown>>"}, []string{"prompt sentinel", "<<unknown>>"}},
 		{KeyToolRuntimeTeamUniqueNameGenerationFailed, []any{"team"}, []string{"team"}},
 	}
 
@@ -37,7 +35,7 @@ func TestToolRuntimeDeepKeysCoverEveryLanguageAndPreserveRawValues(t *testing.T)
 	}
 }
 
-func TestToolRuntimeDeepKeysPreserveEnglishCompatibility(t *testing.T) {
+func TestToolRuntimeDeepKeysPreserveEnglishContract(t *testing.T) {
 	cause := errors.New("raw cause")
 	tests := []struct {
 		key  Key
@@ -49,8 +47,6 @@ func TestToolRuntimeDeepKeysPreserveEnglishCompatibility(t *testing.T) {
 		{KeyToolRuntimeBackgroundTaskNotFound, []any{"Task", "ID", "task-17"}, "No Task found with ID: task-17"},
 		{KeyToolRuntimeBackgroundOutputDirCreateFailed, []any{cause}, "create background task output dir: raw cause"},
 		{KeyToolRuntimeBackgroundCommandStartFailed, []any{cause}, "start background command: raw cause"},
-		{KeyToolRuntimeCronSentinelReserved, []any{"sentinel", "<<autonomous-loop-dynamic>>", "ScheduleWakeup", "<<autonomous-loop>>", "Cron"}, "sentinel \"<<autonomous-loop-dynamic>>\" is reserved for ScheduleWakeup; use a plain prompt or \"<<autonomous-loop>>\" with Cron"},
-		{KeyToolRuntimeCronPromptSentinelUnknown, []any{"prompt sentinel", "<<bogus>>"}, "unknown prompt sentinel \"<<bogus>>\""},
 		{KeyToolRuntimeTeamUniqueNameGenerationFailed, []any{"team"}, "failed to generate a unique team name"},
 	}
 

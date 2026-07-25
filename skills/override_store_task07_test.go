@@ -38,7 +38,7 @@ func TestOverrideStorePersistenceAndLastNonOff(t *testing.T) {
 	}
 
 	fresh := newOverrideStoreForTest(t, paths, nil, nil)
-	snapshot, err := fresh.Snapshot("")
+	snapshot, err := fresh.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,23 +47,27 @@ func TestOverrideStorePersistenceAndLastNonOff(t *testing.T) {
 		t.Fatalf("stored override = %#v, want off remembering manual-only", stored)
 	}
 
-	reenabled, err := fresh.Toggle("", SkillScopeProject, overrideStoreID)
-	if err != nil {
+	if err := fresh.Set("", VisibilityOverride{SkillID: overrideStoreID, Scope: SkillScopeProject, Visibility: VisibilityManualOnly}); err != nil {
 		t.Fatal(err)
 	}
+	reenabled := VisibilityOverride{SkillID: overrideStoreID, Scope: SkillScopeProject, Visibility: VisibilityManualOnly}
 	if reenabled.Visibility != VisibilityManualOnly || reenabled.LastNonOff != nil {
 		t.Fatalf("re-enabled override = %#v", reenabled)
 	}
-	disabled, err := fresh.Toggle("", SkillScopeProject, overrideStoreID)
+	if err := fresh.Set("", VisibilityOverride{SkillID: overrideStoreID, Scope: SkillScopeProject, Visibility: VisibilityOff}); err != nil {
+		t.Fatal(err)
+	}
+	disabledSnapshot, err := fresh.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
+	disabled := disabledSnapshot.Project[overrideStoreID]
 	if disabled.Visibility != VisibilityOff || disabled.RestoreVisibility() != VisibilityManualOnly {
 		t.Fatalf("disabled override = %#v", disabled)
 	}
 
 	afterRestart := newOverrideStoreForTest(t, paths, nil, nil)
-	restarted, err := afterRestart.Snapshot("")
+	restarted, err := afterRestart.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,65 +109,6 @@ func TestOverrideStorePersistenceAndLastNonOff(t *testing.T) {
 	}
 }
 
-func TestOverrideStoreLegacyScalarCompatibilityAndReset(t *testing.T) {
-	paths := overrideStoreTestPaths(t)
-	writeOverrideSettingsFixture(t, paths.UserSettings, fmt.Sprintf(`{
-  "permissions": {},
-  "skillOverrides": {
-    %q: "off"
-  }
-}
-`, overrideStoreID))
-	store := newOverrideStoreForTest(t, paths, nil, nil)
-
-	snapshot, err := store.Snapshot("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	legacy := snapshot.User[overrideStoreID]
-	if legacy.Visibility != VisibilityOff || legacy.LastNonOff != nil || legacy.RestoreVisibility() != VisibilityAuto {
-		t.Fatalf("legacy scalar = %#v", legacy)
-	}
-
-	if err := store.Set("", VisibilityOverride{
-		SkillID: overrideStoreID, Scope: SkillScopeUser, Visibility: VisibilityOff,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err = store.Snapshot("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := snapshot.User[overrideStoreID].RestoreVisibility(); got != VisibilityAuto {
-		t.Fatalf("migrated scalar restores %q, want auto", got)
-	}
-
-	if err := store.Set("", VisibilityOverride{
-		SkillID: overrideStoreID, Scope: SkillScopeProject, Visibility: VisibilityNameOnly,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err = store.Snapshot("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, ok := snapshot.Resolve(overrideStoreID)
-	if !ok || resolved.Source != SkillScopeProject || resolved.Override.Visibility != VisibilityNameOnly {
-		t.Fatalf("project resolution = %#v, %v", resolved, ok)
-	}
-	if err := store.Reset("", SkillScopeProject, overrideStoreID); err != nil {
-		t.Fatal(err)
-	}
-	snapshot, err = store.Snapshot("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, ok = snapshot.Resolve(overrideStoreID)
-	if !ok || resolved.Source != SkillScopeUser || resolved.Override.Visibility != VisibilityOff {
-		t.Fatalf("reset did not reveal user layer: %#v, %v", resolved, ok)
-	}
-}
-
 func TestOverridePrecedenceManagedSessionProjectUser(t *testing.T) {
 	paths := overrideStoreTestPaths(t)
 	base := newOverrideStoreForTest(t, paths, nil, nil)
@@ -187,16 +132,16 @@ func TestOverridePrecedenceManagedSessionProjectUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, ok := snapshotA.Resolve(overrideStoreID)
-	if !ok || resolved.Source != SkillScopeSession || resolved.Override.Visibility != VisibilityManualOnly || !resolved.Mutable {
+	resolved, ok := snapshotA.Session[overrideStoreID]
+	if !ok || resolved.Visibility != VisibilityManualOnly {
 		t.Fatalf("session resolution = %#v, %v", resolved, ok)
 	}
 	snapshotB, err := base.Snapshot("session-b")
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, ok = snapshotB.Resolve(overrideStoreID)
-	if !ok || resolved.Source != SkillScopeProject || resolved.Override.Visibility != VisibilityNameOnly {
+	resolved, ok = snapshotB.Project[overrideStoreID]
+	if !ok || resolved.Visibility != VisibilityNameOnly {
 		t.Fatalf("session isolation resolution = %#v, %v", resolved, ok)
 	}
 
@@ -212,8 +157,8 @@ func TestOverridePrecedenceManagedSessionProjectUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolved, ok = managedSnapshot.Resolve(overrideStoreID)
-	if !ok || resolved.Source != SkillScopeManaged || resolved.Override.Visibility != VisibilityOff || resolved.Mutable {
+	resolved, ok = managedSnapshot.Managed[overrideStoreID]
+	if !ok || resolved.Visibility != VisibilityOff {
 		t.Fatalf("managed resolution = %#v, %v", resolved, ok)
 	}
 	before, err := os.ReadFile(paths.ProjectSettings)
@@ -249,10 +194,10 @@ func TestOverridePrecedenceManagedSessionProjectUser(t *testing.T) {
 
 func TestOverrideStoreProjectCASAndExactRestore(t *testing.T) {
 	paths := overrideStoreTestPaths(t)
-	original := []byte(fmt.Sprintf("{\n    \"theme\": \"solarized\",\n    \"skillOverrides\": {%q: \"manual-only\"}\n}\n", overrideStoreID))
+	original := []byte(fmt.Sprintf("{\n    \"theme\": \"solarized\",\n    \"skillOverrides\": {%q: {\"visibility\": \"manual-only\"}}\n}\n", overrideStoreID))
 	writeOverrideSettingsFixture(t, paths.ProjectSettings, string(original))
 	store := newOverrideStoreForTest(t, paths, nil, nil)
-	snapshot, err := store.Snapshot("")
+	snapshot, err := store.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,10 +207,10 @@ func TestOverrideStoreProjectCASAndExactRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if restore.BeforeRevision() != snapshot.ProjectRevision || !restore.AfterRevision().Valid() {
-		t.Fatalf("restore revisions = %q -> %q", restore.BeforeRevision(), restore.AfterRevision())
+	if restore.beforeRevision != snapshot.ProjectRevision || !restore.afterRevision.Valid() {
+		t.Fatalf("restore revisions = %q -> %q", restore.beforeRevision, restore.afterRevision)
 	}
-	committed, err := store.Snapshot("")
+	committed, err := store.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +247,7 @@ func TestOverrideStoreProjectCASAndExactRestore(t *testing.T) {
 
 	missingPaths := overrideStoreTestPaths(t)
 	missingStore := newOverrideStoreForTest(t, missingPaths, nil, nil)
-	missingSnapshot, err := missingStore.Snapshot("")
+	missingSnapshot, err := missingStore.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -323,7 +268,7 @@ func TestOverrideStoreProjectCASAndExactRestore(t *testing.T) {
 func TestOverrideStoreRestoreRejectsInterveningWriter(t *testing.T) {
 	paths := overrideStoreTestPaths(t)
 	store := newOverrideStoreForTest(t, paths, nil, nil)
-	snapshot, err := store.Snapshot("")
+	snapshot, err := store.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -385,7 +330,7 @@ func TestAtomicOverrideFailureAndCorruptionPreserveSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	store.atomicWrite = atomicWriteOverrideSettings
-	if _, err := store.Snapshot(""); err == nil {
+	if _, err := store.Snapshot("session"); err == nil {
 		t.Fatal("corrupt settings unexpectedly loaded")
 	}
 	if err := store.Set("", VisibilityOverride{
@@ -402,7 +347,7 @@ func TestAtomicOverrideFailureAndCorruptionPreserveSettings(t *testing.T) {
 	}
 
 	writeOverrideSettingsFixture(t, paths.ProjectSettings, `{"skillOverrides":null}`)
-	if _, err := store.Snapshot(""); err == nil {
+	if _, err := store.Snapshot("session"); err == nil {
 		t.Fatal("null skillOverrides unexpectedly loaded")
 	}
 }
@@ -411,7 +356,7 @@ func TestOverrideStoreCASSerializesStoreInstances(t *testing.T) {
 	paths := overrideStoreTestPaths(t)
 	first := newOverrideStoreForTest(t, paths, nil, nil)
 	second := newOverrideStoreForTest(t, paths, nil, nil)
-	snapshot, err := first.Snapshot("")
+	snapshot, err := first.Snapshot("session")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,8 +416,8 @@ func TestOverrideStoreSessionLayerIsRaceSafeAndIsolated(t *testing.T) {
 				t.Errorf("Set(%s): %v", sessionID, err)
 				return
 			}
-			if _, err := store.Toggle(sessionID, SkillScopeSession, overrideStoreID); err != nil {
-				t.Errorf("Toggle(%s): %v", sessionID, err)
+			if err := store.Set(sessionID, VisibilityOverride{SkillID: overrideStoreID, Scope: SkillScopeSession, Visibility: VisibilityOff}); err != nil {
+				t.Errorf("Set off (%s): %v", sessionID, err)
 			}
 		}()
 	}
@@ -514,6 +459,9 @@ func overrideStoreTestPaths(t *testing.T) OverrideStorePaths {
 
 func newOverrideStoreForTest(t *testing.T, paths OverrideStorePaths, managed map[SkillID]VisibilityOverride, session SessionOverrideLayer) *FileOverrideStore {
 	t.Helper()
+	if session == nil {
+		session = NewMemorySessionOverrideLayer()
+	}
 	store, err := NewFileOverrideStoreAt(paths, managed, session)
 	if err != nil {
 		t.Fatal(err)

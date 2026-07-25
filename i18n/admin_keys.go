@@ -2,78 +2,58 @@ package i18n
 
 // Semantic copy for configuration, permissions, setup, and diagnostics commands.
 const (
-	KeyAdminReadSettingsError           Key = "admin.settings.read_error"
-	KeyAdminWriteSettingsError          Key = "admin.settings.write_error"
-	KeyConfigUsageGet                   Key = "command.config.usage.get"
-	KeyConfigUsageSet                   Key = "command.config.usage.set"
-	KeyConfigUsage                      Key = "command.config.usage"
-	KeyConfigNoSettings                 Key = "command.config.no_settings"
-	KeyConfigSettings                   Key = "command.config.settings"
-	KeyConfigKeyMissing                 Key = "command.config.key_missing"
-	KeyConfigUnknownKey                 Key = "command.config.unknown_key"
-	KeyConfigInvalidCacheRoutingMode    Key = "command.config.invalid_cache_routing_mode"
-	KeyConfigValue                      Key = "command.config.value"
-	KeyConfigSet                        Key = "command.config.set"
-	KeyPermissionsUsageAllow            Key = "command.permissions.usage.allow"
-	KeyPermissionsUsageDeny             Key = "command.permissions.usage.deny"
-	KeyPermissionsUsage                 Key = "command.permissions.usage"
-	KeyPermissionsTitle                 Key = "command.permissions.title"
-	KeyPermissionsNone                  Key = "command.permissions.none"
-	KeyPermissionsEdit                  Key = "command.permissions.edit"
-	KeyPermissionsAllowed               Key = "command.permissions.allowed"
-	KeyPermissionsDenied                Key = "command.permissions.denied"
-	KeyPermissionsAllowItem             Key = "command.permissions.allow_item"
-	KeyPermissionsDenyItem              Key = "command.permissions.deny_item"
-	KeyPermissionsUpdated               Key = "command.permissions.updated"
-	KeyInitCreateDirError               Key = "command.init.create_dir_error"
-	KeyInitCreateFileError              Key = "command.init.create_file_error"
-	KeyInitCreateSettingsError          Key = "command.init.create_settings_error"
-	KeyInitReport                       Key = "command.init.report"
-	KeyInitCreated                      Key = "command.init.created"
-	KeyInitExists                       Key = "command.init.exists"
-	KeyDoctorResult                     Key = "command.doctor.result"
-	KeyDoctorResolveFailures            Key = "command.doctor.resolve_failures"
-	KeyDoctorLabelCredentials           Key = "command.doctor.label.credentials"
-	KeyDoctorLabelModel                 Key = "command.doctor.label.model"
-	KeyDoctorLabelGit                   Key = "command.doctor.label.git"
-	KeyDoctorLabelSandbox               Key = "command.doctor.label.sandbox"
-	KeyDoctorLabelMCP                   Key = "command.doctor.label.mcp"
-	KeyDoctorLabelNode                  Key = "command.doctor.label.node"
-	KeyDoctorLabelDisk                  Key = "command.doctor.label.disk"
-	KeyDoctorLabelConfig                Key = "command.doctor.label.config"
-	KeyDoctorLabelOllama                Key = "command.doctor.label.ollama"
-	KeyDoctorCredentialState            Key = "command.doctor.credential_state"
-	KeyDoctorCredentialEnv              Key = "command.doctor.credential_env"
-	KeyDoctorCredentialAuthToken        Key = "command.doctor.credential_auth_token"
-	KeyDoctorCredentialStore            Key = "command.doctor.credential_store"
-	KeyDoctorCredentialOAuth            Key = "command.doctor.credential_oauth"
-	KeyDoctorCredentialImported         Key = "command.doctor.credential_imported"
-	KeyDoctorCredentialAWS              Key = "command.doctor.credential_aws"
-	KeyDoctorCredentialGCP              Key = "command.doctor.credential_gcp"
-	KeyDoctorCredentialAnthropicMissing Key = "command.doctor.credential_anthropic_missing"
-	KeyDoctorCredentialMissing          Key = "command.doctor.credential_missing"
-	KeyDoctorNoModel                    Key = "command.doctor.no_model"
-	KeyDoctorContextWindow              Key = "command.doctor.context_window"
-	KeyDoctorReasoning                  Key = "command.doctor.reasoning"
-	KeyDoctorCustomModel                Key = "command.doctor.custom_model"
-	KeyDoctorOllamaUnreachable          Key = "command.doctor.ollama_unreachable"
-	KeyDoctorOllamaHTTP                 Key = "command.doctor.ollama_http"
-	KeyDoctorOllamaRunning              Key = "command.doctor.ollama_running"
-	KeyDoctorGitMissing                 Key = "command.doctor.git_missing"
-	KeyDoctorGitRepo                    Key = "command.doctor.git_repo"
-	KeyDoctorGitNotRepo                 Key = "command.doctor.git_not_repo"
-	KeyDoctorSandboxMissing             Key = "command.doctor.sandbox_missing"
-	KeyDoctorSandboxAvailable           Key = "command.doctor.sandbox_available"
-	KeyDoctorSandboxUnsupported         Key = "command.doctor.sandbox_unsupported"
-	KeyDoctorNodeMissing                Key = "command.doctor.node_missing"
-	KeyDoctorNodeUnknown                Key = "command.doctor.node_unknown"
-	KeyDoctorConfigUnreadable           Key = "command.doctor.config_unreadable"
-	KeyDoctorConfigInvalid              Key = "command.doctor.config_invalid"
-	KeyDoctorConfigNone                 Key = "command.doctor.config_none"
-	KeyDoctorConfigValid                Key = "command.doctor.config_valid"
-	KeyDoctorDiskFree                   Key = "command.doctor.disk_free"
-	KeyDoctorDiskLow                    Key = "command.doctor.disk_low"
-	KeyDoctorDiskStatError              Key = "command.doctor.disk_stat_error"
+	KeyAdminReadSettingsError        Key = "admin.settings.read_error"
+	KeyAdminWriteSettingsError       Key = "admin.settings.write_error"
+	KeyConfigUsageGet                Key = "command.config.usage.get"
+	KeyConfigUsageSet                Key = "command.config.usage.set"
+	KeyConfigUsage                   Key = "command.config.usage"
+	KeyConfigNoSettings              Key = "command.config.no_settings"
+	KeyConfigSettings                Key = "command.config.settings"
+	KeyConfigKeyMissing              Key = "command.config.key_missing"
+	KeyConfigUnknownKey              Key = "command.config.unknown_key"
+	KeyConfigInvalidCacheRoutingMode Key = "command.config.invalid_cache_routing_mode"
+	KeyConfigValue                   Key = "command.config.value"
+	KeyConfigSet                     Key = "command.config.set"
+	KeyInitCreateDirError            Key = "command.init.create_dir_error"
+	KeyInitCreateFileError           Key = "command.init.create_file_error"
+	KeyInitCreateSettingsError       Key = "command.init.create_settings_error"
+	KeyInitReport                    Key = "command.init.report"
+	KeyInitCreated                   Key = "command.init.created"
+	KeyInitExists                    Key = "command.init.exists"
+	KeyDoctorResult                  Key = "command.doctor.result"
+	KeyDoctorResolveFailures         Key = "command.doctor.resolve_failures"
+	KeyDoctorLabelCredentials        Key = "command.doctor.label.credentials"
+	KeyDoctorLabelModel              Key = "command.doctor.label.model"
+	KeyDoctorLabelGit                Key = "command.doctor.label.git"
+	KeyDoctorLabelSandbox            Key = "command.doctor.label.sandbox"
+	KeyDoctorLabelMCP                Key = "command.doctor.label.mcp"
+	KeyDoctorLabelNode               Key = "command.doctor.label.node"
+	KeyDoctorLabelDisk               Key = "command.doctor.label.disk"
+	KeyDoctorLabelConfig             Key = "command.doctor.label.config"
+	KeyDoctorLabelOllama             Key = "command.doctor.label.ollama"
+	KeyDoctorCredentialState         Key = "command.doctor.credential_state"
+	KeyDoctorNoModel                 Key = "command.doctor.no_model"
+	KeyDoctorContextWindow           Key = "command.doctor.context_window"
+	KeyDoctorReasoning               Key = "command.doctor.reasoning"
+	KeyDoctorCustomModel             Key = "command.doctor.custom_model"
+	KeyDoctorOllamaUnreachable       Key = "command.doctor.ollama_unreachable"
+	KeyDoctorOllamaHTTP              Key = "command.doctor.ollama_http"
+	KeyDoctorOllamaRunning           Key = "command.doctor.ollama_running"
+	KeyDoctorGitMissing              Key = "command.doctor.git_missing"
+	KeyDoctorGitRepo                 Key = "command.doctor.git_repo"
+	KeyDoctorGitNotRepo              Key = "command.doctor.git_not_repo"
+	KeyDoctorSandboxMissing          Key = "command.doctor.sandbox_missing"
+	KeyDoctorSandboxAvailable        Key = "command.doctor.sandbox_available"
+	KeyDoctorSandboxUnsupported      Key = "command.doctor.sandbox_unsupported"
+	KeyDoctorNodeMissing             Key = "command.doctor.node_missing"
+	KeyDoctorNodeUnknown             Key = "command.doctor.node_unknown"
+	KeyDoctorConfigUnreadable        Key = "command.doctor.config_unreadable"
+	KeyDoctorConfigInvalid           Key = "command.doctor.config_invalid"
+	KeyDoctorConfigNone              Key = "command.doctor.config_none"
+	KeyDoctorConfigValid             Key = "command.doctor.config_valid"
+	KeyDoctorDiskFree                Key = "command.doctor.disk_free"
+	KeyDoctorDiskLow                 Key = "command.doctor.disk_low"
+	KeyDoctorDiskStatError           Key = "command.doctor.disk_stat_error"
 )
 
 func init() {
@@ -92,17 +72,6 @@ func init() {
 	add(KeyConfigInvalidCacheRoutingMode, "Error: cacheRoutingMode must be auto, on, or off; got %q.\n", "错误：cacheRoutingMode 必须为 auto、on 或 off；当前为 %q。\n", "Fehler: cacheRoutingMode muss auto, on oder off sein; erhalten: %q.\n", "エラー: cacheRoutingMode は auto、on、off のいずれかである必要があります。現在値: %q。\n", "오류: cacheRoutingMode는 auto, on 또는 off여야 합니다. 현재 값: %q.\n", "Ошибка: cacheRoutingMode должен быть auto, on или off; получено: %q.\n")
 	add(KeyConfigValue, "%s = %s\n", "%s = %s\n", "%s = %s\n", "%s = %s\n", "%s = %s\n", "%s = %s\n")
 	add(KeyConfigSet, "Set %s = %v in %s\n", "已设置 %s = %v（位置：%s）\n", "Gesetzt: %s = %v in %s\n", "%s = %v を %s に設定しました\n", "%s = %v로 설정했습니다(%s)\n", "Установлено: %s = %v в %s\n")
-	add(KeyPermissionsUsageAllow, "Usage: /permissions allow <tool>\n", "用法：/permissions allow <tool>\n", "Verwendung: /permissions allow <tool>\n", "使い方: /permissions allow <tool>\n", "사용법: /permissions allow <tool>\n", "Использование: /permissions allow <tool>\n")
-	add(KeyPermissionsUsageDeny, "Usage: /permissions deny <tool>\n", "用法：/permissions deny <tool>\n", "Verwendung: /permissions deny <tool>\n", "使い方: /permissions deny <tool>\n", "사용법: /permissions deny <tool>\n", "Использование: /permissions deny <tool>\n")
-	add(KeyPermissionsUsage, "Usage: /permissions [list|allow <tool>|deny <tool>]\n", "用法：/permissions [list|allow <tool>|deny <tool>]\n", "Verwendung: /permissions [list|allow <tool>|deny <tool>]\n", "使い方: /permissions [list|allow <tool>|deny <tool>]\n", "사용법: /permissions [list|allow <tool>|deny <tool>]\n", "Использование: /permissions [list|allow <tool>|deny <tool>]\n")
-	add(KeyPermissionsTitle, "Tool Permissions\n", "工具权限\n", "Tool-Berechtigungen\n", "ツールの権限\n", "도구 권한\n", "Разрешения инструментов\n")
-	add(KeyPermissionsNone, "  No explicit permissions configured.\n", "  未配置显式权限。\n", "  Keine expliziten Berechtigungen konfiguriert.\n", "  明示的な権限は設定されていません。\n", "  명시적 권한이 구성되지 않았습니다.\n", "  Явные разрешения не настроены.\n")
-	add(KeyPermissionsEdit, "  (edit %s to add rules)\n", "  （编辑 %s 以添加规则）\n", "  (Bearbeite %s, um Regeln hinzuzufügen)\n", "  （ルールを追加するには %s を編集）\n", "  (규칙을 추가하려면 %s 편집)\n", "  (измените %s, чтобы добавить правила)\n")
-	add(KeyPermissionsAllowed, "  Allowed tools:\n", "  允许的工具：\n", "  Erlaubte Tools:\n", "  許可されたツール:\n", "  허용된 도구:\n", "  Разрешённые инструменты:\n")
-	add(KeyPermissionsDenied, "  Denied tools:\n", "  禁止的工具：\n", "  Verbotene Tools:\n", "  拒否されたツール:\n", "  거부된 도구:\n", "  Запрещённые инструменты:\n")
-	add(KeyPermissionsAllowItem, "    ✓ %s\n", "    ✓ %s\n", "    ✓ %s\n", "    ✓ %s\n", "    ✓ %s\n", "    ✓ %s\n")
-	add(KeyPermissionsDenyItem, "    ✗ %s\n", "    ✗ %s\n", "    ✗ %s\n", "    ✗ %s\n", "    ✗ %s\n", "    ✗ %s\n")
-	add(KeyPermissionsUpdated, "Permission updated: %s → %sd in %s\n", "权限已更新：%s → %sd，位置：%s\n", "Berechtigung aktualisiert: %s → %sd in %s\n", "権限を更新しました: %s → %sd（%s）\n", "권한을 업데이트했습니다: %s → %sd(%s)\n", "Разрешение обновлено: %s → %sd в %s\n")
 	add(KeyInitCreateDirError, "Error creating %s/: %v\n", "创建 %s/ 时出错：%v\n", "Fehler beim Erstellen von %s/: %v\n", "%s/ の作成エラー: %v\n", "%s/ 생성 오류: %v\n", "Ошибка создания %s/: %v\n")
 	add(KeyInitCreateFileError, "Error creating %s: %v\n", "创建 %s 时出错：%v\n", "Fehler beim Erstellen von %s: %v\n", "%s の作成エラー: %v\n", "%s 생성 오류: %v\n", "Ошибка создания %s: %v\n")
 	add(KeyInitCreateSettingsError, "Error creating settings.json: %v\n", "创建 settings.json 时出错：%v\n", "Fehler beim Erstellen von settings.json: %v\n", "settings.json の作成エラー: %v\n", "settings.json 생성 오류: %v\n", "Ошибка создания settings.json: %v\n")
@@ -121,15 +90,6 @@ func init() {
 	add(KeyDoctorLabelConfig, "Config", "配置", "Konfiguration", "設定", "구성", "Конфигурация")
 	add(KeyDoctorLabelOllama, "Ollama Server", "Ollama 服务器", "Ollama-Server", "Ollama サーバー", "Ollama 서버", "Сервер Ollama")
 	add(KeyDoctorCredentialState, "%s — %s", "%s — %s", "%s — %s", "%s — %s", "%s — %s", "%s — %s")
-	add(KeyDoctorCredentialEnv, "%s — %s set (%s)", "%s — 已设置 %s（%s）", "%s — %s gesetzt (%s)", "%s — %s が設定済み（%s）", "%s — %s 설정됨(%s)", "%s — %s задана (%s)")
-	add(KeyDoctorCredentialAuthToken, "%s — ANTHROPIC_AUTH_TOKEN set (%s)", "%s — 已设置 ANTHROPIC_AUTH_TOKEN（%s）", "%s — ANTHROPIC_AUTH_TOKEN gesetzt (%s)", "%s — ANTHROPIC_AUTH_TOKEN が設定済み（%s）", "%s — ANTHROPIC_AUTH_TOKEN 설정됨(%s)", "%s — ANTHROPIC_AUTH_TOKEN задана (%s)")
-	add(KeyDoctorCredentialStore, "%s — credential store (%s)", "%s — 凭据存储（%s）", "%s — Anmeldedatenspeicher (%s)", "%s — 認証情報ストア（%s）", "%s — 자격 증명 저장소(%s)", "%s — хранилище учётных данных (%s)")
-	add(KeyDoctorCredentialOAuth, "%s — OAuth token configured", "%s — 已配置 OAuth 令牌", "%s — OAuth-Token konfiguriert", "%s — OAuth トークンを設定済み", "%s — OAuth 토큰 구성됨", "%s — токен OAuth настроен")
-	add(KeyDoctorCredentialImported, "%s — imported from env (%s)", "%s — 从环境变量导入（%s）", "%s — aus Umgebungsvariable importiert (%s)", "%s — 環境変数からインポート済み（%s）", "%s — 환경 변수에서 가져옴(%s)", "%s — импортировано из окружения (%s)")
-	add(KeyDoctorCredentialAWS, "%s — AWS credentials detected", "%s — 检测到 AWS 凭据", "%s — AWS-Anmeldedaten erkannt", "%s — AWS 認証情報を検出", "%s — AWS 자격 증명 감지됨", "%s — обнаружены учётные данные AWS")
-	add(KeyDoctorCredentialGCP, "%s — GCP credentials detected", "%s — 检测到 GCP 凭据", "%s — GCP-Anmeldedaten erkannt", "%s — GCP 認証情報を検出", "%s — GCP 자격 증명 감지됨", "%s — обнаружены учётные данные GCP")
-	add(KeyDoctorCredentialAnthropicMissing, "%s — ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN not set", "%s — 未设置 ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN", "%s — ANTHROPIC_API_KEY oder ANTHROPIC_AUTH_TOKEN nicht gesetzt", "%s — ANTHROPIC_API_KEY または ANTHROPIC_AUTH_TOKEN が未設定", "%s — ANTHROPIC_API_KEY 또는 ANTHROPIC_AUTH_TOKEN이 설정되지 않음", "%s — ANTHROPIC_API_KEY или ANTHROPIC_AUTH_TOKEN не задан")
-	add(KeyDoctorCredentialMissing, "%s — %s not set", "%s — 未设置 %s", "%s — %s nicht gesetzt", "%s — %s が未設定", "%s — %s이(가) 설정되지 않음", "%s — %s не задан")
 	add(KeyDoctorNoModel, "no model configured", "未配置模型", "Kein Modell konfiguriert", "モデルが設定されていません", "모델이 구성되지 않았습니다", "Модель не настроена")
 	add(KeyDoctorContextWindow, "%s ctx", "%s 上下文", "%s Kontext", "%s コンテキスト", "%s 컨텍스트", "%s контекст")
 	add(KeyDoctorReasoning, "reasoning", "推理", "Reasoning", "推論", "추론", "рассуждение")

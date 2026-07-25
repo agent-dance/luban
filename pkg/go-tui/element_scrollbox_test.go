@@ -236,9 +236,9 @@ func TestElement_IsScrollable(t *testing.T) {
 
 func TestElement_ScrollModes(t *testing.T) {
 	type tc struct {
-		mode         ScrollMode
-		expectVert   bool
-		expectHoriz  bool
+		mode        ScrollMode
+		expectVert  bool
+		expectHoriz bool
 	}
 
 	tests := map[string]tc{
@@ -360,4 +360,3 @@ func TestElement_ScrollUnhandledEvent(t *testing.T) {
 		t.Error("Rune events should not be handled by scroll")
 	}
 }
-

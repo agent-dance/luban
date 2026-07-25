@@ -9,7 +9,6 @@ func TestBedrockConfigFromEnv_Defaults(t *testing.T) {
 	t.Setenv("AWS_REGION", "")
 	t.Setenv("AWS_DEFAULT_REGION", "")
 	t.Setenv("BEDROCK_MODEL", "")
-	t.Setenv("CLAUDE_MODEL", "")
 	t.Setenv("AWS_ACCESS_KEY_ID", "")
 	t.Setenv("AWS_SECRET_ACCESS_KEY", "")
 	t.Setenv("AWS_SESSION_TOKEN", "")
@@ -51,21 +50,10 @@ func TestBedrockConfigFromEnv_DefaultRegionFallback(t *testing.T) {
 
 func TestBedrockConfigFromEnv_ModelFromEnv(t *testing.T) {
 	t.Setenv("BEDROCK_MODEL", "us.anthropic.claude-opus-4-6-v1:0")
-	t.Setenv("CLAUDE_MODEL", "")
 
 	cfg := BedrockConfigFromEnv()
 	if cfg.Model != "us.anthropic.claude-opus-4-6-v1:0" {
 		t.Errorf("expected model from BEDROCK_MODEL, got %q", cfg.Model)
-	}
-}
-
-func TestBedrockConfigFromEnv_ModelFromClaudeModelFallback(t *testing.T) {
-	t.Setenv("BEDROCK_MODEL", "")
-	t.Setenv("CLAUDE_MODEL", "anthropic.claude-3-5-sonnet-20241022-v2:0")
-
-	cfg := BedrockConfigFromEnv()
-	if cfg.Model != "anthropic.claude-3-5-sonnet-20241022-v2:0" {
-		t.Errorf("expected model from CLAUDE_MODEL fallback, got %q", cfg.Model)
 	}
 }
 
@@ -172,21 +160,21 @@ func TestBedrockProvider_Capabilities(t *testing.T) {
 	}
 }
 
-// TestNewFromEnv_Bedrock verifies that CLAUDE_CODE_USE_BEDROCK=1 routes to bedrock.
+// TestNewFromEnvWithOverrides_Bedrock verifies that LUBAN_CODE_USE_BEDROCK=1 routes to bedrock.
 // We set a bearer token so no real AWS call is needed.
-func TestNewFromEnv_Bedrock(t *testing.T) {
+func TestNewFromEnvWithOverrides_Bedrock(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping env routing test in short mode")
 	}
-	t.Setenv("CLAUDE_CODE_USE_BEDROCK", "1")
+	t.Setenv("LUBAN_CODE_USE_BEDROCK", "1")
 	t.Setenv("PROVIDER", "")
 	t.Setenv("AWS_BEARER_TOKEN_BEDROCK", "dummy-token")
 	t.Setenv("AWS_REGION", "us-east-1")
 	t.Setenv("BEDROCK_MODEL", "anthropic.claude-sonnet-4-6")
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
-		t.Fatalf("NewFromEnv with CLAUDE_CODE_USE_BEDROCK=1 failed: %v", err)
+		t.Fatalf("NewFromEnvWithOverrides with LUBAN_CODE_USE_BEDROCK=1 failed: %v", err)
 	}
 	// Unwrap RetryProvider to check underlying provider name.
 	rp, ok := p.(*RetryProvider)

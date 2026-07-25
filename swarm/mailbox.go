@@ -92,19 +92,6 @@ func (m *Mailbox) inboxPath(agentName string) (string, error) {
 	return p, nil
 }
 
-// legacyInboxPath identifies the pre-alignment Go layout. Operations migrate
-// messages from it into the TS-compatible inbox without dropping history.
-func (m *Mailbox) legacyInboxPath(agentName string) (string, error) {
-	if err := validateName(agentName, "agent name"); err != nil {
-		return "", err
-	}
-	p := filepath.Join(m.baseDir, agentName, "inbox.json")
-	if rel, err := filepath.Rel(m.baseDir, p); err != nil || strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("legacy inbox path escapes base directory")
-	}
-	return p, nil
-}
-
 // Send writes a message to an agent's inbox.
 // It acquires a file lock, reads existing messages, appends the new one,
 // and atomically replaces the inbox file.
@@ -150,7 +137,7 @@ func (m *Mailbox) SendCAS(ctx context.Context, agentName string, msg Message, ex
 	}
 	defer unlock()
 
-	existing, migration, err := m.readCompatibleMessages(agentName, inboxFile)
+	existing, err := readMailboxMessages(inboxFile)
 	if err != nil {
 		return Message{}, fmt.Errorf("mailbox send: read existing: %w", err)
 	}
@@ -179,209 +166,7 @@ func (m *Mailbox) SendCAS(ctx context.Context, agentName string, msg Message, ex
 	if err := atomicWrite(inboxFile, data); err != nil {
 		return Message{}, err
 	}
-	// Keep the legacy file and its stable lock inode during mixed-version
-	// operation. Deterministic IDs make every subsequent merge idempotent.
-	_ = migration
 	return msg, nil
-}
-
-// Read returns all messages in order without consuming them. Callers that
-// display messages can use MarkAllRead; polling marks one unread message at a
-// time. This preserves the TS mailbox audit history.
-// If the inbox is empty or does not exist, returns an empty slice.
-// ctx is forwarded to lockFile so the caller can cancel a blocked lock acquire.
-func (m *Mailbox) Read(ctx context.Context, agentName string) ([]Message, error) {
-	inboxFile, err := m.inboxPath(agentName)
-	if err != nil {
-		return nil, fmt.Errorf("mailbox read: %w", err)
-	}
-
-	// Acquire file lock.
-	unlock, err := lockFile(ctx, inboxFile+".lock")
-	if err != nil {
-		return nil, fmt.Errorf("mailbox read: lock: %w", err)
-	}
-	defer unlock()
-
-	messages, migration, err := m.readCompatibleMessages(agentName, inboxFile)
-	if err != nil {
-		return nil, fmt.Errorf("mailbox read: %w", err)
-	}
-	if migration {
-		if err := writeMessages(inboxFile, messages); err != nil {
-			return nil, fmt.Errorf("mailbox read: migrate legacy inbox: %w", err)
-		}
-	}
-	return messages, nil
-}
-
-// ReadUnread returns the unread subset without mutating mailbox state.
-func (m *Mailbox) ReadUnread(ctx context.Context, agentName string) ([]Message, error) {
-	messages, err := m.Read(ctx, agentName)
-	if err != nil {
-		return nil, err
-	}
-	unread := make([]Message, 0, len(messages))
-	for _, message := range messages {
-		if !message.Read {
-			unread = append(unread, message)
-		}
-	}
-	return unread, nil
-}
-
-// MessageReceipt identifies the exact durable append a consumer processed.
-// Both fields are required so an acknowledgement cannot accidentally apply to
-// a migrated/replaced record that merely occupies the same array position.
-type MessageReceipt struct {
-	ID       string
-	Sequence uint64
-}
-
-// Acknowledge marks only the named UUID/sequence pairs as read. It is
-// idempotent and leaves messages appended after the consumer snapshot unread.
-func (m *Mailbox) Acknowledge(ctx context.Context, agentName string, receipts []MessageReceipt) error {
-	if len(receipts) == 0 {
-		return nil
-	}
-	inboxFile, err := m.inboxPath(agentName)
-	if err != nil {
-		return fmt.Errorf("mailbox acknowledge: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(inboxFile), 0o700); err != nil {
-		return fmt.Errorf("mailbox acknowledge: mkdir: %w", err)
-	}
-	unlock, err := lockFile(ctx, inboxFile+".lock")
-	if err != nil {
-		return fmt.Errorf("mailbox acknowledge: lock: %w", err)
-	}
-	defer unlock()
-	messages, _, err := m.readCompatibleMessages(agentName, inboxFile)
-	if err != nil {
-		return fmt.Errorf("mailbox acknowledge: read: %w", err)
-	}
-	wanted := make(map[string]uint64, len(receipts))
-	for _, receipt := range receipts {
-		if _, err := uuid.Parse(receipt.ID); err != nil || receipt.Sequence == 0 {
-			return fmt.Errorf("mailbox acknowledge: %w: invalid receipt", ErrMailboxSequenceConflict)
-		}
-		if prior, duplicate := wanted[receipt.ID]; duplicate && prior != receipt.Sequence {
-			return fmt.Errorf("mailbox acknowledge: %w: conflicting receipt %s", ErrMailboxSequenceConflict, receipt.ID)
-		}
-		wanted[receipt.ID] = receipt.Sequence
-	}
-	for index := range messages {
-		expected, ok := wanted[messages[index].ID]
-		if !ok {
-			continue
-		}
-		if messages[index].Sequence != expected {
-			return fmt.Errorf("mailbox acknowledge: %w: id %s expected sequence %d, current %d", ErrMailboxSequenceConflict, messages[index].ID, expected, messages[index].Sequence)
-		}
-		messages[index].Read = true
-		delete(wanted, messages[index].ID)
-	}
-	if len(wanted) != 0 {
-		return fmt.Errorf("mailbox acknowledge: %w: receipt is not present", ErrMailboxSequenceConflict)
-	}
-	if err := writeMessages(inboxFile, messages); err != nil {
-		return fmt.Errorf("mailbox acknowledge: write: %w", err)
-	}
-	return nil
-}
-
-// MarkAllRead marks every persisted message as read while preserving it.
-func (m *Mailbox) MarkAllRead(ctx context.Context, agentName string) error {
-	inboxFile, err := m.inboxPath(agentName)
-	if err != nil {
-		return fmt.Errorf("mailbox mark read: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(inboxFile), 0o700); err != nil {
-		return fmt.Errorf("mailbox mark read: mkdir: %w", err)
-	}
-	unlock, err := lockFile(ctx, inboxFile+".lock")
-	if err != nil {
-		return fmt.Errorf("mailbox mark read: lock: %w", err)
-	}
-	defer unlock()
-	messages, migration, err := m.readCompatibleMessages(agentName, inboxFile)
-	if err != nil {
-		return fmt.Errorf("mailbox mark read: %w", err)
-	}
-	if len(messages) == 0 {
-		return nil
-	}
-	for i := range messages {
-		messages[i].Read = true
-	}
-	if err := writeMessages(inboxFile, messages); err != nil {
-		return fmt.Errorf("mailbox mark read: write: %w", err)
-	}
-	_ = migration
-	return nil
-}
-
-// PopFirst atomically returns and marks the first unread message. Read messages
-// remain in the inbox for audit/history parity with the TS mailbox.
-// ctx is forwarded to lockFile so the caller can cancel a blocked lock acquire.
-func (m *Mailbox) PopFirst(ctx context.Context, agentName string) (Message, bool, error) {
-	inboxFile, err := m.inboxPath(agentName)
-	if err != nil {
-		return Message{}, false, fmt.Errorf("mailbox pop: %w", err)
-	}
-
-	// Acquire file lock — entire read-modify-write is atomic.
-	unlock, err := lockFile(ctx, inboxFile+".lock")
-	if err != nil {
-		return Message{}, false, fmt.Errorf("mailbox pop: lock: %w", err)
-	}
-	defer unlock()
-
-	messages, migration, err := m.readCompatibleMessages(agentName, inboxFile)
-	if err != nil {
-		return Message{}, false, fmt.Errorf("mailbox pop: %w", err)
-	}
-	for i := range messages {
-		if messages[i].Read {
-			continue
-		}
-		first := messages[i]
-		messages[i].Read = true
-		if err := writeMessages(inboxFile, messages); err != nil {
-			return Message{}, false, fmt.Errorf("mailbox pop: mark read: %w", err)
-		}
-		_ = migration
-		return first, true, nil
-	}
-	if migration && len(messages) > 0 {
-		if err := writeMessages(inboxFile, messages); err != nil {
-			return Message{}, false, fmt.Errorf("mailbox pop: migrate legacy inbox: %w", err)
-		}
-	}
-	return Message{}, false, nil
-}
-
-// Poll watches an agent's inbox for new messages (blocking with context).
-// It polls every 500 ms and returns the first message found using atomic
-// PopFirst semantics — no re-queue needed.
-func (m *Mailbox) Poll(ctx context.Context, agentName string) (Message, error) {
-	ticker := time.NewTicker(500 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return Message{}, ctx.Err()
-		case <-ticker.C:
-			msg, ok, err := m.PopFirst(ctx, agentName)
-			if err != nil {
-				return Message{}, fmt.Errorf("mailbox poll: %w", err)
-			}
-			if ok {
-				return msg, nil
-			}
-		}
-	}
 }
 
 // readMessages deserializes a JSON inbox file.
@@ -397,97 +182,28 @@ func readMessages(path string) ([]Message, error) {
 	return messages, nil
 }
 
-func (m *Mailbox) readCompatibleMessages(agentName, inboxFile string) ([]Message, bool, error) {
-	canonical, err := readMessages(inboxFile)
-	if err != nil && !os.IsNotExist(err) {
-		return nil, false, err
-	}
+func readMailboxMessages(path string) ([]Message, error) {
+	messages, err := readMessages(path)
 	if os.IsNotExist(err) {
-		canonical = nil
+		return nil, nil
 	}
-	canonical, canonicalChanged, err := normalizeMailboxMessages(canonical)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
-	legacyFile, err := m.legacyInboxPath(agentName)
-	if err != nil {
-		return nil, false, err
-	}
-	legacy, legacyErr := readMessages(legacyFile)
-	if legacyErr != nil && !os.IsNotExist(legacyErr) {
-		return nil, false, legacyErr
-	}
-	if os.IsNotExist(legacyErr) || len(legacy) == 0 {
-		return canonical, canonicalChanged, nil
-	}
-	legacy, _, err = normalizeMailboxMessages(legacy)
-	if err != nil {
-		return nil, false, err
-	}
-	combined := make([]Message, 0, len(legacy)+len(canonical))
-	if len(canonical) == 0 {
-		combined = append(combined, legacy...)
-	} else {
-		// Once the canonical inbox has published sequences, it is authoritative.
-		// Append newly discovered legacy IDs after its high-water mark so a mixed
-		// old writer cannot renumber already acknowledged canonical messages.
-		combined = append(combined, canonical...)
-		combined = append(combined, legacy...)
-	}
-	combined, _, err = normalizeMailboxMessages(combined)
-	if err != nil {
-		return nil, false, err
-	}
-	return combined, true, nil
-}
-
-func normalizeMailboxMessages(messages []Message) ([]Message, bool, error) {
-	if len(messages) == 0 {
-		return messages, false, nil
-	}
-	changed := false
-	occurrences := make(map[string]int)
-	for i := range messages {
-		fingerprint := legacyMessageFingerprint(messages[i])
-		ordinal := occurrences[fingerprint]
-		occurrences[fingerprint] = ordinal + 1
-		if _, err := uuid.Parse(messages[i].ID); err != nil {
-			messages[i].ID = uuid.NewSHA1(uuid.NameSpaceOID, []byte(fmt.Sprintf("mailbox:v1:%s:%d", fingerprint, ordinal))).String()
-			changed = true
+	seen := make(map[string]struct{}, len(messages))
+	for index, message := range messages {
+		if _, err := uuid.Parse(message.ID); err != nil {
+			return nil, fmt.Errorf("mailbox: invalid message id at index %d: %w", index, err)
+		}
+		if _, duplicate := seen[message.ID]; duplicate {
+			return nil, fmt.Errorf("mailbox: %w: duplicate id %s", ErrMailboxSequenceConflict, message.ID)
+		}
+		seen[message.ID] = struct{}{}
+		if want := uint64(index + 1); message.Sequence != want {
+			return nil, fmt.Errorf("mailbox: %w: sequence at index %d is %d, want %d", ErrMailboxSequenceConflict, index, message.Sequence, want)
 		}
 	}
-
-	deduped := make([]Message, 0, len(messages))
-	byID := make(map[string]int, len(messages))
-	for _, message := range messages {
-		if index, ok := byID[message.ID]; ok {
-			stored := &deduped[index]
-			if !sameMessagePayload(*stored, message, false) {
-				return nil, false, fmt.Errorf("mailbox: %w: duplicate id %s has conflicting payload", ErrMailboxSequenceConflict, message.ID)
-			}
-			stored.Read = stored.Read || message.Read
-			changed = true
-			continue
-		}
-		byID[message.ID] = len(deduped)
-		deduped = append(deduped, message)
-	}
-	for i := range deduped {
-		want := uint64(i + 1)
-		if deduped[i].Sequence != want {
-			deduped[i].Sequence = want
-			changed = true
-		}
-	}
-	return deduped, changed, nil
-}
-
-func legacyMessageFingerprint(message Message) string {
-	payload := struct {
-		From, Text, Timestamp, Color, Summary string
-	}{message.From, message.Text, message.Timestamp, message.Color, message.Summary}
-	data, _ := json.Marshal(payload)
-	return string(data)
+	return messages, nil
 }
 
 func sameMessagePayload(stored, candidate Message, ignoreCandidateTimestamp bool) bool {
@@ -504,14 +220,6 @@ func mailboxHighWater(messages []Message) uint64 {
 		}
 	}
 	return high
-}
-
-func writeMessages(path string, messages []Message) error {
-	data, err := json.MarshalIndent(messages, "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicWrite(path, data)
 }
 
 // atomicWrite writes data to path via a temp file + rename for atomicity.

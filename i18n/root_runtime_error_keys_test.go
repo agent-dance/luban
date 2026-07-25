@@ -36,10 +36,6 @@ func TestRootRuntimeLabelsLocalizeKnownCodesAndPreserveExtensions(t *testing.T) 
 	if got := RootAgentTerminalReasonLabel(LangKO, "process_restart"); got != "프로세스 재시작으로 중단됨" {
 		t.Fatalf("terminal reason = %q", got)
 	}
-	stored := Format(LangDE, KeyRootGoalReasonEvaluatorFailed, "raw provider detail")
-	if got := RootGoalEvaluatorReasonLabel(LangZH, stored); got != "目标评估失败：raw provider detail" {
-		t.Fatalf("persisted evaluator reason = %q", got)
-	}
 	for _, got := range []string{
 		RootGoalStatusLabel(LangZH, "extension_status"),
 		RootAgentPhaseLabel(LangZH, "extension_phase"),

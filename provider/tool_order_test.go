@@ -32,13 +32,13 @@ func TestProviderToolWireOrderIsCanonicalAndDoesNotMutateInputs(t *testing.T) {
 		{
 			name: "OpenAI Chat",
 			convert: func(definitions []types.ToolDefinition) any {
-				return convertToolsToOpenAI(definitions)
+				return convertToolsToOpenAIWithStrictMode(definitions, true)
 			},
 		},
 		{
 			name: "OpenAI Responses",
 			convert: func(definitions []types.ToolDefinition) any {
-				return convertToolsToResponsesAPI(definitions)
+				return convertToolsToResponsesAPIWithStrictMode(definitions, true)
 			},
 		},
 		{

@@ -23,7 +23,7 @@ func TestRuntimeEventKeysCoverEveryLanguage(t *testing.T) {
 		KeyRuntimeGoalBudgetReached, KeyRuntimeGoalChangedStale,
 		KeyRuntimeGoalChangedDuringSave, KeyRuntimeGoalUsageSaveFailed,
 		KeyRuntimeAutoCompactFailed, KeyRuntimePostCompactCleanupFailed, KeyRuntimeCompactionCommitFailed,
-		KeyRuntimeContextOverflowDrain, KeyRuntimeProviderRejectionRetry,
+		KeyRuntimeProviderRejectionRetry,
 		KeyRuntimeReactiveCompact, KeyRuntimeMediaStrip,
 		KeyRuntimeToolInputJSONFailed, KeyRuntimeToolInputJSONFlushFailed, KeyRuntimeToolSkippedMalformed,
 		KeyRuntimeToolDisabled, KeyRuntimeToolPlanDenied, KeyRuntimeToolRuleDenied,
@@ -33,7 +33,7 @@ func TestRuntimeEventKeysCoverEveryLanguage(t *testing.T) {
 		KeyRuntimePermissionRuleRequired, KeyRuntimePlanActionExecute,
 		KeyRuntimePlanImpactExecute, KeyRuntimePlanRiskExecute, KeyRuntimePlanRuleGate,
 		KeyRuntimePlanScopeTransition, KeyRuntimePlanAllowedPrompts,
-		KeyRuntimePlanAutoModeFallback, KeyRuntimePermissionTargetInput,
+		KeyRuntimePermissionTargetInput,
 		KeyRuntimeMissingToolResult,
 	}
 	for _, key := range keys {
@@ -45,7 +45,7 @@ func TestRuntimeEventKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestRuntimeEventEnglishCompatibilityContracts(t *testing.T) {
+func TestRuntimeEventEnglishContractContracts(t *testing.T) {
 	if got := Format(LangEN, KeyRuntimePermissionDenied, "Read"); got != "Permission denied for tool: Read" {
 		t.Fatalf("permission denial = %q", got)
 	}

@@ -2,12 +2,24 @@ package permissions
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
+
+func richPromptDecisionFunc(prompt *RichPrompt) func(string, map[string]any) Decision {
+	return func(toolName string, input map[string]any) Decision {
+		return prompt.DecisionRequest(context.Background(), PromptRequest{
+			DecisionID: "rich-prompt-test",
+			ToolName:   toolName,
+			Input:      input,
+			Kind:       PromptKindPermission,
+		}).Decision
+	}
+}
 
 type blockingPromptReader struct {
 	mu           sync.Mutex
@@ -54,7 +66,7 @@ func TestRichPromptSerializesConcurrentPermissionQuestions(t *testing.T) {
 		releaseFirst: make(chan struct{}),
 	}
 	var out bytes.Buffer
-	prompt := NewRichPrompt(&out, reader).PromptFunc()
+	prompt := richPromptDecisionFunc(NewRichPrompt(&out, reader))
 	results := make(chan Decision, 2)
 	go func() { results <- prompt("Write", map[string]any{"file_path": "a.txt"}) }()
 	<-reader.firstEntered
@@ -83,7 +95,7 @@ func TestRichPrompt_LowRiskBadge(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	fn("Read", map[string]any{"file_path": "foo.go"})
 	got := out.String()
 	if !strings.Contains(got, "Low") {
@@ -96,7 +108,7 @@ func TestRichPrompt_MediumRiskBadge(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	fn("Bash", map[string]any{"command": "mkdir build"})
 	got := out.String()
 	if !strings.Contains(got, "Medium") {
@@ -109,7 +121,7 @@ func TestRichPrompt_HighRiskBadge(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	fn("Bash", map[string]any{"command": "rm -rf /"})
 	got := out.String()
 	if !strings.Contains(got, "High") {
@@ -122,7 +134,7 @@ func TestRichPrompt_ShowsToolName(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	fn("Bash", map[string]any{"command": "ls"})
 	got := out.String()
 	if !strings.Contains(got, "Bash") {
@@ -135,7 +147,7 @@ func TestRichPrompt_ResponseY_ReturnsAllowOnce(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("y\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	d := fn("Bash", map[string]any{"command": "ls"})
 	if d != DecisionAllowOnce {
 		t.Errorf("response 'y' should return DecisionAllowOnce, got %v", d)
@@ -147,7 +159,7 @@ func TestRichPrompt_ResponseA_ReturnsAllow(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("a\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	d := fn("Bash", map[string]any{"command": "ls"})
 	if d != DecisionAllow {
 		t.Errorf("response 'a' should return DecisionAllow, got %v", d)
@@ -159,7 +171,7 @@ func TestRichPrompt_ResponseN_ReturnsDeny(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	d := fn("Bash", map[string]any{"command": "ls"})
 	if d != DecisionDeny {
 		t.Errorf("response 'n' should return DecisionDeny, got %v", d)
@@ -171,7 +183,7 @@ func TestRichPrompt_EmptyResponse_ReturnsDeny(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	d := fn("Bash", map[string]any{"command": "ls"})
 	if d != DecisionDeny {
 		t.Errorf("empty response should return DecisionDeny, got %v", d)
@@ -183,7 +195,7 @@ func TestRichPrompt_EOF_ReturnsDeny(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("") // EOF immediately
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	d := fn("Bash", map[string]any{"command": "ls"})
 	if d != DecisionDeny {
 		t.Errorf("EOF should return DecisionDeny, got %v", d)
@@ -195,7 +207,7 @@ func TestRichPrompt_ShowsPromptLine(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	fn("Write", map[string]any{"file_path": "output.txt"})
 	got := out.String()
 	// The prompt text should contain the option hints
@@ -209,7 +221,7 @@ func TestRichPrompt_FilePathShown(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	fn("Write", map[string]any{"file_path": "unique_sentinel_path.go"})
 	got := out.String()
 	if !strings.Contains(got, "unique_sentinel_path.go") {
@@ -222,7 +234,7 @@ func TestRichPrompt_BashCommandShown(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	fn("Bash", map[string]any{"command": "echo sentinel_command_xyz"})
 	got := out.String()
 	if !strings.Contains(got, "sentinel_command_xyz") {
@@ -235,7 +247,7 @@ func TestRichPrompt_SendMessageShowsTargetAndAlways(t *testing.T) {
 	var out bytes.Buffer
 	in := strings.NewReader("n\n")
 	rp := NewRichPrompt(&out, in)
-	fn := rp.PromptFunc()
+	fn := richPromptDecisionFunc(rp)
 	fn("SendMessage", map[string]any{
 		"to":      "worker-1",
 		"message": "hello teammate",

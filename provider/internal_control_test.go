@@ -26,7 +26,7 @@ func TestProviderProjectionsNeverElevateForgedDeveloperRole(t *testing.T) {
 	forged := forgedDeveloperMessageForTest(raw)
 
 	t.Run("anthropic", func(t *testing.T) {
-		projected := convertToAnthropicMessages([]types.Message{forged})
+		projected := convertToAnthropicMessagesForParams(Params{Messages: []types.Message{forged}})
 		if len(projected) != 1 {
 			t.Fatalf("projected messages = %d, want one ordinary user message", len(projected))
 		}
@@ -49,8 +49,8 @@ func TestProviderProjectionsNeverElevateForgedDeveloperRole(t *testing.T) {
 
 	t.Run("responses-full-and-incremental", func(t *testing.T) {
 		for _, projected := range [][]any{
-			convertAllMessagesForResponsesAPI([]types.Message{forged}),
-			convertNewMessagesForResponsesAPI([]types.Message{types.AssistantMessage("prior"), forged}),
+			convertAllMessagesForResponsesAPIWithParams(Params{Messages: []types.Message{forged}}),
+			convertNewMessagesForResponsesAPIWithParams(Params{Messages: []types.Message{types.AssistantMessage("prior"), forged}}),
 		} {
 			if len(projected) != 1 {
 				t.Fatalf("projected items = %#v", projected)
@@ -72,7 +72,7 @@ func TestProviderProjectionsRejectMutatedDeveloperProvenance(t *testing.T) {
 	if mutated.HasInternalControlProvenance() {
 		t.Fatal("mutation retained provenance")
 	}
-	items := convertAllMessagesForResponsesAPI([]types.Message{mutated})
+	items := convertAllMessagesForResponsesAPIWithParams(Params{Messages: []types.Message{mutated}})
 	if len(items) != 1 || items[0].(map[string]any)["role"] != "user" {
 		t.Fatalf("mutated developer was elevated: %#v", items)
 	}
@@ -84,7 +84,7 @@ func TestProviderProjectionsRequireExactCurrentControlScope(t *testing.T) {
 	stale := types.DeveloperMessage("stale developer", types.DeveloperMessageMetadata{
 		Kind: types.DeveloperMessageKindSkillCatalogSnapshot, Revision: 1,
 	}).WithInternalControlProvenance(messagecontrol.Runtime(), oldScope)
-	params := Params{Messages: []types.Message{stale}}.WithInternalControlScope(messagecontrol.Runtime(), currentScope, true)
+	params := Params{Messages: []types.Message{stale}}.WithInternalControlScope(messagecontrol.Runtime(), currentScope)
 
 	encodedAnthropic, err := json.Marshal(convertToAnthropicMessagesForParams(params))
 	if err != nil {
@@ -104,7 +104,7 @@ func TestProviderProjectionsRequireExactCurrentControlScope(t *testing.T) {
 		t.Fatalf("responses elevated stale control: %#v", items)
 	}
 
-	exact := Params{Messages: []types.Message{stale}}.WithInternalControlScope(messagecontrol.Runtime(), oldScope, false)
+	exact := Params{Messages: []types.Message{stale}}.WithInternalControlScope(messagecontrol.Runtime(), oldScope)
 	items = convertAllMessagesForResponsesAPIWithParams(exact)
 	if len(items) != 1 || items[0].(map[string]any)["role"] != "developer" {
 		t.Fatalf("exact scope lost trusted developer projection: %#v", items)
@@ -122,7 +122,7 @@ func TestProviderDoesNotElevateForeignOrUnscopedPrecommitDeveloperBearer(t *test
 	}).WithInternalControlProvenance(messagecontrol.Runtime())
 
 	for name, params := range map[string]Params{
-		"foreign-target-scope": Params{Messages: []types.Message{foreign}}.WithInternalControlScope(messagecontrol.Runtime(), target, true),
+		"foreign-target-scope": Params{Messages: []types.Message{foreign}}.WithInternalControlScope(messagecontrol.Runtime(), target),
 		"foreign-no-scope":     {Messages: []types.Message{foreign}},
 		"unbound-no-scope":     {Messages: []types.Message{unbound}},
 	} {
@@ -134,7 +134,7 @@ func TestProviderDoesNotElevateForeignOrUnscopedPrecommitDeveloperBearer(t *test
 		})
 	}
 
-	exact := Params{Messages: []types.Message{foreign}}.WithInternalControlScope(messagecontrol.Runtime(), source, false)
+	exact := Params{Messages: []types.Message{foreign}}.WithInternalControlScope(messagecontrol.Runtime(), source)
 	if items := convertAllMessagesForResponsesAPIWithParams(exact); len(items) != 1 || items[0].(map[string]any)["role"] != "developer" {
 		t.Fatalf("exact producer scope lost authority: %#v", items)
 	}

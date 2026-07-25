@@ -14,6 +14,7 @@ import (
 func registerBuiltinProviders(r *ProviderRegistry) {
 	registerAnthropic(r)
 	registerOpenAI(r)
+	registerCompatibleAggregates(r)
 	registerBedrock(r)
 	registerVertex(r)
 	registerOllama(r)
@@ -25,7 +26,35 @@ func registerBuiltinProviders(r *ProviderRegistry) {
 	registerZhipu(r)
 	registerMiniMax(r)
 	registerKimi(r)
-	registerOAuth(r)
+}
+
+func registerCompatibleAggregates(r *ProviderRegistry) {
+	definitions := []CompatibleProviderDefinition{
+		{
+			Name: "volcengine", DisplayName: "Volcengine Ark Coding Plan", Popularity: 88,
+			BaseURLs: map[APIStyle]string{
+				APIStyleOpenAI:    "https://ark.cn-beijing.volces.com/api/coding/v3",
+				APIStyleAnthropic: "https://ark.cn-beijing.volces.com/api/coding",
+			},
+		},
+		{
+			Name: "alibaba-cloud", DisplayName: "Alibaba Cloud Coding Plan", Popularity: 87,
+			BaseURLs: map[APIStyle]string{
+				APIStyleOpenAI:    "https://coding.dashscope.aliyuncs.com/v1",
+				APIStyleAnthropic: "https://coding.dashscope.aliyuncs.com/apps/anthropic",
+			},
+		},
+		{
+			Name: "tencent-cloud", DisplayName: "Tencent Cloud Coding Plan", Popularity: 86,
+			BaseURLs: map[APIStyle]string{
+				APIStyleOpenAI:    "https://api.lkeap.cloud.tencent.com/coding/v3",
+				APIStyleAnthropic: "https://api.lkeap.cloud.tencent.com/coding/anthropic",
+			},
+		},
+	}
+	for _, definition := range definitions {
+		r.RegisterCompatibleProvider(definition)
+	}
 }
 
 func registerAnthropic(r *ProviderRegistry) {
@@ -55,25 +84,19 @@ func registerAnthropic(r *ProviderRegistry) {
 				}
 			}
 		}
-		if apiKey == "" && authToken == "" {
-			if token := strings.TrimSpace(os.Getenv("OAUTH_ACCESS_TOKEN")); token != "" {
-				authToken = token
-				oauthBacked = true
-			}
-		}
 		model := modelOverride
 		if model == "" && cfg.Model != "" {
 			model = cfg.Model
 		}
 		if model == "" {
-			model = os.Getenv("CLAUDE_MODEL")
+			model = os.Getenv("ANTHROPIC_MODEL")
 		}
 		if model == "" {
 			model = CatalogDefaultModel("anthropic", "claude-sonnet-5")
 		}
 		if authToken != "" {
-			// Match Claude Code's practical proxy path: when a bearer token is
-			// present, do not also emit X-Api-Key from env/store leftovers.
+			// Bearer-token authentication must not also emit X-Api-Key from
+			// environment or credential-store leftovers.
 			apiKey = ""
 		}
 		if apiKey == "" && authToken == "" {
@@ -82,7 +105,7 @@ func registerAnthropic(r *ProviderRegistry) {
 		raw := NewAnthropic(Config{
 			APIKey:    apiKey,
 			AuthToken: authToken,
-			BaseURL:   firstNonEmpty(cfg.BaseURL, os.Getenv("ANTHROPIC_BASE_URL"), os.Getenv("OAUTH_BASE_URL")),
+			BaseURL:   firstNonEmpty(cfg.BaseURL, os.Getenv("ANTHROPIC_BASE_URL")),
 			Model:     model,
 			Headers:   headers,
 		})
@@ -128,7 +151,6 @@ func registerOpenAI(r *ProviderRegistry) {
 			Model:                  model,
 			Headers:                cloneHeaders(cfg.Headers),
 			CacheRoutingPreference: cfg.CacheRoutingPreference,
-			UserScopedPromptCache:  true,
 		}
 		providerCfg.DisableStrictTools = isCustomOpenAIBaseURL(providerCfg.BaseURL) &&
 			!isOpenAIChatGPTCodexBaseURL(providerCfg.BaseURL)
@@ -137,13 +159,11 @@ func registerOpenAI(r *ProviderRegistry) {
 		// first-party models use their cataloged format, and cataloged Responses
 		// models negotiate that protocol on custom gateways with a chat fallback.
 		apiFormat := strings.ToLower(os.Getenv("OPENAI_API"))
-		forceResponses := os.Getenv("OPENAI_USE_RESPONSES") == "1"
 		useResponses := resolveOpenAIResponsesMode(
 			authToken,
 			apiFormat,
 			providerCfg.BaseURL,
 			model,
-			forceResponses,
 		)
 		if useResponses {
 			raw := NewResponses(providerCfg)
@@ -153,7 +173,7 @@ func registerOpenAI(r *ProviderRegistry) {
 			}
 			return NewRetryProvider(raw, retryCfg), nil
 		}
-		if shouldNegotiateOpenAIResponses(authToken, apiFormat, providerCfg.BaseURL, model, forceResponses) {
+		if shouldNegotiateOpenAIResponses(authToken, apiFormat, providerCfg.BaseURL, model) {
 			responses := NewResponses(providerCfg)
 			chatCfg := providerCfg
 			chatCfg.BaseURL = normalizeOpenAIChatBaseURL(chatCfg.BaseURL)
@@ -165,52 +185,6 @@ func registerOpenAI(r *ProviderRegistry) {
 		return NewRetryProvider(raw, DefaultRetryConfig()), nil
 	})
 
-	// Also register "openai-responses" as a hidden alias for backward compatibility.
-	r.Register(ProviderInfo{
-		Name:           "openai-responses",
-		DisplayName:    "OpenAI (Responses API)",
-		EnvKey:         "OPENAI_API_KEY",
-		Models:         []string{"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"},
-		DefaultModel:   CatalogDefaultModel("openai", "gpt-5.6-sol"),
-		AuthMethods:    []string{"api_key", "oauth_pkce"},
-		Hidden:         true,
-		Popularity:     0,
-		DefaultBaseURL: "https://api.openai.com/v1",
-	}, func(cfg Config, modelOverride string) (Provider, error) {
-		authToken := strings.TrimSpace(cfg.AuthToken)
-		apiKey := cfg.APIKey
-		model := modelOverride
-		if model == "" && cfg.Model != "" {
-			model = cfg.Model
-		}
-		if model == "" {
-			model = envOrDefault("OPENAI_MODEL", CatalogDefaultModel("openai", "gpt-5.6-sol"))
-		}
-		if authToken == "" && apiKey == "" {
-			apiKey = os.Getenv("OPENAI_API_KEY")
-		}
-		if authToken == "" && apiKey == "" {
-			return NewUnconfiguredProvider("openai", model, "OPENAI_API_KEY", ""), nil
-		}
-		responsesCfg := Config{
-			ProviderName:           "openai",
-			APIKey:                 apiKey,
-			AuthToken:              authToken,
-			BaseURL:                firstNonEmpty(cfg.BaseURL, os.Getenv("OPENAI_BASE_URL")),
-			Model:                  model,
-			Headers:                cloneHeaders(cfg.Headers),
-			CacheRoutingPreference: cfg.CacheRoutingPreference,
-			UserScopedPromptCache:  true,
-		}
-		responsesCfg.DisableStrictTools = isCustomOpenAIBaseURL(responsesCfg.BaseURL) &&
-			!isOpenAIChatGPTCodexBaseURL(responsesCfg.BaseURL)
-		raw := NewResponses(responsesCfg)
-		retryCfg := DefaultRetryConfig()
-		if authToken != "" {
-			retryCfg.OnAuthError = openAIOAuthRefreshHandler(r, raw)
-		}
-		return NewRetryProvider(raw, retryCfg), nil
-	})
 }
 
 func registerBedrock(r *ProviderRegistry) {
@@ -333,7 +307,6 @@ func registerDeepSeek(r *ProviderRegistry) {
 		if model == "" {
 			model = envOrDefault("DEEPSEEK_MODEL", brand.DeepSeekDefaultModel)
 		}
-		model = normalizeDeepSeekModel(model)
 		if apiKey == "" {
 			return NewUnconfiguredProvider(brand.DeepSeekProvider, model, "DEEPSEEK_API_KEY", ""), nil
 		}
@@ -343,19 +316,9 @@ func registerDeepSeek(r *ProviderRegistry) {
 			BaseURL:                firstNonEmpty(cfg.BaseURL, envOrDefault("DEEPSEEK_BASE_URL", brand.DeepSeekBaseURL)),
 			Model:                  model,
 			CacheRoutingPreference: cfg.CacheRoutingPreference,
-			UserScopedPromptCache:  true,
 		})
 		return NewRetryProvider(raw, DefaultRetryConfig()), nil
 	})
-}
-
-func normalizeDeepSeekModel(model string) string {
-	switch strings.TrimSpace(model) {
-	case "deepseek-chat", "deepseek-reasoner":
-		return brand.DeepSeekDefaultModel
-	default:
-		return model
-	}
 }
 
 func registerGemini(r *ProviderRegistry) {
@@ -456,7 +419,6 @@ func registerXAI(r *ProviderRegistry) {
 			Model:                  model,
 			DisableStrictTools:     true,
 			CacheRoutingPreference: cfg.CacheRoutingPreference,
-			UserScopedPromptCache:  true,
 		})
 		return NewRetryProvider(raw, DefaultRetryConfig()), nil
 	})
@@ -491,7 +453,6 @@ func registerMistral(r *ProviderRegistry) {
 			BaseURL:                firstNonEmpty(cfg.BaseURL, envOrDefault("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")),
 			Model:                  model,
 			CacheRoutingPreference: cfg.CacheRoutingPreference,
-			UserScopedPromptCache:  true,
 		})
 		return NewRetryProvider(raw, DefaultRetryConfig()), nil
 	})
@@ -594,64 +555,6 @@ func registerKimi(r *ProviderRegistry) {
 			BaseURL:                firstNonEmpty(cfg.BaseURL, envOrDefault("KIMI_BASE_URL", "https://api.moonshot.cn/v1")),
 			Model:                  model,
 			CacheRoutingPreference: cfg.CacheRoutingPreference,
-			UserScopedPromptCache:  true,
-		})
-		return NewRetryProvider(raw, DefaultRetryConfig()), nil
-	})
-}
-
-func registerOAuth(r *ProviderRegistry) {
-	r.Register(ProviderInfo{
-		Name:        "oauth",
-		DisplayName: "OAuth (Anthropic)",
-		EnvKey:      "OAUTH_ACCESS_TOKEN",
-		Models: []string{
-			CatalogDefaultModel("anthropic", "claude-sonnet-5"),
-		},
-		DefaultModel: CatalogDefaultModel("anthropic", "claude-sonnet-5"),
-		AuthMethods:  []string{"oauth_pkce"},
-		Hidden:       true,
-		Popularity:   0,
-	}, func(cfg Config, modelOverride string) (Provider, error) {
-		model := modelOverride
-		if model == "" && cfg.Model != "" {
-			model = cfg.Model
-		}
-		if model == "" {
-			model = os.Getenv("CLAUDE_MODEL")
-		}
-
-		// Try to use the OAuthHook if one has been registered.
-		// This activates the auth/ package code without import cycles.
-		if hook := r.OAuthHookRef(); hook != nil {
-			token, err := hook.LoadAccessToken(context.Background())
-			if err == nil && token != "" {
-				raw := NewAnthropic(Config{
-					APIKey:  token,
-					BaseURL: firstNonEmpty(cfg.BaseURL, os.Getenv("OAUTH_BASE_URL")),
-					Model:   model,
-				})
-
-				// Set up retry with OnAuthError callback for 401 auto-refresh.
-				retryCfg := DefaultRetryConfig()
-				retryCfg.OnAuthError = hook.OnAuthError
-
-				return NewRetryProvider(raw, retryCfg), nil
-			}
-		}
-
-		// Fallback: use access token from Config or env var (original behavior).
-		accessToken := cfg.APIKey
-		if accessToken == "" {
-			accessToken = os.Getenv("OAUTH_ACCESS_TOKEN")
-		}
-		if accessToken == "" {
-			return NewUnconfiguredProvider("oauth", model, "OAUTH_ACCESS_TOKEN", ""), nil
-		}
-		raw := NewAnthropic(Config{
-			APIKey:  accessToken,
-			BaseURL: firstNonEmpty(cfg.BaseURL, os.Getenv("OAUTH_BASE_URL")),
-			Model:   model,
 		})
 		return NewRetryProvider(raw, DefaultRetryConfig()), nil
 	})

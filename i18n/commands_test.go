@@ -5,9 +5,9 @@ import "testing"
 func TestCommandDescriptionKeysCoverEveryLanguage(t *testing.T) {
 	names := []string{
 		"activity", "clear", "compact", "config", "connect", "context",
-		"cost", "detail", "diff", "doctor", "editor", "exit", "export",
-		"fork", "goal", "help", "init", "language", "mcp", "memory",
-		"model", "mouse", "paste", "permissions", "rename", "resume",
+		"detail", "diff", "doctor", "editor", "exit", "export",
+		"fork", "goal", "help", "init", "language", "mcp",
+		"model", "mouse", "permissions", "rename", "resume",
 		"review", "search", "session", "skills", "status", "version",
 	}
 	if len(names) != len(commandDescriptionKeys) {

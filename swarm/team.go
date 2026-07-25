@@ -54,16 +54,6 @@ func TeamConfigPath(teamName string) (string, error) {
 	return filepath.Join(home, brand.ConfigDirName, "teams", teamName, "team.json"), nil
 }
 
-// TeamDir returns ~/.luban-code/teams/{teamName} after validating that the
-// name cannot escape the teams root.
-func TeamDir(teamName string) (string, error) {
-	path, err := TeamConfigPath(teamName)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Dir(path), nil
-}
-
 func userHomeDir() (string, error) {
 	if home := os.Getenv("HOME"); home != "" {
 		return home, nil
@@ -99,54 +89,6 @@ func LoadTeamConfig(teamName string) (*TeamConfig, error) {
 		return nil, fmt.Errorf("load team config: decode: %w", err)
 	}
 	return &cfg, nil
-}
-
-// SaveTeamConfig writes a team config to disk atomically under an exclusive
-// file lock so concurrent savers do not corrupt the file.
-func SaveTeamConfig(cfg *TeamConfig) error {
-	if cfg == nil {
-		return fmt.Errorf("save team config: nil config")
-	}
-	return SaveTeamConfigAs(cfg.Name, cfg)
-}
-
-// SaveTeamConfigAs writes cfg under the provided storage team name. This is
-// used when the on-disk directory is a slug but cfg.Name preserves the display
-// team name for TS-compatible readers.
-func SaveTeamConfigAs(teamName string, cfg *TeamConfig) error {
-	if cfg == nil {
-		return fmt.Errorf("save team config: nil config")
-	}
-	path, err := TeamConfigPath(teamName)
-	if err != nil {
-		return err
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("save team config: mkdir: %w", err)
-	}
-
-	ctx := context.Background()
-	unlock, err := lockFile(ctx, path+".lock")
-	if err != nil {
-		return fmt.Errorf("save team config: lock: %w", err)
-	}
-	defer unlock()
-
-	if currentData, readErr := os.ReadFile(path); readErr == nil {
-		var current TeamConfig
-		if json.Unmarshal(currentData, &current) == nil && cfg.Revision <= current.Revision {
-			cfg.Revision = current.Revision + 1
-		}
-	} else if os.IsNotExist(readErr) && cfg.Revision == 0 {
-		cfg.Revision = 1
-	}
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("save team config: encode: %w", err)
-	}
-
-	return atomicWrite(path, data)
 }
 
 // CreateTeamConfigAs publishes a new team only when no config already exists.
@@ -258,20 +200,6 @@ func DeleteTeamConfig(teamName string) error {
 	defer unlock()
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("delete team config: %w", err)
-	}
-	return nil
-}
-
-// DeleteTeamDirectory recursively removes all durable state for a team,
-// including config, locks, inboxes, and other team-local files. It is a no-op
-// when the directory is already gone.
-func DeleteTeamDirectory(teamName string) error {
-	dir, err := TeamDir(teamName)
-	if err != nil {
-		return err
-	}
-	if err := os.RemoveAll(dir); err != nil {
-		return fmt.Errorf("delete team directory: %w", err)
 	}
 	return nil
 }

@@ -23,7 +23,6 @@ type rawFrontmatter struct {
 	Model                  *string     `yaml:"model"`
 	DisableModelInvocation *string     `yaml:"disable-model-invocation"`
 	UserInvocable          *string     `yaml:"user-invocable"`
-	Hooks                  any         `yaml:"hooks"`
 	Context                *string     `yaml:"context"`
 	Agent                  *string     `yaml:"agent"`
 	Effort                 *string     `yaml:"effort"`
@@ -92,44 +91,6 @@ func splitCommaSafe(s string) []string {
 	return parts
 }
 
-// yamlSpecialChars matches characters that need quoting in YAML values.
-// Aligns with TS YAML_SPECIAL_CHARS regex.
-var yamlSpecialChars = regexp.MustCompile(`[{}\[\]*&#!|>%@` + "`" + `]|: `)
-
-// simpleKVLine matches a simple "key: value" line (not indented, not list).
-var simpleKVLine = regexp.MustCompile(`^([a-zA-Z_-]+):\s+(.+)$`)
-
-// quoteProblematicValues pre-processes frontmatter text to quote values
-// containing special YAML characters. Aligns with TS quoteProblematicValues.
-func quoteProblematicValues(text string) string {
-	lines := strings.Split(text, "\n")
-	result := make([]string, 0, len(lines))
-
-	for _, line := range lines {
-		m := simpleKVLine.FindStringSubmatch(line)
-		if m != nil {
-			key, value := m[1], m[2]
-
-			// Skip if already quoted
-			if (strings.HasPrefix(value, `"`) && strings.HasSuffix(value, `"`)) ||
-				(strings.HasPrefix(value, `'`) && strings.HasSuffix(value, `'`)) {
-				result = append(result, line)
-				continue
-			}
-
-			// Quote if contains special YAML characters
-			if yamlSpecialChars.MatchString(value) {
-				escaped := strings.ReplaceAll(value, `\`, `\\`)
-				escaped = strings.ReplaceAll(escaped, `"`, `\"`)
-				result = append(result, key+`: "`+escaped+`"`)
-				continue
-			}
-		}
-		result = append(result, line)
-	}
-	return strings.Join(result, "\n")
-}
-
 // ParsedMarkdown holds the result of parsing a markdown file with frontmatter.
 type ParsedMarkdown struct {
 	Frontmatter rawFrontmatter
@@ -151,14 +112,8 @@ func parseFrontmatter(markdown, sourcePath string) ParsedMarkdown {
 
 	var fm rawFrontmatter
 
-	// Try parsing YAML directly
 	if err := yaml.Unmarshal([]byte(fmText), &fm); err != nil {
-		// Retry with problematic values quoted
-		quoted := quoteProblematicValues(fmText)
-		if err2 := yaml.Unmarshal([]byte(quoted), &fm); err2 != nil {
-			// Both attempts failed — return content without frontmatter
-			return ParsedMarkdown{Content: content}
-		}
+		return ParsedMarkdown{Content: content}
 	}
 
 	return ParsedMarkdown{

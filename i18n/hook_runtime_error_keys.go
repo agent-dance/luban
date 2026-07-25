@@ -13,9 +13,6 @@ const (
 	KeyHookResponseReadFailed    Key = "hook.http.response_read_failed"
 	KeyHookResponseTruncated     Key = "hook.http.response_truncated"
 	KeyHookAttemptsFailed        Key = "hook.http.attempts_failed"
-	KeyHookConfigLegacyParse     Key = "hook.config.legacy_parse_failed"
-	KeyHookConfigMapParse        Key = "hook.config.map_parse_failed"
-	KeyHookConfigUnexpected      Key = "hook.config.unexpected_value"
 	KeyHookConfigSettingsParse   Key = "hook.config.settings_parse_failed"
 	KeyHookConfigEventInvalid    Key = "hook.config.event_invalid"
 	KeyHookConfigKindUnknown     Key = "hook.config.kind_unknown"
@@ -43,9 +40,6 @@ func init() {
 	add(KeyHookResponseReadFailed, "Could not read the hook response", "无法读取 hook 响应", "Hook-Antwort konnte nicht gelesen werden", "hook 応答を読み取れませんでした", "hook 응답을 읽을 수 없습니다", "Не удалось прочитать ответ hook")
 	add(KeyHookResponseTruncated, "Hook response was truncated after exceeding the %d-byte limit", "hook 响应超过 %d 字节限制，已截断", "Hook-Antwort wurde nach Überschreiten des Limits von %d Byte gekürzt", "hook 応答は %d バイトの上限を超えたため切り詰められました", "hook 응답이 %d바이트 제한을 초과하여 잘렸습니다", "Ответ hook усечён после превышения лимита в %d байт")
 	add(KeyHookAttemptsFailed, "HTTP hook failed after %d attempt(s): %v", "HTTP hook 在尝试 %d 次后失败：%v", "HTTP-Hook nach %d Versuch(en) fehlgeschlagen: %v", "HTTP hook は %d 回試行後に失敗しました: %v", "HTTP hook가 %d회 시도 후 실패했습니다: %v", "HTTP hook завершился ошибкой после %d попыток: %v")
-	add(KeyHookConfigLegacyParse, "Could not parse the legacy hook array", "无法解析旧版 hook 数组", "Legacy-Hook-Array konnte nicht geparst werden", "従来形式の hook 配列を解析できませんでした", "레거시 hook 배열을 파싱할 수 없습니다", "Не удалось разобрать устаревший массив hook")
-	add(KeyHookConfigMapParse, "Could not parse the hook map", "无法解析 hook map", "Hook-Map konnte nicht geparst werden", "hook map を解析できませんでした", "hook map을 파싱할 수 없습니다", "Не удалось разобрать map hook")
-	add(KeyHookConfigUnexpected, "Unexpected hooks value; expected an array or object, got %c…", "hooks 值异常；应为数组或对象，实际以 %c… 开头", "Unerwarteter Hooks-Wert; Array oder Objekt erwartet, erhalten: %c…", "hooks の値が不正です。配列またはオブジェクトを想定していましたが、%c… でした", "예기치 않은 hooks 값입니다. 배열 또는 객체가 필요하지만 %c… 값이 제공되었습니다", "Неожиданное значение hooks: ожидался массив или объект, получено %c…")
 	add(KeyHookConfigSettingsParse, "Could not parse hook settings %s", "无法解析 hook 设置 %s", "Hook-Einstellungen %s konnten nicht geparst werden", "hook 設定 %s を解析できませんでした", "hook 설정 %s을(를) 파싱할 수 없습니다", "Не удалось разобрать настройки hook %s")
 	add(KeyHookConfigEventInvalid, "Invalid hook configuration for event %q", "事件 %q 的 hook 配置无效", "Ungültige Hook-Konfiguration für Ereignis %q", "イベント %q の hook 設定が無効です", "이벤트 %q의 hook 구성이 올바르지 않습니다", "Недопустимая конфигурация hook для события %q")
 	add(KeyHookConfigKindUnknown, "Unknown hook kind: %q", "未知 hook 类型：%q", "Unbekannte Hook-Art: %q", "不明な hook 種類です: %q", "알 수 없는 hook 종류: %q", "Неизвестный тип hook: %q")

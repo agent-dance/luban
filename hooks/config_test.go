@@ -59,31 +59,6 @@ func TestLoadConfigRichEventMapHasStableCanonicalConfigIdentity(t *testing.T) {
 	}
 }
 
-func TestLoadConfigLegacyFlatArray(t *testing.T) {
-	dir := t.TempDir()
-	p := filepath.Join(dir, "settings.json")
-	os.WriteFile(p, []byte(`{
-		"hooks": [
-			{"type": "PreToolUse", "command": "echo hi", "timeout": 5},
-			{"type": "PostToolUse", "kind": "http", "url": "https://example.com/hook"}
-		]
-	}`), 0644)
-
-	runner, err := LoadConfig(p)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(runner.hooks) != 2 {
-		t.Fatalf("expected 2 hooks, got %d", len(runner.hooks))
-	}
-	if runner.hooks[0].Type != HookPreToolUse {
-		t.Errorf("expected PreToolUse, got %s", runner.hooks[0].Type)
-	}
-	if runner.hooks[1].Kind != HookKindHTTP {
-		t.Errorf("expected http kind, got %s", runner.hooks[1].Kind)
-	}
-}
-
 func TestLoadConfigRichEventMap(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "settings.json")
@@ -214,9 +189,7 @@ func TestLoadConfigTeammateAndTaskCompletedHooks(t *testing.T) {
 func TestHookTypeFromFilenameTeammateAndTaskCompleted(t *testing.T) {
 	tests := map[string]HookType{
 		"teammate-idle-notify.sh": HookTeammateIdle,
-		"teammateidle-notify.sh":  HookTeammateIdle,
 		"task-completed-check.sh": HookTaskCompleted,
-		"taskcompleted-check.sh":  HookTaskCompleted,
 	}
 	for name, want := range tests {
 		if got := hookTypeFromFilename(strings.TrimSuffix(name, ".sh")); got != want {

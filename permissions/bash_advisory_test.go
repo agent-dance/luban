@@ -5,8 +5,10 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/agent-dance/luban/engine"
+	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/sandbox"
+	"github.com/agent-dance/luban/types"
 )
 
 type advisoryMockBackend struct{}
@@ -17,31 +19,38 @@ func (advisoryMockBackend) Command(context.Context, sandbox.Config, string, ...s
 	return nil, nil
 }
 
-func installAdvisorySafetyChecks(t *testing.T, fn func(string) (bool, string)) {
+func installMandatorySafetyChecks(t *testing.T, fn func(string) (bool, string)) {
 	t.Helper()
 	SetSafetyConfig(SafetyConfig{
-		DangerousCommandChecker: func(string) string { return "" },
-		BashProtectedPathChecker: func(string) (bool, string) {
-			return false, ""
+		ShellPolicyAnalyzer: func(command string, _ types.PolicyContext) types.PolicyDecision {
+			required, reason := fn(command)
+			if !required {
+				return types.PolicyDecision{Disposition: types.PolicyAllow}
+			}
+			return types.PolicyDecision{
+				Disposition: types.PolicyRequiredAsk,
+				Code:        "test.required_ask",
+				PublicKey:   i18n.KeyPermissionApprovalRequired,
+				PublicArgs:  []any{reason},
+			}
 		},
-		BashNeedsApprovalChecker: fn,
 	})
 	t.Cleanup(func() { SetSafetyConfig(SafetyConfig{}) })
 }
 
 func TestModeAskAlwaysBashApprovalCheckerPrompts(t *testing.T) {
-	installAdvisorySafetyChecks(t, func(command string) (bool, string) {
+	installMandatorySafetyChecks(t, func(command string) (bool, string) {
 		return command == "git status", "git in bare repo requires approval"
 	})
 
 	checker := NewChecker(ModeAskAlways, nil)
 	promptCount := 0
-	checker.SetPromptFunc(func(string, map[string]any) Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) Decision {
 		promptCount++
 		return DecisionAllowOnce
 	})
 
-	decision := checker.Check("Bash", map[string]any{"command": "git status"})
+	decision := checkDecision(checker, "Bash", map[string]any{"command": "git status"})
 	if decision != DecisionAllow {
 		t.Fatalf("expected DecisionAllow, got %v", decision)
 	}
@@ -51,7 +60,7 @@ func TestModeAskAlwaysBashApprovalCheckerPrompts(t *testing.T) {
 }
 
 func TestModeRuleBasedAllowRuleDoesNotBypassBashApprovalChecker(t *testing.T) {
-	installAdvisorySafetyChecks(t, func(command string) (bool, string) {
+	installMandatorySafetyChecks(t, func(command string) (bool, string) {
 		return command == "git status", "git in bare repo requires approval"
 	})
 
@@ -59,12 +68,12 @@ func TestModeRuleBasedAllowRuleDoesNotBypassBashApprovalChecker(t *testing.T) {
 		{Tool: "Bash", Pattern: "git status", Decision: DecisionAllow},
 	})
 	promptCount := 0
-	checker.SetPromptFunc(func(string, map[string]any) Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) Decision {
 		promptCount++
 		return DecisionAllowOnce
 	})
 
-	decision := checker.Check("Bash", map[string]any{"command": "git status"})
+	decision := checkDecision(checker, "Bash", map[string]any{"command": "git status"})
 	if decision != DecisionAllow {
 		t.Fatalf("expected DecisionAllow, got %v", decision)
 	}
@@ -74,26 +83,26 @@ func TestModeRuleBasedAllowRuleDoesNotBypassBashApprovalChecker(t *testing.T) {
 }
 
 func TestSandboxAwareHandler_RespectsBashApprovalChecker(t *testing.T) {
-	installAdvisorySafetyChecks(t, func(command string) (bool, string) {
+	installMandatorySafetyChecks(t, func(command string) (bool, string) {
 		return command == "git status", "git in bare repo requires approval"
 	})
 
 	checker := NewChecker(ModeAskAlways, nil)
 	promptCount := 0
-	checker.SetPromptFunc(func(string, map[string]any) Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) Decision {
 		promptCount++
 		return DecisionAllowOnce
 	})
 
 	handler := NewSandboxAwarePermissionHandler(advisoryMockBackend{}, NewCLIPermissionHandler(checker))
-	decision, err := handler.Check(context.Background(), engine.PermissionRequest{
+	decision, err := handler.Check(context.Background(), permission.PermissionRequest{
 		ToolName: "Bash",
 		Input:    map[string]any{"command": "git status"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if decision != engine.PermissionAllow {
+	if decision != permission.PermissionAllow {
 		t.Fatalf("expected PermissionAllow, got %v", decision)
 	}
 	if promptCount != 1 {

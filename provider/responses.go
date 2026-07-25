@@ -16,10 +16,10 @@ import (
 )
 
 // ResponsesProvider implements Provider for the OpenAI Responses API (/v1/responses).
-// It is stateless: conversation chaining is handled by passing PreviousResponseID
-// in Params and reading ResponseID from the EventMessageStop StreamEvent. The
-// ChatGPT Codex backend follows Codex CLI's HTTP fallback: store is false and
-// HTTP requests send full input instead of WebSocket-only previous_response_id.
+// It is stateless. The official public API can chain conversations by passing
+// PreviousResponseID in Params and reading ResponseID from EventMessageStop.
+// Custom and ChatGPT-backed HTTP endpoints receive full input because their
+// response IDs are not necessarily valid for HTTP chaining.
 type ResponsesProvider struct {
 	mu                  sync.RWMutex
 	name                string
@@ -66,10 +66,7 @@ func NewResponses(cfg Config) *ResponsesProvider {
 	if authToken := strings.TrimSpace(cfg.AuthToken); authToken != "" {
 		bearerToken = authToken
 	}
-	cacheUserNamespace := ""
-	if cfg.UserScopedPromptCache {
-		cacheUserNamespace = promptCacheUserNamespace(cfg)
-	}
+	cacheUserNamespace := promptCacheUserNamespace(cfg)
 	providerName := CanonicalProviderName(cfg.ProviderName)
 	if providerName == "" {
 		providerName = "openai"
@@ -132,11 +129,7 @@ func (p *ResponsesProvider) ApplyCredentialConfig(cfg Config) {
 	p.firstPartyEndpoint = isFirstPartyOpenAIResponsesBaseURL(baseURL)
 	p.publicAPIEndpoint = isOpenAIPublicAPIBaseURL(baseURL)
 	p.disableStrictTools = cfg.DisableStrictTools
-	if cfg.UserScopedPromptCache {
-		p.cacheUserNamespace = promptCacheUserNamespace(cfg)
-	} else {
-		p.cacheUserNamespace = ""
-	}
+	p.cacheUserNamespace = promptCacheUserNamespace(cfg)
 	p.cacheRoutingShards = promptCacheRoutingShardCount(cfg.ProviderName)
 }
 
@@ -183,8 +176,14 @@ func (p *ResponsesProvider) CreateStream(ctx context.Context, params Params) (<-
 	}
 	responsesLite := firstPartyEndpoint && isOpenAIResponsesLiteModel(model)
 
-	// Determine previous_response_id
-	prevID := params.PreviousResponseID
+	// Only the official public API has a stable HTTP response-chaining contract.
+	// Custom Responses-compatible endpoints may return response IDs while only
+	// accepting them on a different transport (for example, WebSocket v2).
+	// Sending full history is the portable HTTP behavior for those endpoints.
+	prevID := ""
+	if publicAPIEndpoint {
+		prevID = params.PreviousResponseID
+	}
 
 	// Build request body
 	body := map[string]any{
@@ -385,7 +384,7 @@ func (p *ResponsesProvider) CreateStream(ctx context.Context, params Params) (<-
 	return ch, nil
 }
 
-var responsesOptionalCompatibilityFields = []string{
+var responsesOptionalGatewayFields = []string{
 	"max_output_tokens",
 	"prompt_cache_key",
 	"truncation",
@@ -403,15 +402,15 @@ func (p *ResponsesProvider) rememberUnsupportedField(model, field string) {
 }
 
 func (p *ResponsesProvider) omitUnsupportedFields(model string, body map[string]any) {
-	for _, field := range responsesOptionalCompatibilityFields {
+	for _, field := range responsesOptionalGatewayFields {
 		if _, rejected := p.unsupportedFields.Load(unsupportedResponsesFieldKey(model, field)); rejected {
 			delete(body, field)
 		}
 	}
 }
 
-// unsupportedResponsesRequestField identifies an optional compatibility field
-// that a custom Responses endpoint explicitly rejected. It deliberately avoids
+// unsupportedResponsesRequestField identifies an optional gateway field that a
+// custom Responses endpoint explicitly rejected. It deliberately avoids
 // retrying value-validation errors, authentication failures, or generic 400s.
 func unsupportedResponsesRequestField(responseBody []byte, requestBody map[string]any) string {
 	lower := strings.ToLower(string(responseBody))
@@ -442,7 +441,7 @@ func unsupportedResponsesRequestField(responseBody []byte, requestBody map[strin
 	if !unsupported {
 		return ""
 	}
-	for _, field := range responsesOptionalCompatibilityFields {
+	for _, field := range responsesOptionalGatewayFields {
 		if _, sent := requestBody[field]; sent && strings.Contains(lower, field) {
 			return field
 		}
@@ -496,8 +495,7 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 		case "response.created", "response.in_progress":
 			if !messageStarted {
 				if !send(types.StreamEvent{
-					Type:    types.EventMessageStart,
-					Message: &types.APIMessage{Role: types.RoleAssistant},
+					Type: types.EventMessageStart,
 				}) {
 					return
 				}
@@ -884,9 +882,6 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 
 // ── Message conversion for Responses API ────────────────────────────────────
 
-// convertMessagesToResponsesAPI converts internal messages to the Responses API input format.
-// When prevResponseID is set, only sends messages since the last assistant response (new user + tool results).
-// When prevResponseID is empty, sends the full conversation history.
 func outputConfigBody(taskBudget *TaskBudget) map[string]any {
 	taskBudgetBody := taskBudgetBody(taskBudget)
 	if len(taskBudgetBody) == 0 {
@@ -941,20 +936,13 @@ func classifyResponsesAPIError(code, message string, status int) (string, int) {
 	return "api_error", status
 }
 
-func convertMessagesToResponsesAPI(msgs []types.Message, prevResponseID string) []any {
-	return convertMessagesToResponsesAPIForParams(Params{Messages: msgs}, prevResponseID)
-}
-
+// convertMessagesToResponsesAPIForParams converts messages to Responses input,
+// sending only the new turn when the request chains from a previous response.
 func convertMessagesToResponsesAPIForParams(params Params, prevResponseID string) []any {
 	if prevResponseID != "" {
 		return convertNewMessagesForResponsesAPIWithParams(params)
 	}
 	return convertAllMessagesForResponsesAPIWithParams(params)
-}
-
-// convertAllMessagesForResponsesAPI converts the full conversation to Responses API input.
-func convertAllMessagesForResponsesAPI(msgs []types.Message) []any {
-	return convertAllMessagesForResponsesAPIWithParams(Params{Messages: msgs})
 }
 
 func convertAllMessagesForResponsesAPIWithParams(params Params) []any {
@@ -974,12 +962,6 @@ func convertAllMessagesForResponsesAPIWithParams(params Params) []any {
 		}
 	}
 	return input
-}
-
-// convertNewMessagesForResponsesAPI extracts only the messages after the last
-// assistant message (the new user turn + tool results for the Responses API chaining).
-func convertNewMessagesForResponsesAPI(msgs []types.Message) []any {
-	return convertNewMessagesForResponsesAPIWithParams(Params{Messages: msgs})
 }
 
 func convertNewMessagesForResponsesAPIWithParams(params Params) []any {
@@ -1176,12 +1158,6 @@ func convertAssistantMessageToResponsesAPI(msg types.Message) []any {
 }
 
 // ── Tool conversion for Responses API ───────────────────────────────────────
-
-// convertToolsToResponsesAPI converts tool definitions to the Responses API format.
-// The Responses API uses a flat structure: {"type": "function", "name": ..., "parameters": ...}
-func convertToolsToResponsesAPI(tools []types.ToolDefinition) []map[string]any {
-	return convertToolsToResponsesAPIWithStrictMode(tools, true)
-}
 
 func convertToolsToResponsesAPIWithStrictMode(tools []types.ToolDefinition, strictMode bool) []map[string]any {
 	result := make([]map[string]any, 0, len(tools))

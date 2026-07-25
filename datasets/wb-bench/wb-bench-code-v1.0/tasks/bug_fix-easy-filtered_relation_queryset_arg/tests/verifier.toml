@@ -1,6 +1,0 @@
-schema_version = "workbuddy.code_lite.verifier.v1"
-family = "pytest_injected"
-
-[run]
-cwd = "/workspace"
-command = '''bash -lc 'cd tests && python3 runtests.py filtered_relation.tests.FilteredRelationTests.test_conditional_expression_does_not_support_queryset filtered_relation.tests.FilteredRelationTests.test_conditional_expression_does_not_support_queryset_in_expression_wrapper filtered_relation.tests.FilteredRelationTests.test_conditional_expression_does_not_support_filtered_queryset filtered_relation.tests.FilteredRelationTests.test_with_join --settings=test_sqlite -v 2' > /logs/verifier/test_output.txt 2>&1'''

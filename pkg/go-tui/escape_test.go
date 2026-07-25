@@ -255,4 +255,3 @@ func TestEscBuilder_SetStyle_Attributes(t *testing.T) {
 		})
 	}
 }
-

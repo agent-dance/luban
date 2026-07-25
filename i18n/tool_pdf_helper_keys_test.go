@@ -24,7 +24,7 @@ func TestToolPDFHelperKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolPDFHelperEnglishCompatibility(t *testing.T) {
+func TestToolPDFHelperEnglishContract(t *testing.T) {
 	cause := errors.New("raw-cause")
 	cases := []struct {
 		key  Key

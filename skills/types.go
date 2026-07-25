@@ -1,9 +1,7 @@
-// Package skills provides skill loading, parsing, and management for the
-// Claude Code Go port. It aligns with the TypeScript implementation in
-// src/skills/loadSkillsDir.ts and src/types/command.ts.
+// Package skills provides skill loading, parsing, and management.
 //
 // Architecture: this package is the skill ENGINE (loading, parsing, discovery).
-// The SkillTool in tools/skill.go CONSUMES this package to expose skills to
+// The Skill tool in internal/tools/skill consumes this package to expose skills to
 // the model via the Tool interface.
 package skills
 
@@ -13,13 +11,12 @@ package skills
 type SkillSource string
 
 const (
-	SourceProject        SkillSource = "project"         // .claude/skills/
-	SourceUser           SkillSource = "user"            // ~/.claude/skills/
-	SourceManaged        SkillSource = "managed"         // policy settings (enterprise)
-	SourcePlugin         SkillSource = "plugin"          // plugin system
-	SourceMCP            SkillSource = "mcp"             // MCP server
-	SourceBundled        SkillSource = "bundled"         // built-in skills
-	SourceCommandsLegacy SkillSource = "commands_legacy" // legacy /commands/ dirs
+	SourceProject SkillSource = "project" // .luban-code/skills/
+	SourceUser    SkillSource = "user"    // ~/.luban-code/skills/
+	SourceManaged SkillSource = "managed" // policy settings (enterprise)
+	SourcePlugin  SkillSource = "plugin"  // plugin system
+	SourceMCP     SkillSource = "mcp"     // MCP server
+	SourceBundled SkillSource = "bundled" // built-in skills
 )
 
 // SkillContext controls how the skill is executed.
@@ -123,20 +120,10 @@ type Skill struct {
 	// Presentation surfaces use it to re-render that copy in the active
 	// language; authored descriptions remain untouched.
 	HasGeneratedDescription bool `json:"has_generated_description,omitempty"`
-
-	// Aliases are alternative names for this skill.
-	// Matches TS CommandBase.aliases.
-	Aliases []string `json:"aliases,omitempty"`
 }
 
-// IsCommandType reports whether this is a shell-command-based skill
-// (legacy skill.json format). This is Go-specific and not in the TS version.
-func (s *Skill) IsCommandType() bool {
-	return false // skill.json is being phased out in favor of SKILL.md
-}
-
-// EffectiveDescription returns the description including whenToUse for prompt listing.
-func (s *Skill) EffectiveDescription() string {
+// effectiveDescription returns the description including whenToUse for catalog projection.
+func (s *Skill) effectiveDescription() string {
 	if s.WhenToUse != "" {
 		return s.Description + " - " + s.WhenToUse
 	}

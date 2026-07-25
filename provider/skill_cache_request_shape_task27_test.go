@@ -8,10 +8,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/agent-dance/luban/internal/messagecontrol"
-	loopapi "github.com/agent-dance/luban/loop"
+	loopapi "github.com/agent-dance/luban/internal/runtime/loop"
 	"github.com/agent-dance/luban/prompt"
 	providerapi "github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/skills"
@@ -108,7 +109,7 @@ func TestSkillCacheProviderRequestShape(t *testing.T) {
 		}
 	})
 
-	t.Run("Responses sends only incremental suffix", func(t *testing.T) {
+	t.Run("Responses compatible endpoint sends full history", func(t *testing.T) {
 		firstParams := base
 		firstParams.Messages = plans.first
 		first := task27CaptureResponses(t, firstParams)
@@ -126,18 +127,24 @@ func TestSkillCacheProviderRequestShape(t *testing.T) {
 			{"user", "first user"},
 		})
 		task27AssertRoleContent(t, task27AnyItems(t, unchanged, "input"), [][2]string{
+			{"developer", plans.snapshotText},
+			{"user", "first user"},
+			{"assistant", "first assistant"},
 			{"user", "no-change user"},
 		})
 		task27AssertRoleContent(t, task27AnyItems(t, changed, "input"), [][2]string{
+			{"developer", plans.snapshotText},
+			{"user", "first user"},
+			{"assistant", "first assistant"},
 			{"developer", plans.deltaText},
 			{"user", "changed user"},
 		})
 		for _, request := range []map[string]any{unchanged, changed} {
-			if request["previous_response_id"] != "task27-previous-response" {
-				t.Fatalf("Responses previous_response_id = %#v", request["previous_response_id"])
+			if _, ok := request["previous_response_id"]; ok {
+				t.Fatalf("custom Responses request unexpectedly chained: %#v", request)
 			}
-			if request["prompt_cache_key"] != "task27-stable-cache-key" {
-				t.Fatalf("Responses prompt_cache_key = %#v", request["prompt_cache_key"])
+			if got, _ := request["prompt_cache_key"].(string); !strings.HasPrefix(got, "pcu_") || got == "task27-stable-cache-key" {
+				t.Fatalf("Responses prompt_cache_key = %#v, want opaque credential-scoped route", request["prompt_cache_key"])
 			}
 		}
 		task27AssertStableFields(t, first, unchanged, "model", "instructions", "tools", "parallel_tool_calls", "prompt_cache_key", "reasoning", "max_output_tokens")
@@ -263,7 +270,7 @@ func task27CaptureProviderRequest(
 	respond func(http.ResponseWriter),
 ) map[string]any {
 	t.Helper()
-	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope, false)
+	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope)
 	var captured map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		body, err := io.ReadAll(request.Body)

@@ -1,1 +1,0 @@
-Project root memory.

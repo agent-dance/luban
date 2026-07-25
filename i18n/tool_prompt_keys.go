@@ -15,7 +15,6 @@ const (
 	KeyAskUserTUINotesHint      Key = "tool.ask_user.tui.notes_hint"
 	KeyAskUserTUINotesAvailable Key = "tool.ask_user.tui.notes_available"
 	KeyBashSandboxBuildError    Key = "tool.bash.sandbox.build_error"
-	KeyBashSandboxFallback      Key = "tool.bash.sandbox.fallback"
 )
 
 func init() {
@@ -33,7 +32,6 @@ func init() {
 	addToolPrompt(KeyAskUserTUINotesHint, "Type optional notes and press Enter to submit the answer, or Esc to return.", "输入可选备注并按 Enter 提交答案，或按 Esc 返回。", "Optionale Notizen eingeben und mit Enter die Antwort absenden oder mit Esc zurückkehren.", "任意のメモを入力して Enter で回答を送信するか、Esc で戻ります。", "선택적 메모를 입력하고 Enter로 답변을 제출하거나 Esc로 돌아가세요.", "Введите необязательные примечания и нажмите Enter для отправки ответа или Esc для возврата.")
 	addToolPrompt(KeyAskUserTUINotesAvailable, "Press N to add optional notes.", "按 N 添加可选备注。", "Mit N optionale Notizen hinzufügen.", "N で任意のメモを追加できます。", "N을 눌러 선택적 메모를 추가하세요.", "Нажмите N, чтобы добавить необязательные примечания.")
 	addToolPrompt(KeyBashSandboxBuildError, "Could not build the isolated shell sandbox", "无法构建隔离的 shell sandbox", "Die isolierte Shell-Sandbox konnte nicht erstellt werden", "隔離された shell sandbox を構築できませんでした", "격리된 shell sandbox를 구성할 수 없습니다", "Не удалось создать изолированную sandbox для shell")
-	addToolPrompt(KeyBashSandboxFallback, "sandbox: Warning: could not build a sandboxed command (%v); running without sandboxing\n", "sandbox：警告：无法构建 sandbox 命令（%v）；将不使用 sandbox 运行\n", "sandbox: Warnung: Sandbox-Befehl konnte nicht erstellt werden (%v); Ausführung ohne Sandbox\n", "sandbox: 警告: sandbox コマンドを構築できませんでした（%v）。sandbox なしで実行します\n", "sandbox: 경고: sandbox 명령을 구성할 수 없습니다(%v). sandbox 없이 실행합니다\n", "sandbox: Предупреждение: не удалось создать команду в sandbox (%v); запуск без sandbox\n")
 }
 
 func addToolPrompt(key Key, en, zh, de, ja, ko, ru string) {

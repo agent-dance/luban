@@ -111,7 +111,7 @@ func TestLoadGitContextLongStatusTruncates(t *testing.T) {
 
 func TestLoadGitContextDisableGate(t *testing.T) {
 	repo := initPromptTestRepo(t)
-	t.Setenv("CLAUDE_CODE_DISABLE_GIT_INSTRUCTIONS", "true")
+	t.Setenv("LUBAN_CODE_DISABLE_GIT_INSTRUCTIONS", "true")
 	if got := LoadGitContext(repo); got != "" {
 		t.Fatalf("disabled git instructions should return empty context, got:\n%s", got)
 	}

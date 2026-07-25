@@ -2,8 +2,26 @@ package hooks
 
 import (
 	"context"
+	"strings"
 	"testing"
+
+	executioncontract "github.com/agent-dance/luban/internal/contracts/execution"
+	"github.com/agent-dance/luban/types"
 )
+
+func TestCorrelateInputFallsBackToExecutionContract(t *testing.T) {
+	ctx := executioncontract.WithToolExecutionContext(context.Background(), executioncontract.ToolExecutionContext{
+		SessionID: "session-execution", ProjectRoot: "/workspace", TurnID: "turn-execution",
+		WorkUnitID: "work-execution", ActorID: "actor-execution", ActorType: "reviewer",
+		ToolUse: types.ToolUseBlock{ID: "tool-execution", Name: "Write"},
+	})
+	got := CorrelateInput(ctx, HookInput{ToolName: "ExplicitTool"})
+	if got.ToolName != "ExplicitTool" || got.ToolUseID != "tool-execution" || got.SessionID != "session-execution" ||
+		got.ProjectRoot != "/workspace" || got.TurnID != "turn-execution" || got.WorkUnitID != "work-execution" ||
+		got.AgentID != "actor-execution" || got.AgentType != "reviewer" {
+		t.Fatalf("execution correlation = %#v", got)
+	}
+}
 
 func TestRunDetailedObservedEmitsEachConfigWithCorrelation(t *testing.T) {
 	runner := NewRunner([]Hook{
@@ -90,6 +108,9 @@ func TestRepeatedActualHookExecutionsReceiveUniqueExecutionIDs(t *testing.T) {
 	}
 	if first[0].ExecutionID == second[0].ExecutionID {
 		t.Fatalf("repeated actual executions reused ID %q", first[0].ExecutionID)
+	}
+	if !strings.HasSuffix(first[0].ExecutionID, ":occurrence-1") || !strings.HasSuffix(second[0].ExecutionID, ":occurrence-2") {
+		t.Fatalf("execution occurrence IDs = %q then %q", first[0].ExecutionID, second[0].ExecutionID)
 	}
 	if first[0].ConfigID != second[0].ConfigID {
 		t.Fatalf("stable config identity changed across runs: first=%q second=%q", first[0].ConfigID, second[0].ConfigID)

@@ -9,7 +9,6 @@ func TestResultCompletenessSemanticKeysCoverAllLanguages(t *testing.T) {
 		KeyPresentationCaptureDroppedWarning,
 		KeyPresentationDisplayPreviewWarning,
 		KeyPresentationDisplayPreviewEvidence,
-		KeyPresentationUnknownTruncationWarning,
 	}
 	for _, key := range keys {
 		for _, lang := range AllLanguages() {

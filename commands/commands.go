@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/agent-dance/luban/buildinfo"
-	"github.com/agent-dance/luban/compact"
-	"github.com/agent-dance/luban/cost"
-	"github.com/agent-dance/luban/goal"
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/runtime/compact"
+	"github.com/agent-dance/luban/internal/runtime/goal"
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/types"
 )
@@ -31,16 +30,6 @@ type SessionListEntry struct {
 
 // ErrExit is returned by the /exit command to signal the REPL should exit.
 var ErrExit = errors.New("exit")
-
-// ModelCostEntry represents per-model cost summary for the /cost command.
-type ModelCostEntry struct {
-	Model             string
-	InputTokens       int
-	OutputTokens      int
-	WebSearchRequests int
-	CostUSD           float64
-	TurnCount         int
-}
 
 // Command is the interface for slash commands.
 type Command interface {
@@ -92,7 +81,7 @@ func builtinCommandDescription(name string) string {
 
 // QueryLooper is the subset of loop.QueryLoop needed by commands.
 type QueryLooper interface {
-	SetMessages([]types.Message)
+	SetMessagesPreservingToolUseLedger([]types.Message)
 	Messages() []types.Message
 	Model() string
 	SetModel(string)
@@ -101,14 +90,6 @@ type QueryLooper interface {
 	// The implementation should atomically swap the underlying ProviderRef
 	// so that in-flight queries are not affected.
 	SetProvider(p provider.Provider)
-}
-
-// SameSessionMessageUpdater preserves session-owned state that is not
-// reconstructable from the current model-visible transcript (for example,
-// tool-use identities removed by compaction). Session transitions continue to
-// use QueryLooper.SetMessages, whose replacement semantics are intentional.
-type SameSessionMessageUpdater interface {
-	SetMessagesPreservingToolUseLedger([]types.Message)
 }
 
 // SessionStore is the subset of session.Store needed by slash commands.
@@ -126,9 +107,6 @@ type GoalRuntime interface {
 	SaveGoal(goal.Goal) error
 }
 
-// ConfirmFunc is a callback that presents a yes/no prompt to the user.
-type ConfirmFunc func(prompt string) bool
-
 // Context holds runtime state available to commands during execution.
 type Context struct {
 	// Language is the active runtime language for user-visible command output.
@@ -137,17 +115,14 @@ type Context struct {
 	QueryLoop QueryLooper
 	OnEvent   func(string)
 	// OnCommandPresentation receives renderer-neutral command lifecycle events.
-	// OnEvent remains the compatibility path and receives exactly the same text
-	// regardless of whether this callback is configured.
 	OnCommandPresentation func(CommandPresentation)
 	// OnCommandDomainResult carries the command's explicit business outcome.
-	// It is intentionally separate from OnEvent so presentation code never has
+	// It is separate from OnEvent so presentation code never has
 	// to infer success or failure from localized prose.
 	OnCommandDomainResult func(CommandDomainResult)
 	CWD                   string
 	CurrentProjectDir     string
 	SessionID             string
-	SetSessionID          func(string)
 	SessionStore          SessionStore
 	GoalRuntime           GoalRuntime
 	// OnGoalActivated is notified after a command successfully persists an
@@ -161,14 +136,13 @@ type Context struct {
 	TotalWebSearchRequests   int
 	SessionUniqueInputTokens int
 	TotalCostUSD             float64
-	SessionCostBreakdown     *cost.CostBreakdown
+	CostCurrency             string
 	CostUnknown              bool
 	CurrentModel             string
 	AppVersion               string
 	BuildDiagnostic          buildinfo.Diagnostic
-	Confirm                  ConfirmFunc
 	// MCPBackend is the live runtime manager for interactive commands. A nil
-	// backend keeps the standalone settings-backed fallback.
+	// backend lets the command construct one from the canonical settings files.
 	MCPBackend MCPBackend
 	// SkillManager is the live catalog shared with the query loop and Skill
 	// tool. A nil backend makes /skills fail closed instead of editing a
@@ -186,9 +160,6 @@ type Context struct {
 	ExportTranscript     func(string) (string, error)
 	OpenTranscriptEditor func(string) error
 	OpenDetailEditor     func(string) error
-	// OpenFileEditor lets a terminal owner release and reacquire its lease
-	// around an external editor. Line-oriented transports may leave it nil.
-	OpenFileEditor func(string) error
 	// OpenModelPicker lets interactive surfaces replace the textual model list
 	// while still executing through the command presentation lifecycle.
 	OpenModelPicker   func() error
@@ -207,12 +178,8 @@ type Context struct {
 
 	// Provider-related fields (Phase 4: multi-provider support)
 	CurrentProvider  string                     // canonical name of the active provider (e.g. "anthropic")
-	ProviderRef      *provider.ProviderRef      // shared ref for atomic hot-swap
 	ProviderRegistry *provider.ProviderRegistry // registry of all known providers
 	CredentialStore  *provider.CredentialStore  // persistent credential store
-
-	// Multi-model cost tracking (Phase 9)
-	PerModelCosts []ModelCostEntry // per-model cost breakdown (nil = single-model session)
 
 	// SwitchLanguage switches the display language and persists the preference.
 	// Receives an ISO 639-1 code or "next" to cycle.

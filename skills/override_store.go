@@ -49,15 +49,9 @@ type OverrideStorePaths struct {
 }
 
 // DefaultOverrideStorePaths returns the canonical branded settings paths.
-// Existing legacy configuration remains readable by its existing owners; new
-// skill override writes always target the current branded settings files.
 func DefaultOverrideStorePaths(cwd string) (OverrideStorePaths, error) {
 	if strings.TrimSpace(cwd) == "" {
-		var err error
-		cwd, err = os.Getwd()
-		if err != nil {
-			return OverrideStorePaths{}, fmt.Errorf("skill overrides: determine working directory: %w", err)
-		}
+		return OverrideStorePaths{}, errors.New("skill overrides: working directory is required")
 	}
 	projectPath, err := filepath.Abs(filepath.Join(cwd, brand.ConfigDirName, "settings.json"))
 	if err != nil {
@@ -71,14 +65,6 @@ func DefaultOverrideStorePaths(cwd string) (OverrideStorePaths, error) {
 	return OverrideStorePaths{UserSettings: userPath, ProjectSettings: projectPath}, nil
 }
 
-// ResolvedOverride reports both the selected override and the layer that owns
-// it. Managed values are visible but immutable.
-type ResolvedOverride struct {
-	Override VisibilityOverride
-	Source   SkillScope
-	Mutable  bool
-}
-
 // OverrideSnapshot is a defensive copy of every storage layer at one read.
 // UserRevision and ProjectRevision fingerprint the complete corresponding
 // settings files, including unrelated settings, so a CAS cannot erase a
@@ -90,31 +76,6 @@ type OverrideSnapshot struct {
 	Session         map[SkillID]VisibilityOverride
 	UserRevision    OverrideStoreRevision
 	ProjectRevision OverrideStoreRevision
-}
-
-// Resolve selects the highest explicit override. Frontmatter and default
-// policy are intentionally outside the store and are evaluated only when no
-// stored override exists.
-func (snapshot OverrideSnapshot) Resolve(id SkillID) (ResolvedOverride, bool) {
-	for _, layer := range []struct {
-		scope     SkillScope
-		overrides map[SkillID]VisibilityOverride
-		mutable   bool
-	}{
-		{SkillScopeManaged, snapshot.Managed, false},
-		{SkillScopeSession, snapshot.Session, true},
-		{SkillScopeProject, snapshot.Project, true},
-		{SkillScopeUser, snapshot.User, true},
-	} {
-		if override, ok := layer.overrides[id]; ok {
-			return ResolvedOverride{
-				Override: cloneVisibilityOverride(override),
-				Source:   layer.scope,
-				Mutable:  layer.mutable,
-			}, true
-		}
-	}
-	return ResolvedOverride{}, false
 }
 
 // SessionOverrideLayer makes session lifetime an injectable concern. A layer
@@ -137,11 +98,8 @@ func NewMemorySessionOverrideLayer() *MemorySessionOverrideLayer {
 }
 
 // Snapshot returns one session's records without sharing mutable map or pointer
-// storage with the caller. An empty ID means that no session layer is active.
+// storage with the caller.
 func (layer *MemorySessionOverrideLayer) Snapshot(sessionID string) (map[SkillID]VisibilityOverride, error) {
-	if sessionID == "" {
-		return make(map[SkillID]VisibilityOverride), nil
-	}
 	if err := validateOverrideSessionID(sessionID); err != nil {
 		return nil, err
 	}
@@ -222,7 +180,6 @@ func (layer *MemorySessionOverrideLayer) Reset(sessionID string, id SkillID) err
 type OverrideStore interface {
 	Snapshot(sessionID string) (OverrideSnapshot, error)
 	Set(sessionID string, override VisibilityOverride) error
-	Toggle(sessionID string, scope SkillScope, id SkillID) (VisibilityOverride, error)
 	Reset(sessionID string, scope SkillScope, id SkillID) error
 	CompareAndSetProject(expected OverrideStoreRevision, id SkillID, next *VisibilityOverride) (ProjectOverrideRestore, error)
 	RestoreProject(restore ProjectOverrideRestore) error
@@ -233,15 +190,12 @@ type atomicOverrideWriter func(path string, data []byte) error
 // FileOverrideStore stores user/project overrides inside their existing
 // settings.json files and composes injected managed/session layers.
 type FileOverrideStore struct {
-	stateMu                 sync.RWMutex
-	paths                   OverrideStorePaths
-	managed                 map[SkillID]VisibilityOverride
-	session                 SessionOverrideLayer
-	atomicWrite             atomicOverrideWriter
-	removeFile              func(string) error
-	preparedUserRevision    OverrideStoreRevision
-	preparedProjectRevision OverrideStoreRevision
-	preparedRevisionPending bool
+	stateMu     sync.RWMutex
+	paths       OverrideStorePaths
+	managed     map[SkillID]VisibilityOverride
+	session     SessionOverrideLayer
+	atomicWrite atomicOverrideWriter
+	removeFile  func(string) error
 }
 
 // NewFileOverrideStore creates a store using the canonical branded paths.
@@ -270,8 +224,8 @@ func NewFileOverrideStoreAt(paths OverrideStorePaths, managed map[SkillID]Visibi
 	if err != nil {
 		return nil, fmt.Errorf("skill overrides: managed layer: %w", err)
 	}
-	if isNilLike(session) {
-		session = NewMemorySessionOverrideLayer()
+	if session == nil || (reflect.ValueOf(session).Kind() == reflect.Ptr && reflect.ValueOf(session).IsNil()) {
+		return nil, errors.New("skill overrides: session layer is required")
 	}
 	return &FileOverrideStore{
 		paths:       paths,
@@ -280,23 +234,6 @@ func NewFileOverrideStoreAt(paths OverrideStorePaths, managed map[SkillID]Visibi
 		atomicWrite: atomicWriteOverrideSettings,
 		removeFile:  os.Remove,
 	}, nil
-}
-
-// isNilLike handles interfaces containing typed nil pointers (and other
-// nil-capable kinds). Interface equality with nil alone is insufficient at a
-// dependency-injection boundary and would defer the failure to the first
-// session Snapshot call.
-func isNilLike(value any) bool {
-	if value == nil {
-		return true
-	}
-	reflected := reflect.ValueOf(value)
-	switch reflected.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
-		return reflected.IsNil()
-	default:
-		return false
-	}
 }
 
 // Snapshot reads persistent layers afresh so external settings changes are
@@ -310,9 +247,6 @@ func (store *FileOverrideStore) Snapshot(sessionID string) (OverrideSnapshot, er
 	}
 	project, projectRevision, err := loadOverrideLayerLocked(store.paths.ProjectSettings, SkillScopeProject)
 	if err != nil {
-		return OverrideSnapshot{}, err
-	}
-	if err := store.acceptPreparedRevisionsLocked(userRevision, projectRevision); err != nil {
 		return OverrideSnapshot{}, err
 	}
 	session, err := store.session.Snapshot(sessionID)
@@ -344,9 +278,6 @@ func (store *FileOverrideStore) Set(sessionID string, override VisibilityOverrid
 	if err := override.Validate(); err != nil {
 		return fmt.Errorf("skill overrides: invalid override: %w", err)
 	}
-	if err := store.verifyPreparedRevisionsLocked(); err != nil {
-		return err
-	}
 	if override.Scope == SkillScopeSession {
 		current, err := store.session.Snapshot(sessionID)
 		if err != nil {
@@ -362,39 +293,11 @@ func (store *FileOverrideStore) Set(sessionID string, override VisibilityOverrid
 	return err
 }
 
-// Toggle switches one stored scope between off and its remembered non-off
-// value. A missing record is treated as auto before being turned off.
-func (store *FileOverrideStore) Toggle(sessionID string, scope SkillScope, id SkillID) (VisibilityOverride, error) {
-	store.stateMu.Lock()
-	defer store.stateMu.Unlock()
-	if err := store.validateMutable(id, scope); err != nil {
-		return VisibilityOverride{}, err
-	}
-	if err := store.verifyPreparedRevisionsLocked(); err != nil {
-		return VisibilityOverride{}, err
-	}
-	if scope == SkillScopeSession {
-		current, err := store.session.Snapshot(sessionID)
-		if err != nil {
-			return VisibilityOverride{}, err
-		}
-		next := toggledOverride(id, scope, current[id])
-		if err := store.session.Set(sessionID, next); err != nil {
-			return VisibilityOverride{}, err
-		}
-		return cloneVisibilityOverride(next), nil
-	}
-	return store.togglePersistent(scope, id)
-}
-
 // Reset deletes one explicit record so the next lower layer is inherited.
 func (store *FileOverrideStore) Reset(sessionID string, scope SkillScope, id SkillID) error {
 	store.stateMu.Lock()
 	defer store.stateMu.Unlock()
 	if err := store.validateMutable(id, scope); err != nil {
-		return err
-	}
-	if err := store.verifyPreparedRevisionsLocked(); err != nil {
 		return err
 	}
 	if scope == SkillScopeSession {
@@ -412,16 +315,6 @@ type ProjectOverrideRestore struct {
 	beforeExists   bool
 	beforeRevision OverrideStoreRevision
 	afterRevision  OverrideStoreRevision
-}
-
-// BeforeRevision reports the settings token observed by the successful CAS.
-func (restore ProjectOverrideRestore) BeforeRevision() OverrideStoreRevision {
-	return restore.beforeRevision
-}
-
-// AfterRevision reports the token that must still be current before restore.
-func (restore ProjectOverrideRestore) AfterRevision() OverrideStoreRevision {
-	return restore.afterRevision
 }
 
 // CompareAndSetProject changes one project record only if the complete project
@@ -442,9 +335,6 @@ func (store *FileOverrideStore) CompareAndSetProject(expected OverrideStoreRevis
 		if err := next.Validate(); err != nil {
 			return ProjectOverrideRestore{}, err
 		}
-	}
-	if err := store.verifyPreparedRevisionsLocked(); err != nil {
-		return ProjectOverrideRestore{}, err
 	}
 
 	pathLock := overrideLockForPath(store.paths.ProjectSettings)
@@ -491,9 +381,6 @@ func (store *FileOverrideStore) RestoreProject(restore ProjectOverrideRestore) e
 	defer store.stateMu.Unlock()
 	if restore.path == "" || restore.path != store.paths.ProjectSettings || !restore.afterRevision.Valid() {
 		return errors.New("skill overrides: invalid project restore receipt")
-	}
-	if err := store.verifyPreparedRevisionsLocked(); err != nil {
-		return err
 	}
 	pathLock := overrideLockForPath(store.paths.ProjectSettings)
 	pathLock.Lock()
@@ -558,9 +445,6 @@ func (store *FileOverrideStore) commitPreparedProjectRetarget(
 	// The prepared revisions were accepted at commit time. A later filesystem
 	// change is a new live settings update, not a stale-plan poison pill for the
 	// first snapshot after a successful workspace publication.
-	store.preparedUserRevision = ""
-	store.preparedProjectRevision = ""
-	store.preparedRevisionPending = false
 	if publish != nil {
 		publish()
 	}
@@ -585,34 +469,6 @@ func (store *FileOverrideStore) prepareProjectRetarget(projectSettings string) (
 	return userRevision, projectRevision, nil
 }
 
-func (store *FileOverrideStore) verifyPreparedRevisionsLocked() error {
-	if !store.preparedRevisionPending {
-		return nil
-	}
-	_, userRevision, err := loadOverrideLayerLocked(store.paths.UserSettings, SkillScopeUser)
-	if err != nil {
-		return err
-	}
-	_, projectRevision, err := loadOverrideLayerLocked(store.paths.ProjectSettings, SkillScopeProject)
-	if err != nil {
-		return err
-	}
-	return store.acceptPreparedRevisionsLocked(userRevision, projectRevision)
-}
-
-func (store *FileOverrideStore) acceptPreparedRevisionsLocked(userRevision, projectRevision OverrideStoreRevision) error {
-	if !store.preparedRevisionPending {
-		return nil
-	}
-	if userRevision != store.preparedUserRevision || projectRevision != store.preparedProjectRevision {
-		return fmt.Errorf("%w: skill settings changed after project source preparation", ErrOverrideRevisionConflict)
-	}
-	store.preparedRevisionPending = false
-	store.preparedUserRevision = ""
-	store.preparedProjectRevision = ""
-	return nil
-}
-
 func (store *FileOverrideStore) validateMutable(id SkillID, scope SkillScope) error {
 	if err := id.Validate(); err != nil {
 		return err
@@ -626,32 +482,6 @@ func (store *FileOverrideStore) validateMutable(id SkillID, scope SkillScope) er
 		return fmt.Errorf("%w: %s", ErrManagedOverrideReadOnly, id)
 	}
 	return nil
-}
-
-func (store *FileOverrideStore) togglePersistent(scope SkillScope, id SkillID) (VisibilityOverride, error) {
-	path, err := store.pathForScope(scope)
-	if err != nil {
-		return VisibilityOverride{}, err
-	}
-	pathLock := overrideLockForPath(path)
-	pathLock.Lock()
-	defer pathLock.Unlock()
-	document, current, _, _, err := readOverrideSettings(path, scope)
-	if err != nil {
-		return VisibilityOverride{}, err
-	}
-	next := toggledOverride(id, scope, current[id])
-	if err := applyOverrideMutation(document, current, id, &next); err != nil {
-		return VisibilityOverride{}, err
-	}
-	encoded, err := encodeOverrideSettings(document)
-	if err != nil {
-		return VisibilityOverride{}, err
-	}
-	if err := store.atomicWrite(path, encoded); err != nil {
-		return VisibilityOverride{}, fmt.Errorf("skill overrides: write %s settings: %w", scope, err)
-	}
-	return cloneVisibilityOverride(next), nil
 }
 
 func (store *FileOverrideStore) mutatePersistent(scope SkillScope, expected OverrideStoreRevision, id SkillID, next *VisibilityOverride) (OverrideStoreRevision, error) {
@@ -833,17 +663,6 @@ func prepareStoredOverride(previous VisibilityOverride, requested VisibilityOver
 		return VisibilityOverride{}, err
 	}
 	return requested, nil
-}
-
-func toggledOverride(id SkillID, scope SkillScope, previous VisibilityOverride) VisibilityOverride {
-	if previous.Visibility == VisibilityOff {
-		return VisibilityOverride{SkillID: id, Scope: scope, Visibility: previous.RestoreVisibility()}
-	}
-	remembered := VisibilityAuto
-	if previous.Visibility.IsNonOff() {
-		remembered = previous.Visibility
-	}
-	return VisibilityOverride{SkillID: id, Scope: scope, Visibility: VisibilityOff, LastNonOff: &remembered}
 }
 
 func normalizeOverrideMap(input map[SkillID]VisibilityOverride, scope SkillScope) (map[SkillID]VisibilityOverride, error) {

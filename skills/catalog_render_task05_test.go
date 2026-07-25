@@ -186,8 +186,8 @@ func TestCatalogRenderBudgetPreservesNamesAndReportsMandatoryOverflow(t *testing
 		t.Fatal(err)
 	}
 	for _, skill := range decoded.Skills {
-		if got := utf8.RuneCountInString(skill.Summary); got != MaxListingDescChars {
-			t.Fatalf("summary rune count = %d, want %d", got, MaxListingDescChars)
+		if got := utf8.RuneCountInString(skill.Summary); got != maxListingDescChars {
+			t.Fatalf("summary rune count = %d, want %d", got, maxListingDescChars)
 		}
 		if !strings.HasSuffix(skill.Summary, "…") {
 			t.Fatalf("truncated summary lacks ellipsis: %q", skill.Summary)

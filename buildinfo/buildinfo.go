@@ -165,15 +165,6 @@ func CompareRevision(fingerprint Fingerprint, repositoryRevision string) Revisio
 	return RevisionMatch
 }
 
-// ShortRevision formats a known full revision for compact diagnostics.
-func ShortRevision(revision string) string {
-	revision = normalizeRevision(revision)
-	if len(revision) > 12 {
-		return revision[:12]
-	}
-	return revision
-}
-
 func resolveRevision(explicit, fallback string) string {
 	if strings.TrimSpace(explicit) != "" {
 		return normalizeRevision(explicit)

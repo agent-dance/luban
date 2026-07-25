@@ -31,6 +31,24 @@ func TestToolRuntimeFormattingPreservesRawValues(t *testing.T) {
 	}
 }
 
+func TestToolRuntimeEditInvalidDataCoversEveryLanguage(t *testing.T) {
+	for _, lang := range AllLanguages() {
+		got := Text(lang, KeyToolRuntimeEditInvalidData)
+		if got == "" || got == "["+string(KeyToolRuntimeEditInvalidData)+"]" {
+			t.Fatalf("Edit invalid-data copy is missing for %s: %q", lang.Code(), got)
+		}
+	}
+}
+
+func TestToolRuntimeNotebookInvalidDataCoversEveryLanguage(t *testing.T) {
+	for _, lang := range AllLanguages() {
+		got := Text(lang, KeyToolRuntimeNotebookInvalidData)
+		if got == "" || got == "["+string(KeyToolRuntimeNotebookInvalidData)+"]" {
+			t.Fatalf("NotebookEdit invalid-data copy is missing for %s: %q", lang.Code(), got)
+		}
+	}
+}
+
 func TestToolRuntimeBashSedReadRequiredCoversEveryLanguage(t *testing.T) {
 	const path = "/workspace/raw-target.txt"
 	for _, lang := range AllLanguages() {
@@ -38,12 +56,6 @@ func TestToolRuntimeBashSedReadRequiredCoversEveryLanguage(t *testing.T) {
 		if got == "" || got == "["+string(KeyToolRuntimeBashSedReadRequired)+"]" || !strings.Contains(got, path) {
 			t.Fatalf("bash sed read-required copy for %s lost semantic text or raw path: %q", lang.Code(), got)
 		}
-	}
-}
-
-func TestCronUnexpectedParameterPreservesEnglishCompatibilityContract(t *testing.T) {
-	if got := Format(LangEN, KeyToolRuntimeCronUnexpectedParameter, "extra"); got != "Error: invalid input: unexpected parameter `extra`" {
-		t.Fatalf("unexpected parameter = %q", got)
 	}
 }
 

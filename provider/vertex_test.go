@@ -14,7 +14,6 @@ func TestVertexConfigFromEnv_Defaults(t *testing.T) {
 	t.Setenv("CLOUD_ML_REGION", "")
 	t.Setenv("ANTHROPIC_VERTEX_REGION", "")
 	t.Setenv("VERTEX_MODEL", "")
-	t.Setenv("CLAUDE_MODEL", "")
 
 	cfg := VertexConfigFromEnv()
 
@@ -107,21 +106,10 @@ func TestVertexConfigFromEnv_RegionPriority(t *testing.T) {
 
 func TestVertexConfigFromEnv_ModelFromVertexModel(t *testing.T) {
 	t.Setenv("VERTEX_MODEL", "claude-3-5-sonnet-v2@20241022")
-	t.Setenv("CLAUDE_MODEL", "")
 
 	cfg := VertexConfigFromEnv()
 	if cfg.Model != "claude-3-5-sonnet-v2@20241022" {
 		t.Errorf("expected model from VERTEX_MODEL, got %q", cfg.Model)
-	}
-}
-
-func TestVertexConfigFromEnv_ModelFromClaudeModelFallback(t *testing.T) {
-	t.Setenv("VERTEX_MODEL", "")
-	t.Setenv("CLAUDE_MODEL", "claude-3-5-haiku-20241022")
-
-	cfg := VertexConfigFromEnv()
-	if cfg.Model != "claude-3-5-haiku-20241022" {
-		t.Errorf("expected model from CLAUDE_MODEL fallback, got %q", cfg.Model)
 	}
 }
 
@@ -144,41 +132,41 @@ func TestNewVertex_MissingProject(t *testing.T) {
 
 // --- Provider-routing tests (no real credentials) ---
 
-// TestNewFromEnv_VertexFlagMissingProject verifies that CLAUDE_CODE_USE_VERTEX=1
+// TestNewFromEnvWithOverrides_VertexFlagMissingProject verifies that LUBAN_CODE_USE_VERTEX=1
 // routes to the vertex provider, which returns an error when no project is set.
-func TestNewFromEnv_VertexFlagMissingProject(t *testing.T) {
-	t.Setenv("CLAUDE_CODE_USE_VERTEX", "1")
+func TestNewFromEnvWithOverrides_VertexFlagMissingProject(t *testing.T) {
+	t.Setenv("LUBAN_CODE_USE_VERTEX", "1")
 	t.Setenv("PROVIDER", "")
 	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
 	t.Setenv("ANTHROPIC_VERTEX_PROJECT_ID", "")
 
-	_, err := NewFromEnv()
+	_, err := NewFromEnvWithOverrides("", "")
 	if err == nil {
 		t.Error("expected error when project ID is not set, got nil")
 	}
 }
 
-// TestNewFromEnv_VertexProviderMissingProject verifies that PROVIDER=vertex
+// TestNewFromEnvWithOverrides_VertexProviderMissingProject verifies that PROVIDER=vertex
 // also routes to the vertex provider and surfaces missing-project errors.
-func TestNewFromEnv_VertexProviderMissingProject(t *testing.T) {
+func TestNewFromEnvWithOverrides_VertexProviderMissingProject(t *testing.T) {
 	t.Setenv("PROVIDER", "vertex")
 	t.Setenv("GOOGLE_CLOUD_PROJECT", "")
 	t.Setenv("ANTHROPIC_VERTEX_PROJECT_ID", "")
 
-	_, err := NewFromEnv()
+	_, err := NewFromEnvWithOverrides("", "")
 	if err == nil {
 		t.Error("expected error for vertex provider without project ID, got nil")
 	}
 }
 
-// TestNewFromEnv_VertexFlagNotTriggeredWhenProviderSet ensures that
-// CLAUDE_CODE_USE_VERTEX=1 does not override an explicit PROVIDER setting.
-func TestNewFromEnv_VertexFlagNotTriggeredWhenProviderSet(t *testing.T) {
-	// PROVIDER=ollama should win over CLAUDE_CODE_USE_VERTEX=1
+// TestNewFromEnvWithOverrides_VertexFlagNotTriggeredWhenProviderSet ensures that
+// LUBAN_CODE_USE_VERTEX=1 does not override an explicit PROVIDER setting.
+func TestNewFromEnvWithOverrides_VertexFlagNotTriggeredWhenProviderSet(t *testing.T) {
+	// PROVIDER=ollama should win over LUBAN_CODE_USE_VERTEX=1
 	t.Setenv("PROVIDER", "ollama")
-	t.Setenv("CLAUDE_CODE_USE_VERTEX", "1")
+	t.Setenv("LUBAN_CODE_USE_VERTEX", "1")
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/agent-dance/luban/engine"
+	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/permissions"
+	"github.com/agent-dance/luban/types"
 )
 
 // stubPrompt returns a fixed decision without any I/O.
@@ -16,9 +17,8 @@ func stubPrompt(d permissions.Decision) func(string, map[string]any) permissions
 func installNoopSafetyChecks(t *testing.T) {
 	t.Helper()
 	permissions.SetSafetyConfig(permissions.SafetyConfig{
-		DangerousCommandChecker: func(string) string { return "" },
-		BashProtectedPathChecker: func(string) (bool, string) {
-			return false, ""
+		ShellPolicyAnalyzer: func(string, types.PolicyContext) types.PolicyDecision {
+			return types.PolicyDecision{Disposition: types.PolicyAllow}
 		},
 	})
 	t.Cleanup(func() { permissions.SetSafetyConfig(permissions.SafetyConfig{}) })
@@ -27,14 +27,14 @@ func installNoopSafetyChecks(t *testing.T) {
 func TestCLIPermissionHandler_Allow(t *testing.T) {
 	installNoopSafetyChecks(t)
 	checker := permissions.NewChecker(permissions.ModeAskAlways, nil)
-	checker.SetPromptFunc(stubPrompt(permissions.DecisionAllow))
+	setStructuredPromptDecision(checker, stubPrompt(permissions.DecisionAllow))
 
 	h := permissions.NewCLIPermissionHandler(checker)
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "echo hi"}})
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "echo hi"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionAllow {
+	if dec != permission.PermissionAllow {
 		t.Fatalf("expected PermissionAllow, got %v", dec)
 	}
 }
@@ -42,33 +42,30 @@ func TestCLIPermissionHandler_Allow(t *testing.T) {
 func TestCLIPermissionHandler_Deny(t *testing.T) {
 	installNoopSafetyChecks(t)
 	checker := permissions.NewChecker(permissions.ModeAskAlways, nil)
-	checker.SetPromptFunc(stubPrompt(permissions.DecisionDeny))
+	setStructuredPromptDecision(checker, stubPrompt(permissions.DecisionDeny))
 
 	h := permissions.NewCLIPermissionHandler(checker)
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "rm -rf /"}})
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "rm -rf /"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionDeny {
+	if dec != permission.PermissionDeny {
 		t.Fatalf("expected PermissionDeny, got %v", dec)
 	}
 }
 
 func TestCLIPermissionHandler_AllowOnce(t *testing.T) {
 	installNoopSafetyChecks(t)
-	// Checker.askOrCache normalises DecisionAllowOnce → DecisionAllow before
-	// returning (it permits the call but skips session-cache insertion).
-	// The adapter therefore receives DecisionAllow and maps it to PermissionAllow.
 	checker := permissions.NewChecker(permissions.ModeAskAlways, nil)
-	checker.SetPromptFunc(stubPrompt(permissions.DecisionAllowOnce))
+	setStructuredPromptDecision(checker, stubPrompt(permissions.DecisionAllowOnce))
 
 	h := permissions.NewCLIPermissionHandler(checker)
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{ToolName: "Write", Input: map[string]any{"file_path": "/tmp/test.txt"}})
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{ToolName: "Write", Input: map[string]any{"file_path": "/tmp/test.txt"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionAllow {
-		t.Fatalf("expected PermissionAllow (AllowOnce normalised by Checker), got %v", dec)
+	if dec != permission.PermissionAllowOnce {
+		t.Fatalf("expected PermissionAllowOnce, got %v", dec)
 	}
 }
 
@@ -78,34 +75,12 @@ func TestCLIPermissionHandler_AllowAll(t *testing.T) {
 	checker := permissions.NewChecker(permissions.ModeAllowAll, nil)
 	h := permissions.NewCLIPermissionHandler(checker)
 
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "ls"}})
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "ls"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionAllow {
+	if dec != permission.PermissionAllow {
 		t.Fatalf("expected PermissionAllow, got %v", dec)
-	}
-}
-
-func TestCLIPermissionHandler_AutoRequestModeOverridesAskAlways(t *testing.T) {
-	checker := permissions.NewChecker(permissions.ModeAskAlways, nil)
-	prompted := false
-	checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
-		prompted = true
-		return permissions.DecisionDeny
-	})
-	h := permissions.NewCLIPermissionHandler(checker)
-
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{
-		ToolName: "Write",
-		Input:    map[string]any{"file_path": "auto-mode-child.txt"},
-		Mode:     "auto",
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if dec != engine.PermissionAllow || prompted {
-		t.Fatalf("Auto request decision=%v prompted=%v, want allow without prompt", dec, prompted)
 	}
 }
 
@@ -115,11 +90,11 @@ func TestCLIPermissionHandler_NoPromptFunc_Deny(t *testing.T) {
 	checker := permissions.NewChecker(permissions.ModeAskAlways, nil)
 	h := permissions.NewCLIPermissionHandler(checker)
 
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "mkdir build"}})
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{ToolName: "Bash", Input: map[string]any{"command": "mkdir build"}})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionDeny {
+	if dec != permission.PermissionDeny {
 		t.Fatalf("expected PermissionDeny when no promptFunc, got %v", dec)
 	}
 }
@@ -128,13 +103,13 @@ func TestCLIPermissionHandler_AvoidPromptsDeniesPromptedRequest(t *testing.T) {
 	installNoopSafetyChecks(t)
 	prompted := false
 	checker := permissions.NewChecker(permissions.ModeAskAlways, nil)
-	checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) permissions.Decision {
 		prompted = true
 		return permissions.DecisionAllow
 	})
 	h := permissions.NewCLIPermissionHandler(checker)
 
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{
 		ToolName:     "Write",
 		Input:        map[string]any{"file_path": "/tmp/test.txt"},
 		Mode:         "dontAsk",
@@ -143,7 +118,7 @@ func TestCLIPermissionHandler_AvoidPromptsDeniesPromptedRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionDeny {
+	if dec != permission.PermissionDeny {
 		t.Fatalf("expected PermissionDeny when prompts are avoided, got %v", dec)
 	}
 	if prompted {
@@ -154,10 +129,10 @@ func TestCLIPermissionHandler_AvoidPromptsDeniesPromptedRequest(t *testing.T) {
 func TestCLIPermissionHandler_AcceptEditsModeOverridesAskAlways(t *testing.T) {
 	installNoopSafetyChecks(t)
 	checker := permissions.NewChecker(permissions.ModeAskAlways, nil)
-	checker.SetPromptFunc(stubPrompt(permissions.DecisionDeny))
+	setStructuredPromptDecision(checker, stubPrompt(permissions.DecisionDeny))
 	h := permissions.NewCLIPermissionHandler(checker)
 
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{
 		ToolName: "Write",
 		Input:    map[string]any{"file_path": "/tmp/test.txt"},
 		Mode:     "acceptEdits",
@@ -165,7 +140,7 @@ func TestCLIPermissionHandler_AcceptEditsModeOverridesAskAlways(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionAllow {
+	if dec != permission.PermissionAllow {
 		t.Fatalf("expected PermissionAllow from acceptEdits override, got %v", dec)
 	}
 }
@@ -174,13 +149,13 @@ func TestCLIPermissionHandler_ExplicitDefaultOverridesForegroundAllowAll(t *test
 	installNoopSafetyChecks(t)
 	prompted := false
 	checker := permissions.NewChecker(permissions.ModeAllowAll, nil)
-	checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) permissions.Decision {
 		prompted = true
 		return permissions.DecisionDeny
 	})
 	h := permissions.NewCLIPermissionHandler(checker)
 
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{
 		ToolName: "Read",
 		Input:    map[string]any{"file_path": "go.mod"},
 		Mode:     "default",
@@ -188,7 +163,7 @@ func TestCLIPermissionHandler_ExplicitDefaultOverridesForegroundAllowAll(t *test
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionDeny {
+	if dec != permission.PermissionDeny {
 		t.Fatalf("expected explicit default request to use rule-based policy, got %v", dec)
 	}
 	if !prompted {
@@ -200,13 +175,13 @@ func TestCLIPermissionHandler_RestrictiveChildModeOverridesForegroundAllowAll(t 
 	installNoopSafetyChecks(t)
 	prompted := false
 	checker := permissions.NewChecker(permissions.ModeAllowAll, nil)
-	checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) permissions.Decision {
 		prompted = true
 		return permissions.DecisionDeny
 	})
 	h := permissions.NewCLIPermissionHandler(checker)
 
-	dec, err := h.Check(context.Background(), engine.PermissionRequest{
+	dec, err := h.Check(context.Background(), permission.PermissionRequest{
 		ToolName:     "Read",
 		Input:        map[string]any{"file_path": "go.mod"},
 		Mode:         "dontAsk",
@@ -215,7 +190,7 @@ func TestCLIPermissionHandler_RestrictiveChildModeOverridesForegroundAllowAll(t 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if dec != engine.PermissionDeny {
+	if dec != permission.PermissionDeny {
 		t.Fatalf("expected pinned child dontAsk to override foreground ModeAllowAll, got %v", dec)
 	}
 	if prompted {

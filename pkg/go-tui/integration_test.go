@@ -316,7 +316,7 @@ func TestIntegration_SharedStatePropagation(t *testing.T) {
 	root := newIntRoot()
 
 	// Initial render
-	el := root.Render(testApp)
+	root.Render(testApp)
 
 	// The query state is shared between root, sidebar, and search.
 	// Setting it from search should be visible to sidebar.
@@ -327,7 +327,7 @@ func TestIntegration_SharedStatePropagation(t *testing.T) {
 	}
 
 	// Re-render and verify the shared state is accessible
-	el = root.Render(testApp)
+	el := root.Render(testApp)
 
 	// walkComponents should find all 3 components
 	var found []Component

@@ -1,23 +1,24 @@
 package permissions
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/types"
+)
 
 func TestSafetyCheck(t *testing.T) {
-	// Inject test dependencies that simulate tools package behavior.
 	SetSafetyConfig(SafetyConfig{
-		DangerousCommandChecker: func(command string) string {
-			// Simple mock: detect "rm -rf /"
-			if command == "rm -rf /" {
-				return "recursive force delete of root path"
+		ShellPolicyAnalyzer: func(command string, _ types.PolicyContext) types.PolicyDecision {
+			if command == "rm -rf /" || command == "echo x > .git/HEAD" {
+				return types.PolicyDecision{
+					Disposition: types.PolicyBlock,
+					Code:        "test.block",
+					PublicKey:   i18n.KeyPermissionSafetyProtectedPath,
+					PublicArgs:  []any{command},
+				}
 			}
-			return ""
-		},
-		BashProtectedPathChecker: func(command string) (bool, string) {
-			// Simple mock: detect "echo x > .git/HEAD"
-			if command == "echo x > .git/HEAD" {
-				return true, ".git/HEAD"
-			}
-			return false, ""
+			return types.PolicyDecision{Disposition: types.PolicyAllow}
 		},
 	})
 	defer SetSafetyConfig(SafetyConfig{}) // cleanup
@@ -58,13 +59,6 @@ func TestSafetyCheck(t *testing.T) {
 			wantDeny: false,
 		},
 		{
-			name:     "FileRead .env → Allow",
-			tool:     "FileRead",
-			input:    map[string]any{"file_path": ".env"},
-			wantDec:  DecisionAllow,
-			wantDeny: false,
-		},
-		{
 			name:     "Write src/main.go → Allow",
 			tool:     "Write",
 			input:    map[string]any{"file_path": "src/main.go"},
@@ -82,13 +76,6 @@ func TestSafetyCheck(t *testing.T) {
 			name:     "Edit .zshrc → Deny",
 			tool:     "Edit",
 			input:    map[string]any{"file_path": "/home/user/.zshrc"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "FileDelete .aws/credentials → Deny",
-			tool:     "FileDelete",
-			input:    map[string]any{"file_path": ".aws/credentials"},
 			wantDec:  DecisionDeny,
 			wantDeny: true,
 		},
@@ -117,13 +104,6 @@ func TestSafetyCheck(t *testing.T) {
 			name:     "Write .kube/config → Deny",
 			tool:     "Write",
 			input:    map[string]any{"file_path": ".kube/config"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "Write .gnupg/pubring.kbx → Deny",
-			tool:     "FileWrite",
-			input:    map[string]any{"file_path": ".gnupg/pubring.kbx"},
 			wantDec:  DecisionDeny,
 			wantDeny: true,
 		},
@@ -168,69 +148,6 @@ func TestSafetyCheck(t *testing.T) {
 			input:    map[string]any{"file_path": "/project/.git/objects/pack"},
 			wantDec:  DecisionDeny,
 			wantDeny: true,
-		},
-		{
-			name:     "FileMove source=.profile → Deny",
-			tool:     "FileMove",
-			input:    map[string]any{"source": ".profile", "destination": "/tmp/bak"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "FileMove destination=.ssh/id_rsa → Deny",
-			tool:     "FileMove",
-			input:    map[string]any{"source": "/tmp/key", "destination": ".ssh/id_rsa"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "FileMove safe paths → Allow",
-			tool:     "FileMove",
-			input:    map[string]any{"source": "src/a.go", "destination": "src/b.go"},
-			wantDec:  DecisionAllow,
-			wantDeny: false,
-		},
-		{
-			name:     "FileAppend .env → Deny",
-			tool:     "FileAppend",
-			input:    map[string]any{"file_path": ".env"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "FileAppend .env.local → Deny",
-			tool:     "FileAppend",
-			input:    map[string]any{"file_path": ".env.local"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "FileLink link_path=.ssh/ → Deny",
-			tool:     "FileLink",
-			input:    map[string]any{"target": "/usr/bin/ls", "link_path": ".ssh/authorized_keys"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "FileLink target=.git/HEAD → Deny (symlink target is protected)",
-			tool:     "FileLink",
-			input:    map[string]any{"target": ".git/HEAD", "link_path": "my_innocent_file.txt"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "FileLink target=.env → Deny",
-			tool:     "FileLink",
-			input:    map[string]any{"target": "/home/user/.env", "link_path": "/tmp/link"},
-			wantDec:  DecisionDeny,
-			wantDeny: true,
-		},
-		{
-			name:     "FileLink safe paths → Allow",
-			tool:     "FileLink",
-			input:    map[string]any{"target": "src/main.go", "link_path": "src/link.go"},
-			wantDec:  DecisionAllow,
-			wantDeny: false,
 		},
 		{
 			name:     "Write .env.local → Deny (exact match)",

@@ -162,7 +162,7 @@ func TestProviderRef_CreateStream_Snapshot(t *testing.T) {
 func TestProviderRef_Capabilities_WithCapabilityProvider(t *testing.T) {
 	caps := ProviderCapabilities{
 		MaxContext: 200000,
-		Thinking:  true,
+		Thinking:   true,
 	}
 	p := &stubProvider{name: "c", modelID: "m", caps: caps}
 	ref := NewProviderRef(p)

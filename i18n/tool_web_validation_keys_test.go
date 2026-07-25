@@ -17,7 +17,7 @@ func TestToolWebValidationKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolWebValidationEnglishCompatibilityContracts(t *testing.T) {
+func TestToolWebValidationEnglishContractContracts(t *testing.T) {
 	cause := errors.New("raw-cause")
 	tests := []struct {
 		key  Key

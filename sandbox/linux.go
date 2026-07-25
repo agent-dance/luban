@@ -47,6 +47,21 @@ func (b BwrapBackend) configureAuthority() *executableAuthority {
 	return authority
 }
 
+func launchPinnedExecutable(ctx context.Context, executable trustedExecutable, descriptorPath string, args ...string) *exec.Cmd {
+	launchPath := executable.path
+	if executable.file != nil {
+		launchPath = descriptorPath
+	}
+	cmd := exec.CommandContext(ctx, launchPath, args...)
+	if executable.file != nil {
+		// ExtraFiles[0] is fd 3 in the child. Execute the file opened during
+		// trusted preparation instead of resolving the mutable path again.
+		cmd.ExtraFiles = []*os.File{executable.file}
+		cmd.Args[0] = executable.path
+	}
+	return cmd
+}
+
 func (b BwrapBackend) Available() bool {
 	return b.configureAuthority().available()
 }

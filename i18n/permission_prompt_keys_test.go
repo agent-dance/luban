@@ -7,7 +7,7 @@ import (
 
 func TestPermissionPromptSemanticCopyCoversEveryLanguage(t *testing.T) {
 	keys := []Key{
-		KeyPermissionPromptInline, KeyPermissionPromptTool, KeyPermissionPromptCall,
+		KeyPermissionPromptTool, KeyPermissionPromptCall,
 		KeyPermissionPromptInfo, KeyPermissionPromptRisk, KeyPermissionPromptAllow,
 		KeyPermissionPromptRiskLow, KeyPermissionPromptRiskMedium, KeyPermissionPromptRiskHigh,
 	}

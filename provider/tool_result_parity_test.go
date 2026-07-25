@@ -29,8 +29,8 @@ func TestParityProvidersSerializeModelTextWithoutTypedData(t *testing.T) {
 	}, "toolu_parity")
 	message := types.ToolResultMessage(block)
 
-	assertParityProviderResult(t, "Anthropic", convertToAnthropicMessages([]types.Message{message}))
-	assertParityProviderResult(t, "Responses", convertAllMessagesForResponsesAPI([]types.Message{message}))
+	assertParityProviderResult(t, "Anthropic", convertToAnthropicMessagesForParams(Params{Messages: []types.Message{message}}))
+	assertParityProviderResult(t, "Responses", convertAllMessagesForResponsesAPIWithParams(Params{Messages: []types.Message{message}}))
 	assertParityProviderResult(t, "OpenAI", convertUserMessage(message))
 }
 

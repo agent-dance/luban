@@ -36,7 +36,7 @@ func TestMCPConnectCopyIsLocalizedAndPreservesTechnicalValues(t *testing.T) {
 		}
 	}
 
-	for _, key := range []Key{KeyConnectCancelled, KeyConnectBrowserOpening, KeyConnectWaiting, KeyMCPStateConnected} {
+	for _, key := range []Key{KeyConnectBrowserOpening, KeyConnectWaiting, KeyMCPStateConnected} {
 		english := Text(LangEN, key)
 		for _, lang := range AllLanguages()[1:] {
 			if got := Text(lang, key); got == english {

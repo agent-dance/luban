@@ -20,15 +20,10 @@ func (t *strictContractTool) Schema() types.JSONSchema {
 		"message": map[string]any{"type": "string"},
 	}, "message")
 }
-func (t *strictContractTool) ToolContract() types.ToolContract {
-	return types.ToolContract{
-		OutputSchema: &types.JSONSchema{
-			Type: "object",
-			Properties: map[string]any{
-				"message": map[string]any{"type": "string"},
-			},
-		},
+func (t *strictContractTool) ToolMetadata(map[string]any) types.ToolMetadata {
+	return types.ToolMetadata{
 		ReadOnly:           t.readOnly,
+		Write:              !t.readOnly,
 		ConcurrencySafe:    t.readOnly,
 		MaxResultSizeChars: 2048,
 	}
@@ -48,6 +43,9 @@ func (t *strictContractTool) MapToolResultToToolResultBlock(data any, toolUseID 
 
 func TestStrictToolRejectsUnknownInputBeforeExecute(t *testing.T) {
 	tool := &strictContractTool{readOnly: true}
+	if !tool.Schema().RejectsUnknownFields() {
+		t.Fatal("strict tool schema permits unknown fields")
+	}
 	reg := New()
 	reg.Register(tool)
 
@@ -87,27 +85,16 @@ func TestStrictToolMapsTypedResultData(t *testing.T) {
 	}
 }
 
-func TestMutatingToolContractRemainsSequentialAndWritable(t *testing.T) {
+func TestMutatingToolMetadataRemainsSequentialAndWritable(t *testing.T) {
 	tool := &strictContractTool{readOnly: false}
-	def := types.ToDefinition(tool)
-	if def.Metadata.ReadOnly || def.Metadata.ConcurrencySafe {
-		t.Fatalf("mutating contract advertised safe/read-only metadata: %#v", def.Metadata)
-	}
-
 	reg := New()
 	reg.Register(tool)
+	metadata := reg.ToolMetadata(tool.Name(), nil)
+	if metadata.ReadOnly || metadata.ConcurrencySafe || !metadata.Write {
+		t.Fatalf("mutating tool metadata = %#v", metadata)
+	}
 	result := reg.ExecuteTool(context.Background(), tool.Name(), map[string]any{"message": "write"})
 	if result.IsError || result.Content != "accepted: write" || !tool.executed {
 		t.Fatalf("mutating contract execution failed: %#v", result)
-	}
-}
-
-func TestNonMigratedToolKeepsLegacyResultPath(t *testing.T) {
-	reg := New()
-	reg.Register(&mockTool{name: "legacy"})
-
-	result := reg.ExecuteTool(context.Background(), "legacy", map[string]any{"ignored": true})
-	if result.IsError || result.Content != "executed legacy" {
-		t.Fatalf("legacy tool behavior changed: %#v", result)
 	}
 }

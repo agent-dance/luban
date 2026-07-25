@@ -431,4 +431,3 @@ templ Hello() {
 		t.Error("document still exists after close")
 	}
 }
-

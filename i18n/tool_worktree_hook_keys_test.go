@@ -16,7 +16,7 @@ func TestToolWorktreeHookKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolWorktreeHookEnglishCompatibilityAndCause(t *testing.T) {
+func TestToolWorktreeHookEnglishContractAndCause(t *testing.T) {
 	cause := errors.New("raw-cause")
 	if got := Format(LangEN, KeyToolWorktreeHookEncodePayload, "WorktreeCreate", cause); got != "encode WorktreeCreate hook payload: raw-cause" {
 		t.Fatalf("encode payload = %q", got)

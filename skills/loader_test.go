@@ -6,6 +6,32 @@ import (
 	"testing"
 )
 
+func newManagerWithOverrideStore(store OverrideStore, dirs ...DirSource) *Manager {
+	manager := NewManager(dirs...)
+	manager.SetOverrideStore(store)
+	return manager
+}
+
+type emptyTestOverrideStore struct{}
+
+func (emptyTestOverrideStore) Snapshot(string) (OverrideSnapshot, error) {
+	return OverrideSnapshot{
+		User: map[SkillID]VisibilityOverride{}, Project: map[SkillID]VisibilityOverride{},
+		Managed: map[SkillID]VisibilityOverride{}, Session: map[SkillID]VisibilityOverride{},
+	}, nil
+}
+
+func (emptyTestOverrideStore) Set(string, VisibilityOverride) error        { return nil }
+func (emptyTestOverrideStore) Reset(string, SkillScope, SkillID) error     { return nil }
+func (emptyTestOverrideStore) RestoreProject(ProjectOverrideRestore) error { return nil }
+func (emptyTestOverrideStore) CompareAndSetProject(OverrideStoreRevision, SkillID, *VisibilityOverride) (ProjectOverrideRestore, error) {
+	return ProjectOverrideRestore{}, ErrOverrideRevisionConflict
+}
+
+func newCatalogManagerForTest(dirs ...DirSource) *Manager {
+	return newManagerWithOverrideStore(emptyTestOverrideStore{}, dirs...)
+}
+
 func TestManager_LoadDirectorySkill(t *testing.T) {
 	dir := t.TempDir()
 	skillDir := filepath.Join(dir, "refactor")
@@ -20,11 +46,8 @@ model: sonnet
 Refactor the code carefully.
 `), 0644)
 
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	skill := m.Get("refactor")
-	if skill == nil {
-		t.Fatal("expected 'refactor' skill")
-	}
+	m := newCatalogManagerForTest(DirSource{Dir: dir, Source: SourceProject})
+	skill := resolvedLoaderTestSkill(t, m, "refactor")
 	if skill.Description != "Refactor code" {
 		t.Errorf("Description: got %q", skill.Description)
 	}
@@ -56,11 +79,8 @@ when_to_use: When user says hello
 Say hello!
 `), 0644)
 
-	m := NewManager(DirSource{Dir: dir, Source: SourceUser})
-	skill := m.Get("greet")
-	if skill == nil {
-		t.Fatal("expected 'greet' skill")
-	}
+	m := newCatalogManagerForTest(DirSource{Dir: dir, Source: SourceUser})
+	skill := resolvedLoaderTestSkill(t, m, "greet")
 	if skill.Description != "Greet the user" {
 		t.Errorf("Description: got %q", skill.Description)
 	}
@@ -78,18 +98,15 @@ func TestManager_NoFrontmatter(t *testing.T) {
 	os.MkdirAll(skillDir, 0755)
 	os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# Simple\nJust do it."), 0644)
 
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	skill := m.Get("simple")
-	if skill == nil {
-		t.Fatal("expected 'simple' skill")
-	}
+	m := newCatalogManagerForTest(DirSource{Dir: dir, Source: SourceProject})
+	skill := resolvedLoaderTestSkill(t, m, "simple")
 	if skill.Description != "Skill: simple" {
 		t.Errorf("Description: got %q (expected default)", skill.Description)
 	}
 	if !skill.HasGeneratedDescription {
 		t.Fatal("default description was not marked as generated")
 	}
-	snapshot, err := m.Snapshot("")
+	snapshot, err := m.Snapshot("session")
 	if err != nil || len(snapshot.Skills) != 1 {
 		t.Fatalf("Snapshot() = %#v, %v", snapshot, err)
 	}
@@ -119,20 +136,17 @@ description: From low-priority
 low
 `), 0644)
 
-	m := NewManager(
+	m := newCatalogManagerForTest(
 		DirSource{Dir: highDir, Source: SourceProject},
 		DirSource{Dir: lowDir, Source: SourceUser},
 	)
-	skill := m.Get("deploy")
-	if skill == nil {
-		t.Fatal("expected 'deploy' skill")
-	}
+	skill := resolvedLoaderTestSkill(t, m, "deploy")
 	if skill.Description != "From high-priority" {
 		t.Errorf("expected high-priority, got: %q", skill.Description)
 	}
 }
 
-func TestManager_All(t *testing.T) {
+func TestManager_SnapshotDiscoversAll(t *testing.T) {
 	dir := t.TempDir()
 	for _, name := range []string{"alpha", "beta"} {
 		skillDir := filepath.Join(dir, name)
@@ -140,102 +154,26 @@ func TestManager_All(t *testing.T) {
 		os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("# "+name), 0644)
 	}
 
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	all := m.All()
-	if len(all) != 2 {
-		t.Fatalf("expected 2 skills, got %d", len(all))
+	m := newCatalogManagerForTest(DirSource{Dir: dir, Source: SourceProject})
+	snapshot, err := m.Snapshot("session")
+	if err != nil {
+		t.Fatal(err)
 	}
-	// Should be sorted
-	if all[0].Name != "alpha" || all[1].Name != "beta" {
-		t.Errorf("unexpected order: %s, %s", all[0].Name, all[1].Name)
-	}
-}
-
-func TestManager_Names(t *testing.T) {
-	dir := t.TempDir()
-	for _, name := range []string{"z", "a"} {
-		skillDir := filepath.Join(dir, name)
-		os.MkdirAll(skillDir, 0755)
-		os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(name), 0644)
-	}
-
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	names := m.Names()
-	if len(names) != 2 || names[0] != "a" || names[1] != "z" {
-		t.Errorf("expected sorted [a, z], got %v", names)
+	if len(snapshot.Skills) != 2 || !loaderSnapshotHasName(snapshot, "alpha") || !loaderSnapshotHasName(snapshot, "beta") {
+		t.Fatalf("unexpected snapshot: %#v", snapshot.Skills)
 	}
 }
 
-func TestManager_SessionAvailabilityIsIsolated(t *testing.T) {
-	dir := t.TempDir()
-	for _, name := range []string{"alpha", "beta"} {
-		skillDir := filepath.Join(dir, name)
-		if err := os.MkdirAll(skillDir, 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(name), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	if changed, found := m.SetEnabled("session-a", "alpha", false); !found || !changed {
-		t.Fatalf("disable alpha = changed %t found %t, want true/true", changed, found)
-	}
-	if m.IsEnabled("session-a", "alpha") {
-		t.Fatal("alpha remained enabled in session-a")
-	}
-	if !m.IsEnabled("session-b", "alpha") {
-		t.Fatal("session-a override leaked into session-b")
-	}
-	if got := m.EnabledNames("session-a"); len(got) != 1 || got[0] != "beta" {
-		t.Fatalf("session-a enabled names = %v, want [beta]", got)
-	}
-
-	if changed, found := m.SetEnabled("session-a", "alpha", false); !found || changed {
-		t.Fatalf("idempotent disable = changed %t found %t, want false/true", changed, found)
-	}
-	if changed, found := m.SetEnabled("session-a", "missing", false); found || changed {
-		t.Fatalf("unknown disable = changed %t found %t, want false/false", changed, found)
-	}
-}
-
-func TestManager_SetAllEnabledAndRefreshPreserveSessionPolicy(t *testing.T) {
-	dir := t.TempDir()
-	for _, name := range []string{"alpha", "beta"} {
-		skillDir := filepath.Join(dir, name)
-		if err := os.MkdirAll(skillDir, 0755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(name), 0644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	if changed := m.SetAllEnabled("session-a", false); changed != 2 {
-		t.Fatalf("disabled count = %d, want 2", changed)
-	}
-	m.Refresh()
-	if got := m.EnabledNames("session-a"); len(got) != 0 {
-		t.Fatalf("refresh silently re-enabled skills: %v", got)
-	}
-	if changed := m.SetAllEnabled("session-a", true); changed != 2 {
-		t.Fatalf("enabled count = %d, want 2", changed)
-	}
-	if got := m.EnabledNames("session-a"); len(got) != 2 || got[0] != "alpha" || got[1] != "beta" {
-		t.Fatalf("enabled names = %v, want [alpha beta]", got)
-	}
-}
-
-func TestManager_Refresh(t *testing.T) {
+func TestManager_RefreshSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	firstDir := filepath.Join(dir, "first")
 	os.MkdirAll(firstDir, 0755)
 	os.WriteFile(filepath.Join(firstDir, "SKILL.md"), []byte("First"), 0644)
 
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	m.Get("first") // populate
+	m := newCatalogManagerForTest(DirSource{Dir: dir, Source: SourceProject})
+	if _, err := m.Snapshot("session"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Add new skill
 	secondDir := filepath.Join(dir, "second")
@@ -244,24 +182,29 @@ func TestManager_Refresh(t *testing.T) {
 
 	// Should not be visible yet (cached)
 	// After refresh, should be visible
-	m.Refresh()
-	if m.Get("second") == nil {
-		t.Error("expected 'second' to be visible after Refresh()")
+	if _, err := m.RefreshSnapshot("session"); err != nil {
+		t.Fatal(err)
 	}
+	resolvedLoaderTestSkill(t, m, "second")
 }
 
 func TestManager_NonexistentDir(t *testing.T) {
-	m := NewManager(DirSource{Dir: "/nonexistent/dir/12345", Source: SourceProject})
-	if skill := m.Get("anything"); skill != nil {
-		t.Errorf("expected nil from nonexistent dir, got %+v", skill)
+	m := newCatalogManagerForTest(DirSource{Dir: "/nonexistent/dir/12345", Source: SourceProject})
+	result, err := m.ResolveLatest(SkillResolveRequest{
+		SessionID: "session", Selector: "anything", Origin: InvocationOriginUser,
+		ExpectedProjectGeneration: m.ProjectGeneration(),
+	}, nil)
+	if err != nil || result.Outcome != SkillResolveNotFound {
+		t.Errorf("expected no resolution from nonexistent dir, result=%#v err=%v", result, err)
 	}
 }
 
 func TestManager_EmptyDir(t *testing.T) {
 	dir := t.TempDir()
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	if names := m.Names(); len(names) != 0 {
-		t.Errorf("expected no skills, got %v", names)
+	m := newCatalogManagerForTest(DirSource{Dir: dir, Source: SourceProject})
+	snapshot, err := m.Snapshot("session")
+	if err != nil || len(snapshot.Skills) != 0 {
+		t.Errorf("expected no skills, got %#v, err=%v", snapshot.Skills, err)
 	}
 }
 
@@ -283,14 +226,17 @@ Content
 		t.Skip("symlink not supported:", err)
 	}
 
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
-	all := m.All()
+	m := newCatalogManagerForTest(DirSource{Dir: dir, Source: SourceProject})
+	snapshot, snapshotErr := m.Snapshot("session")
+	if snapshotErr != nil {
+		t.Fatal(snapshotErr)
+	}
 	// Should load both names since they have different skill names,
 	// but one of them will be deduplicated by realpath
 	// Actually: the second one (alias) should be skipped because it points
 	// to the same real file as "real"
-	if len(all) != 1 {
-		t.Errorf("expected 1 skill (dedup via symlink), got %d: %v", len(all), m.Names())
+	if len(snapshot.Skills) != 1 {
+		t.Errorf("expected 1 skill (dedup via symlink), got %d: %v", len(snapshot.Skills), snapshot.Skills)
 	}
 }
 
@@ -305,52 +251,51 @@ description: Overridden
 content
 `), 0644)
 
-	m := NewManager(DirSource{Dir: dir, Source: SourceProject})
+	m := newCatalogManagerForTest(DirSource{Dir: dir, Source: SourceProject})
 	// Should be findable by the frontmatter name, not the directory name
-	skill := m.Get("custom-name")
-	if skill == nil {
-		t.Fatal("expected skill with frontmatter name 'custom-name'")
-	}
+	skill := resolvedLoaderTestSkill(t, m, "custom-name")
 	if skill.Description != "Overridden" {
 		t.Errorf("Description: got %q", skill.Description)
 	}
 }
 
-func TestManager_AddDir(t *testing.T) {
-	dir1 := t.TempDir()
-	dir2 := t.TempDir()
-
-	aDir := filepath.Join(dir1, "a")
-	os.MkdirAll(aDir, 0755)
-	os.WriteFile(filepath.Join(aDir, "SKILL.md"), []byte("A"), 0644)
-
-	bDir := filepath.Join(dir2, "b")
-	os.MkdirAll(bDir, 0755)
-	os.WriteFile(filepath.Join(bDir, "SKILL.md"), []byte("B"), 0644)
-
-	m := NewManager(DirSource{Dir: dir1, Source: SourceProject})
-	if m.Get("a") == nil {
-		t.Fatal("expected 'a'")
-	}
-
-	m.AddDir(dir2, SourceUser)
-	if m.Get("b") == nil {
-		t.Fatal("expected 'b' after AddDir")
-	}
-}
-
-func TestManager_EffectiveDescription(t *testing.T) {
+func TestSkillEffectiveDescription(t *testing.T) {
 	skill := &Skill{
 		Description: "Deploy code",
 		WhenToUse:   "When deploying to production",
 	}
 	expected := "Deploy code - When deploying to production"
-	if got := skill.EffectiveDescription(); got != expected {
+	if got := skill.effectiveDescription(); got != expected {
 		t.Errorf("got %q, want %q", got, expected)
 	}
 
 	skill2 := &Skill{Description: "Simple skill"}
-	if got := skill2.EffectiveDescription(); got != "Simple skill" {
+	if got := skill2.effectiveDescription(); got != "Simple skill" {
 		t.Errorf("got %q", got)
 	}
+}
+
+func resolvedLoaderTestSkill(t testing.TB, manager *Manager, selector string) *Skill {
+	t.Helper()
+	var resolved ResolvedSkill
+	result, err := manager.ResolveLatest(SkillResolveRequest{
+		SessionID: "session", Selector: selector, Origin: InvocationOriginUser,
+		ExpectedProjectGeneration: manager.ProjectGeneration(),
+	}, func(current ResolvedSkill) error {
+		resolved = current
+		return nil
+	})
+	if err != nil || result.Outcome != SkillResolveResolved || resolved.Skill == nil {
+		t.Fatalf("ResolveLatest(%q) = %#v, resolved=%#v, err=%v", selector, result, resolved, err)
+	}
+	return resolved.Skill
+}
+
+func loaderSnapshotHasName(snapshot CatalogSnapshot, name string) bool {
+	for _, skill := range snapshot.Skills {
+		if skill.Name == name {
+			return true
+		}
+	}
+	return false
 }

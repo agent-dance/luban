@@ -7,7 +7,7 @@ import (
 
 func TestMCPAuthToolKeysCoverEveryLanguageAndPreserveValues(t *testing.T) {
 	keys := []Key{
-		KeyMCPAuthToolDescription, KeyMCPAuthToolUninitialized, KeyMCPAuthToolClaudeConnector,
+		KeyMCPAuthToolDescription, KeyMCPAuthToolUninitialized,
 		KeyMCPAuthToolUnsupportedTransport, KeyMCPAuthToolStartFailed, KeyMCPAuthToolAuthorizationURL,
 	}
 	for _, key := range keys {

@@ -64,7 +64,7 @@ type BedrockConfig struct {
 //   - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN — static credentials
 //   - AWS_BEARER_TOKEN_BEDROCK — bearer token for API-key-style auth
 //   - ANTHROPIC_BEDROCK_BASE_URL — custom endpoint override
-//   - BEDROCK_MODEL / CLAUDE_MODEL — model ID override
+//   - BEDROCK_MODEL — model ID override
 func BedrockConfigFromEnv() BedrockConfig {
 	region := os.Getenv("AWS_REGION")
 	if region == "" {
@@ -75,9 +75,6 @@ func BedrockConfigFromEnv() BedrockConfig {
 	}
 
 	model := os.Getenv("BEDROCK_MODEL")
-	if model == "" {
-		model = os.Getenv("CLAUDE_MODEL")
-	}
 	if model == "" {
 		model = DefaultBedrockModel
 	}

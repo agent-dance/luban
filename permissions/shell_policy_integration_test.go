@@ -5,16 +5,16 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/agent-dance/luban/engine"
+	"github.com/agent-dance/luban/internal/contracts/permission"
+	"github.com/agent-dance/luban/internal/tools/shell"
 	"github.com/agent-dance/luban/permissions"
 	"github.com/agent-dance/luban/sandbox"
-	"github.com/agent-dance/luban/tools"
 	"github.com/agent-dance/luban/types"
 )
 
 func installUnifiedShellPolicy(t *testing.T) {
 	t.Helper()
-	permissions.SetSafetyConfig(permissions.SafetyConfig{ShellPolicyAnalyzer: tools.AnalyzeShellCommand})
+	permissions.SetSafetyConfig(permissions.SafetyConfig{ShellPolicyAnalyzer: shell.AnalyzeShellCommand})
 	t.Cleanup(func() { permissions.SetSafetyConfig(permissions.SafetyConfig{}) })
 }
 
@@ -47,13 +47,13 @@ func TestUnifiedShellPolicyMandatoryAskPrecedesAllowAndIsNeverCached(t *testing.
 		Tool: "Bash", Pattern: "rm ", Decision: permissions.DecisionAllow,
 	}})
 	prompts := 0
-	checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) permissions.Decision {
 		prompts++
 		return permissions.DecisionAllow
 	})
 	input := map[string]any{"command": `rm -rf "$TARGET"`}
 	for i := 0; i < 2; i++ {
-		if got := checker.Check("Bash", input); got != permissions.DecisionAllow {
+		if got := checkDecision(checker, "Bash", input); got != permissions.DecisionAllow {
 			t.Fatalf("check %d = %v, want allow after prompt", i, got)
 		}
 	}
@@ -61,11 +61,11 @@ func TestUnifiedShellPolicyMandatoryAskPrecedesAllowAndIsNeverCached(t *testing.
 		t.Fatalf("mandatory ask was cached: prompt count=%d, want 2", prompts)
 	}
 
-	decision := tools.AnalyzeShellCommand(`rm -rf "$TARGET"`, tools.DefaultShellPolicyContext())
+	decision := shell.AnalyzeShellCommand(`rm -rf "$TARGET"`, shell.DefaultShellPolicyContext())
 	if decision.Disposition != types.PolicyRequiredAsk || decision.Remediation == nil {
 		t.Fatalf("non-interactive decision lacks structured remediation: %#v", decision)
 	}
-	if got := checker.CheckWithOptions("Bash", input, permissions.CheckOptions{AvoidPrompts: true}); got != permissions.DecisionDeny {
+	if got := checkDecisionWithOptions(checker, "Bash", input, permissions.CheckOptions{AvoidPrompts: true}); got != permissions.DecisionDeny {
 		t.Fatalf("non-interactive mandatory ask=%v, want deny", got)
 	}
 }
@@ -73,7 +73,7 @@ func TestUnifiedShellPolicyMandatoryAskPrecedesAllowAndIsNeverCached(t *testing.
 func TestUnifiedShellPolicyRequiredAskYieldsToAutomaticMode(t *testing.T) {
 	installUnifiedShellPolicy(t)
 	input := map[string]any{"command": `sh cleanup.sh`}
-	policy := tools.AnalyzeShellCommand(input["command"].(string), tools.DefaultShellPolicyContext())
+	policy := shell.AnalyzeShellCommand(input["command"].(string), shell.DefaultShellPolicyContext())
 	if !policy.IsRequiredAsk() {
 		t.Fatalf("test command policy = %#v, want RequiredAsk", policy)
 	}
@@ -89,16 +89,16 @@ func TestUnifiedShellPolicyRequiredAskYieldsToAutomaticMode(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			checker := permissions.NewChecker(test.checkerMode, nil)
 			prompts := 0
-			checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
+			setStructuredPromptDecision(checker, func(string, map[string]any) permissions.Decision {
 				prompts++
 				return permissions.DecisionDeny
 			})
 			handler := permissions.NewCLIPermissionHandler(checker)
-			decision, err := handler.Check(context.Background(), engine.PermissionRequest{
+			decision, err := handler.Check(context.Background(), permission.PermissionRequest{
 				ToolName: "Bash", Input: input, Mode: test.requestMode,
 				Required: true, AvoidPrompts: true, PolicyDecision: &policy,
 			})
-			if err != nil || decision != engine.PermissionAllow || prompts != 0 {
+			if err != nil || decision != permission.PermissionAllow || prompts != 0 {
 				t.Fatalf("automatic RequiredAsk decision=%v prompts=%d err=%v", decision, prompts, err)
 			}
 		})
@@ -106,11 +106,11 @@ func TestUnifiedShellPolicyRequiredAskYieldsToAutomaticMode(t *testing.T) {
 
 	checker := permissions.NewChecker(permissions.ModeAllowAll, nil)
 	prompts := 0
-	checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) permissions.Decision {
 		prompts++
 		return permissions.DecisionDeny
 	})
-	if decision := checker.Check("Bash", input); decision != permissions.DecisionAllow || prompts != 0 {
+	if decision := checkDecision(checker, "Bash", input); decision != permissions.DecisionAllow || prompts != 0 {
 		t.Fatalf("direct automatic RequiredAsk decision=%v prompts=%d", decision, prompts)
 	}
 }
@@ -119,11 +119,11 @@ func TestUnifiedShellPolicyBlockPrecedesAllowAll(t *testing.T) {
 	installUnifiedShellPolicy(t)
 	checker := permissions.NewChecker(permissions.ModeAllowAll, nil)
 	prompted := false
-	checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) permissions.Decision {
 		prompted = true
 		return permissions.DecisionAllow
 	})
-	if got := checker.Check("Bash", map[string]any{"command": `rm --recursive --force /`}); got != permissions.DecisionDeny {
+	if got := checkDecision(checker, "Bash", map[string]any{"command": `rm --recursive --force /`}); got != permissions.DecisionDeny {
 		t.Fatalf("allow-all bypassed hard block: %v", got)
 	}
 	if prompted {
@@ -135,21 +135,21 @@ func TestGenericRequiredRequestStillPrecedesAllowAllForSafeBash(t *testing.T) {
 	installUnifiedShellPolicy(t)
 	checker := permissions.NewChecker(permissions.ModeAllowAll, nil)
 	prompts := 0
-	checker.SetPromptFunc(func(string, map[string]any) permissions.Decision {
+	setStructuredPromptDecision(checker, func(string, map[string]any) permissions.Decision {
 		prompts++
 		return permissions.DecisionAllowOnce
 	})
 	handler := permissions.NewCLIPermissionHandler(checker)
-	req := engine.PermissionRequest{
+	req := permission.PermissionRequest{
 		ToolName: "Bash", Input: map[string]any{"command": `printf ok`}, Required: true,
 	}
 	decision, err := handler.Check(context.Background(), req)
-	if err != nil || decision != engine.PermissionAllow || prompts != 1 {
+	if err != nil || decision != permission.PermissionAllowOnce || prompts != 1 {
 		t.Fatalf("required safe Bash decision=%v prompts=%d err=%v", decision, prompts, err)
 	}
 	req.AvoidPrompts = true
 	decision, err = handler.Check(context.Background(), req)
-	if err != nil || decision != engine.PermissionDeny || prompts != 1 {
+	if err != nil || decision != permission.PermissionDeny || prompts != 1 {
 		t.Fatalf("non-interactive required Bash decision=%v prompts=%d err=%v", decision, prompts, err)
 	}
 }
@@ -162,7 +162,7 @@ func TestRestrictiveRulePrecedenceIsOrderIndependent(t *testing.T) {
 		{{Tool: "Bash", Pattern: "git push", Decision: permissions.DecisionDeny}, {Tool: "Bash", Pattern: "git", Decision: permissions.DecisionAllow}},
 	} {
 		checker := permissions.NewChecker(permissions.ModeRuleBased, rules)
-		if got := checker.Check("Bash", input); got != permissions.DecisionDeny {
+		if got := checkDecision(checker, "Bash", input); got != permissions.DecisionDeny {
 			t.Fatalf("restrictive precedence depended on rule order: %v", got)
 		}
 	}
@@ -180,9 +180,9 @@ type recordingPermissionHandler struct {
 	calls int
 }
 
-func (h *recordingPermissionHandler) Check(context.Context, engine.PermissionRequest) (engine.PermissionDecision, error) {
+func (h *recordingPermissionHandler) Check(context.Context, permission.PermissionRequest) (permission.PermissionDecision, error) {
 	h.calls++
-	return engine.PermissionAllow, nil
+	return permission.PermissionAllow, nil
 }
 
 func TestUnifiedShellPolicySandboxCannotConsumeRequiredAsk(t *testing.T) {
@@ -191,14 +191,14 @@ func TestUnifiedShellPolicySandboxCannotConsumeRequiredAsk(t *testing.T) {
 	handler := permissions.NewSandboxAwarePermissionHandler(unifiedPolicySandbox{}, fallback)
 
 	for _, disabled := range []bool{false, true} {
-		decision, err := handler.Check(context.Background(), engine.PermissionRequest{
+		decision, err := handler.Check(context.Background(), permission.PermissionRequest{
 			ToolName: "Bash",
 			Input: map[string]any{
 				"command":                   `rm -rf "$TARGET"`,
 				"dangerouslyDisableSandbox": disabled,
 			},
 		})
-		if err != nil || decision != engine.PermissionAllow {
+		if err != nil || decision != permission.PermissionAllow {
 			t.Fatalf("sandbox required ask disabled=%v: decision=%v err=%v", disabled, decision, err)
 		}
 	}
@@ -207,10 +207,10 @@ func TestUnifiedShellPolicySandboxCannotConsumeRequiredAsk(t *testing.T) {
 	}
 
 	before := fallback.calls
-	decision, err := handler.Check(context.Background(), engine.PermissionRequest{
+	decision, err := handler.Check(context.Background(), permission.PermissionRequest{
 		ToolName: "Bash", Input: map[string]any{"command": `rm -rf /`},
 	})
-	if err != nil || decision != engine.PermissionDeny {
+	if err != nil || decision != permission.PermissionDeny {
 		t.Fatalf("hard block decision=%v err=%v", decision, err)
 	}
 	if fallback.calls != before {

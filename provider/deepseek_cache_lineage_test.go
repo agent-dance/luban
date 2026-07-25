@@ -13,17 +13,20 @@ import (
 )
 
 func TestDeepSeekCacheLineageSerializedAsUserID(t *testing.T) {
-	request := captureOpenAIChatRequestTask10(t, Config{
+	config := Config{
 		ProviderName: "deepseek",
 		Model:        "deepseek-v4-flash",
-	}, Params{
+	}
+	params := Params{
 		System:         "stable system",
 		Messages:       []types.Message{types.UserMessage("hello")},
 		PromptCacheKey: "root-session-123",
 		UsePromptCache: true,
-	})
-	if got := request["user_id"]; got != "root-session-123" {
-		t.Fatalf("DeepSeek user_id = %#v, want inherited cache lineage", got)
+	}
+	request := captureOpenAIChatRequestTask10(t, config, params)
+	want := expectedOpenAICompatibleCacheRoutingKey(config, params)
+	if got := request["user_id"]; got != want {
+		t.Fatalf("DeepSeek user_id = %#v, want credential-scoped identity %q", got, want)
 	}
 }
 

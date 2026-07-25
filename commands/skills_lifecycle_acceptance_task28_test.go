@@ -268,7 +268,8 @@ func newTask28CommandFixtureAt(t *testing.T, root string, paths skills.OverrideS
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := skills.NewManagerWithOverrideStore(store, sources...)
+	manager := skills.NewManager(sources...)
+	manager.SetOverrideStore(store)
 	snapshot, err := manager.Snapshot("session-a")
 	if err != nil {
 		t.Fatal(err)
@@ -286,7 +287,9 @@ func (fixture *task28CommandFixture) reopen(t *testing.T) *skills.Manager {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return skills.NewManagerWithOverrideStore(store, fixture.sources...)
+	manager := skills.NewManager(fixture.sources...)
+	manager.SetOverrideStore(store)
+	return manager
 }
 
 func task28ExecuteSkills(t *testing.T, backend SkillsBackend, args string) (string, CommandOutcome) {
@@ -300,7 +303,7 @@ func task28ExecuteSkills(t *testing.T, backend SkillsBackend, args string) (stri
 		OnEvent:               func(value string) { output.WriteString(value) },
 		OnCommandDomainResult: func(result CommandDomainResult) { outcome = result.Outcome },
 	}
-	if err := NewSkillsCommand(backend).Execute(ctx, args); err != nil {
+	if err := NewSkillsCommand().Execute(ctx, args); err != nil {
 		t.Fatal(err)
 	}
 	return output.String(), outcome

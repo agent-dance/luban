@@ -12,39 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agent-dance/luban/engine"
 	"github.com/agent-dance/luban/i18n"
-	"github.com/agent-dance/luban/loop"
-	"github.com/agent-dance/luban/provider"
-	"github.com/agent-dance/luban/types"
 )
-
-// ─── mock provider ────────────────────────────────────────────────────────────
-
-type mockProvider struct {
-	name    string
-	modelID string
-}
-
-func (p *mockProvider) Name() string    { return p.name }
-func (p *mockProvider) ModelID() string { return p.modelID }
-func (p *mockProvider) CreateStream(_ context.Context, _ provider.Params) (<-chan types.StreamEvent, error) {
-	ch := make(chan types.StreamEvent)
-	close(ch)
-	return ch, nil
-}
-
-// ─── mock session manager ─────────────────────────────────────────────────────
-
-type mockSessionManager struct{}
-
-func (m *mockSessionManager) Save(_ string, _ []types.Message) error { return nil }
-func (m *mockSessionManager) Load(_ string) ([]types.Message, error) {
-	return nil, engine.ErrSessionNotFound
-}
-func (m *mockSessionManager) List() ([]engine.SessionInfo, error) { return nil, nil }
-func (m *mockSessionManager) Latest() (string, error)             { return "", engine.ErrSessionNotFound }
-func (m *mockSessionManager) Delete(_ string) error               { return nil }
 
 // ─── mock engine ──────────────────────────────────────────────────────────────
 
@@ -62,9 +31,9 @@ type setThinkingCall struct {
 type mockEngine struct {
 	mu                  sync.Mutex
 	tools               []string
-	prov                *mockProvider
-	queryCh             chan engine.Event
-	lastQuery           engine.QueryRequest
+	modelID             string
+	queryCh             chan QueryEvent
+	lastQuery           QueryRequest
 	queryCalled         bool
 	interrupted         bool
 	interruptedID       string
@@ -76,18 +45,20 @@ type mockEngine struct {
 	resumeCount         int
 	resumeErr           error
 	compactedSessionIDs []string
+	compactResult       CompactResult
 	compactErr          error
-	lastPermission      engine.PermissionHandler
+	lastPermission      PermissionHandler
+	systemPrompt        string
 }
 
 func newMockEngine(tools []string, modelID string) *mockEngine {
 	return &mockEngine{
-		tools: tools,
-		prov:  &mockProvider{name: "mock", modelID: modelID},
+		tools:   tools,
+		modelID: modelID,
 	}
 }
 
-func (e *mockEngine) Query(_ context.Context, req engine.QueryRequest) (<-chan engine.Event, error) {
+func (e *mockEngine) Query(_ context.Context, req QueryRequest) (<-chan QueryEvent, error) {
 	e.mu.Lock()
 	e.lastQuery = req
 	e.queryCalled = true
@@ -105,12 +76,13 @@ func (e *mockEngine) Resume(_ context.Context, sessionID string) (int, error) {
 	return count, err
 }
 
-func (e *mockEngine) Compact(_ context.Context, sessionID string, _ ...string) error {
+func (e *mockEngine) Compact(_ context.Context, sessionID string) (CompactResult, error) {
 	e.mu.Lock()
 	e.compactedSessionIDs = append(e.compactedSessionIDs, sessionID)
+	result := e.compactResult
 	err := e.compactErr
 	e.mu.Unlock()
-	return err
+	return result, err
 }
 
 func (e *mockEngine) Interrupt(sessionID string) {
@@ -120,7 +92,7 @@ func (e *mockEngine) Interrupt(sessionID string) {
 	e.mu.Unlock()
 }
 
-func (e *mockEngine) SetPermission(h engine.PermissionHandler) {
+func (e *mockEngine) SetPermission(h PermissionHandler) {
 	e.mu.Lock()
 	e.lastPermission = h
 	e.mu.Unlock()
@@ -134,10 +106,6 @@ func (e *mockEngine) SetModel(sessionID, model string) error {
 	return err
 }
 
-func (e *mockEngine) SetReasoningEffort(sessionID, effort string) error {
-	return nil
-}
-
 func (e *mockEngine) SetThinkingConfig(sessionID string, enabled bool, budgetTokens int) error {
 	e.mu.Lock()
 	e.setThinkingCalls = append(e.setThinkingCalls, setThinkingCall{sessionID, enabled, budgetTokens})
@@ -146,17 +114,17 @@ func (e *mockEngine) SetThinkingConfig(sessionID string, enabled bool, budgetTok
 	return err
 }
 
-func (e *mockEngine) ContextUsage(_ string) (*engine.ContextUsageInfo, error) {
-	return &engine.ContextUsageInfo{TotalTokens: 200000, UsedTokens: 50000, RemainingTokens: 150000}, nil
+func (e *mockEngine) ContextUsage(_ string) (*ContextUsageInfo, error) {
+	return &ContextUsageInfo{TotalTokens: 200000, UsedTokens: 50000, RemainingTokens: 150000}, nil
 }
 
-func (e *mockEngine) Tools() []string                         { return e.tools }
-func (e *mockEngine) ToolDefinitions() []types.ToolDefinition { return nil }
-func (e *mockEngine) Provider() provider.Provider             { return e.prov }
-func (e *mockEngine) SetProvider(_ provider.Provider)         {} // stub for Engine interface
-func (e *mockEngine) ProviderRef() *provider.ProviderRef      { return provider.NewProviderRef(e.prov) }
-func (e *mockEngine) Sessions() engine.SessionManager         { return &mockSessionManager{} }
-func (e *mockEngine) Shutdown(_ context.Context) error        { return nil }
+func (e *mockEngine) Tools() []string { return e.tools }
+func (e *mockEngine) ModelID() string { return e.modelID }
+func (e *mockEngine) SetSystemPrompt(systemPrompt string) {
+	e.mu.Lock()
+	e.systemPrompt = systemPrompt
+	e.mu.Unlock()
+}
 
 // ─── test helpers ─────────────────────────────────────────────────────────────
 
@@ -172,17 +140,15 @@ func sendLine(t *testing.T, w io.Writer, v any) {
 	}
 }
 
-// readLine reads one JSON line from the scanner.
-func readLine(t *testing.T, r *bufio.Scanner) map[string]any {
-	t.Helper()
-	if !r.Scan() {
-		t.Fatal("readLine: expected output line but got EOF")
+func textUserMessage(text string) json.RawMessage {
+	payload, err := json.Marshal(struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}{Role: "user", Content: text})
+	if err != nil {
+		panic(err)
 	}
-	var m map[string]any
-	if err := json.Unmarshal(r.Bytes(), &m); err != nil {
-		t.Fatalf("readLine: unmarshal %q: %v", r.Text(), err)
-	}
-	return m
+	return payload
 }
 
 // startScanner runs a bufio.Scanner in a goroutine, sending each parsed JSON
@@ -203,8 +169,8 @@ func startScanner(r io.Reader) chan map[string]any {
 }
 
 // makeQueryCh creates a buffered channel pre-loaded with events (then closed).
-func makeQueryCh(events ...engine.Event) chan engine.Event {
-	ch := make(chan engine.Event, len(events))
+func makeQueryCh(events ...QueryEvent) chan QueryEvent {
+	ch := make(chan QueryEvent, len(events))
 	for _, ev := range events {
 		ch <- ev
 	}
@@ -241,10 +207,10 @@ func drainInit(t *testing.T, ch chan map[string]any) {
 // ─── Serve tests ──────────────────────────────────────────────────────────────
 
 // TestServe_ReadUserMessage verifies that a user message sent over stdin causes
-// engine.Query to be called with the correct message text.
+// Runtime.Query to be called with the correct message text.
 func TestServe_ReadUserMessage(t *testing.T) {
 	eng := newMockEngine(nil, "claude-3")
-	eng.queryCh = makeQueryCh(engine.Event{
+	eng.queryCh = makeQueryCh(QueryEvent{
 		SessionID: "s1",
 		Final:     true,
 	})
@@ -253,7 +219,7 @@ func TestServe_ReadUserMessage(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -266,7 +232,8 @@ func TestServe_ReadUserMessage(t *testing.T) {
 	sendLine(t, inW, SDKUserMessage{
 		Type:      "user",
 		SessionID: "s1",
-		Message:   json.RawMessage(`"hello world"`),
+		UUID:      "query-read-user",
+		Message:   textUserMessage("hello world"),
 	})
 
 	// Drain the result message so the pipe write unblocks.
@@ -288,27 +255,27 @@ func TestServe_ReadUserMessage(t *testing.T) {
 	eng.mu.Unlock()
 
 	if !wasCalled {
-		t.Fatal("expected engine.Query to be called")
+		t.Fatal("expected Runtime.Query to be called")
 	}
 	if gotMsg != "hello world" {
-		t.Errorf("engine.Query message: got %q, want %q", gotMsg, "hello world")
+		t.Errorf("Runtime.Query message: got %q, want %q", gotMsg, "hello world")
 	}
 }
 
-// TestServe_StreamEvents verifies that text events from the engine are emitted
+// TestServe_StreamEvents verifies that text events from the runtime are emitted
 // as streamlined_text NDJSON lines on stdout, followed by a result message.
 func TestServe_StreamEvents(t *testing.T) {
 	eng := newMockEngine(nil, "claude-3")
 	eng.queryCh = makeQueryCh(
-		engine.Event{
+		QueryEvent{
 			SessionID: "s1",
-			Inner:     loop.Event{Type: loop.EventText, Text: "hello"},
+			Event:     Event{Type: EventText, Text: "hello"},
 		},
-		engine.Event{
+		QueryEvent{
 			SessionID: "s1",
-			Inner:     loop.Event{Type: loop.EventText, Text: " world"},
+			Event:     Event{Type: EventText, Text: " world"},
 		},
-		engine.Event{
+		QueryEvent{
 			SessionID: "s1",
 			Final:     true,
 		},
@@ -318,7 +285,7 @@ func TestServe_StreamEvents(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -328,8 +295,7 @@ func TestServe_StreamEvents(t *testing.T) {
 	drainInit(t, scanCh)
 
 	sendLine(t, inW, SDKUserMessage{
-		Type:    "user",
-		Message: json.RawMessage(`"hi"`),
+		Type: "user", UUID: "query-stream-events", Message: textUserMessage("hi"),
 	})
 
 	// Expect 2 streamlined_text lines + 1 result line.
@@ -366,6 +332,88 @@ func TestServe_StreamEvents(t *testing.T) {
 	inW.Close()
 }
 
+func TestRunUserQueryForwardsProviderRequestLifecycle(t *testing.T) {
+	const secret = "upstream token=sk-private-transport"
+	runtime := newMockEngine(nil, "model-request-status")
+	eventTypes := []EventType{
+		EventRequestStart,
+		EventRequestRetry,
+		EventRequestFirstToken,
+		EventRequestEnd,
+		EventRequestFailed,
+	}
+	events := make([]QueryEvent, 0, len(eventTypes)+1)
+	for _, eventType := range eventTypes {
+		errorCode := "provider_request_retry"
+		if eventType == EventRequestFailed {
+			errorCode = "provider_request_failed"
+		}
+		events = append(events, QueryEvent{
+			SessionID: "session-request-status",
+			Event: Event{Type: eventType, RequestStatus: &RequestStatusEvent{
+				RequestID: "request-transport", Phase: "untrusted_phase", Status: "untrusted_status",
+				Attempt: 2, MaxAttempts: 3, RetryDelayMilliseconds: 500,
+				ErrorCode: errorCode, ErrorMessage: secret,
+			}},
+		})
+	}
+	events = append(events, QueryEvent{SessionID: "session-request-status", Final: true})
+	runtime.queryCh = makeQueryCh(events...)
+	var output bytes.Buffer
+	server := NewSDKServer(runtime, bytes.NewReader(nil), &output, InitialPermissionBridge)
+	line, err := json.Marshal(SDKUserMessage{
+		Type: "user", SessionID: "session-request-status", UUID: "query-request-status",
+		Message: textUserMessage("hello"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	query, err := parseSDKUserQuery(line, i18n.LangZH)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.runUserQuery(context.Background(), query); err != nil {
+		t.Fatal(err)
+	}
+	wantStatuses := []string{"started", "retrying", "streaming", "completed", "failed"}
+	decoder := json.NewDecoder(&output)
+	for index, eventType := range eventTypes {
+		var statusMessage struct {
+			Type  string `json:"type"`
+			Event struct {
+				Type          EventType           `json:"type"`
+				RequestStatus *RequestStatusEvent `json:"request_status"`
+			} `json:"event"`
+		}
+		if err := decoder.Decode(&statusMessage); err != nil {
+			t.Fatal(err)
+		}
+		status := statusMessage.Event.RequestStatus
+		if statusMessage.Type != "stream_event" || statusMessage.Event.Type != eventType || status == nil ||
+			status.RequestID != "request-transport" || status.Phase != string(eventType) || status.Status != wantStatuses[index] ||
+			status.Attempt != 2 || status.MaxAttempts != 3 {
+			t.Fatalf("request lifecycle message[%d] = %+v", index, statusMessage)
+		}
+		switch eventType {
+		case EventRequestRetry:
+			if status.ErrorMessage != i18n.Format(i18n.LangZH, i18n.KeyRuntimeTransientAPIError, 2, 3) {
+				t.Fatalf("retry error message = %q", status.ErrorMessage)
+			}
+		case EventRequestFailed:
+			if status.ErrorMessage != i18n.Text(i18n.LangZH, i18n.KeyRuntimeErrorPublicSummary) {
+				t.Fatalf("failed error message = %q", status.ErrorMessage)
+			}
+		default:
+			if status.ErrorCode != "" || status.ErrorMessage != "" {
+				t.Fatalf("non-error request status retained error authority: %+v", status)
+			}
+		}
+	}
+	if strings.Contains(output.String(), secret) || strings.Contains(output.String(), "sk-private-transport") {
+		t.Fatalf("request lifecycle leaked raw provider error: %s", output.String())
+	}
+}
+
 // TestServe_Initialize sends an initialize control_request and verifies the
 // response contains the tools list and model identifier.
 func TestServe_Initialize(t *testing.T) {
@@ -375,7 +423,7 @@ func TestServe_Initialize(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -426,12 +474,15 @@ func TestServe_Initialize(t *testing.T) {
 	if initResp.Tools[0] != "bash" || initResp.Tools[1] != "read_file" {
 		t.Errorf("tools: got %v", initResp.Tools)
 	}
+	if initResp.OutputStyle != "streamlined" || len(initResp.AvailableStyles) != 1 || initResp.AvailableStyles[0] != "streamlined" {
+		t.Errorf("output styles: active=%q available=%v", initResp.OutputStyle, initResp.AvailableStyles)
+	}
 
 	inW.Close()
 }
 
 // TestServe_Interrupt sends an interrupt control_request and verifies that
-// engine.Interrupt was called with the correct session ID.
+// Runtime.Interrupt was called with the correct session ID.
 func TestServe_Interrupt(t *testing.T) {
 	eng := newMockEngine(nil, "claude-3")
 
@@ -439,7 +490,7 @@ func TestServe_Interrupt(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -469,7 +520,7 @@ func TestServe_Interrupt(t *testing.T) {
 	eng.mu.Unlock()
 
 	if !interrupted {
-		t.Error("expected engine.Interrupt to be called")
+		t.Error("expected Runtime.Interrupt to be called")
 	}
 	if interruptedID != "sess-abc" {
 		t.Errorf("interrupt session ID: got %q, want %q", interruptedID, "sess-abc")
@@ -477,7 +528,7 @@ func TestServe_Interrupt(t *testing.T) {
 }
 
 // TestServe_SetModel sends a set_model control_request and verifies that
-// engine.SetModel was called with the correct session and model.
+// Runtime.SetModel was called with the correct session and model.
 func TestServe_SetModel(t *testing.T) {
 	eng := newMockEngine(nil, "claude-3")
 
@@ -485,7 +536,7 @@ func TestServe_SetModel(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -526,7 +577,7 @@ func TestServe_SetModel(t *testing.T) {
 	eng.mu.Unlock()
 
 	if len(calls) == 0 {
-		t.Fatal("expected engine.SetModel to be called")
+		t.Fatal("expected Runtime.SetModel to be called")
 	}
 	if calls[0].model != "claude-3-5-sonnet" {
 		t.Errorf("SetModel model: got %q, want %q", calls[0].model, "claude-3-5-sonnet")
@@ -544,7 +595,7 @@ func TestServe_KeepAlive(t *testing.T) {
 	inR, inW := io.Pipe()
 
 	// Use io.Discard for stdout — keep_alive must produce no output.
-	srv := NewSDKServer(eng, inR, io.Discard)
+	srv := NewSDKServer(eng, inR, io.Discard, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -573,7 +624,7 @@ func TestServe_UnknownControlSubtype(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -617,7 +668,7 @@ func TestServe_EOF(t *testing.T) {
 	eng := newMockEngine(nil, "claude-3")
 
 	inR, inW := io.Pipe()
-	srv := NewSDKServer(eng, inR, io.Discard)
+	srv := NewSDKServer(eng, inR, io.Discard, InitialPermissionBridge)
 
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- srv.Serve(context.Background()) }()
@@ -643,7 +694,7 @@ func TestServe_InvalidJSON(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -675,10 +726,10 @@ func TestServe_InvalidJSON(t *testing.T) {
 // TestEventAdapter_TextEvent verifies that a text loop event is converted to
 // a StreamlinedTextMsg SDK message.
 func TestEventAdapter_TextEvent(t *testing.T) {
-	a := newEventAdapter("session-text-1")
+	a := newEventAdapter("session-text-1", i18n.LangEN)
 
-	results := a.process(loop.Event{
-		Type: loop.EventText,
+	results := a.process(Event{
+		Type: EventText,
 		Text: "streaming content",
 	})
 
@@ -710,16 +761,15 @@ func TestEventAdapter_TextEvent(t *testing.T) {
 // TestEventAdapter_ToolUseEvent verifies that a tool_use loop event is converted
 // to a StreamlinedToolUseSummaryMsg SDK message.
 func TestEventAdapter_ToolUseEvent(t *testing.T) {
-	a := newEventAdapter("session-tool-1")
+	a := newEventAdapter("session-tool-1", i18n.LangEN)
 
-	toolUse := &types.ToolUseBlock{
-		Type:  types.ContentTypeToolUse,
+	toolUse := &ToolUse{
 		ID:    "tu-abc-123",
 		Name:  "bash",
 		Input: map[string]any{"command": "ls -la"},
 	}
-	results := a.process(loop.Event{
-		Type:    loop.EventToolUse,
+	results := a.process(Event{
+		Type:    EventToolUse,
 		ToolUse: toolUse,
 	})
 
@@ -751,8 +801,8 @@ func TestEventAdapter_ToolUseEvent(t *testing.T) {
 // TestEventAdapter_NilToolUse verifies that a tool_use event with nil ToolUse
 // produces no output.
 func TestEventAdapter_NilToolUse(t *testing.T) {
-	a := newEventAdapter("session-nil")
-	results := a.process(loop.Event{Type: loop.EventToolUse, ToolUse: nil})
+	a := newEventAdapter("session-nil", i18n.LangEN)
+	results := a.process(Event{Type: EventToolUse, ToolUse: nil})
 	if len(results) != 0 {
 		t.Errorf("expected 0 results for nil ToolUse, got %d", len(results))
 	}
@@ -765,9 +815,12 @@ func TestEventAdapter_NilToolUse(t *testing.T) {
 func TestPermissionBridge_RegisterDeliver(t *testing.T) {
 	b := newPermissionBridge()
 
-	ch := b.register("perm-req-42")
+	ch, ok := b.register("perm-req-42")
+	if !ok {
+		t.Fatal("register unexpectedly failed")
+	}
 
-	want := permissionResult{behavior: "allow", message: ""}
+	want := permissionResult{behavior: "allow"}
 	delivered := b.deliver("perm-req-42", want)
 	if !delivered {
 		t.Fatal("expected deliver to return true for a registered ID")
@@ -804,10 +857,16 @@ func TestPermissionBridge_DeliverUnknown(t *testing.T) {
 func TestPermissionBridge_MultipleRequests(t *testing.T) {
 	b := newPermissionBridge()
 
-	ch1 := b.register("req-1")
-	ch2 := b.register("req-2")
+	ch1, ok := b.register("req-1")
+	if !ok {
+		t.Fatal("register req-1 unexpectedly failed")
+	}
+	ch2, ok := b.register("req-2")
+	if !ok {
+		t.Fatal("register req-2 unexpectedly failed")
+	}
 
-	b.deliver("req-2", permissionResult{behavior: "deny", message: "not allowed"})
+	b.deliver("req-2", permissionResult{behavior: "deny"})
 	b.deliver("req-1", permissionResult{behavior: "allow"})
 
 	select {
@@ -823,9 +882,6 @@ func TestPermissionBridge_MultipleRequests(t *testing.T) {
 	case got := <-ch2:
 		if got.behavior != "deny" {
 			t.Errorf("ch2 behavior: got %q, want deny", got.behavior)
-		}
-		if got.message != "not allowed" {
-			t.Errorf("ch2 message: got %q, want %q", got.message, "not allowed")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out reading ch2")
@@ -843,7 +899,7 @@ func TestServe_SystemInit(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -862,8 +918,66 @@ func TestServe_SystemInit(t *testing.T) {
 	if m["message"] != wantMessage {
 		t.Errorf("message: got %v, want %q", m["message"], wantMessage)
 	}
+	if len(m) != 3 {
+		t.Fatalf("system/init exposed non-canonical fields: %#v", m)
+	}
 
 	inW.Close()
+}
+
+func TestCanonicalSDKInputNDJSONAndCompactResponse(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  any
+		want string
+	}{
+		{
+			name: "initialize",
+			msg: SDKControlRequest{
+				Type: "control_request", RequestID: "init-1",
+				Request: json.RawMessage(`{"subtype":"initialize"}`),
+			},
+			want: `{"type":"control_request","request_id":"init-1","request":{"subtype":"initialize"}}`,
+		},
+		{
+			name: "user",
+			msg: SDKUserMessage{
+				Type: "user", Message: textUserMessage("hello"), SessionID: "session-1", UUID: "query-1",
+			},
+			want: `{"type":"user","message":{"role":"user","content":"hello"},"session_id":"session-1","uuid":"query-1"}`,
+		},
+		{
+			name: "compact",
+			msg: SDKControlRequest{
+				Type: "control_request", RequestID: "compact-1",
+				Request: json.RawMessage(`{"subtype":"compact","session_id":"session-1"}`),
+			},
+			want: `{"type":"control_request","request_id":"compact-1","request":{"subtype":"compact","session_id":"session-1"}}`,
+		},
+	}
+	for _, tt := range tests {
+		encoded, err := json.Marshal(tt.msg)
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		if got := string(encoded); got != tt.want {
+			t.Errorf("%s NDJSON payload = %s, want %s", tt.name, got, tt.want)
+		}
+	}
+
+	runtime := newMockEngine(nil, "model")
+	runtime.compactResult = CompactResult{
+		Compacted: true, BeforeMessageCount: 24, AfterMessageCount: 5, ContextGeneration: 7,
+	}
+	var output bytes.Buffer
+	server := NewSDKServer(runtime, strings.NewReader(""), &output, InitialPermissionBridge)
+	compactLine := []byte(`{"type":"control_request","request_id":"compact-1","request":{"subtype":"compact","session_id":"session-1"}}`)
+	if err := server.handleControlRequest(context.Background(), compactLine, i18n.LangEN); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := output.String(), "{\"type\":\"control_response\",\"response\":{\"subtype\":\"success\",\"request_id\":\"compact-1\",\"response\":{\"session_id\":\"session-1\",\"compacted\":true,\"before_message_count\":24,\"after_message_count\":5,\"context_generation\":7}}}\n"; got != want {
+		t.Fatalf("compact response NDJSON = %q, want %q", got, want)
+	}
 }
 
 func TestSDKLocalizedMessagesPreserveProtocolFields(t *testing.T) {
@@ -875,7 +989,7 @@ func TestSDKLocalizedMessagesPreserveProtocolFields(t *testing.T) {
 
 	eng := newMockEngine(nil, "model-id")
 	var out bytes.Buffer
-	srv := NewSDKServer(eng, bytes.NewReader(nil), &out)
+	srv := NewSDKServer(eng, bytes.NewReader(nil), &out, InitialPermissionBridge)
 	if err := srv.Serve(context.Background()); err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
@@ -926,12 +1040,14 @@ func TestSDKLocalizedMessagesPreserveProtocolFields(t *testing.T) {
 func TestServe_SetPermissionMode(t *testing.T) {
 	tests := []struct {
 		name         string
+		initialMode  InitialPermissionMode
 		mode         string
 		wantAllowAll bool
 	}{
-		{"full-auto uses AllowAllHandler", "full-auto", true},
-		{"default uses SDK bridge handler", "default", false},
-		{"auto-edit uses SDK bridge handler", "auto-edit", false},
+		{name: "full-auto uses AllowAllHandler", initialMode: InitialPermissionBridge, mode: "full-auto", wantAllowAll: true},
+		{name: "default uses SDK bridge handler", initialMode: InitialPermissionBridge, mode: "default"},
+		{name: "auto-edit uses SDK bridge handler", initialMode: InitialPermissionBridge, mode: "auto-edit"},
+		{name: "full-auto initial mode can switch to bridge", initialMode: InitialPermissionFullAuto, mode: "default"},
 	}
 
 	for _, tc := range tests {
@@ -942,7 +1058,7 @@ func TestServe_SetPermissionMode(t *testing.T) {
 			outR, outW := io.Pipe()
 			defer outW.Close()
 
-			srv := NewSDKServer(eng, inR, outW)
+			srv := NewSDKServer(eng, inR, outW, tc.initialMode)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
@@ -978,7 +1094,7 @@ func TestServe_SetPermissionMode(t *testing.T) {
 			perm := eng.lastPermission
 			eng.mu.Unlock()
 
-			_, isAllowAll := perm.(engine.AllowAllHandler)
+			_, isAllowAll := perm.(allowAllPermissionHandler)
 			if tc.wantAllowAll && !isAllowAll {
 				t.Errorf("expected AllowAllHandler for mode %q, got %T", tc.mode, perm)
 			}
@@ -992,7 +1108,7 @@ func TestServe_SetPermissionMode(t *testing.T) {
 }
 
 // TestServe_SetMaxThinkingTokens verifies that set_max_thinking_tokens calls
-// engine.SetThinkingConfig with the correct parameters.
+// Runtime.SetThinkingConfig with the correct parameters.
 func TestServe_SetMaxThinkingTokens(t *testing.T) {
 	t.Run("enable thinking", func(t *testing.T) {
 		eng := newMockEngine(nil, "claude-3")
@@ -1001,7 +1117,7 @@ func TestServe_SetMaxThinkingTokens(t *testing.T) {
 		outR, outW := io.Pipe()
 		defer outW.Close()
 
-		srv := NewSDKServer(eng, inR, outW)
+		srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -1062,7 +1178,7 @@ func TestServe_SetMaxThinkingTokens(t *testing.T) {
 		outR, outW := io.Pipe()
 		defer outW.Close()
 
-		srv := NewSDKServer(eng, inR, outW)
+		srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
@@ -1115,7 +1231,7 @@ func TestServe_Resume(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -1173,16 +1289,19 @@ func TestServe_Resume(t *testing.T) {
 	inW.Close()
 }
 
-// TestServe_Compact verifies that a compact control_request calls engine.Compact
+// TestServe_Compact verifies that a compact control_request calls Runtime.Compact
 // with the correct session ID.
 func TestServe_Compact(t *testing.T) {
 	eng := newMockEngine(nil, "claude-3")
+	eng.compactResult = CompactResult{
+		Compacted: true, BeforeMessageCount: 31, AfterMessageCount: 6, ContextGeneration: 4,
+	}
 
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -1214,6 +1333,15 @@ func TestServe_Compact(t *testing.T) {
 	if cs.Subtype != "success" {
 		t.Errorf("subtype: got %q, want success", cs.Subtype)
 	}
+	var compactResponse CompactResponse
+	if err := json.Unmarshal(cs.Response, &compactResponse); err != nil {
+		t.Fatalf("unmarshal CompactResponse: %v", err)
+	}
+	if compactResponse.SessionID != "sess-compact-1" || !compactResponse.Compacted ||
+		compactResponse.BeforeMessageCount != 31 || compactResponse.AfterMessageCount != 6 ||
+		compactResponse.ContextGeneration != 4 {
+		t.Fatalf("compact response = %+v", compactResponse)
+	}
 
 	eng.mu.Lock()
 	ids := eng.compactedSessionIDs
@@ -1226,8 +1354,42 @@ func TestServe_Compact(t *testing.T) {
 	inW.Close()
 }
 
+func TestServe_CompactSemanticNoopReturnsTypedResult(t *testing.T) {
+	eng := newMockEngine(nil, "claude-3")
+	eng.compactResult = CompactResult{
+		Compacted: false, BeforeMessageCount: 3, AfterMessageCount: 3, ContextGeneration: 2,
+	}
+	var output bytes.Buffer
+	srv := NewSDKServer(eng, bytes.NewReader(nil), &output, InitialPermissionBridge)
+	payload, err := json.Marshal(CompactRequest{Subtype: "compact", SessionID: "noop-session"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.handleCompact(context.Background(), SDKControlRequest{
+		Type: "control_request", RequestID: "compact-noop", Request: payload,
+	}, i18n.LangEN); err != nil {
+		t.Fatal(err)
+	}
+	var envelope SDKControlResponse
+	if err := json.Unmarshal(output.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	var success ControlSuccess
+	if err := json.Unmarshal(envelope.Response, &success); err != nil {
+		t.Fatal(err)
+	}
+	var response CompactResponse
+	if err := json.Unmarshal(success.Response, &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.SessionID != "noop-session" || response.Compacted || response.BeforeMessageCount != 3 ||
+		response.AfterMessageCount != 3 || response.ContextGeneration != 2 {
+		t.Fatalf("no-op compact response = %+v", response)
+	}
+}
+
 // TestServe_GetContextUsage verifies that get_context_usage returns token
-// statistics from the engine.
+// statistics from the runtime.
 func TestServe_GetContextUsage(t *testing.T) {
 	eng := newMockEngine(nil, "claude-3")
 
@@ -1235,7 +1397,7 @@ func TestServe_GetContextUsage(t *testing.T) {
 	outR, outW := io.Pipe()
 	defer outW.Close()
 
-	srv := NewSDKServer(eng, inR, outW)
+	srv := NewSDKServer(eng, inR, outW, InitialPermissionBridge)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -1268,7 +1430,7 @@ func TestServe_GetContextUsage(t *testing.T) {
 		t.Errorf("subtype: got %q, want success", cs.Subtype)
 	}
 
-	var info engine.ContextUsageInfo
+	var info ContextUsageInfo
 	if err := json.Unmarshal(cs.Response, &info); err != nil {
 		t.Fatalf("unmarshal ContextUsageInfo: %v", err)
 	}

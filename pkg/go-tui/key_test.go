@@ -10,20 +10,20 @@ func TestModifier_Has(t *testing.T) {
 	}
 
 	tests := map[string]tc{
-		"none has none":           {mod: ModNone, check: ModNone, expected: false},
-		"ctrl has ctrl":           {mod: ModCtrl, check: ModCtrl, expected: true},
-		"ctrl has alt":            {mod: ModCtrl, check: ModAlt, expected: false},
-		"ctrl+alt has ctrl":       {mod: ModCtrl | ModAlt, check: ModCtrl, expected: true},
-		"ctrl+alt has alt":        {mod: ModCtrl | ModAlt, check: ModAlt, expected: true},
-		"ctrl+alt has shift":      {mod: ModCtrl | ModAlt, check: ModShift, expected: false},
-		"all has ctrl":            {mod: ModCtrl | ModAlt | ModShift, check: ModCtrl, expected: true},
-		"all has alt":             {mod: ModCtrl | ModAlt | ModShift, check: ModAlt, expected: true},
-		"all has shift":           {mod: ModCtrl | ModAlt | ModShift, check: ModShift, expected: true},
-		"super has super":         {mod: ModSuper, check: ModSuper, expected: true},
-		"hyper has hyper":         {mod: ModHyper, check: ModHyper, expected: true},
-		"meta has meta":           {mod: ModMeta, check: ModMeta, expected: true},
-		"shift alone has shift":   {mod: ModShift, check: ModShift, expected: true},
-		"shift alone has ctrl":    {mod: ModShift, check: ModCtrl, expected: false},
+		"none has none":         {mod: ModNone, check: ModNone, expected: false},
+		"ctrl has ctrl":         {mod: ModCtrl, check: ModCtrl, expected: true},
+		"ctrl has alt":          {mod: ModCtrl, check: ModAlt, expected: false},
+		"ctrl+alt has ctrl":     {mod: ModCtrl | ModAlt, check: ModCtrl, expected: true},
+		"ctrl+alt has alt":      {mod: ModCtrl | ModAlt, check: ModAlt, expected: true},
+		"ctrl+alt has shift":    {mod: ModCtrl | ModAlt, check: ModShift, expected: false},
+		"all has ctrl":          {mod: ModCtrl | ModAlt | ModShift, check: ModCtrl, expected: true},
+		"all has alt":           {mod: ModCtrl | ModAlt | ModShift, check: ModAlt, expected: true},
+		"all has shift":         {mod: ModCtrl | ModAlt | ModShift, check: ModShift, expected: true},
+		"super has super":       {mod: ModSuper, check: ModSuper, expected: true},
+		"hyper has hyper":       {mod: ModHyper, check: ModHyper, expected: true},
+		"meta has meta":         {mod: ModMeta, check: ModMeta, expected: true},
+		"shift alone has shift": {mod: ModShift, check: ModShift, expected: true},
+		"shift alone has ctrl":  {mod: ModShift, check: ModCtrl, expected: false},
 	}
 
 	for name, tt := range tests {
@@ -91,17 +91,17 @@ func TestModifier_String(t *testing.T) {
 	}
 
 	tests := map[string]tc{
-		"none":              {mod: ModNone, expected: "None"},
-		"ctrl":              {mod: ModCtrl, expected: "Ctrl"},
-		"alt":               {mod: ModAlt, expected: "Alt"},
-		"shift":             {mod: ModShift, expected: "Shift"},
-		"ctrl+alt":          {mod: ModCtrl | ModAlt, expected: "Ctrl+Alt"},
-		"ctrl+shift":        {mod: ModCtrl | ModShift, expected: "Ctrl+Shift"},
-		"alt+shift":         {mod: ModAlt | ModShift, expected: "Alt+Shift"},
-		"ctrl+alt+shift":    {mod: ModCtrl | ModAlt | ModShift, expected: "Ctrl+Alt+Shift"},
-		"super":             {mod: ModSuper, expected: "Super"},
-		"hyper":             {mod: ModHyper, expected: "Hyper"},
-		"meta":              {mod: ModMeta, expected: "Meta"},
+		"none":           {mod: ModNone, expected: "None"},
+		"ctrl":           {mod: ModCtrl, expected: "Ctrl"},
+		"alt":            {mod: ModAlt, expected: "Alt"},
+		"shift":          {mod: ModShift, expected: "Shift"},
+		"ctrl+alt":       {mod: ModCtrl | ModAlt, expected: "Ctrl+Alt"},
+		"ctrl+shift":     {mod: ModCtrl | ModShift, expected: "Ctrl+Shift"},
+		"alt+shift":      {mod: ModAlt | ModShift, expected: "Alt+Shift"},
+		"ctrl+alt+shift": {mod: ModCtrl | ModAlt | ModShift, expected: "Ctrl+Alt+Shift"},
+		"super":          {mod: ModSuper, expected: "Super"},
+		"hyper":          {mod: ModHyper, expected: "Hyper"},
+		"meta":           {mod: ModMeta, expected: "Meta"},
 	}
 
 	for name, tt := range tests {

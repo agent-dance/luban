@@ -1,10 +1,11 @@
 package commands
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/agent-dance/luban/i18n"
-	"github.com/agent-dance/luban/session"
+	"github.com/agent-dance/luban/internal/store/session"
 )
 
 // ---------------------------------------------------------------------------
@@ -73,35 +74,19 @@ func (c *resumeCmd) Execute(ctx *Context, args string) error {
 	}
 
 	target := matches[0]
-	if ctx.ResumeSession != nil {
-		if err := ctx.ResumeSession(target); err != nil {
-			ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyCommandResumeLoadError, target.ID, session.UserFacingError(ctx.Language, err)))
-			reportCommandFailed(ctx)
-			return nil
-		}
-		title := target.Title
-		if title == "" {
-			title = target.ID
-		}
-		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyCommandResumeLoaded, title))
-		reportCommandSucceeded(ctx)
-		return nil
+	if ctx.ResumeSession == nil {
+		return fmt.Errorf("%s", i18n.Text(ctx.Language, i18n.KeyCommandResumeTransitionUnavailable))
 	}
-	msgs, err := ctx.SessionStore.Load(target.ID)
-	if err != nil {
+	if err := ctx.ResumeSession(target); err != nil {
 		ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyCommandResumeLoadError, target.ID, session.UserFacingError(ctx.Language, err)))
 		reportCommandFailed(ctx)
 		return nil
-	}
-	ctx.QueryLoop.SetMessages(msgs)
-	if ctx.SetSessionID != nil {
-		ctx.SetSessionID(target.ID)
 	}
 	title := target.Title
 	if title == "" {
 		title = target.ID
 	}
-	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyCommandResumeLoadedMessages, title, len(msgs)))
+	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyCommandResumeLoaded, title))
 	reportCommandSucceeded(ctx)
 	return nil
 }

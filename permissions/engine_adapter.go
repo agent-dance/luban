@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/agent-dance/luban/engine"
+	"github.com/agent-dance/luban/internal/contracts/permission"
 )
 
-// CLIPermissionHandler adapts permissions.Checker to engine.PermissionHandler.
-// It bridges the existing permission system (with interactive terminal prompts)
-// into the engine's permission interface.
+// CLIPermissionHandler adapts Checker to the runtime permission contract.
 type CLIPermissionHandler struct {
 	checker *Checker
 }
@@ -19,14 +17,15 @@ func NewCLIPermissionHandler(checker *Checker) *CLIPermissionHandler {
 	return &CLIPermissionHandler{checker: checker}
 }
 
-// Check implements engine.PermissionHandler.
+// Check implements permission.PermissionHandler.
 // DecisionAllowOnce is passed through so the engine skips session-level caching.
 // DecisionAsk (no promptFunc configured) and any unknown value fall through to Deny.
-func (h *CLIPermissionHandler) Check(ctx context.Context, req engine.PermissionRequest) (engine.PermissionDecision, error) {
+func (h *CLIPermissionHandler) Check(ctx context.Context, req permission.PermissionRequest) (permission.PermissionDecision, error) {
 	opts := CheckOptions{
-		AvoidPrompts:      req.AvoidPrompts,
-		Required:          req.Required,
-		policyRequiredAsk: req.PolicyDecision != nil && req.PolicyDecision.IsRequiredAsk(),
+		AvoidPrompts:           req.AvoidPrompts,
+		Required:               req.Required,
+		policyRequiredAsk:      req.PolicyDecision != nil && req.PolicyDecision.IsRequiredAsk(),
+		toolLocalReadOnlyAllow: req.ToolLocalReadOnlyAllow,
 	}
 	if req.PermissionSnapshot != nil {
 		snapshot := clonePermissionRuntimeContext(*req.PermissionSnapshot)
@@ -74,32 +73,32 @@ func (h *CLIPermissionHandler) Check(ctx context.Context, req engine.PermissionR
 	}
 	response := h.checker.CheckPrompt(ctx, promptRequest, opts)
 	if response.Outcome == PromptOutcomeTimedOut {
-		return engine.PermissionDeny, context.DeadlineExceeded
+		return permission.PermissionDeny, context.DeadlineExceeded
 	}
 	if response.Outcome == PromptOutcomeCancelled || response.Outcome == PromptOutcomeShutdown {
 		if err := ctx.Err(); err != nil {
-			return engine.PermissionDeny, err
+			return permission.PermissionDeny, err
 		}
-		return engine.PermissionDeny, context.Canceled
+		return permission.PermissionDeny, context.Canceled
 	}
 	if err := ctx.Err(); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-		return engine.PermissionDeny, err
+		return permission.PermissionDeny, err
 	}
 	switch response.Decision {
 	case DecisionAllow:
-		return engine.PermissionAllow, nil
+		return permission.PermissionAllow, nil
 	case DecisionAllowOnce:
-		return engine.PermissionAllowOnce, nil
+		return permission.PermissionAllowOnce, nil
 	case DecisionDeny:
-		return engine.PermissionDeny, nil
+		return permission.PermissionDeny, nil
 	default:
 		// DecisionAsk with no promptFunc configured — deny for safety.
-		return engine.PermissionDeny, nil
+		return permission.PermissionDeny, nil
 	}
 }
 
 func promptRiskLevel(toolName string, input map[string]any) int {
-	switch ClassifyRisk(toolName, input) {
+	switch classifyRisk(toolName, input) {
 	case RiskHigh:
 		return 3
 	case RiskMedium:
@@ -113,7 +112,7 @@ func permissionModeOverride(mode string) (Mode, bool) {
 	switch mode {
 	case "default":
 		return ModeRuleBased, true
-	case "auto", "bypassPermissions":
+	case "bypassPermissions":
 		return ModeAllowAll, true
 	case "acceptEdits":
 		return ModeAllowAll, true

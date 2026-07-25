@@ -2,10 +2,9 @@ package tui
 
 import "io"
 
-// StreamWriter wraps an inner stream writer with convenience methods for
-// styled and gradient-colored output. It implements io.WriteCloser for
-// backward compatibility with code that used the previous io.WriteCloser
-// return type of App.StreamAbove().
+// StreamWriter wraps a plain stream with convenience methods for styled and
+// gradient-colored output. It can be passed directly to APIs that accept an
+// io.Writer and must be closed to finalize the current partial line.
 type StreamWriter struct {
 	w     io.WriteCloser // inner writer (inlineStreamWriter or nopStreamWriter)
 	app   *App           // app reference for WriteElement

@@ -5,13 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agent-dance/luban/goal"
+	"github.com/agent-dance/luban/internal/runtime/goal"
 	"github.com/agent-dance/luban/types"
 )
 
 func TestGoalContextFormatsActiveGoalAsSystemReminder(t *testing.T) {
 	current := goal.Goal{
 		Objective:           "Ship the release with all acceptance tests passing",
+		AcceptanceCriteria:  []goal.AcceptanceCriterion{{ID: "AC-1", Text: "Ship the release with all acceptance tests passing"}},
 		Status:              goal.StatusActive,
 		TokenBudget:         2000,
 		Usage:               375,
@@ -92,8 +93,8 @@ func TestGoalContextOmitsAbsentOptionalMetadata(t *testing.T) {
 
 func TestGoalContextAbsentLeavesExistingUserContextByteUnchanged(t *testing.T) {
 	base := UserContext{
-		ClaudeMd:    "Use the repository instructions.",
-		CurrentDate: "Today's date is 2026-07-14.",
+		Instructions: "Use the repository instructions.",
+		CurrentDate:  "Today's date is 2026-07-14.",
 	}
 	want, ok := base.MetaMessage()
 	if !ok {
@@ -111,8 +112,8 @@ func TestGoalContextAbsentLeavesExistingUserContextByteUnchanged(t *testing.T) {
 
 func TestGoalContextPausedAndTerminalStatesDoNotInject(t *testing.T) {
 	base := UserContext{
-		ClaudeMd:    "Use the repository instructions.",
-		CurrentDate: "Today's date is 2026-07-14.",
+		Instructions: "Use the repository instructions.",
+		CurrentDate:  "Today's date is 2026-07-14.",
 	}
 	want, ok := base.MetaMessage()
 	if !ok {

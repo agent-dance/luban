@@ -1,7 +1,6 @@
 package i18n
 
 const (
-	KeyPermissionPromptInline     Key = "permission.prompt.inline"
 	KeyPermissionPromptTool       Key = "permission.prompt.tool"
 	KeyPermissionPromptCall       Key = "permission.prompt.call"
 	KeyPermissionPromptInfo       Key = "permission.prompt.info"
@@ -13,7 +12,6 @@ const (
 )
 
 func init() {
-	addPermissionPrompt(KeyPermissionPromptInline, "\nAllow %s? %s  [y/N/a(lways)]: ", "\n允许 %s？%s  [y/N/a（始终允许）]: ", "\n%s erlauben? %s  [y/N/a (immer)]: ", "\n%s を許可しますか？%s  [y/N/a（常に許可）]: ", "\n%s을(를) 허용할까요? %s  [y/N/a(항상 허용)]: ", "\nРазрешить %s? %s  [y/N/a (всегда)]: ")
 	addPermissionPrompt(KeyPermissionPromptTool, "Tool:", "工具：", "Tool:", "ツール:", "도구:", "Инструмент:")
 	addPermissionPrompt(KeyPermissionPromptCall, "Call:", "调用：", "Aufruf:", "呼び出し:", "호출:", "Вызов:")
 	addPermissionPrompt(KeyPermissionPromptInfo, "Info:", "详情：", "Info:", "情報:", "정보:", "Сведения:")

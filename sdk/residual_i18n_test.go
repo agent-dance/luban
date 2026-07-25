@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
-	"github.com/agent-dance/luban/engine"
 	"github.com/agent-dance/luban/i18n"
 )
 
@@ -34,11 +34,16 @@ func TestSessionAPIErrorsAreSemanticAndPreserveOSCause(t *testing.T) {
 		t.Fatalf("Chinese validation error did not preserve the ID or localize its copy: %q", zh)
 	}
 
-	fileInsteadOfDir := t.TempDir() + "/sessions-file"
-	if err := os.WriteFile(fileInsteadOfDir, []byte("not a directory"), 0o600); err != nil {
+	repo := currentSessionsRepository(t)
+	projectDir := repo.ProjectDirForCWD(t.TempDir())
+	writeCurrentSession(t, repo, projectDir, "corruptmeta", "", "", time.Now().UTC(), nil)
+	metaPath := projectDir + "/corruptmeta.meta.json"
+	if err := os.Remove(metaPath); err != nil {
 		t.Fatal(err)
 	}
-	overrideSessionsDir(t, fileInsteadOfDir)
+	if err := os.Mkdir(metaPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	_, err = ListSessions()
 	if err == nil {
 		t.Fatal("ListSessions unexpectedly succeeded for a non-directory path")
@@ -54,12 +59,12 @@ func TestSessionAPIErrorsAreSemanticAndPreserveOSCause(t *testing.T) {
 }
 
 func TestPermissionBridgeErrorsAreSemanticAndPreserveCauses(t *testing.T) {
-	marshalHandler := &SDKPermissionHandler{
+	marshalHandler := &sdkPermissionHandler{
 		bridge:   newPermissionBridge(),
 		newReqID: func() string { return "req-marshal" },
 		sendFn:   func(any) error { return nil },
 	}
-	_, err := marshalHandler.Check(context.Background(), engine.PermissionRequest{
+	_, err := marshalHandler.Check(context.Background(), PermissionRequest{
 		ToolName: "CustomTool",
 		Input:    map[string]any{"unsupported": make(chan int)},
 	})
@@ -75,12 +80,12 @@ func TestPermissionBridgeErrorsAreSemanticAndPreserveCauses(t *testing.T) {
 	}
 
 	sendCause := errors.New("raw-transport-cause")
-	sendHandler := &SDKPermissionHandler{
+	sendHandler := &sdkPermissionHandler{
 		bridge:   newPermissionBridge(),
 		newReqID: func() string { return "req-send" },
 		sendFn:   func(any) error { return sendCause },
 	}
-	_, err = sendHandler.Check(context.Background(), engine.PermissionRequest{ToolName: "Write"})
+	_, err = sendHandler.Check(context.Background(), PermissionRequest{ToolName: "Write"})
 	if !errors.Is(err, sendCause) {
 		t.Fatalf("send error no longer preserves errors.Is: %T: %v", err, err)
 	}
@@ -90,12 +95,12 @@ func TestPermissionBridgeErrorsAreSemanticAndPreserveCauses(t *testing.T) {
 }
 
 type sdkBoundaryEngine struct {
-	engine.Engine
+	Runtime
 	queryErr    error
 	setModelErr error
 }
 
-func (e *sdkBoundaryEngine) Query(context.Context, engine.QueryRequest) (<-chan engine.Event, error) {
+func (e *sdkBoundaryEngine) Query(context.Context, QueryRequest) (<-chan QueryEvent, error) {
 	return nil, e.queryErr
 }
 
@@ -106,7 +111,7 @@ func (e *sdkBoundaryEngine) SetModel(string, string) error {
 func TestSDKResultUsesCapturedLanguageAndHidesInternalCause(t *testing.T) {
 	internal := errors.New("internal English diagnostic")
 	semantic := i18n.WrapInternalError(i18n.KeyEngineSessionLoadFailed, internal)
-	result := newEventAdapter("session-7").resultMessage(i18n.LangZH, "session-7", "query-7", semantic)
+	result := newEventAdapter("session-7", i18n.LangZH).resultMessage(i18n.LangZH, "session-7", "query-7", semantic)
 	if len(result.Errors) != 1 || result.Errors[0] != i18n.Text(i18n.LangZH, i18n.KeyEngineSessionLoadFailed) {
 		t.Fatalf("query result did not use its captured language: %#v", result.Errors)
 	}
@@ -115,7 +120,7 @@ func TestSDKResultUsesCapturedLanguageAndHidesInternalCause(t *testing.T) {
 	}
 
 	rawExternal := errors.New("raw provider detail")
-	result = newEventAdapter("session-8").resultMessage(i18n.LangZH, "session-8", "query-8", rawExternal)
+	result = newEventAdapter("session-8", i18n.LangZH).resultMessage(i18n.LangZH, "session-8", "query-8", rawExternal)
 	if len(result.Errors) != 1 || result.Errors[0] != rawExternal.Error() {
 		t.Fatalf("query result did not preserve an unknown external diagnostic: %#v", result.Errors)
 	}
@@ -126,7 +131,7 @@ func TestSDKControlAndInitialQueryErrorsUseCapturedLanguage(t *testing.T) {
 	semantic := i18n.WrapInternalError(i18n.KeyEngineSessionLoadFailed, internal)
 
 	var controlOut bytes.Buffer
-	controlServer := NewSDKServer(&sdkBoundaryEngine{setModelErr: semantic}, bytes.NewReader(nil), &controlOut)
+	controlServer := NewSDKServer(&sdkBoundaryEngine{setModelErr: semantic}, bytes.NewReader(nil), &controlOut, InitialPermissionBridge)
 	payload, err := json.Marshal(SetModelRequest{Subtype: "set_model", SessionID: "session-7", Model: "model-id"})
 	if err != nil {
 		t.Fatal(err)
@@ -147,13 +152,17 @@ func TestSDKControlAndInitialQueryErrorsUseCapturedLanguage(t *testing.T) {
 	}
 
 	var queryOut bytes.Buffer
-	queryServer := NewSDKServer(&sdkBoundaryEngine{queryErr: semantic}, bytes.NewReader(nil), &queryOut)
-	userLine, err := json.Marshal(SDKUserMessage{Type: "user", SessionID: "session-7", UUID: "query-7", Message: json.RawMessage(`"hello"`)})
+	queryServer := NewSDKServer(&sdkBoundaryEngine{queryErr: semantic}, bytes.NewReader(nil), &queryOut, InitialPermissionBridge)
+	userLine, err := json.Marshal(SDKUserMessage{Type: "user", SessionID: "session-7", UUID: "query-7", Message: textUserMessage("hello")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := queryServer.handleUser(context.Background(), userLine, i18n.LangZH); err != nil {
-		t.Fatalf("handleUser: %v", err)
+	query, err := parseSDKUserQuery(userLine, i18n.LangZH)
+	if err != nil {
+		t.Fatalf("parseSDKUserQuery: %v", err)
+	}
+	if err := queryServer.runUserQuery(context.Background(), query); err != nil {
+		t.Fatalf("runUserQuery: %v", err)
 	}
 	var queryResult SDKResultMessage
 	if err := json.NewDecoder(&queryOut).Decode(&queryResult); err != nil {

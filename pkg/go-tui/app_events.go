@@ -3,8 +3,8 @@ package tui
 import "time"
 
 // Dispatch routes a single event through go-tui's dispatch system.
-// KeyEvent goes through the dispatch table (component model) or global key handler
-// (legacy), then falls through to the focus manager.
+// KeyEvent goes through the dispatch table, then falls through to the focus
+// manager.
 // PasteEvent is sent to the focused PasteListener component.
 // MouseEvent is translated for inline mode, dispatched to MouseListener components,
 // then hit-tested against elements.
@@ -27,25 +27,15 @@ func (a *App) Dispatch(event Event) bool {
 
 	case KeyEvent:
 		e.app = a
-		// Component model path: use broadcast dispatch table.
 		if a.dispatchTable != nil {
 			if a.dispatchTable.dispatch(e) {
 				return true
 			}
-			// Ctrl+Z fallback if not consumed
-			if e.Key == KeyRune && e.Rune == 'z' && e.Mod == ModCtrl {
-				a.suspend()
-				return true
-			}
-		} else {
-			// Legacy path: global key handler
-			if a.globalKeyHandler != nil && a.globalKeyHandler(e) {
-				return true
-			}
-			if e.Key == KeyRune && e.Rune == 'z' && e.Mod == ModCtrl {
-				a.suspend()
-				return true
-			}
+		}
+		// Ctrl+Z fallback if not consumed.
+		if e.Key == KeyRune && e.Rune == 'z' && e.Mod == ModCtrl {
+			a.suspend()
+			return true
 		}
 		return a.focus.Dispatch(e)
 

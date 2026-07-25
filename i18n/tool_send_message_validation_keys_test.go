@@ -16,7 +16,7 @@ func TestToolSendMessageValidationKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestToolSendMessageValidationKeysPreserveEnglishCompatibility(t *testing.T) {
+func TestToolSendMessageValidationKeysPreserveEnglishContract(t *testing.T) {
 	tests := []struct {
 		key  Key
 		args []any

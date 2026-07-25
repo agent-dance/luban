@@ -91,7 +91,6 @@ const (
 	KeyRootPlanModeUnsupported     Key = "root.plan_mode.unsupported"
 	KeyRootImageRead               Key = "root.image.read"
 
-	KeyRootLogCronExecutionFailed Key = "root.log.cron_execution_failed"
 	KeyRootLogWorktreeHooksFailed Key = "root.log.worktree_hooks_failed"
 	KeyRootLogMCPRefreshFailed    Key = "root.log.mcp_refresh_failed"
 	KeyRootLogSessionCorrupt      Key = "root.log.session_corrupt"
@@ -104,7 +103,6 @@ const (
 	KeyRootAgentPhaseError             Key = "root.agent.phase.error"
 	KeyRootAgentPhaseAborted           Key = "root.agent.phase.aborted"
 	KeyRootAgentPhaseBackground        Key = "root.agent.phase.background"
-	KeyRootAgentPhaseRemoteLaunched    Key = "root.agent.phase.remote_launched"
 	KeyRootAgentQueueActiveRun         Key = "root.agent.queue.active_run"
 	KeyRootAgentQueueWorkerCapacity    Key = "root.agent.queue.worker_capacity"
 	KeyRootAgentReasonCompleted        Key = "root.agent.reason.completed"
@@ -211,7 +209,6 @@ func init() {
 	add(KeyRootPlanModeUnsupported, "Unsupported permission mode %q", "不支持的权限模式 %q", "Nicht unterstützter Berechtigungsmodus %q", "未対応の権限モード %q", "지원하지 않는 권한 모드 %q", "Неподдерживаемый режим разрешений %q")
 	add(KeyRootImageRead, "Could not read image %q", "无法读取图像 %q", "Bild %q konnte nicht gelesen werden", "画像 %q を読み込めませんでした", "이미지 %q을(를) 읽지 못했습니다", "Не удалось прочитать изображение %q")
 
-	add(KeyRootLogCronExecutionFailed, "[cron] WARNING: Job %s fired but execution failed: %v", "[cron] 警告：任务 %s 已触发，但执行失败：%v", "[cron] WARNUNG: Job %s wurde ausgelöst, die Ausführung ist jedoch fehlgeschlagen: %v", "[cron] 警告: ジョブ %s は起動しましたが、実行に失敗しました: %v", "[cron] 경고: 작업 %s이(가) 트리거되었지만 실행에 실패했습니다: %v", "[cron] ПРЕДУПРЕЖДЕНИЕ: задача %s запущена, но выполнить её не удалось: %v")
 	add(KeyRootLogWorktreeHooksFailed, "[worktree] WARNING: Could not load worktree hooks: %v", "[worktree] 警告：无法加载 worktree hook：%v", "[worktree] WARNUNG: Worktree-Hooks konnten nicht geladen werden: %v", "[worktree] 警告: worktree hook を読み込めませんでした: %v", "[worktree] 경고: worktree hook을 불러오지 못했습니다: %v", "[worktree] ПРЕДУПРЕЖДЕНИЕ: не удалось загрузить hook рабочего дерева: %v")
 	add(KeyRootLogMCPRefreshFailed, "[mcp] WARNING: Dynamic MCP tool refresh failed: %v", "[mcp] 警告：动态 MCP 工具刷新失败：%v", "[mcp] WARNUNG: Dynamische MCP-Tools konnten nicht aktualisiert werden: %v", "[mcp] 警告: 動的 MCP ツールの更新に失敗しました: %v", "[mcp] 경고: 동적 MCP 도구 새로고침에 실패했습니다: %v", "[mcp] ПРЕДУПРЕЖДЕНИЕ: не удалось обновить динамические инструменты MCP: %v")
 	add(KeyRootLogSessionCorrupt, "WARNING: Corrupt session entry; returning partial history: %v", "警告：会话条目已损坏；将返回部分历史记录：%v", "WARNUNG: Beschädigter Sitzungseintrag; unvollständiger Verlauf wird zurückgegeben: %v", "警告: セッションのエントリが壊れています。読み込めた履歴のみ返します: %v", "경고: 세션 항목이 손상되어 일부 기록만 반환합니다: %v", "ПРЕДУПРЕЖДЕНИЕ: повреждена запись сеанса; возвращается частичная история: %v")
@@ -224,7 +221,6 @@ func init() {
 	add(KeyRootAgentPhaseError, "error", "出错", "Fehler", "エラー", "오류", "ошибка")
 	add(KeyRootAgentPhaseAborted, "aborted", "已中止", "abgebrochen", "中止済み", "중단됨", "прерван")
 	add(KeyRootAgentPhaseBackground, "running in background", "正在后台运行", "läuft im Hintergrund", "バックグラウンドで実行中", "백그라운드에서 실행 중", "выполняется в фоне")
-	add(KeyRootAgentPhaseRemoteLaunched, "launched remotely", "已远程启动", "remote gestartet", "リモートで起動済み", "원격으로 실행됨", "запущен удалённо")
 	add(KeyRootAgentQueueActiveRun, "waiting for the active run", "正在等待当前运行完成", "wartet auf den aktiven Lauf", "実行中の処理を待機中", "활성 실행이 끝나기를 기다리는 중", "ожидает завершения активного запуска")
 	add(KeyRootAgentQueueWorkerCapacity, "waiting for Agent worker capacity", "正在等待 Agent worker 空闲", "wartet auf freie Agent-Worker-Kapazität", "Agent worker の空きを待機中", "Agent worker 여유 용량을 기다리는 중", "ожидает свободного Agent worker")
 	add(KeyRootAgentReasonCompleted, "completed", "已完成", "abgeschlossen", "完了", "완료됨", "завершено")
@@ -277,29 +273,9 @@ func RootGoalActionLabel(lang Language, action string) string {
 	return Text(lang, key)
 }
 
-// RootGoalEvaluatorReasonLabel re-renders first-party persisted evaluator
-// failures in the active language. Evaluator-authored reasons remain raw.
-func RootGoalEvaluatorReasonLabel(lang Language, reason string) string {
-	reason = strings.TrimSpace(reason)
-	for _, sourceLang := range AllLanguages() {
-		if reason == Text(sourceLang, KeyRootGoalReasonEvaluatorUnavailable) {
-			return Text(lang, KeyRootGoalReasonEvaluatorUnavailable)
-		}
-		const marker = "__ROOT_GOAL_REASON_DETAIL__"
-		formatted := Format(sourceLang, KeyRootGoalReasonEvaluatorFailed, marker)
-		prefix, suffix, found := strings.Cut(formatted, marker)
-		if !found || !strings.HasPrefix(reason, prefix) || !strings.HasSuffix(reason, suffix) {
-			continue
-		}
-		detail := strings.TrimSuffix(strings.TrimPrefix(reason, prefix), suffix)
-		return Format(lang, KeyRootGoalReasonEvaluatorFailed, detail)
-	}
-	return reason
-}
-
 // RootGoalEvaluatorReasonStateLabel renders structured first-party persisted
 // reasons in the active language. Unknown kinds and evaluator-authored text
-// remain raw; RootGoalEvaluatorReasonLabel only supports legacy sessions.
+// remain raw.
 func RootGoalEvaluatorReasonStateLabel(lang Language, reason, kind, semanticKey, detail string) string {
 	switch strings.TrimSpace(kind) {
 	case "evaluator_unavailable":
@@ -318,7 +294,7 @@ func RootGoalEvaluatorReasonStateLabel(lang Language, reason, kind, semanticKey,
 	case "model_marked_blocked":
 		return Text(lang, KeyToolGoalReasonBlocked)
 	default:
-		return RootGoalEvaluatorReasonLabel(lang, reason)
+		return strings.TrimSpace(reason)
 	}
 }
 
@@ -364,8 +340,6 @@ func RootAgentPhaseLabel(lang Language, phase string) string {
 		key = KeyRootAgentPhaseAborted
 	case "background":
 		key = KeyRootAgentPhaseBackground
-	case "remote_launched":
-		key = KeyRootAgentPhaseRemoteLaunched
 	default:
 		return strings.TrimSpace(phase)
 	}

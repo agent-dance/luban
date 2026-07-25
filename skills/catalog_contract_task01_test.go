@@ -101,19 +101,6 @@ func TestVisibilityCatalogContractAndOverrideRoundTrip(t *testing.T) {
 		}
 	}
 
-	var legacy VisibilityOverride
-	if err := json.Unmarshal([]byte(`"off"`), &legacy); err != nil {
-		t.Fatal(err)
-	}
-	if legacy.Visibility != VisibilityOff || legacy.RestoreVisibility() != VisibilityAuto {
-		t.Fatalf("legacy override = %#v, want off restoring auto", legacy)
-	}
-	legacy.SkillID = id
-	legacy.Scope = SkillScopeProject
-	if err := legacy.Validate(); err != nil {
-		t.Fatalf("legacy override after map key attachment: %v", err)
-	}
-
 	invalidRemembered := VisibilityOff
 	invalid := VisibilityOverride{
 		SkillID: id, Scope: SkillScopeProject, Visibility: VisibilityOff, LastNonOff: &invalidRemembered,
@@ -274,7 +261,7 @@ func TestCatalogContractProjectVisibilityToggleOutcomes(t *testing.T) {
 	if err := committed.Validate(); err != nil {
 		t.Fatalf("committed result: %v", err)
 	}
-	if committed.RefreshRequired() {
+	if committed.Outcome == ProjectVisibilityToggleDegraded {
 		t.Fatal("committed result requested refresh")
 	}
 
@@ -291,7 +278,7 @@ func TestCatalogContractProjectVisibilityToggleOutcomes(t *testing.T) {
 	if err := degraded.Validate(); err != nil {
 		t.Fatalf("degraded result: %v", err)
 	}
-	if !degraded.RefreshRequired() {
+	if degraded.Outcome != ProjectVisibilityToggleDegraded {
 		t.Fatal("degraded result must require refresh")
 	}
 

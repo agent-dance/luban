@@ -6,20 +6,18 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/agent-dance/luban/engine"
 )
 
 func TestSDKPermissionChallengePreservesDecisionAuditFields(t *testing.T) {
 	bridge := newPermissionBridge()
 	var challenge PermissionRequestMsg
-	handler := &SDKPermissionHandler{
+	handler := &sdkPermissionHandler{
 		bridge:   bridge,
 		newReqID: func() string { return "transport-request" },
 		sendFn: func(msg any) error {
-			out, ok := msg.(SDKControlRequestOut)
+			out, ok := msg.(SDKControlRequest)
 			if !ok {
-				t.Fatalf("challenge = %T, want SDKControlRequestOut", msg)
+				t.Fatalf("challenge = %T, want SDKControlRequest", msg)
 			}
 			if err := json.Unmarshal(out.Request, &challenge); err != nil {
 				t.Fatalf("unmarshal challenge: %v", err)
@@ -28,7 +26,7 @@ func TestSDKPermissionChallengePreservesDecisionAuditFields(t *testing.T) {
 			return nil
 		},
 	}
-	request := engine.PermissionRequest{
+	request := PermissionRequest{
 		SessionID: "session-decision", ExecutionSessionID: "agent-session", TurnID: "turn-2", DecisionID: "decision-2",
 		ToolUseID: "toolu-2", ToolName: "Write", Input: map[string]any{"file_path": "/protected"},
 		ActorID: "agent-2", ActorType: "security-reviewer", WorkUnitID: "review-2", Kind: "permission",
@@ -42,9 +40,6 @@ func TestSDKPermissionChallengePreservesDecisionAuditFields(t *testing.T) {
 	}
 	if challenge.SessionID != request.SessionID || challenge.ExecutionSessionID != request.ExecutionSessionID || challenge.TurnID != request.TurnID || challenge.DecisionID != request.DecisionID {
 		t.Fatalf("session/turn/decision identity = %+v", challenge)
-	}
-	if challenge.RequestID != "transport-request" {
-		t.Fatalf("inner request ID = %q, want transport-request", challenge.RequestID)
 	}
 	if challenge.ToolUseID != request.ToolUseID || challenge.ActorID != request.ActorID || challenge.ActorType != request.ActorType || challenge.WorkUnitID != request.WorkUnitID {
 		t.Fatalf("tool/actor/work identity = %+v", challenge)
@@ -84,14 +79,14 @@ func TestSDKPermissionInterruptionRemovesPendingCorrelation(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			bridge := newPermissionBridge()
-			handler := &SDKPermissionHandler{
+			handler := &sdkPermissionHandler{
 				bridge:   bridge,
 				newReqID: func() string { return "interrupted-request" },
 				sendFn:   func(any) error { return nil },
 			}
 			ctx, cancel := test.context()
 			defer cancel()
-			_, err := handler.Check(ctx, engine.PermissionRequest{ToolUseID: "toolu-interrupted", ToolName: "Write"})
+			_, err := handler.Check(ctx, PermissionRequest{ToolUseID: "toolu-interrupted", ToolName: "Write"})
 			if !errors.Is(err, test.wantErr) {
 				t.Fatalf("Check error = %v, want %v", err, test.wantErr)
 			}

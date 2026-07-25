@@ -220,18 +220,3 @@ func validateExecutableAuthorityPath(path string) error {
 	}
 	return nil
 }
-
-func launchPinnedExecutable(ctx context.Context, executable trustedExecutable, descriptorPath string, args ...string) *exec.Cmd {
-	launchPath := executable.path
-	if executable.file != nil {
-		launchPath = descriptorPath
-	}
-	cmd := exec.CommandContext(ctx, launchPath, args...)
-	if executable.file != nil {
-		// ExtraFiles[0] is fd 3 in the child. The executable is therefore the
-		// exact file opened during trusted preparation, not a later path lookup.
-		cmd.ExtraFiles = []*os.File{executable.file}
-		cmd.Args[0] = executable.path
-	}
-	return cmd
-}

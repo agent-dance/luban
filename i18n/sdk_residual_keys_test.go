@@ -32,16 +32,10 @@ func TestSDKResidualEnglishCopyRemainsCompatible(t *testing.T) {
 		args []any
 		want string
 	}{
-		{KeySDKSessionsHomeUnavailable, nil, "sdk/sessions: cannot determine home directory"},
 		{KeySDKSessionsIDRequired, nil, "sdk/sessions: session ID must not be empty"},
 		{KeySDKSessionsIDTooLong, []any{128}, "sdk/sessions: session ID too long (max 128 chars)"},
 		{KeySDKSessionsIDInvalid, []any{"bad/id"}, `sdk/sessions: session ID "bad/id" contains invalid characters (only alphanumeric, hyphen, underscore allowed)`},
 		{KeySDKSessionsListFailed, []any{cause}, "sdk/sessions: list sessions: raw-cause"},
-		{KeySDKSessionsPathEscapes, nil, "sdk/sessions: session path escapes sessions directory"},
-		{KeySDKSessionsNotFound, []any{"missing-id"}, `sdk/sessions: session "missing-id" not found`},
-		{KeySDKSessionsStatFailed, []any{cause}, "sdk/sessions: stat session: raw-cause"},
-		{KeySDKSessionsDeleteFailed, []any{cause}, "sdk/sessions: delete session: raw-cause"},
-		{KeySDKSessionsDecodeEntry, []any{7, cause}, "decode entry 7: raw-cause"},
 		{KeySDKPermissionMarshalRequest, []any{cause}, "sdk: marshal permission request: raw-cause"},
 		{KeySDKPermissionSendRequest, []any{cause}, "sdk: send permission request: raw-cause"},
 	}
@@ -55,7 +49,7 @@ func TestSDKResidualEnglishCopyRemainsCompatible(t *testing.T) {
 
 func TestSDKResidualErrorsPreserveTypedCauseAndExplicitLanguage(t *testing.T) {
 	cause := &sdkResidualCause{detail: "raw-os-detail"}
-	err := WrapError(KeySDKSessionsStatFailed, cause)
+	err := WrapError(KeySDKSessionsListFailed, cause)
 	if !errors.Is(err, cause) {
 		t.Fatal("localized SDK error no longer preserves errors.Is")
 	}
@@ -71,7 +65,7 @@ func TestSDKResidualErrorsPreserveTypedCauseAndExplicitLanguage(t *testing.T) {
 		t.Fatal("SDK error does not support explicit-language rendering")
 	}
 	got := localized.Localized(LangZH)
-	if !strings.Contains(got, cause.detail) || strings.Contains(got, "stat session") {
+	if !strings.Contains(got, cause.detail) || strings.Contains(got, "list sessions") {
 		t.Fatalf("Chinese SDK error did not localize its prefix while preserving the raw cause: %q", got)
 	}
 }

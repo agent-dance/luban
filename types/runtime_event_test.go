@@ -20,7 +20,7 @@ func TestRuntimeEventPrivateCausePreservesIdentityWithoutLeaking(t *testing.T) {
 		"runtime.operation_failed",
 		private,
 	)
-	if !errors.Is(event, private) || !event.IsPrivateCause(private) {
+	if !errors.Is(event, private) {
 		t.Fatal("private cause identity was not preserved")
 	}
 	if strings.Contains(event.Error(), private.Error()) || strings.Contains(event.PrivateCause.Error(), private.Error()) {
@@ -41,7 +41,7 @@ func TestRuntimeEventCannotBypassAudienceProjectorJSON(t *testing.T) {
 	}
 }
 
-func TestToolResultRuntimeEventUsesOnlyAuthoritativeOutcome(t *testing.T) {
+func TestToolResultRuntimeEventLeavesUnassignedOutcomeInvalidInsteadOfInferringIt(t *testing.T) {
 	failedPayloadWithoutOutcome := NewToolResultRuntimeEvent(
 		RuntimeIdentity{EventID: "event-failed-payload"},
 		ToolResultBlock{ToolUseID: "tool-1", IsError: true, Content: `{"status":"failed","code":"fatal"}`},
@@ -49,7 +49,7 @@ func TestToolResultRuntimeEventUsesOnlyAuthoritativeOutcome(t *testing.T) {
 		nil,
 	)
 	if failedPayloadWithoutOutcome.Outcome != "" || failedPayloadWithoutOutcome.HasAuthoritativeOutcome() {
-		t.Fatalf("outcome was inferred from generic error payload: %q", failedPayloadWithoutOutcome.Outcome)
+		t.Fatalf("incomplete event acquired an inferred outcome: %q", failedPayloadWithoutOutcome.Outcome)
 	}
 
 	successPayloadWithDeniedOutcome := NewToolResultRuntimeEvent(

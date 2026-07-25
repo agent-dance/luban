@@ -39,12 +39,12 @@ func TestStrictToolDefinitionPropagatesAcrossProviders(t *testing.T) {
 		t.Fatalf("Anthropic strict flag missing: %#v", anthropicTools)
 	}
 
-	responsesTools := convertToolsToResponsesAPI(defs)
+	responsesTools := convertToolsToResponsesAPIWithStrictMode(defs, true)
 	if got, ok := responsesTools[0]["strict"].(bool); !ok || !got {
 		t.Fatalf("Responses strict flag = %#v", responsesTools[0]["strict"])
 	}
 
-	openAITools := convertToolsToOpenAI(defs)
+	openAITools := convertToolsToOpenAIWithStrictMode(defs, true)
 	if len(openAITools) != 1 || openAITools[0].Function == nil || !openAITools[0].Function.Strict {
 		t.Fatalf("OpenAI strict flag missing: %#v", openAITools)
 	}
@@ -61,10 +61,10 @@ func TestMappedToolResultDataDoesNotLeakAcrossProviders(t *testing.T) {
 	}, "toolu_contract")
 	message := types.ToolResultMessage(block)
 
-	anthropicMessages := convertToAnthropicMessages([]types.Message{message})
+	anthropicMessages := convertToAnthropicMessagesForParams(Params{Messages: []types.Message{message}})
 	assertProviderResultSeparation(t, "Anthropic", anthropicMessages)
 
-	responsesInput := convertAllMessagesForResponsesAPI([]types.Message{message})
+	responsesInput := convertAllMessagesForResponsesAPIWithParams(Params{Messages: []types.Message{message}})
 	assertProviderResultSeparation(t, "Responses", responsesInput)
 
 	openAIMessages := convertUserMessage(message)

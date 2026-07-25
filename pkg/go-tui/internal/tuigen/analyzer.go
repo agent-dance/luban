@@ -150,8 +150,8 @@ var knownAttributes = map[string]bool{
 	// Focus
 	"onFocus":   true,
 	"onBlur":    true,
-	"focusable":  true,
-	"autoFocus":  true,
+	"focusable": true,
+	"autoFocus": true,
 
 	// Scroll
 	"scrollable":          true,
@@ -194,7 +194,7 @@ var knownAttributes = map[string]bool{
 	"submitKey":        true,
 	"onSubmit":         true,
 	"value":            true,
-	"onChange":          true,
+	"onChange":         true,
 }
 
 // stateNewStateRegex matches tui.NewState(...) declarations.
@@ -219,18 +219,18 @@ var stateParamRegex = regexp.MustCompile(`\*tui\.State\[(.+)\]$`)
 
 // attributeSimilar maps common typos to correct attribute names.
 var attributeSimilar = map[string]string{
-	"colour":      "color",
-	"color":       "background",
-	"onfocus":     "onFocus",
-	"onblur":      "onBlur",
-	"flexgrow":    "flexGrow",
-	"flexshrink":  "flexShrink",
-	"textstyle":   "textStyle",
-	"textalign":   "textAlign",
-	"alignself":     "alignSelf",
-	"flexwrap":      "flexWrap",
-	"aligncontent":  "alignContent",
-	"borderstyle":   "borderStyle",
+	"colour":       "color",
+	"color":        "background",
+	"onfocus":      "onFocus",
+	"onblur":       "onBlur",
+	"flexgrow":     "flexGrow",
+	"flexshrink":   "flexShrink",
+	"textstyle":    "textStyle",
+	"textalign":    "textAlign",
+	"alignself":    "alignSelf",
+	"flexwrap":     "flexWrap",
+	"aligncontent": "alignContent",
+	"borderstyle":  "borderStyle",
 }
 
 // Analyze performs semantic analysis on a parsed file.

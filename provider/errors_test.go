@@ -7,31 +7,6 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
-// --- NewAPIError ---
-
-func TestNewAPIError_Fields(t *testing.T) {
-	ae := NewAPIError(429, "rate_limit_error", "too many requests", "5")
-	if ae.Status != 429 {
-		t.Errorf("Status: want 429, got %d", ae.Status)
-	}
-	if ae.Type != "rate_limit_error" {
-		t.Errorf("Type: want rate_limit_error, got %s", ae.Type)
-	}
-	if ae.Message != "too many requests" {
-		t.Errorf("Message: want 'too many requests', got %s", ae.Message)
-	}
-	if ae.RetryAfter != "5" {
-		t.Errorf("RetryAfter: want '5', got %s", ae.RetryAfter)
-	}
-}
-
-func TestNewAPIError_ZeroStatus(t *testing.T) {
-	ae := NewAPIError(0, "", "connection reset", "")
-	if ae.Status != 0 {
-		t.Errorf("want status 0, got %d", ae.Status)
-	}
-}
-
 func TestAsAPIError_UnwrapsFallbackTriggeredError(t *testing.T) {
 	cause := &types.APIError{Status: 429, Type: "rate_limit_error", Message: "rate limited"}
 	err := &FallbackTriggeredError{

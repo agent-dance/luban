@@ -4,16 +4,7 @@ import "testing"
 
 func TestDiagnosticLogKeysCoverEveryLanguage(t *testing.T) {
 	keys := []Key{
-		KeyLogMCPStartFailed, KeyLogMCPStarted, KeyLogMCPSigtermFailed, KeyLogMCPShutdownTimeout,
-		KeyLogMCPStopped, KeyLogMCPRestarted, KeyLogMCPServerNotFound, KeyLogMCPHealthStopped,
-		KeyLogMCPHealthLoopStarted, KeyLogMCPHealthLoopStopped, KeyLogMCPHealthyAgain,
-		KeyLogMCPPingFailed, KeyLogMCPMarkedUnhealthy, KeyLogMCPReconnectNotFound,
-		KeyLogMCPReconnectLoopStarted, KeyLogMCPReconnectLoopStopped, KeyLogMCPUnexpectedExit,
-		KeyLogMCPStableReset, KeyLogMCPRestartAttempt, KeyLogMCPRestartSucceeded,
-		KeyLogMCPRestartFailed, KeyLogMCPReconnectExhausted, KeyLogMCPStreamReconnect,
-		KeyLogMCPUnparseableEvent, KeyLogHookUnknownEvent, KeyLogTmuxBorderStatusFailed,
-		KeyLogTmuxBorderFormatFailed, KeyLogSDKSessionStatFailed, KeyLogSDKSessionPartialRead,
-		KeyLogSDKSessionDeleted, KeyLogSDKPermissionMode,
+		KeyLogHookUnknownEvent, KeyLogSDKPermissionMode,
 		KeyLogDebugSessionStarted, KeyLogDebugUnknownPhase, KeyLogDebugPayloadNil,
 		KeyLogDebugMarshalFailed, KeyLogAnthropicRequestError, KeyLogAnthropicNormalizeError,
 		KeyLogAnthropicBodyOmitted, KeyLogAnthropicBodySniff, KeyLogAnthropicNormalizedGzip,

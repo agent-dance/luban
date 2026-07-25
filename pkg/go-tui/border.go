@@ -30,13 +30,13 @@ type BorderChars struct {
 	// Table-specific junction characters for internal grid lines.
 	// These are used by DrawTableGrid to draw header separators,
 	// row separators, and column separators within a table.
-	TopTee      rune // ┬ — top edge meets vertical separator
-	BottomTee   rune // ┴ — bottom edge meets vertical separator
-	LeftTee     rune // ├ — left edge meets horizontal separator
-	RightTee    rune // ┤ — right edge meets horizontal separator
-	Cross       rune // ┼ — horizontal and vertical separators cross
-	Horizontal  rune // ─ — horizontal separator (same as Top/Bottom)
-	Vertical    rune // │ — vertical separator (same as Left/Right)
+	TopTee     rune // ┬ — top edge meets vertical separator
+	BottomTee  rune // ┴ — bottom edge meets vertical separator
+	LeftTee    rune // ├ — left edge meets horizontal separator
+	RightTee   rune // ┤ — right edge meets horizontal separator
+	Cross      rune // ┼ — horizontal and vertical separators cross
+	Horizontal rune // ─ — horizontal separator (same as Top/Bottom)
+	Vertical   rune // │ — vertical separator (same as Left/Right)
 }
 
 // Chars returns the box-drawing characters for this border style.

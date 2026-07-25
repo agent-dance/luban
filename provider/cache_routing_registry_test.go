@@ -9,7 +9,6 @@ func TestBuiltinOpenAICompatibleFactoriesPreserveCacheRoutingPreference(t *testi
 
 	for _, providerName := range []string{
 		"openai",
-		"openai-responses",
 		"ollama",
 		"deepseek",
 		"gemini",
@@ -54,7 +53,7 @@ func TestBuiltinDeepSeekUsesCredentialScopedCacheRouting(t *testing.T) {
 	registry := NewProviderRegistry()
 	registerBuiltinProviders(registry)
 
-	created, err := registry.Create("deepseek", Config{APIKey: "test-account-key"}, "deepseek-chat")
+	created, err := registry.Create("deepseek", Config{APIKey: "test-account-key"}, "deepseek-v4-flash")
 	if err != nil {
 		t.Fatal(err)
 	}

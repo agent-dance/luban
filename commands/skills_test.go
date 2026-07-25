@@ -18,7 +18,7 @@ allowed-tools: Read, Grep
 ---
 # Review
 `)
-	manager := skills.NewManager(skills.DirSource{Dir: dir, Source: skills.SourceProject})
+	manager := newCommandSkillsManager(t, skills.DirSource{Dir: dir, Source: skills.SourceProject})
 	registry := commands.NewRegistry()
 	commands.RegisterBuiltins(registry)
 	command := registry.Find("skills")
@@ -51,8 +51,8 @@ disable-model-invocation: true
 ---
 # Review
 `)
-	manager := skills.NewManager(skills.DirSource{Dir: dir, Source: skills.SourceUser})
-	command := commands.NewSkillsCommand(manager)
+	manager := newCommandSkillsManager(t, skills.DirSource{Dir: dir, Source: skills.SourceUser})
+	command := commands.NewSkillsCommand()
 
 	output := executeSkillsCommand(t, command, manager, "session-a", "show review")
 	for _, want := range []string{
@@ -70,55 +70,8 @@ disable-model-invocation: true
 	}
 }
 
-func TestSkillsCommand_ToggleIsImmediateIdempotentAndSessionScoped(t *testing.T) {
-	dir := t.TempDir()
-	writeCommandSkill(t, dir, "review", "# Review\n")
-	manager := skills.NewManager(skills.DirSource{Dir: dir, Source: skills.SourceProject})
-	command := commands.NewSkillsCommand(manager)
-
-	output := executeSkillsCommand(t, command, manager, "session-a", "disable review")
-	if !strings.Contains(output, `Disabled skill "review"`) || manager.IsEnabled("session-a", "review") {
-		t.Fatalf("disable did not apply immediately: output=%q enabled=%t", output, manager.IsEnabled("session-a", "review"))
-	}
-	if !manager.IsEnabled("session-b", "review") {
-		t.Fatal("session-a disable leaked into session-b")
-	}
-
-	output = executeSkillsCommand(t, command, manager, "session-a", "disable review")
-	if !strings.Contains(output, "already disabled") {
-		t.Fatalf("idempotent disable output = %q", output)
-	}
-
-	output = executeSkillsCommand(t, command, manager, "session-a", "enable review")
-	if !strings.Contains(output, `Enabled skill "review"`) || !manager.IsEnabled("session-a", "review") {
-		t.Fatalf("enable did not apply: output=%q enabled=%t", output, manager.IsEnabled("session-a", "review"))
-	}
-}
-
-func TestSkillsCommand_ToggleAllAndUnknownTarget(t *testing.T) {
-	dir := t.TempDir()
-	writeCommandSkill(t, dir, "alpha", "# Alpha\n")
-	writeCommandSkill(t, dir, "beta", "# Beta\n")
-	manager := skills.NewManager(skills.DirSource{Dir: dir, Source: skills.SourceProject})
-	command := commands.NewSkillsCommand(manager)
-
-	output := executeSkillsCommand(t, command, manager, "session-a", "disable all")
-	if !strings.Contains(output, "Disabled 2 skill(s)") || manager.IsEnabled("session-a", "alpha") || manager.IsEnabled("session-a", "beta") {
-		t.Fatalf("disable all failed: %q", output)
-	}
-	output = executeSkillsCommand(t, command, manager, "session-a", "enable all")
-	if !strings.Contains(output, "Enabled 2 skill(s)") || !manager.IsEnabled("session-a", "alpha") || !manager.IsEnabled("session-a", "beta") {
-		t.Fatalf("enable all failed: %q", output)
-	}
-
-	output = executeSkillsCommand(t, command, manager, "session-a", "disable missing")
-	if !strings.Contains(output, `Skill "missing" not found`) {
-		t.Fatalf("unknown target output = %q", output)
-	}
-}
-
 func TestSkillsCommand_RequiresLiveBackend(t *testing.T) {
-	command := commands.NewSkillsCommand(nil)
+	command := commands.NewSkillsCommand()
 	err := command.Execute(&commands.Context{}, "list")
 	if err == nil || !strings.Contains(err.Error(), "not configured") {
 		t.Fatalf("missing backend error = %v", err)
@@ -129,14 +82,29 @@ func executeSkillsCommand(t *testing.T, command commands.Command, manager *skill
 	t.Helper()
 	var output strings.Builder
 	ctx := &commands.Context{
-		SessionID:    sessionID,
-		SkillManager: manager,
-		OnEvent:      func(value string) { output.WriteString(value) },
+		SessionID:             sessionID,
+		SkillManager:          manager,
+		OnEvent:               func(value string) { output.WriteString(value) },
+		OnCommandPresentation: captureCompletedCommand(&output),
 	}
 	if err := command.Execute(ctx, args); err != nil {
 		t.Fatal(err)
 	}
 	return output.String()
+}
+
+func newCommandSkillsManager(t *testing.T, source skills.DirSource) *skills.Manager {
+	t.Helper()
+	root := t.TempDir()
+	store, err := skills.NewFileOverrideStoreAt(skills.OverrideStorePaths{
+		UserSettings: filepath.Join(root, "user-settings.json"), ProjectSettings: filepath.Join(root, "project-settings.json"),
+	}, nil, skills.NewMemorySessionOverrideLayer())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := skills.NewManager(source)
+	manager.SetOverrideStore(store)
+	return manager
 }
 
 func writeCommandSkill(t *testing.T, root, name, body string) string {

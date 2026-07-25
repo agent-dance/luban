@@ -11,57 +11,31 @@ import (
 	"sort"
 	"strings"
 
-	svcmcp "github.com/agent-dance/luban/services/mcp"
+	"github.com/agent-dance/luban/internal/mcp/catalog"
+	mcpmanager "github.com/agent-dance/luban/internal/mcp/manager"
 )
 
 const (
-	// FeatureFlagMCPSkills mirrors the TypeScript feature('MCP_SKILLS') gate.
-	FeatureFlagMCPSkills = "MCP_SKILLS"
+	// FeatureFlagMCPSkills is the canonical runtime gate for MCP-backed skills.
+	FeatureFlagMCPSkills = "LUBAN_CODE_MCP_SKILLS"
 )
 
-// MCPSkillsFeatureEnabled reports whether resource-backed MCP skill discovery
-// is enabled. The additional env names make local Go tests/runtime explicit
-// while preserving the canonical MCP_SKILLS gate name.
-func MCPSkillsFeatureEnabled() bool {
-	for _, name := range []string{FeatureFlagMCPSkills, "CLAUDE_CODE_MCP_SKILLS", "CLAUDE_CODE_ENABLE_MCP_SKILLS"} {
-		switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
-		case "1", "true", "yes", "on", "enabled":
-			return true
-		case "0", "false", "no", "off", "disabled":
-			return false
-		}
+// mcpSkillsFeatureEnabled reports whether MCP-backed skill discovery is enabled.
+func mcpSkillsFeatureEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(FeatureFlagMCPSkills))) {
+	case "1", "true", "yes", "on", "enabled":
+		return true
+	case "0", "false", "no", "off", "disabled":
+		return false
 	}
 	return false
 }
 
-// DiscoverMCPSkills discovers skill:// resources from connected MCP servers
-// and converts their SKILL.md content into SourceMCP skills. It intentionally
-// reads the manager snapshot rather than connecting new servers; task_07 owns
-// connection state and TS also fetches MCP skills only for connected clients.
-func DiscoverMCPSkills(ctx context.Context, manager *svcmcp.Manager) ([]*Skill, error) {
-	if manager == nil {
-		return nil, errors.New("skills: nil MCP manager")
-	}
-	return DiscoverMCPSkillsFromConnections(ctx, manager.Snapshot())
-}
-
-// DiscoverMCPSkillsFromConnections is the testable core for resource-backed
-// MCP skills. Only connected servers with resources capability and live clients
-// participate.
-func DiscoverMCPSkillsFromConnections(ctx context.Context, states []svcmcp.MCPServerConnection) ([]*Skill, error) {
-	inputs, err := DiscoverMCPSkillCatalogInputsFromConnections(ctx, states)
-	out := make([]*Skill, 0, len(inputs))
-	for _, input := range inputs {
-		out = append(out, cloneMCPSkill(input.Skill))
-	}
-	return out, err
-}
-
-// DiscoverMCPSkillCatalogInputsFromConnections is the stable-ID discovery
+// discoverMCPResourceCatalogInputsFromConnections is the stable-ID discovery
 // core. It preserves the server name alongside each resource URI so two MCP
 // servers can publish identical skill:// locators without colliding.
-func DiscoverMCPSkillCatalogInputsFromConnections(ctx context.Context, states []svcmcp.MCPServerConnection) ([]MCPCatalogInput, error) {
-	if !MCPSkillsFeatureEnabled() {
+func discoverMCPResourceCatalogInputsFromConnections(ctx context.Context, states []mcpmanager.MCPServerConnection) ([]MCPCatalogInput, error) {
+	if !mcpSkillsFeatureEnabled() {
 		return nil, nil
 	}
 	if ctx == nil {
@@ -70,10 +44,10 @@ func DiscoverMCPSkillCatalogInputsFromConnections(ctx context.Context, states []
 	var out []MCPCatalogInput
 	var errs []error
 	for _, state := range states {
-		if state.Type != svcmcp.MCPStateConnected || state.Client == nil || !mcpCapabilityExists(state.Capabilities, "resources") {
+		if state.Type != mcpmanager.MCPStateConnected || state.Client == nil || !mcpCapabilityExists(state.Capabilities, "resources") {
 			continue
 		}
-		resources := append([]svcmcp.Resource(nil), state.Resources...)
+		resources := append([]catalog.Resource(nil), state.Resources...)
 		if len(resources) == 0 {
 			result, err := state.Client.ListResourcesResult(ctx)
 			if err != nil {
@@ -109,48 +83,12 @@ func DiscoverMCPSkillCatalogInputsFromConnections(ctx context.Context, states []
 	return out, errors.Join(errs...)
 }
 
-// RegisterDiscoveredMCPSkills refreshes the skill manager's MCP skill set from
-// the current MCP connection snapshot.
-func RegisterDiscoveredMCPSkills(ctx context.Context, skillManager *Manager, mcpManager *svcmcp.Manager) error {
-	if skillManager == nil {
-		return errors.New("skills: nil skill manager")
-	}
-	if mcpManager == nil {
-		return errors.New("skills: nil MCP manager")
-	}
-	return RefreshMCPSkillCatalogFromConnections(ctx, skillManager, mcpManager.Snapshot())
-}
-
-// RefreshMCPSkillCatalogFromConnections atomically replaces resource-backed
-// inputs only after a fully successful discovery. A transient list/read error
-// therefore retains the last authoritative set instead of becoming a false
-// delete; a successful disconnected or feature-gated empty set clears it.
-func RefreshMCPSkillCatalogFromConnections(ctx context.Context, skillManager *Manager, states []svcmcp.MCPServerConnection) error {
-	if skillManager == nil {
-		return errors.New("skills: nil skill manager")
-	}
-	inputs, err := DiscoverMCPSkillCatalogInputsFromConnections(ctx, states)
-	if err != nil {
-		return err
-	}
-	skillManager.RegisterMCPSkillCatalogInputs(inputs)
-	return nil
-}
-
-// InvalidateMCPSkills is the resources/list_changed hook target for task_13.
-func InvalidateMCPSkills(skillManager *Manager) {
-	if skillManager == nil {
-		return
-	}
-	skillManager.RegisterMCPSkills(nil)
-}
-
 func isMCPSkillResource(uri string) bool {
 	parsed, err := url.Parse(strings.TrimSpace(uri))
 	return err == nil && strings.EqualFold(parsed.Scheme, "skill")
 }
 
-func mcpSkillMarkdown(contents []svcmcp.ResourceContent) (string, bool) {
+func mcpSkillMarkdown(contents []catalog.ResourceContent) (string, bool) {
 	var parts []string
 	for _, content := range contents {
 		if strings.TrimSpace(content.Text) != "" {
@@ -170,7 +108,7 @@ func mcpSkillMarkdown(contents []svcmcp.ResourceContent) (string, bool) {
 	return strings.Join(parts, "\n"), true
 }
 
-func skillFromMCPResource(serverName string, resource svcmcp.Resource, markdown string) *Skill {
+func skillFromMCPResource(serverName string, resource catalog.Resource, markdown string) *Skill {
 	baseName := mcpSkillResourceName(resource)
 	if baseName == "" || strings.TrimSpace(serverName) == "" {
 		return nil
@@ -213,7 +151,7 @@ func applyMCPFrontmatter(skill *Skill, fm rawFrontmatter) {
 		skill.ArgumentHint = *fm.ArgumentHint
 	}
 	if len(fm.Arguments) > 0 {
-		skill.ArgNames = ParseArgumentNames(fm.Arguments)
+		skill.ArgNames = parseArgumentNames(fm.Arguments)
 	}
 	if fm.WhenToUse != nil {
 		skill.WhenToUse = *fm.WhenToUse
@@ -251,7 +189,7 @@ func applyMCPFrontmatter(skill *Skill, fm rawFrontmatter) {
 	}
 }
 
-func mcpSkillResourceName(resource svcmcp.Resource) string {
+func mcpSkillResourceName(resource catalog.Resource) string {
 	if name := sanitizeMCPSkillName(resource.Name); name != "" {
 		return name
 	}
@@ -288,7 +226,7 @@ func sanitizeMCPSkillName(name string) string {
 	return name
 }
 
-func mcpCapabilityExists(caps svcmcp.ServerCapabilities, key string) bool {
+func mcpCapabilityExists(caps catalog.ServerCapabilities, key string) bool {
 	if caps == nil {
 		return false
 	}

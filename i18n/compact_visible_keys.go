@@ -11,16 +11,12 @@ const (
 	KeyCompactPartialTranscriptRecovery    Key = "compact.summary.partial_transcript_recovery"
 	KeyCompactPartialTranscriptUnavailable Key = "compact.summary.partial_transcript_unavailable"
 	KeyCompactEarlierMessagesPreserved     Key = "compact.summary.earlier_messages_preserved"
-	KeyCompactHistorySnip                  Key = "compact.summary.history_snip"
-	KeyCompactFileRecoveryTitle            Key = "compact.file_recovery.title"
 
 	KeyCompactAttachmentPlanTitle            Key = "compact.attachment.plan.title"
 	KeyCompactAttachmentPlanFile             Key = "compact.attachment.plan.file"
 	KeyCompactAttachmentPlanModeTitle        Key = "compact.attachment.plan_mode.title"
 	KeyCompactAttachmentPlanModeBody         Key = "compact.attachment.plan_mode.body"
 	KeyCompactAttachmentSkillsTitle          Key = "compact.attachment.skills.title"
-	KeyCompactAttachmentSourceLabel          Key = "compact.attachment.skills.source"
-	KeyCompactAttachmentToolUseIDLabel       Key = "compact.attachment.skills.tool_use_id"
 	KeyCompactAttachmentBackgroundTitle      Key = "compact.attachment.background.title"
 	KeyCompactAttachmentUnknownStatus        Key = "compact.attachment.background.unknown_status"
 	KeyCompactAttachmentTypeLabel            Key = "compact.attachment.background.type"
@@ -106,12 +102,6 @@ func init() {
 		KeyCompactEarlierMessagesPreserved: compactCopy(
 			"Earlier messages are preserved verbatim.", "较早的消息已原样保留。", "Die früheren Nachrichten wurden unverändert beibehalten.", "前半のメッセージは原文のまま保持されています。", "이전 메시지는 원문 그대로 보존되었습니다.", "Более ранние сообщения сохранены дословно.",
 		),
-		KeyCompactHistorySnip: compactCopy(
-			"[%d earlier messages were compressed to save context]", "[为节省上下文空间，已压缩较早的 %d 条消息]", "[%d frühere Nachrichten wurden komprimiert, um Kontext zu sparen]", "[コンテキストを節約するため、以前のメッセージ %d 件を圧縮しました]", "[컨텍스트를 절약하기 위해 이전 메시지 %d개를 압축했습니다]", "[Для экономии контекста сжато более ранних сообщений: %d]",
-		),
-		KeyCompactFileRecoveryTitle: compactCopy(
-			"[Post-compaction file recovery: %s]", "[压缩后恢复文件：%s]", "[Dateiwiederherstellung nach der Komprimierung: %s]", "[圧縮後のファイル復元: %s]", "[압축 후 파일 복구: %s]", "[Восстановление файла после сжатия: %s]",
-		),
 		KeyCompactAttachmentPlanTitle: compactCopy(
 			"Post-compaction plan state", "压缩后的计划状态", "Planstatus nach der Komprimierung", "圧縮後の計画状態", "압축 후 계획 상태", "Состояние плана после сжатия",
 		),
@@ -131,12 +121,6 @@ func init() {
 		),
 		KeyCompactAttachmentSkillsTitle: compactCopy(
 			"Post-compaction invoked skills", "压缩后已调用的 Skill", "Nach der Komprimierung aufgerufene Skills", "圧縮後に呼び出された Skill", "압축 후 호출된 Skill", "Вызванные после сжатия Skill",
-		),
-		KeyCompactAttachmentSourceLabel: compactCopy(
-			"source=%s", "来源=%s", "Quelle=%s", "ソース=%s", "출처=%s", "источник=%s",
-		),
-		KeyCompactAttachmentToolUseIDLabel: compactCopy(
-			"tool_use_id=%s", "tool_use_id=%s", "tool_use_id=%s", "tool_use_id=%s", "tool_use_id=%s", "tool_use_id=%s",
 		),
 		KeyCompactAttachmentBackgroundTitle: compactCopy(
 			"Post-compaction background tasks", "压缩后的后台任务", "Hintergrundaufgaben nach der Komprimierung", "圧縮後のバックグラウンドタスク", "압축 후 백그라운드 작업", "Фоновые задачи после сжатия",

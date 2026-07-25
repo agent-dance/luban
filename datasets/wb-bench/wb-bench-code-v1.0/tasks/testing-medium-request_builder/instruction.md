@@ -1,1 +1,0 @@
-我给这个小版 request builder 补回归时，看到 headers、cookies、params 和 body 互斥这些地方很容易被改坏。麻烦只补测试，覆盖大小写 header 覆盖、params 顺序/list 展开/None 跳过，以及 json/data/content 互斥这些边界。测试文件按 unittest 写，别动 request_model.py，也别临时引 pytest，尽量补够十五到二十个小场景。

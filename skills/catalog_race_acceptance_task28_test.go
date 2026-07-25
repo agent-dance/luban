@@ -11,20 +11,29 @@ import (
 	"sync/atomic"
 	"testing"
 
+	skilltool "github.com/agent-dance/luban/internal/tools/skill"
 	"github.com/agent-dance/luban/skills"
-	"github.com/agent-dance/luban/tools"
+	"github.com/agent-dance/luban/types"
 )
 
 func TestCatalogRaceAcceptanceRealSkillToolRefreshToggleSnapshotAndInvoke(t *testing.T) {
 	manager, _, row := task28RaceManager(t, nil)
-	tool := &tools.SkillTool{
-		Manager:           manager,
-		FallbackSessionID: "invoke-session",
-		LoadedLedgerResolver: func(context.Context, string, skills.SkillID) tools.SkillLoadedLedgerState {
-			return tools.SkillLoadedLedgerState{ContextEpoch: 23}
+	tool := &skilltool.SkillTool{
+		Manager: manager,
+		LoadedLedgerResolver: func(context.Context, string, skills.SkillID) skilltool.SkillLoadedLedgerState {
+			return skilltool.SkillLoadedLedgerState{ContextEpoch: 23}
 		},
 	}
-	first, err := tool.Execute(context.Background(), map[string]any{"skill": string(row.ID), "revision": uint64(row.Revision)})
+	invoke := func(revision skills.SkillRevision) (types.ToolResult, error) {
+		return tool.Invoke(context.Background(), skilltool.SkillInvocationRequest{
+			SessionID:                 "invoke-session",
+			Selector:                  string(row.ID),
+			ExpectedRevision:          revision,
+			ExpectedProjectGeneration: manager.ProjectGeneration(),
+			Origin:                    skills.InvocationOriginUser,
+		})
+	}
+	first, err := invoke(row.Revision)
 	if err != nil || first.IsError {
 		t.Fatalf("initial real SkillTool invocation=%#v err=%v", first, err)
 	}
@@ -78,7 +87,7 @@ func TestCatalogRaceAcceptanceRealSkillToolRefreshToggleSnapshotAndInvoke(t *tes
 		return result.Validate()
 	})
 	run(func(int) error {
-		result, invokeErr := tool.Execute(context.Background(), map[string]any{"skill": string(row.ID)})
+		result, invokeErr := invoke(0)
 		if invokeErr != nil {
 			return invokeErr
 		}
@@ -110,7 +119,12 @@ func TestCatalogRaceAcceptanceRealSkillToolRefreshToggleSnapshotAndInvoke(t *tes
 		return resetErr
 	})
 	run(func(int) error {
-		_, _, resolveErr := manager.Resolve("resolve-session", string(row.ID))
+		_, resolveErr := manager.ResolveLatest(skills.SkillResolveRequest{
+			SessionID:                 "resolve-session",
+			Selector:                  string(row.ID),
+			ExpectedProjectGeneration: manager.ProjectGeneration(),
+			Origin:                    skills.InvocationOriginUser,
+		}, nil)
 		return resolveErr
 	})
 
@@ -164,7 +178,7 @@ func TestCatalogRaceAcceptanceTransactionalFailureTruth(t *testing.T) {
 		manager, store, row := task28RaceManager(t, fault)
 		before := task28RaceSnapshot(t, manager, "session")
 		result, err := manager.ToggleProjectVisibility("session", row.ID, before.Revision)
-		if err == nil || result.Outcome != skills.ProjectVisibilityToggleDegraded || result.Reason != skills.ProjectVisibilityToggleReasonRollbackFailed || !result.RefreshRequired() {
+		if err == nil || result.Outcome != skills.ProjectVisibilityToggleDegraded || result.Reason != skills.ProjectVisibilityToggleReasonRollbackFailed {
 			t.Fatalf("degraded result=%#v err=%v", result, err)
 		}
 		if result.Skill == nil || result.Skill.Visibility != skills.VisibilityOff || result.CurrentRevision == before.Revision {
@@ -199,7 +213,8 @@ func task28RaceManager(t *testing.T, fault *task28RaceFaultStore) (*skills.Manag
 		fault.base = base
 		store = fault
 	}
-	manager := skills.NewManagerWithOverrideStore(store, skills.DirSource{Dir: filepath.Join(root, "skills"), Source: skills.SourceProject})
+	manager := skills.NewManager(skills.DirSource{Dir: filepath.Join(root, "skills"), Source: skills.SourceProject})
+	manager.SetOverrideStore(store)
 	snapshot := task28RaceSnapshot(t, manager, "session")
 	if len(snapshot.Skills) != 1 {
 		t.Fatalf("single skill snapshot=%#v", snapshot)
@@ -238,10 +253,6 @@ func (store *task28RaceFaultStore) Snapshot(sessionID string) (skills.OverrideSn
 
 func (store *task28RaceFaultStore) Set(sessionID string, override skills.VisibilityOverride) error {
 	return store.base.Set(sessionID, override)
-}
-
-func (store *task28RaceFaultStore) Toggle(sessionID string, scope skills.SkillScope, id skills.SkillID) (skills.VisibilityOverride, error) {
-	return store.base.Toggle(sessionID, scope, id)
 }
 
 func (store *task28RaceFaultStore) Reset(sessionID string, scope skills.SkillScope, id skills.SkillID) error {

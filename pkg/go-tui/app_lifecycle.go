@@ -141,20 +141,6 @@ func (a *App) QueuePrintAboveln(format string, args ...any) {
 	a.printAboveFormatted(true, true, format, args...)
 }
 
-// PrintAboveAsync queues content above the inline widget without a trailing
-// newline.
-// Deprecated: use QueuePrintAbove.
-func (a *App) PrintAboveAsync(format string, args ...any) {
-	a.QueuePrintAbove(format, args...)
-}
-
-// PrintAbovelnAsync queues content with a trailing newline that scrolls up
-// above the inline widget.
-// Deprecated: use QueuePrintAboveln.
-func (a *App) PrintAbovelnAsync(format string, args ...any) {
-	a.QueuePrintAboveln(format, args...)
-}
-
 func (a *App) printAboveFormatted(async, trailingNewline bool, format string, args ...any) {
 	if a.inlineHeight == 0 {
 		return
@@ -368,9 +354,8 @@ func (a *App) ensureInlineSession() {
 }
 
 // StreamAbove returns a *StreamWriter that streams text character-by-character
-// to the history region above the inline widget. The writer implements
-// io.WriteCloser for plain byte streaming, and additionally provides
-// WriteStyled and WriteGradient methods for styled output.
+// to the history region above the inline widget. The writer supports plain,
+// styled, and gradient output and can be used wherever an io.Writer is accepted.
 // Closing the writer finalizes the current line.
 // Returns a no-op writer if not in inline mode.
 // The writer is goroutine-safe.

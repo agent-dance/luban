@@ -22,19 +22,6 @@ const (
 	KeyToolFileHelperEditTargetChangedAfter     Key = "tool.file.helper.edit_target_changed_after_read"
 	KeyToolFileHelperPathOutsideAllowed         Key = "tool.file.helper.path_outside_allowed"
 	KeyToolFileHelperVerifyFDPathFailed         Key = "tool.file.helper.verify_fd_path_failed"
-	KeyToolFileHelperSettingsInvalidJSON        Key = "tool.file.helper.settings.invalid_json"
-	KeyToolFileHelperSettingsTopLevelObject     Key = "tool.file.helper.settings.top_level_object"
-	KeyToolFileHelperSettingsSkillOverrides     Key = "tool.file.helper.settings.invalid_skill_overrides"
-	KeyToolFileHelperSettingsMissingKey         Key = "tool.file.helper.settings.missing_required_key"
-	KeyToolFileHelperSettingsUnknownKey         Key = "tool.file.helper.settings.unknown_top_level_key"
-	KeyToolFileHelperSkillOverridesObject       Key = "tool.file.helper.settings.skill_overrides_object"
-	KeyToolFileHelperSkillOverrideKey           Key = "tool.file.helper.settings.skill_override_key"
-	KeyToolFileHelperSkillOverrideRecord        Key = "tool.file.helper.settings.skill_override_record"
-	KeyToolFileHelperSkillOverrideShape         Key = "tool.file.helper.settings.skill_override_shape"
-	KeyToolFileHelperSkillOverrideField         Key = "tool.file.helper.settings.skill_override_field"
-	KeyToolFileHelperSkillOverrideMissingField  Key = "tool.file.helper.settings.skill_override_missing_field"
-	KeyToolFileHelperSkillOverrideStringField   Key = "tool.file.helper.settings.skill_override_string_field"
-	KeyToolFileHelperSkillOverrideLastNonOff    Key = "tool.file.helper.settings.skill_override_last_non_off"
 )
 
 var toolFileHelperKeys = []Key{
@@ -56,19 +43,6 @@ var toolFileHelperKeys = []Key{
 	KeyToolFileHelperEditTargetChangedAfter,
 	KeyToolFileHelperPathOutsideAllowed,
 	KeyToolFileHelperVerifyFDPathFailed,
-	KeyToolFileHelperSettingsInvalidJSON,
-	KeyToolFileHelperSettingsTopLevelObject,
-	KeyToolFileHelperSettingsSkillOverrides,
-	KeyToolFileHelperSettingsMissingKey,
-	KeyToolFileHelperSettingsUnknownKey,
-	KeyToolFileHelperSkillOverridesObject,
-	KeyToolFileHelperSkillOverrideKey,
-	KeyToolFileHelperSkillOverrideRecord,
-	KeyToolFileHelperSkillOverrideShape,
-	KeyToolFileHelperSkillOverrideField,
-	KeyToolFileHelperSkillOverrideMissingField,
-	KeyToolFileHelperSkillOverrideStringField,
-	KeyToolFileHelperSkillOverrideLastNonOff,
 }
 
 func init() {
@@ -204,95 +178,4 @@ func init() {
 		"ファイル記述子のパスを確認できません: %v",
 		"파일 디스크립터 경로를 확인할 수 없습니다: %v",
 		"Не удалось проверить путь файлового дескриптора: %v")
-	add(KeyToolFileHelperSettingsInvalidJSON,
-		"settings.json validation failed after edit: invalid JSON (%v). Refusing to write a settings file the runtime cannot parse.",
-		"编辑后的 settings.json 校验失败：JSON 无效（%v）。拒绝写入 runtime 无法解析的设置文件。",
-		"Die Prüfung von settings.json nach der Bearbeitung ist fehlgeschlagen: ungültiges JSON (%v). Eine Einstellungsdatei, die die Runtime nicht parsen kann, wird nicht geschrieben.",
-		"編集後の settings.json の検証に失敗しました: JSON が無効です（%v）。runtime が解析できない設定ファイルは書き込みません。",
-		"편집 후 settings.json 검증에 실패했습니다. JSON이 올바르지 않습니다(%v). runtime이 해석할 수 없는 설정 파일은 쓰지 않습니다.",
-		"Проверка settings.json после редактирования завершилась ошибкой: недопустимый JSON (%v). Файл настроек, который runtime не может разобрать, не будет записан.")
-	add(KeyToolFileHelperSettingsTopLevelObject,
-		"settings.json validation failed after edit: top-level value must be an object, got %T",
-		"编辑后的 settings.json 校验失败：顶层值必须是对象，实际为 %T",
-		"Die Prüfung von settings.json nach der Bearbeitung ist fehlgeschlagen: Der Wert auf oberster Ebene muss ein Objekt sein, erhalten wurde %T",
-		"編集後の settings.json の検証に失敗しました: トップレベルの値は object である必要がありますが、%T でした",
-		"편집 후 settings.json 검증에 실패했습니다. 최상위 값은 object여야 하지만 %T입니다",
-		"Проверка settings.json после редактирования завершилась ошибкой: значение верхнего уровня должно быть объектом, получено %T")
-	add(KeyToolFileHelperSettingsSkillOverrides,
-		"settings.json validation failed after edit: invalid skillOverrides (%v)",
-		"编辑后的 settings.json 校验失败：skillOverrides 无效（%v）",
-		"Die Prüfung von settings.json nach der Bearbeitung ist fehlgeschlagen: ungültige skillOverrides (%v)",
-		"編集後の settings.json の検証に失敗しました: skillOverrides が無効です（%v）",
-		"편집 후 settings.json 검증에 실패했습니다. skillOverrides가 올바르지 않습니다(%v)",
-		"Проверка settings.json после редактирования завершилась ошибкой: недопустимые skillOverrides (%v)")
-	add(KeyToolFileHelperSettingsMissingKey,
-		"settings.json validation failed after edit: missing required key %q. The runtime cannot start without a populated permissions block.",
-		"编辑后的 settings.json 校验失败：缺少必需的 key %q。permissions block 未配置时，runtime 无法启动。",
-		"Die Prüfung von settings.json nach der Bearbeitung ist fehlgeschlagen: Der erforderliche Key %q fehlt. Ohne einen ausgefüllten permissions-Block kann die Runtime nicht starten.",
-		"編集後の settings.json の検証に失敗しました: 必須 key %q がありません。permissions block が設定されていないと runtime は起動できません。",
-		"편집 후 settings.json 검증에 실패했습니다. 필수 key %q이(가) 없습니다. permissions block이 설정되지 않으면 runtime을 시작할 수 없습니다.",
-		"Проверка settings.json после редактирования завершилась ошибкой: отсутствует обязательный key %q. Runtime не может запуститься без заполненного блока permissions.")
-	add(KeyToolFileHelperSettingsUnknownKey,
-		"settings.json validation failed after edit: top-level key %q is not part of the published schema (additionalProperties:false).",
-		"编辑后的 settings.json 校验失败：顶层 key %q 不在已发布的 schema 中（additionalProperties:false）。",
-		"Die Prüfung von settings.json nach der Bearbeitung ist fehlgeschlagen: Der Key %q auf oberster Ebene gehört nicht zum veröffentlichten Schema (additionalProperties:false).",
-		"編集後の settings.json の検証に失敗しました: トップレベル key %q は公開 schema に含まれていません（additionalProperties:false）。",
-		"편집 후 settings.json 검증에 실패했습니다. 최상위 key %q은(는) 공개된 schema에 포함되지 않습니다(additionalProperties:false).",
-		"Проверка settings.json после редактирования завершилась ошибкой: key верхнего уровня %q отсутствует в опубликованной schema (additionalProperties:false).")
-	add(KeyToolFileHelperSkillOverridesObject,
-		"must be an object, got %T",
-		"必须是对象，实际为 %T",
-		"muss ein Objekt sein, erhalten wurde %T",
-		"object である必要がありますが、%T でした",
-		"object여야 하지만 %T입니다",
-		"должно быть объектом, получено %T")
-	add(KeyToolFileHelperSkillOverrideKey,
-		"key %q: %v",
-		"key %q：%v",
-		"Key %q: %v",
-		"key %q: %v",
-		"key %q: %v",
-		"key %q: %v")
-	add(KeyToolFileHelperSkillOverrideRecord,
-		"%s: %v",
-		"%s：%v",
-		"%s: %v",
-		"%s: %v",
-		"%s: %v",
-		"%s: %v")
-	add(KeyToolFileHelperSkillOverrideShape,
-		"override must be a visibility string or object, got %T",
-		"override 必须是 visibility string 或对象，实际为 %T",
-		"Override muss ein visibility-String oder Objekt sein, erhalten wurde %T",
-		"override は visibility string または object である必要がありますが、%T でした",
-		"override는 visibility string 또는 object여야 하지만 %T입니다",
-		"override должен быть строкой visibility или объектом, получено %T")
-	add(KeyToolFileHelperSkillOverrideField,
-		"field %q is not allowed",
-		"不允许使用字段 %q",
-		"Feld %q ist nicht zulässig",
-		"フィールド %q は使用できません",
-		"필드 %q은(는) 허용되지 않습니다",
-		"Поле %q не разрешено")
-	add(KeyToolFileHelperSkillOverrideMissingField,
-		"missing required field %q",
-		"缺少必需字段 %q",
-		"Erforderliches Feld %q fehlt",
-		"必須フィールド %q がありません",
-		"필수 필드 %q이(가) 없습니다",
-		"Отсутствует обязательное поле %q")
-	add(KeyToolFileHelperSkillOverrideStringField,
-		"field %q must be a string, got %T",
-		"字段 %q 必须是字符串，实际为 %T",
-		"Feld %q muss ein String sein, erhalten wurde %T",
-		"フィールド %q は string である必要がありますが、%T でした",
-		"필드 %q은(는) string이어야 하지만 %T입니다",
-		"Поле %q должно быть строкой, получено %T")
-	add(KeyToolFileHelperSkillOverrideLastNonOff,
-		"%v: last_non_off is valid only for off overrides",
-		"%v：last_non_off 仅对 off override 有效",
-		"%v: last_non_off ist nur für off-Overrides gültig",
-		"%v: last_non_off は off override の場合にのみ有効です",
-		"%v: last_non_off는 off override에만 유효합니다",
-		"%v: last_non_off допустим только для override со значением off")
 }

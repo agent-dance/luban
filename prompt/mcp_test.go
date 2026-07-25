@@ -8,7 +8,7 @@ import (
 )
 
 func TestMCPInstructionsSectionEmpty(t *testing.T) {
-	got := MCPInstructionsSection([]MCPServerInstruction{
+	got := MCPInstructionsSectionForLanguage(i18n.LangEN, []MCPServerInstruction{
 		{Name: "empty"},
 		{Name: "blank", Instructions: "  \n\t"},
 	})
@@ -30,7 +30,7 @@ func TestMCPInstructionsSectionForLanguageLocalizesVisibleCopy(t *testing.T) {
 }
 
 func TestMCPInstructionsSectionOneServer(t *testing.T) {
-	got := MCPInstructionsSection([]MCPServerInstruction{{Name: "docs", Instructions: "Prefer official docs."}})
+	got := MCPInstructionsSectionForLanguage(i18n.LangEN, []MCPServerInstruction{{Name: "docs", Instructions: "Prefer official docs."}})
 	want := "# MCP Server Instructions\n\nThe following MCP servers have provided instructions for how to use their tools and resources:\n\n## docs\nPrefer official docs."
 	if got != want {
 		t.Fatalf("section mismatch:\n got: %q\nwant: %q", got, want)
@@ -38,7 +38,7 @@ func TestMCPInstructionsSectionOneServer(t *testing.T) {
 }
 
 func TestMCPInstructionsSectionMultipleServersSorted(t *testing.T) {
-	got := MCPInstructionsSection([]MCPServerInstruction{
+	got := MCPInstructionsSectionForLanguage(i18n.LangEN, []MCPServerInstruction{
 		{Name: "zeta", Instructions: "Use zeta."},
 		{Name: "alpha", Instructions: "Use alpha."},
 	})

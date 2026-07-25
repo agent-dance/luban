@@ -295,7 +295,7 @@ Add the network panel to the render method. We'll place it inside a horizontal r
 
 ```gsx
 // Network Traffic + Recent Events
-<div class="flex gap-1 flex-grow">
+<div class="flex gap-1 grow">
     <div class="flex-col border-rounded p-1 gap-1" flexGrow={1.0}>
         <span class="text-gradient-cyan-magenta font-bold">Network Traffic</span>
         <div class="flex gap-1">
@@ -316,7 +316,7 @@ Add the network panel to the render method. We'll place it inside a horizontal r
 </div>
 ```
 
-The outer `<div class="flex gap-1 flex-grow">` is a horizontal row that fills the remaining vertical space. The network panel uses `flexGrow={1.0}` so it shares the width equally with the events panel we'll add next.
+The outer `<div class="flex gap-1 grow">` is a horizontal row that fills the remaining vertical space. The network panel uses `flexGrow={1.0}` so it shares the width equally with the events panel we'll add next.
 
 Update `updateMetrics` to include the network values and shift the sparkline data:
 
@@ -805,7 +805,7 @@ templ (d *dashboardApp) Render() {
         </div>
 
         // Network Traffic + Recent Events
-        <div class="flex gap-1 flex-grow">
+        <div class="flex gap-1 grow">
             <div class="flex-col border-rounded p-1 gap-1" flexGrow={1.0}>
                 <span class="text-gradient-cyan-magenta font-bold">Network Traffic</span>
                 <div class="flex gap-1">

@@ -43,28 +43,3 @@ func TestIsStdoutTerminal_pipe(t *testing.T) {
 		t.Error("IsStdoutTerminal() returned true for a pipe; expected false")
 	}
 }
-
-// TestIsInteractive_bothPipes checks that IsInteractive returns false when
-// both stdin and stdout are pipes.
-func TestIsInteractive_bothPipes(t *testing.T) {
-	origStdin := os.Stdin
-	origStdout := os.Stdout
-	defer func() {
-		os.Stdin = origStdin
-		os.Stdout = origStdout
-	}()
-
-	r1, w1, _ := os.Pipe()
-	r2, w2, _ := os.Pipe()
-	defer r1.Close()
-	defer w1.Close()
-	defer r2.Close()
-	defer w2.Close()
-
-	os.Stdin = r1
-	os.Stdout = w2
-
-	if cli.IsInteractive() {
-		t.Error("IsInteractive() returned true when both stdin/stdout are pipes; expected false")
-	}
-}

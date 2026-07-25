@@ -55,8 +55,7 @@ type Params struct {
 	// MaxOutputTokensOverride temporarily overrides MaxTokens for output-limit
 	// recovery paths. Zero preserves the provider's normal MaxTokens behavior.
 	MaxOutputTokensOverride int
-	System                  string                     // single system prompt block (backward compatible)
-	SystemParts             []string                   // legacy multi-part system prompt: first part gets cache_control
+	System                  string                     // single system prompt block
 	SystemBlocks            []prompt.SystemPromptBlock // ordered system prompt blocks with optional metadata
 	Messages                []types.Message
 	Tools                   []types.ToolDefinition
@@ -78,39 +77,33 @@ type Params struct {
 	PromptCacheTTL  string
 	ReasoningEffort string // "low", "medium", "high" for reasoning models
 
-	internalControlScope        messagecontrol.Scope
-	internalControlScopeSet     bool
-	allowUnboundInternalControl bool
+	internalControlScope    messagecontrol.Scope
+	internalControlScopeSet bool
 }
 
 // WithInternalControlScope installs the runtime-owned authority fence used by
 // provider adapters. Its capability type is internal to this module, so SDK
 // callers cannot select a scope or turn arbitrary developer messages into
 // privileged instructions.
-func (p Params) WithInternalControlScope(capability messagecontrol.Capability, scope messagecontrol.Scope, allowUnbound bool) Params {
+func (p Params) WithInternalControlScope(capability messagecontrol.Capability, scope messagecontrol.Scope) Params {
 	p.internalControlScope = messagecontrol.Scope{}
 	p.internalControlScopeSet = false
-	p.allowUnboundInternalControl = false
 	if capability.Valid() {
 		p.internalControlScope = scope
 		p.internalControlScopeSet = true
-		p.allowUnboundInternalControl = allowUnbound
 	}
 	return p
 }
 
 func (p Params) isTrustedDeveloperMessage(message types.Message) bool {
 	if p.internalControlScopeSet {
-		return message.IsTrustedDeveloperMessageForScope(p.internalControlScope, p.allowUnboundInternalControl)
+		return message.IsTrustedDeveloperMessageForScope(p.internalControlScope)
 	}
-	// Compatibility callers can construct fresh in-process descriptors, but a
-	// durable bound bearer is never privileged without an authoritative scope.
-	return message.IsTrustedDeveloperMessageForScope(messagecontrol.Scope{}, true)
+	return false
 }
 
 // SystemTextBlocks resolves the system prompt fields into provider-ready text
-// blocks. New SystemBlocks take priority, followed by legacy SystemParts, then
-// the single System string.
+// blocks. SystemBlocks take priority over the single System string.
 func (p Params) SystemTextBlocks() []prompt.SystemPromptBlock {
 	if len(p.SystemBlocks) > 0 {
 		blocks := make([]prompt.SystemPromptBlock, 0, len(p.SystemBlocks))
@@ -119,20 +112,6 @@ func (p Params) SystemTextBlocks() []prompt.SystemPromptBlock {
 				continue
 			}
 			blocks = append(blocks, block)
-		}
-		return blocks
-	}
-	if len(p.SystemParts) > 0 {
-		blocks := make([]prompt.SystemPromptBlock, 0, len(p.SystemParts))
-		for i, part := range p.SystemParts {
-			if part == "" {
-				continue
-			}
-			blocks = append(blocks, prompt.SystemPromptBlock{
-				Text:       part,
-				Cache:      i == 0,
-				CacheScope: "ephemeral",
-			})
 		}
 		return blocks
 	}
@@ -163,6 +142,7 @@ func (p Params) JoinedSystemPrompt() string {
 // Config holds provider-agnostic configuration
 type Config struct {
 	ProviderName           string
+	APIStyle               APIStyle
 	APIKey                 string
 	AuthToken              string
 	BaseURL                string
@@ -172,10 +152,6 @@ type Config struct {
 	Timeout                int // seconds
 	DisableStrictTools     bool
 	CacheRoutingPreference CacheRoutingPreference
-	// UserScopedPromptCache replaces conversation IDs on provider cache-routing
-	// fields with an opaque credential-level identity. Built-in remote providers
-	// enable it; direct SDK consumers retain legacy wire behavior unless opted in.
-	UserScopedPromptCache bool
 }
 
 // CacheRoutingPreference is an operator override for request-level cache

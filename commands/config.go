@@ -62,23 +62,7 @@ func (c *configCmd) settingsPath(ctx *Context) string {
 	if _, err := os.Stat(local); err == nil {
 		return local
 	}
-	legacyDeepSeekLocal := filepath.Join(cwd, brand.LegacyDeepSeekConfigDirName, "settings.json")
-	if _, err := os.Stat(legacyDeepSeekLocal); err == nil {
-		return legacyDeepSeekLocal
-	}
-	legacyLocal := filepath.Join(cwd, brand.LegacyConfigDirName, "settings.json")
-	if _, err := os.Stat(legacyLocal); err == nil {
-		return legacyLocal
-	}
-	homeSettings := filepath.Join(brand.UserConfigDir(), "settings.json")
-	if _, err := os.Stat(homeSettings); err == nil {
-		return homeSettings
-	}
-	legacyDeepSeekHome := filepath.Join(brand.LegacyDeepSeekUserConfigDir(), "settings.json")
-	if _, err := os.Stat(legacyDeepSeekHome); err == nil {
-		return legacyDeepSeekHome
-	}
-	return filepath.Join(brand.LegacyUserConfigDir(), "settings.json")
+	return filepath.Join(brand.UserConfigDir(), "settings.json")
 }
 
 func projectSettingsPath(ctx *Context) string {
@@ -212,8 +196,6 @@ func (c *configCmd) set(ctx *Context, key, value string) error {
 	if cwd == "" {
 		cwd, _ = os.Getwd()
 	}
-	// New writes go to the LUBAN Code project config. Legacy DeepSeek Code and
-	// Claude files remain readable through settingsPath for migration.
 	path := filepath.Join(cwd, brand.ConfigDirName, "settings.json")
 
 	m, err := c.readSettings(path, ctx.Language)

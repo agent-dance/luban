@@ -1,2 +1,0 @@
-filesystem: Prefer the Read and Write tools for workspace file access.
-postgres: Query only read-only replicas unless the user explicitly approves writes.

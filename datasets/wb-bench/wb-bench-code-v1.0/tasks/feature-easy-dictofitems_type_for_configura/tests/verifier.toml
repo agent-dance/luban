@@ -1,6 +1,0 @@
-schema_version = "workbuddy.code_lite.verifier.v1"
-family = "pytest_injected"
-
-[run]
-cwd = "/workspace"
-command = '''python -m pytest mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_int_type mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_combined_float_type mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_dict_default mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_none_without_default mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_optional mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_dict_of_optional mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_string_not_a_dict_of_strings mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_post_validation_error mkdocs/tests/config/config_options_tests.py::DictOfItemsTest::test_all_keys_are_strings mkdocs/tests/config/config_options_tests.py::ListOfItemsTest::test_int_type -q --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

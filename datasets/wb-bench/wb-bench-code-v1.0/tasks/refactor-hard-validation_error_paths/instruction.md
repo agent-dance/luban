@@ -1,1 +1,0 @@
-jsonschema_like/validator.py 里只需要支持这个小版校验器，不用补成完整 jsonschema。现在 error 的 path 和 schema_path 在对象、数组、required、enum/type 分支里容易写散。帮我把内部错误生成流程整理一下，validate 和 best_match 入口保留，嵌套对象/数组的错误路径、错误顺序和 message 表现别变。

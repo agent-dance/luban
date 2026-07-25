@@ -67,8 +67,8 @@ func (receipt SkillExecutionReceipt) Validate() error {
 	}
 }
 
-// MarshalSkillExecutionReceipt produces the canonical JSON metadata value.
-func MarshalSkillExecutionReceipt(receipt SkillExecutionReceipt) (string, error) {
+// marshalSkillExecutionReceipt produces the canonical JSON metadata value.
+func marshalSkillExecutionReceipt(receipt SkillExecutionReceipt) (string, error) {
 	if err := receipt.Validate(); err != nil {
 		return "", err
 	}
@@ -79,9 +79,9 @@ func MarshalSkillExecutionReceipt(receipt SkillExecutionReceipt) (string, error)
 	return string(encoded), nil
 }
 
-// UnmarshalSkillExecutionReceipt decodes one strict JSON metadata value and
+// unmarshalSkillExecutionReceipt decodes one strict JSON metadata value and
 // rejects unknown fields or trailing documents before validating the receipt.
-func UnmarshalSkillExecutionReceipt(encoded string) (SkillExecutionReceipt, error) {
+func unmarshalSkillExecutionReceipt(encoded string) (SkillExecutionReceipt, error) {
 	decoder := json.NewDecoder(bytes.NewBufferString(encoded))
 	decoder.DisallowUnknownFields()
 	var receipt SkillExecutionReceipt
@@ -100,7 +100,7 @@ func UnmarshalSkillExecutionReceipt(encoded string) (SkillExecutionReceipt, erro
 // EncodeSkillExecutionReceiptMetadata returns a fresh metadata map suitable
 // for merging into ToolResult.Metadata.
 func EncodeSkillExecutionReceiptMetadata(receipt SkillExecutionReceipt) (map[string]string, error) {
-	encoded, err := MarshalSkillExecutionReceipt(receipt)
+	encoded, err := marshalSkillExecutionReceipt(receipt)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func DecodeSkillExecutionReceiptMetadata(metadata map[string]string) (SkillExecu
 	if !exists {
 		return SkillExecutionReceipt{}, false, nil
 	}
-	receipt, err := UnmarshalSkillExecutionReceipt(encoded)
+	receipt, err := unmarshalSkillExecutionReceipt(encoded)
 	if err != nil {
 		return SkillExecutionReceipt{}, true, err
 	}

@@ -1,5 +1,0 @@
-schema_version = "workbuddy.code_lite.verifier.v1"
-family = "repo_understanding"
-
-[run]
-cwd = "/workspace"

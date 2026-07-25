@@ -6,42 +6,6 @@ import (
 	"strings"
 )
 
-// ReplaceMCPSkillCatalogInputsAtGeneration publishes a fully validated MCP
-// projection only while the caller's workspace authority is still current.
-// It is the runtime counterpart of SnapshotAtGeneration: a late discovery
-// callback from workspace A cannot mutate the shared Manager after A->B.
-func (m *Manager) ReplaceMCPSkillCatalogInputsAtGeneration(expected ProjectSourceGeneration, inputs []MCPCatalogInput) error {
-	if m == nil {
-		return errors.New("nil skill manager")
-	}
-	if err := expected.Validate(); err != nil {
-		return err
-	}
-	validated := make([]MCPCatalogInput, 0, len(inputs))
-	seen := make(map[SkillID]struct{}, len(inputs))
-	for _, input := range inputs {
-		if err := input.Validate(); err != nil {
-			return err
-		}
-		if _, duplicate := seen[input.ID]; duplicate {
-			continue
-		}
-		seen[input.ID] = struct{}{}
-		validated = append(validated, input.Clone())
-	}
-
-	m.txnMu.RLock()
-	defer m.txnMu.RUnlock()
-	m.mu.RLock()
-	current := m.projectGeneration
-	m.mu.RUnlock()
-	if current != expected {
-		return projectGenerationChangedError(expected, current)
-	}
-	m.RegisterMCPSkillCatalogInputs(validated)
-	return nil
-}
-
 // ReplaceMCPCatalogInputsAtGeneration atomically replaces prompt- and
 // resource-backed MCP inputs while the workspace generation is current.
 func (m *Manager) ReplaceMCPCatalogInputsAtGeneration(expected ProjectSourceGeneration, inputs []MCPCatalogInput) error {
@@ -63,10 +27,9 @@ func (m *Manager) ReplaceMCPCatalogInputsAtGeneration(expected ProjectSourceGene
 	if current != expected {
 		return projectGenerationChangedError(expected, current)
 	}
-	store := m.ensureMCPPromptStore()
-	store.replaceAllInputs(validated)
+	store := m.ensureMCPCatalogStore()
+	store.replace(validated)
 	m.mu.Lock()
-	m.cache = make(map[string]*Skill)
 	m.populated = false
 	m.mu.Unlock()
 	return nil

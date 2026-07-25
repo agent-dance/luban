@@ -23,7 +23,7 @@ func withTempHome(t *testing.T, f func(dir string)) {
 	f(dir)
 }
 
-// ---- SaveTeamConfig / LoadTeamConfig ----
+// ---- CreateTeamConfigAs / LoadTeamConfig ----
 
 func testTeamDir(home, name string) string {
 	return filepath.Join(home, brand.ConfigDirName, "teams", name)
@@ -33,7 +33,7 @@ func testTeamConfigPath(home, name string) string {
 	return filepath.Join(testTeamDir(home, name), "team.json")
 }
 
-func TestSaveLoad_RoundTrip(t *testing.T) {
+func TestCreateLoad_RoundTrip(t *testing.T) {
 	withTempHome(t, func(home string) {
 		cfg := &TeamConfig{
 			Name:        "alpha",
@@ -52,8 +52,8 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 			},
 		}
 
-		if err := SaveTeamConfig(cfg); err != nil {
-			t.Fatalf("SaveTeamConfig: %v", err)
+		if err := CreateTeamConfigAs(cfg.Name, cfg); err != nil {
+			t.Fatalf("CreateTeamConfigAs: %v", err)
 		}
 
 		// Verify file exists.
@@ -86,14 +86,14 @@ func TestSaveLoad_RoundTrip(t *testing.T) {
 	})
 }
 
-func TestSave_CreatesDirectory(t *testing.T) {
+func TestCreate_CreatesDirectory(t *testing.T) {
 	withTempHome(t, func(home string) {
 		cfg := &TeamConfig{
 			Name:        "beta",
 			LeadAgentID: "lead",
 		}
-		if err := SaveTeamConfig(cfg); err != nil {
-			t.Fatalf("SaveTeamConfig: %v", err)
+		if err := CreateTeamConfigAs(cfg.Name, cfg); err != nil {
+			t.Fatalf("CreateTeamConfigAs: %v", err)
 		}
 
 		dir := testTeamDir(home, "beta")
@@ -116,9 +116,9 @@ func TestLoad_NotFound(t *testing.T) {
 	})
 }
 
-func TestSave_NilConfig(t *testing.T) {
-	if err := SaveTeamConfig(nil); err == nil {
-		t.Error("expected error saving nil config")
+func TestCreate_NilConfig(t *testing.T) {
+	if err := CreateTeamConfigAs("team", nil); err == nil {
+		t.Error("expected error creating nil config")
 	}
 }
 
@@ -127,7 +127,7 @@ func TestSave_NilConfig(t *testing.T) {
 func TestDelete_RemovesFile(t *testing.T) {
 	withTempHome(t, func(home string) {
 		cfg := &TeamConfig{Name: "gamma", LeadAgentID: "lead"}
-		_ = SaveTeamConfig(cfg)
+		_ = CreateTeamConfigAs(cfg.Name, cfg)
 
 		path := testTeamConfigPath(home, "gamma")
 		if _, err := os.Stat(path); err != nil {
@@ -147,7 +147,7 @@ func TestDelete_RemovesFile(t *testing.T) {
 func TestDelete_RetainsStableLockDirectory(t *testing.T) {
 	withTempHome(t, func(home string) {
 		cfg := &TeamConfig{Name: "delta", LeadAgentID: "lead"}
-		_ = SaveTeamConfig(cfg)
+		_ = CreateTeamConfigAs(cfg.Name, cfg)
 
 		_ = DeleteTeamConfig("delta")
 
@@ -172,7 +172,7 @@ func TestDelete_NonexistentIsNoop(t *testing.T) {
 func TestDelete_PreservesNonEmptyDir(t *testing.T) {
 	withTempHome(t, func(home string) {
 		cfg := &TeamConfig{Name: "epsilon", LeadAgentID: "lead"}
-		_ = SaveTeamConfig(cfg)
+		_ = CreateTeamConfigAs(cfg.Name, cfg)
 
 		// Add a sibling file so the directory is not empty after deletion.
 		dir := testTeamDir(home, "epsilon")
@@ -206,7 +206,7 @@ func TestTeamMember_Fields(t *testing.T) {
 				},
 			},
 		}
-		_ = SaveTeamConfig(cfg)
+		_ = CreateTeamConfigAs(cfg.Name, cfg)
 
 		loaded, _ := LoadTeamConfig("zeta")
 		if len(loaded.Members) != 1 {

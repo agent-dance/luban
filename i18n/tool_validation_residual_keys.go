@@ -5,8 +5,6 @@ package i18n
 // Identifiers, paths, option values, hook IDs, exit codes, and raw subprocess
 // output remain format arguments and are intentionally not translated.
 const (
-	KeyToolGrepUnknownTypeSuggestion       Key = "tool.grep.unknown_type.suggestion"
-	KeyToolGrepUnknownTypeHint             Key = "tool.grep.unknown_type.hint"
 	KeyToolAgentDefinitionUnknownTool      Key = "tool.agent.definition.unknown_tool"
 	KeyToolPermissionModeRequired          Key = "tool.runtime.permission_mode.required"
 	KeyToolWorktreeBaseRefInvalid          Key = "tool.worktree.base_ref.invalid"
@@ -22,8 +20,6 @@ const (
 )
 
 var toolValidationResidualKeys = [...]Key{
-	KeyToolGrepUnknownTypeSuggestion,
-	KeyToolGrepUnknownTypeHint,
 	KeyToolAgentDefinitionUnknownTool,
 	KeyToolPermissionModeRequired,
 	KeyToolWorktreeBaseRefInvalid,
@@ -46,20 +42,6 @@ func init() {
 		}
 	}
 
-	add(KeyToolGrepUnknownTypeSuggestion,
-		"Unknown rg type %q. Did you mean %s?",
-		"未知的 rg 类型 %q。你是不是想输入 %s？",
-		"Unbekannter rg-Typ %q. Meintest du %s?",
-		"rg の種類 %q は不明です。%s のことですか？",
-		"알 수 없는 rg 유형 %q입니다. %s을(를) 의미했나요?",
-		"Неизвестный тип rg %q. Возможно, имелось в виду %s?")
-	add(KeyToolGrepUnknownTypeHint,
-		"Unknown rg type %q. Run `rg --type-list` to see valid types.",
-		"未知的 rg 类型 %q。运行 `rg --type-list` 可查看有效类型。",
-		"Unbekannter rg-Typ %q. Gültige Typen zeigt `rg --type-list` an.",
-		"rg の種類 %q は不明です。有効な種類は `rg --type-list` で確認できます。",
-		"알 수 없는 rg 유형 %q입니다. `rg --type-list`를 실행해 유효한 유형을 확인하세요.",
-		"Неизвестный тип rg %q. Допустимые типы можно посмотреть командой `rg --type-list`.")
 	add(KeyToolAgentDefinitionUnknownTool,
 		"Agent error: agent %q allows unknown tool %q",
 		"Agent 错误：Agent %q 允许使用未知工具 %q",

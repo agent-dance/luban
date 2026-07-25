@@ -55,7 +55,7 @@ func TestProviderOpenAIOAuthCatalogCoversEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestProviderOpenAIOAuthCatalogPreservesEnglishCompatibility(t *testing.T) {
+func TestProviderOpenAIOAuthCatalogPreservesEnglishContract(t *testing.T) {
 	tests := []struct {
 		key  Key
 		args []any

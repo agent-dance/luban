@@ -155,7 +155,7 @@ func TestSeatbeltValidation(t *testing.T) {
 	t.Run("relative ReadOnlyPath rejected", func(t *testing.T) {
 		b := SeatbeltBackend{}
 		cfg := Config{ReadOnlyPaths: []string{"relative/path"}}
-		_, err := b.Command(nil, cfg, "echo")
+		_, err := b.Command(context.TODO(), cfg, "echo")
 		if err == nil {
 			t.Error("expected error for relative ReadOnlyPath, got nil")
 		}
@@ -164,7 +164,7 @@ func TestSeatbeltValidation(t *testing.T) {
 	t.Run("relative ReadWritePath rejected", func(t *testing.T) {
 		b := SeatbeltBackend{}
 		cfg := Config{ReadWritePaths: []string{"relative/path"}}
-		_, err := b.Command(nil, cfg, "echo")
+		_, err := b.Command(context.TODO(), cfg, "echo")
 		if err == nil {
 			t.Error("expected error for relative ReadWritePath, got nil")
 		}
@@ -173,7 +173,7 @@ func TestSeatbeltValidation(t *testing.T) {
 	t.Run("path with newline rejected", func(t *testing.T) {
 		b := SeatbeltBackend{}
 		cfg := Config{ReadWritePaths: []string{"/tmp/foo\nbar"}}
-		_, err := b.Command(nil, cfg, "echo")
+		_, err := b.Command(context.TODO(), cfg, "echo")
 		if err == nil {
 			t.Error("expected error for path containing newline, got nil")
 		}

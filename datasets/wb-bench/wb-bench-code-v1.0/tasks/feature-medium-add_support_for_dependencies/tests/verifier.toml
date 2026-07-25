@@ -1,6 +1,0 @@
-schema_version = "workbuddy.code_lite.verifier.v1"
-family = "pytest_injected"
-
-[run]
-cwd = "/workspace"
-command = '''python -W ignore::PendingDeprecationWarning -m pytest tests/test_ws_dependencies.py::test_index tests/test_ws_dependencies.py::test_routerindex tests/test_ws_dependencies.py::test_routerprefixindex /tests/test_requires_test_changes.py -v --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

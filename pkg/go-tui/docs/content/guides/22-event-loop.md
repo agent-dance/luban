@@ -264,7 +264,7 @@ templ (f *feedApp) Render() {
         <hr />
         <div
             ref={f.content}
-            class="flex-col flex-grow border-single p-1"
+            class="flex-col grow border-single p-1"
             scrollable={tui.ScrollVertical}
             scrollOffset={0, f.scrollY.Get()}
         >

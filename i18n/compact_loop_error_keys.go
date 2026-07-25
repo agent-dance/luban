@@ -8,7 +8,6 @@ const (
 	KeyCompactHookBlockedWithoutReason     Key = "compact.error.hook_blocked_without_reason"
 	KeyCompactReactiveCompactorUnavailable Key = "compact.error.reactive_compactor_unavailable"
 	KeyLoopCompactionResultRejected        Key = "loop.compaction.result_rejected"
-	KeyLoopPostCompactResetTrackingFailed  Key = "loop.post_compact.reset_tracking_failed"
 
 	KeyLoopPostCompactSkillCatalogEpochChanged Key = "loop.post_compact.skill_catalog_epoch_changed"
 	KeyLoopPostCompactSkillCatalogMissing      Key = "loop.post_compact.skill_catalog_missing"
@@ -25,7 +24,6 @@ var compactLoopErrorKeys = []Key{
 	KeyCompactHookBlockedWithoutReason,
 	KeyCompactReactiveCompactorUnavailable,
 	KeyLoopCompactionResultRejected,
-	KeyLoopPostCompactResetTrackingFailed,
 	KeyLoopPostCompactSkillCatalogEpochChanged,
 	KeyLoopPostCompactSkillCatalogMissing,
 	KeyLoopPostCompactSkillBodyEpochMissing,
@@ -89,14 +87,6 @@ func init() {
 		"圧縮から安全に反映できない結果が返されたため、履歴は変更されませんでした。",
 		"압축 결과를 안전하게 반영할 수 없어 기록을 변경하지 않았습니다.",
 		"Результат сжатия нельзя безопасно применить; история осталась без изменений.")
-	add(KeyLoopPostCompactResetTrackingFailed,
-		"reset session-memory compaction tracking: %v",
-		"重置 session memory 压缩跟踪状态失败：%v",
-		"Das Tracking der Session-Memory-Komprimierung konnte nicht zurückgesetzt werden: %v",
-		"session memory の圧縮追跡をリセットできませんでした：%v",
-		"session memory 압축 추적을 재설정하지 못했습니다: %v",
-		"Не удалось сбросить отслеживание сжатия session memory: %v")
-
 	add(KeyLoopPostCompactSkillCatalogEpochChanged,
 		"The Skill catalog changed while restoring post-compaction state.",
 		"恢复压缩后的状态时，Skill 目录已发生变化",

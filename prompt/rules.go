@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	doublestar "github.com/bmatcuk/doublestar/v4"
 )
 
 type processRulesOptions struct {
@@ -13,7 +11,6 @@ type processRulesOptions struct {
 	typ             MemoryType
 	processed       map[string]struct{}
 	includeExternal bool
-	conditional     bool
 	cwd             string
 	settings        PromptSettings
 	visitedDirs     map[string]struct{}
@@ -55,7 +52,7 @@ func processMdRules(opts processRulesOptions) []MemoryFileInfo {
 			continue
 		}
 		isConditional, ok := ruleFileIsConditional(entryPath)
-		if !ok || opts.conditional != isConditional {
+		if !ok || isConditional {
 			continue
 		}
 		files := processMemoryFileWithSettings(entryPath, opts.typ, opts.processed, opts.includeExternal, 0, "", opts.cwd, opts.settings)
@@ -77,66 +74,4 @@ func ruleFileIsConditional(path string) (bool, bool) {
 	}
 	_, paths := parseMemoryFrontmatterPaths(string(data))
 	return len(paths) > 0, true
-}
-
-func processConditionedMdRules(targetPath, rulesDir string, typ MemoryType, processed map[string]struct{}, includeExternal bool, cwd string) []MemoryFileInfo {
-	return processConditionedMdRulesWithSettings(targetPath, rulesDir, typ, processed, includeExternal, cwd, defaultPromptSettings())
-}
-
-func processConditionedMdRulesWithSettings(targetPath, rulesDir string, typ MemoryType, processed map[string]struct{}, includeExternal bool, cwd string, settings PromptSettings) []MemoryFileInfo {
-	files := processMdRules(processRulesOptions{
-		rulesDir:        rulesDir,
-		typ:             typ,
-		processed:       processed,
-		includeExternal: includeExternal,
-		conditional:     true,
-		cwd:             cwd,
-		settings:        settings,
-	})
-
-	baseDir := cwd
-	if typ == MemoryTypeProject {
-		baseDir = filepath.Dir(filepath.Dir(rulesDir))
-	}
-	var result []MemoryFileInfo
-	includeGroup := false
-	for _, file := range files {
-		if file.Parent == "" {
-			includeGroup = memoryRuleMatchesTarget(file.Globs, targetPath, baseDir)
-		}
-		if includeGroup {
-			result = append(result, file)
-		}
-	}
-	return result
-}
-
-func memoryRuleMatchesTarget(globs []string, targetPath, baseDir string) bool {
-	if len(globs) == 0 {
-		return false
-	}
-	relativePath := targetPath
-	if filepath.IsAbs(targetPath) {
-		rel, err := filepath.Rel(baseDir, targetPath)
-		if err != nil || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." || filepath.IsAbs(rel) {
-			return false
-		}
-		relativePath = rel
-	}
-	relativePath = filepath.ToSlash(relativePath)
-	for _, pattern := range globs {
-		pattern = filepath.ToSlash(strings.TrimSpace(pattern))
-		if pattern == "" {
-			continue
-		}
-		if ok, _ := doublestar.Match(pattern, relativePath); ok {
-			return true
-		}
-		if !strings.Contains(pattern, "/") {
-			if ok, _ := doublestar.Match(pattern, filepath.Base(relativePath)); ok {
-				return true
-			}
-		}
-	}
-	return false
 }

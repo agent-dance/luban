@@ -4,9 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
-	"time"
 )
 
 // mailboxWithTempDir creates a Mailbox backed by a temp directory via NewMailbox.
@@ -21,9 +19,22 @@ func mailboxWithTempDir(t *testing.T) *Mailbox {
 	return m
 }
 
-// ---- Send / Read round-trip ----
+func persistedMailboxMessages(t *testing.T, mailbox *Mailbox, agentName string) []Message {
+	t.Helper()
+	path, err := mailbox.inboxPath(agentName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := readMailboxMessages(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return messages
+}
 
-func TestSendRead_SingleMessage(t *testing.T) {
+// ---- Send persistence ----
+
+func TestSend_PersistsSingleMessage(t *testing.T) {
 	m := mailboxWithTempDir(t)
 	msg := Message{
 		From:      "leader",
@@ -36,10 +47,7 @@ func TestSendRead_SingleMessage(t *testing.T) {
 		t.Fatalf("Send: %v", err)
 	}
 
-	got, err := m.Read(context.Background(), "agent1")
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
+	got := persistedMailboxMessages(t, m, "agent1")
 	if len(got) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(got))
 	}
@@ -54,7 +62,7 @@ func TestSendRead_SingleMessage(t *testing.T) {
 	}
 }
 
-func TestSendRead_MultipleMessages(t *testing.T) {
+func TestSend_PersistsMultipleMessages(t *testing.T) {
 	m := mailboxWithTempDir(t)
 
 	for i := 0; i < 5; i++ {
@@ -64,50 +72,9 @@ func TestSendRead_MultipleMessages(t *testing.T) {
 		}
 	}
 
-	got, err := m.Read(context.Background(), "agent2")
-	if err != nil {
-		t.Fatalf("Read: %v", err)
-	}
+	got := persistedMailboxMessages(t, m, "agent2")
 	if len(got) != 5 {
 		t.Errorf("expected 5 messages, got %d", len(got))
-	}
-}
-
-func TestRead_PreservesInboxAndReadFlags(t *testing.T) {
-	m := mailboxWithTempDir(t)
-
-	_ = m.Send(context.Background(), "agent3", Message{From: "leader", Text: "msg", Timestamp: "2026-01-01T00:00:00Z"})
-
-	first, err := m.Read(context.Background(), "agent3")
-	if err != nil || len(first) != 1 {
-		t.Fatalf("first read: %v msgs, err %v", len(first), err)
-	}
-
-	second, err := m.Read(context.Background(), "agent3")
-	if err != nil {
-		t.Fatalf("second read: %v", err)
-	}
-	if len(second) != 1 || second[0].Read {
-		t.Errorf("expected non-destructive unread inbox after read, got %#v", second)
-	}
-	if err := m.MarkAllRead(context.Background(), "agent3"); err != nil {
-		t.Fatalf("MarkAllRead: %v", err)
-	}
-	third, err := m.Read(context.Background(), "agent3")
-	if err != nil || len(third) != 1 || !third[0].Read {
-		t.Fatalf("read audit history after MarkAllRead: %#v err=%v", third, err)
-	}
-}
-
-func TestRead_EmptyInbox(t *testing.T) {
-	m := mailboxWithTempDir(t)
-
-	msgs, err := m.Read(context.Background(), "nonexistent")
-	if err != nil {
-		t.Fatalf("Read on nonexistent: %v", err)
-	}
-	if msgs != nil && len(msgs) != 0 {
-		t.Errorf("expected nil/empty slice, got %v", msgs)
 	}
 }
 
@@ -118,9 +85,9 @@ func TestSend_AutoFillsTimestamp(t *testing.T) {
 
 	_ = m.Send(context.Background(), "agentT", Message{From: "leader", Text: "hi"})
 
-	msgs, err := m.Read(context.Background(), "agentT")
-	if err != nil || len(msgs) == 0 {
-		t.Fatalf("read: %v msgs err=%v", len(msgs), err)
+	msgs := persistedMailboxMessages(t, m, "agentT")
+	if len(msgs) == 0 {
+		t.Fatal("expected a persisted message")
 	}
 	if msgs[0].Timestamp == "" {
 		t.Error("expected Timestamp to be auto-filled")
@@ -194,76 +161,5 @@ func TestAtomicWrite_OverwritesExisting(t *testing.T) {
 	data, _ := os.ReadFile(path)
 	if string(data) != "new" {
 		t.Errorf("expected overwrite, got %q", data)
-	}
-}
-
-// ---- Poll ----
-
-func TestPoll_ReceivesMessage(t *testing.T) {
-	m := mailboxWithTempDir(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Send a message slightly after Poll starts.
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		time.Sleep(200 * time.Millisecond)
-		_ = m.Send(context.Background(), "pollAgent", Message{
-			From:      "leader",
-			Text:      "work on this",
-			Timestamp: "2026-01-01T00:00:00Z",
-		})
-	}()
-
-	msg, err := m.Poll(ctx, "pollAgent")
-	wg.Wait()
-
-	if err != nil {
-		t.Fatalf("Poll: %v", err)
-	}
-	if msg.Text != "work on this" {
-		t.Errorf("Poll text: got %q, want %q", msg.Text, "work on this")
-	}
-}
-
-func TestPoll_CancelledContext(t *testing.T) {
-	m := mailboxWithTempDir(t)
-	ctx, cancel := context.WithCancel(context.Background())
-
-	// Cancel immediately.
-	cancel()
-
-	_, err := m.Poll(ctx, "noAgent")
-	if err == nil {
-		t.Error("expected context cancellation error")
-	}
-}
-
-func TestPoll_LeavesRemainingMessages(t *testing.T) {
-	m := mailboxWithTempDir(t)
-
-	// Pre-populate inbox with 3 messages.
-	for i := 0; i < 3; i++ {
-		_ = m.Send(context.Background(), "multiAgent", Message{From: "leader", Text: "msg", Timestamp: "2026-01-01T00:00:00Z"})
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	// Poll uses PopFirst — returns first message; remaining two stay in inbox.
-	_, err := m.Poll(ctx, "multiAgent")
-	if err != nil {
-		t.Fatalf("Poll: %v", err)
-	}
-
-	// PopFirst marks the first message read and preserves all audit entries.
-	remaining, err := m.Read(context.Background(), "multiAgent")
-	if err != nil {
-		t.Fatalf("Read after poll: %v", err)
-	}
-	if len(remaining) != 3 || !remaining[0].Read || remaining[1].Read || remaining[2].Read {
-		t.Errorf("expected one read and two unread audit messages, got %#v", remaining)
 	}
 }

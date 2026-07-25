@@ -9,7 +9,7 @@ import (
 	"sync"
 	"testing"
 
-	svcmcp "github.com/agent-dance/luban/services/mcp"
+	"github.com/agent-dance/luban/internal/mcp/catalog"
 )
 
 func TestTask23ProjectAndUnifiedMCPProjectionPublishAtomically(t *testing.T) {
@@ -21,7 +21,7 @@ func TestTask23ProjectAndUnifiedMCPProjectionPublishAtomically(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := NewManagerWithOverrideStore(store)
+	manager := newManagerWithOverrideStore(store)
 	if err := manager.ReplaceProjectSources(rootA); err != nil {
 		t.Fatal(err)
 	}
@@ -93,13 +93,11 @@ func TestTask23ProjectAndUnifiedMCPProjectionPublishAtomically(t *testing.T) {
 
 func task23UnifiedMCPInputs(t *testing.T, suffix string) []MCPCatalogInput {
 	t.Helper()
-	prompt, err := (MCPPrompt{
-		Server: "srv", Name: "prompt-" + suffix, Description: "prompt " + suffix, Body: "prompt " + suffix,
-	}).CatalogInput()
+	prompt, err := NewMCPPromptCatalogInput("srv", "prompt-"+suffix, "prompt "+suffix, nil, "prompt "+suffix)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resource := skillFromMCPResource("srv", svcmcp.Resource{
+	resource := skillFromMCPResource("srv", catalog.Resource{
 		URI: "skill://task23/resource-" + suffix + "/SKILL.md", Name: "resource-" + suffix,
 	}, "---\ndescription: resource "+suffix+"\n---\nresource "+suffix)
 	resourceInput, err := newMCPResourceCatalogInput("srv", resource)

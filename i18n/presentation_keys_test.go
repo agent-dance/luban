@@ -9,7 +9,6 @@ func TestPresentationSemanticKeysAreLocalized(t *testing.T) {
 		args     []any
 		want     string
 	}{
-		{LangZH, KeyPresentationRunning, []any{"⠋", "Bash", 1.2}, "⠋ 正在运行 Bash…（1.2 秒）"},
 		{LangJA, KeyPresentationDetailsAvailable, nil, "詳細あり"},
 		{LangRU, KeyPresentationAggregateOperations, []any{"Чтение", "2"}, "Чтение · 2 операций"},
 	}

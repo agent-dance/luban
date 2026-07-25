@@ -8,16 +8,6 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
-// NewAPIError creates a *types.APIError with all fields populated.
-func NewAPIError(status int, errType, message, retryAfter string) *types.APIError {
-	return &types.APIError{
-		Status:     status,
-		Type:       errType,
-		Message:    message,
-		RetryAfter: retryAfter,
-	}
-}
-
 // FallbackTriggeredError signals that the current model should be abandoned and
 // the same request retried with FallbackModel.
 type FallbackTriggeredError struct {
@@ -121,12 +111,6 @@ func apiErrRetryable(e *types.APIError) bool {
 func is401Error(err error) bool {
 	ae, ok := AsAPIError(err)
 	return ok && ae.Status == 401
-}
-
-// Is429Error reports whether err is an HTTP 429 rate-limit error.
-func Is429Error(err error) bool {
-	ae, ok := AsAPIError(err)
-	return ok && ae.Status == 429
 }
 
 // Is529Error reports whether err is an HTTP 529 overloaded error.

@@ -23,8 +23,6 @@ func AllTailwindClasses() []TailwindClassInfo {
 
 	// Flex utilities
 	flexClasses := []TailwindClassInfo{
-		{Name: "flex-grow", Category: "flex", Description: "Allow element to grow", Example: `<div class="flex-grow">`},
-		{Name: "flex-shrink", Category: "flex", Description: "Allow element to shrink", Example: `<div class="flex-shrink">`},
 		{Name: "flex-grow-0", Category: "flex", Description: "Prevent element from growing", Example: `<div class="flex-grow-0">`},
 		{Name: "flex-shrink-0", Category: "flex", Description: "Prevent element from shrinking", Example: `<div class="flex-shrink-0">`},
 	}

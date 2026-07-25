@@ -14,12 +14,6 @@ func IsStdoutTerminal() bool {
 	return isTerminal(os.Stdout)
 }
 
-// IsInteractive reports whether both stdin and stdout are TTYs.
-// When false, the process is likely receiving piped input or writing to a pipe.
-func IsInteractive() bool {
-	return IsStdinTerminal() && IsStdoutTerminal()
-}
-
 // isTerminal returns true if f is a character device (TTY).
 // It uses os.File.Stat() and checks ModeCharDevice to avoid adding
 // a dependency on golang.org/x/term (which is already an indirect dep

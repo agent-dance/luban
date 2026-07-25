@@ -11,6 +11,7 @@ func TestCLISemanticCopyCoversEveryLanguage(t *testing.T) {
 		KeyCLIExamplePrint, KeyCLIExampleModel, KeyCLIExampleAllowedDir,
 		KeyCLIFlagDefault, KeyCLIError, KeyCLIParseFailure,
 		KeyCLIInvalidSessionChars, KeyCLIInvalidSessionParent,
+		KeyCLIInputModeSDKPrint, KeyCLIStdinReadFailure, KeyCLIStdinTooLarge,
 		KeyCLIScreenReaderSDK, KeyCLIScreenReaderPrint, KeyCLIScreenReaderOutput,
 		KeyCLIScreenReaderTerminal, KeyCLIWorkingDirectoryError,
 		KeyCLIFlagModel, KeyCLIFlagProvider, KeyCLIFlagAPI, KeyCLIFlagPrint,
@@ -18,7 +19,7 @@ func TestCLISemanticCopyCoversEveryLanguage(t *testing.T) {
 		KeyCLIFlagSystemPrompt, KeyCLIFlagAllowedDir, KeyCLIFlagAllowAll,
 		KeyCLIFlagAllowedTools, KeyCLIFlagDisallowedTools, KeyCLIFlagSandbox,
 		KeyCLIFlagSDK, KeyCLIFlagVersion, KeyCLIFlagVerbose, KeyCLIFlagDebugFile,
-		KeyCLIFlagNoColor, KeyCLIFlagOutputFormat, KeyCLIFlagQuiet, KeyCLIFlagTUI,
+		KeyCLIFlagNoColor, KeyCLIFlagOutputFormat, KeyCLIFlagQuiet,
 		KeyCLIFlagScreenReader, KeyCLIFlagAgents, KeyCLIFlagPromptDump,
 		KeyCLIFlagPromptDumpJSON, KeyCLIFlagLanguage, KeyCLIFlagOutputStyle,
 		KeyCLIFlagAllowedDomains, KeyCLIFlagDisallowedDomains,
@@ -26,6 +27,17 @@ func TestCLISemanticCopyCoversEveryLanguage(t *testing.T) {
 	for _, key := range keys {
 		for _, lang := range AllLanguages() {
 			if got := Text(lang, key); got == "" || strings.HasPrefix(got, "[") {
+				t.Fatalf("Text(%s, %q) = %q", lang.Code(), key, got)
+			}
+		}
+	}
+}
+
+func TestCLIInputTransportCopyCoversEveryLanguage(t *testing.T) {
+	for _, key := range []Key{KeyCLIInputModeSDKPrint, KeyCLIStdinReadFailure, KeyCLIStdinTooLarge} {
+		for _, lang := range AllLanguages() {
+			got := Text(lang, key)
+			if got == "" || strings.HasPrefix(got, "[") {
 				t.Fatalf("Text(%s, %q) = %q", lang.Code(), key, got)
 			}
 		}

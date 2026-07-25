@@ -146,16 +146,13 @@ func TestCatalogPolicyFrontmatterAndDefaults(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name            string
-		input           CatalogPolicyInput
-		visibility      Visibility
-		source          SkillScope
-		modelVisible    bool
-		userInvocable   bool
-		executable      bool
-		modelReason     CatalogPolicyReason
-		userReason      CatalogPolicyReason
-		executionReason CatalogPolicyReason
+		name          string
+		input         CatalogPolicyInput
+		visibility    Visibility
+		source        SkillScope
+		modelVisible  bool
+		userInvocable bool
+		executable    bool
 	}{
 		{
 			name: "default model and user",
@@ -164,8 +161,6 @@ func TestCatalogPolicyFrontmatterAndDefaults(t *testing.T) {
 			},
 			visibility: VisibilityAuto, source: SkillScopeDefault,
 			modelVisible: true, userInvocable: true, executable: true,
-			modelReason: CatalogPolicyReasonDefault, userReason: CatalogPolicyReasonDefault,
-			executionReason: CatalogPolicyReasonDefault,
 		},
 		{
 			name: "frontmatter model disable keeps user execution",
@@ -175,8 +170,6 @@ func TestCatalogPolicyFrontmatterAndDefaults(t *testing.T) {
 			},
 			visibility: VisibilityManualOnly, source: SkillScopeFrontmatter,
 			userInvocable: true, executable: true,
-			modelReason: CatalogPolicyReasonFrontmatterModelDisabled, userReason: CatalogPolicyReasonDefault,
-			executionReason: CatalogPolicyReasonDefault,
 		},
 		{
 			name: "frontmatter user disable keeps model execution",
@@ -186,8 +179,6 @@ func TestCatalogPolicyFrontmatterAndDefaults(t *testing.T) {
 			},
 			visibility: VisibilityAuto, source: SkillScopeFrontmatter,
 			modelVisible: true, executable: true,
-			modelReason: CatalogPolicyReasonDefault, userReason: CatalogPolicyReasonFrontmatterUserDisabled,
-			executionReason: CatalogPolicyReasonDefault,
 		},
 		{
 			name: "all invocation origins disabled",
@@ -197,9 +188,6 @@ func TestCatalogPolicyFrontmatterAndDefaults(t *testing.T) {
 				FrontmatterUserInvocable:          catalogPolicyBool(false),
 			},
 			visibility: VisibilityOff, source: SkillScopeFrontmatter,
-			modelReason:     CatalogPolicyReasonFrontmatterModelDisabled,
-			userReason:      CatalogPolicyReasonFrontmatterUserDisabled,
-			executionReason: CatalogPolicyReasonNoInvocationOrigin,
 		},
 		{
 			name: "frontmatter can explicitly enable a default-disabled user path",
@@ -209,8 +197,6 @@ func TestCatalogPolicyFrontmatterAndDefaults(t *testing.T) {
 			},
 			visibility: VisibilityManualOnly, source: SkillScopeFrontmatter,
 			userInvocable: true, executable: true,
-			modelReason: CatalogPolicyReasonDefault, userReason: CatalogPolicyReasonFrontmatter,
-			executionReason: CatalogPolicyReasonFrontmatter,
 		},
 	}
 
@@ -224,9 +210,7 @@ func TestCatalogPolicyFrontmatterAndDefaults(t *testing.T) {
 			}
 			if got.Visibility != test.visibility || got.VisibilitySource != test.source ||
 				got.ModelVisible != test.modelVisible || got.DescriptionVisible != test.modelVisible ||
-				got.UserInvocable != test.userInvocable || got.Executable != test.executable ||
-				got.ModelReason != test.modelReason || got.UserReason != test.userReason ||
-				got.ExecutionReason != test.executionReason {
+				got.UserInvocable != test.userInvocable || got.Executable != test.executable {
 				t.Fatalf("decision = %#v", got)
 			}
 		})
@@ -266,16 +250,8 @@ func TestCatalogPolicyManagedRestrictionsAndReadOnly(t *testing.T) {
 		denied.ModelVisible || denied.DescriptionVisible || denied.UserInvocable || denied.Executable || denied.Mutable {
 		t.Fatalf("managed deny was relaxed: %#v", denied)
 	}
-	for _, reason := range []CatalogPolicyReason{
-		denied.ModelReason,
-		denied.DescriptionReason,
-		denied.UserReason,
-		denied.ExecutionReason,
-		denied.ReadOnlyReason,
-	} {
-		if reason != CatalogPolicyReasonManagedDeny {
-			t.Fatalf("managed deny reason = %q", reason)
-		}
+	if denied.ReadOnlyReason != CatalogPolicyReasonManagedDeny {
+		t.Fatalf("managed deny reason = %q", denied.ReadOnlyReason)
 	}
 }
 
@@ -296,94 +272,6 @@ func TestCatalogPolicyManagedDenyIgnoresMalformedLowerScopes(t *testing.T) {
 	}
 	if got.Visibility != VisibilityOff || got.VisibilitySource != SkillScopeManaged || got.Executable || got.Mutable {
 		t.Fatalf("managed deny decision = %#v", got)
-	}
-}
-
-func TestCatalogPolicyDecisionReasons(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name              string
-		visibility        Visibility
-		modelReason       CatalogPolicyReason
-		descriptionReason CatalogPolicyReason
-		userReason        CatalogPolicyReason
-		executionReason   CatalogPolicyReason
-	}{
-		{
-			name: "auto", visibility: VisibilityAuto,
-			modelReason: CatalogPolicyReasonSessionOverride, descriptionReason: CatalogPolicyReasonSessionOverride,
-			userReason: CatalogPolicyReasonSessionOverride, executionReason: CatalogPolicyReasonSessionOverride,
-		},
-		{
-			name: "name-only", visibility: VisibilityNameOnly,
-			modelReason: CatalogPolicyReasonSessionOverride, descriptionReason: CatalogPolicyReasonNameOnly,
-			userReason: CatalogPolicyReasonSessionOverride, executionReason: CatalogPolicyReasonSessionOverride,
-		},
-		{
-			name: "manual-only", visibility: VisibilityManualOnly,
-			modelReason: CatalogPolicyReasonManualOnly, descriptionReason: CatalogPolicyReasonManualOnly,
-			userReason: CatalogPolicyReasonSessionOverride, executionReason: CatalogPolicyReasonSessionOverride,
-		},
-		{
-			name: "off", visibility: VisibilityOff,
-			modelReason: CatalogPolicyReasonOff, descriptionReason: CatalogPolicyReasonOff,
-			userReason: CatalogPolicyReasonOff, executionReason: CatalogPolicyReasonOff,
-		},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := EvaluateCatalogPolicy(CatalogPolicyInput{
-				SkillID:              catalogPolicyTestSkillID,
-				DefaultModelVisible:  true,
-				DefaultUserInvocable: true,
-				SessionOverride: catalogPolicyOverride(
-					SkillScopeSession,
-					catalogPolicyVisibility(test.visibility),
-				),
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.ModelReason != test.modelReason || got.DescriptionReason != test.descriptionReason ||
-				got.UserReason != test.userReason || got.ExecutionReason != test.executionReason {
-				t.Fatalf("reasons = %#v", got)
-			}
-		})
-	}
-
-	for _, scopeTest := range []struct {
-		scope  SkillScope
-		reason CatalogPolicyReason
-	}{
-		{scope: SkillScopeUser, reason: CatalogPolicyReasonUserOverride},
-		{scope: SkillScopeProject, reason: CatalogPolicyReasonProjectOverride},
-		{scope: SkillScopeSession, reason: CatalogPolicyReasonSessionOverride},
-	} {
-		t.Run("allow-reason-"+string(scopeTest.scope), func(t *testing.T) {
-			input := CatalogPolicyInput{
-				SkillID:              catalogPolicyTestSkillID,
-				DefaultModelVisible:  true,
-				DefaultUserInvocable: true,
-			}
-			override := catalogPolicyOverride(scopeTest.scope, catalogPolicyVisibility(VisibilityNameOnly))
-			switch scopeTest.scope {
-			case SkillScopeUser:
-				input.UserOverride = override
-			case SkillScopeProject:
-				input.ProjectOverride = override
-			case SkillScopeSession:
-				input.SessionOverride = override
-			}
-			got, err := EvaluateCatalogPolicy(input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.ModelReason != scopeTest.reason || got.UserReason != scopeTest.reason ||
-				got.ExecutionReason != scopeTest.reason {
-				t.Fatalf("scope reasons = %#v", got)
-			}
-		})
 	}
 }
 

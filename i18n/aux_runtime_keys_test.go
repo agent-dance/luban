@@ -11,7 +11,6 @@ func TestAuxRuntimeKeysCoverEveryLanguage(t *testing.T) {
 		KeyAuxCompactBudgetTruncated,
 		KeyAuxCompactInvalidDirection, KeyAuxCompactEmptyHistory, KeyAuxCompactInvalidPivot,
 		KeyAuxCompactNothingBefore, KeyAuxCompactNothingAfter, KeyAuxCompactPreserveNone,
-		KeyAuxCompactImageRemoved, KeyAuxCompactDocumentRemoved,
 		KeyAuxClipboardUnsupported, KeyAuxClipboardCreateTemp, KeyAuxClipboardReadTemp,
 		KeyAuxClipboardMissingReference, KeyAuxClipboardReferenceNotImage, KeyAuxClipboardReadImage,
 		KeyAuxClipboardLinuxUnavailable, KeyAuxClipboardPowerShellFailed,
@@ -23,10 +22,9 @@ func TestAuxRuntimeKeysCoverEveryLanguage(t *testing.T) {
 		KeyAuxEngineSessionNotFound, KeyAuxEngineSessionDeleted, KeyAuxEngineShutdown,
 		KeyAuxEngineNoProvider,
 		KeyAuxSwarmTeamNotFound, KeyAuxSwarmInvalidName, KeyAuxSwarmMailboxFailed, KeyAuxSwarmFailed,
-		KeyAuxSwarmPaneTitle, KeyAuxSwarmPaneBorder, KeyAuxSwarmLayout,
 		KeyAuxSkillNotFound, KeyAuxSkillRevisionConflict, KeyAuxSkillManagedReadOnly,
 		KeyAuxSkillInvalidScope, KeyAuxSkillInvalidSession, KeyAuxSkillFailed,
-		KeyAuxMCPPromptDescription, KeyAuxMCPToolError,
+		KeyAuxMCPPromptDescription,
 	}
 	for _, key := range keys {
 		for _, lang := range AllLanguages() {

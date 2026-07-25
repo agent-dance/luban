@@ -23,10 +23,3 @@ func (a *App) checkAndClearDirty() bool {
 	}
 	return a.dirty.Swap(false)
 }
-
-func (a *App) resetDirty() {
-	if a == nil {
-		panic("tui: nil app in resetDirty")
-	}
-	a.dirty.Store(false)
-}

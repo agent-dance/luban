@@ -5,24 +5,20 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
 
-	svcmcp "github.com/agent-dance/luban/services/mcp"
+	"github.com/agent-dance/luban/internal/mcp/catalog"
+	mcpmanager "github.com/agent-dance/luban/internal/mcp/manager"
 )
 
 func TestMCPPromptCatalogIdentityDigestAndMetadataRevision(t *testing.T) {
-	prompt := MCPPrompt{
-		Server: "GitHub", Name: "review/pr", Description: "Review a pull request",
-		WhenToUse: "Use for pull requests", ArgNames: []string{"number"}, Body: "Review $number.",
-	}
-	first, err := prompt.CatalogInput()
+	first, err := NewMCPPromptCatalogInput("GitHub", "review/pr", "Review a pull request", []string{"number"}, "Review $number.")
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := prompt.CatalogInput()
+	second, err := NewMCPPromptCatalogInput("GitHub", "review/pr", "Review a pull request", []string{"number"}, "Review $number.")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,9 +32,7 @@ func TestMCPPromptCatalogIdentityDigestAndMetadataRevision(t *testing.T) {
 		t.Fatalf("ID source = %q, %v", source, ok)
 	}
 
-	bodyChanged := prompt
-	bodyChanged.Body += "\n"
-	changedBodyInput, err := bodyChanged.CatalogInput()
+	changedBodyInput, err := NewMCPPromptCatalogInput("GitHub", "review/pr", "Review a pull request", []string{"number"}, "Review $number.\n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,20 +43,18 @@ func TestMCPPromptCatalogIdentityDigestAndMetadataRevision(t *testing.T) {
 		t.Fatal("body update did not change exact-content digest")
 	}
 
-	metadataChanged := prompt
-	metadataChanged.Description = "Review pull requests carefully"
-	metadataInput, err := metadataChanged.CatalogInput()
+	metadataInput, err := NewMCPPromptCatalogInput("GitHub", "review/pr", "Review pull requests carefully", []string{"number"}, "Review $number.")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if metadataInput.ID != first.ID || metadataInput.Digest != first.Digest {
 		t.Fatal("metadata-only update changed identity or body digest")
 	}
-	baseFingerprint, err := SkillRevisionFingerprint(task14EffectiveSkill(first, 1))
+	baseFingerprint, err := skillRevisionFingerprint(task14EffectiveSkill(first, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	metadataFingerprint, err := SkillRevisionFingerprint(task14EffectiveSkill(metadataInput, 1))
+	metadataFingerprint, err := skillRevisionFingerprint(task14EffectiveSkill(metadataInput, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,10 +65,10 @@ func TestMCPPromptCatalogIdentityDigestAndMetadataRevision(t *testing.T) {
 
 func TestMCPResourceCatalogIdentityIncludesServerAndOriginalObject(t *testing.T) {
 	const markdown = "---\ndescription: Review\n---\nbody\n"
-	first := task14ResourceInput(t, "Server-A", svcmcp.Resource{
+	first := task14ResourceInput(t, "Server-A", catalog.Resource{
 		URI: "SKILL://Review.EXAMPLE/catalog/./review/SKILL.md", Name: "shared",
 	}, markdown)
-	equivalent := task14ResourceInput(t, "Server-A", svcmcp.Resource{
+	equivalent := task14ResourceInput(t, "Server-A", catalog.Resource{
 		URI: "skill://review.example/catalog/review/SKILL.md", Name: "renamed",
 	}, markdown)
 	if first.ID != equivalent.ID || first.Locator != equivalent.Locator {
@@ -86,20 +78,20 @@ func TestMCPResourceCatalogIdentityIncludesServerAndOriginalObject(t *testing.T)
 		t.Fatal("test setup did not change display metadata")
 	}
 
-	otherServer := task14ResourceInput(t, "server-b", svcmcp.Resource{
+	otherServer := task14ResourceInput(t, "server-b", catalog.Resource{
 		URI: "skill://review.example/catalog/review/SKILL.md", Name: "shared",
 	}, markdown)
 	if otherServer.ID == first.ID {
 		t.Fatal("two servers publishing the same resource URI collided")
 	}
-	otherResource := task14ResourceInput(t, "Server-A", svcmcp.Resource{
+	otherResource := task14ResourceInput(t, "Server-A", catalog.Resource{
 		URI: "skill://review.example/catalog/other/SKILL.md", Name: "shared",
 	}, markdown)
 	if otherResource.ID == first.ID {
 		t.Fatal("two resource URIs on one server collided")
 	}
 
-	changedMarkdown := task14ResourceInput(t, "Server-A", svcmcp.Resource{
+	changedMarkdown := task14ResourceInput(t, "Server-A", catalog.Resource{
 		URI: "skill://review.example/catalog/review/SKILL.md", Name: "shared",
 	}, markdown+"\n")
 	if changedMarkdown.ID != first.ID {
@@ -112,16 +104,21 @@ func TestMCPResourceCatalogIdentityIncludesServerAndOriginalObject(t *testing.T)
 		t.Fatalf("digest = %q, want exact remote markdown digest", first.Digest)
 	}
 	if first.Skill.FilePath != "SKILL://Review.EXAMPLE/catalog/./review/SKILL.md" {
-		t.Fatalf("legacy resource FilePath changed: %q", first.Skill.FilePath)
+		t.Fatalf("resource FilePath changed: %q", first.Skill.FilePath)
 	}
 }
 
 func TestMCPCatalogStoreRetainsSameDisplayNameAndIndependentNamespaces(t *testing.T) {
-	manager := NewManager()
-	first := task14ResourceInput(t, "srv", svcmcp.Resource{URI: "skill://one/SKILL.md", Name: "shared"}, "one")
-	second := task14ResourceInput(t, "srv", svcmcp.Resource{URI: "skill://two/SKILL.md", Name: "shared"}, "two")
-	manager.RegisterMCPSkillCatalogInputs([]MCPCatalogInput{second, first})
-	manager.RegisterMCPPrompts([]MCPPrompt{{Name: "shared", Body: "prompt"}})
+	manager := newCatalogManagerForTest()
+	first := task14ResourceInput(t, "srv", catalog.Resource{URI: "skill://one/SKILL.md", Name: "shared"}, "one")
+	second := task14ResourceInput(t, "srv", catalog.Resource{URI: "skill://two/SKILL.md", Name: "shared"}, "two")
+	prompt, err := NewMCPPromptCatalogInput("srv", "shared", "", nil, "prompt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.ReplaceMCPCatalogInputsAtGeneration(manager.ProjectGeneration(), []MCPCatalogInput{second, prompt, first}); err != nil {
+		t.Fatal(err)
+	}
 
 	inputs := manager.MCPCatalogInputs()
 	if len(inputs) != 3 {
@@ -132,14 +129,6 @@ func TestMCPCatalogStoreRetainsSameDisplayNameAndIndependentNamespaces(t *testin
 			t.Fatalf("inputs are not sorted by stable ID: %#v", inputs)
 		}
 	}
-	resourceInputs := manager.MCPSkillCatalogInputs()
-	if len(resourceInputs) != 2 || resourceInputs[0].ID == resourceInputs[1].ID {
-		t.Fatalf("same-name resources were collapsed: %#v", resourceInputs)
-	}
-	if got := len(manager.MCPSkills()); got != 2 {
-		t.Fatalf("legacy MCPSkills length = %d, want 2", got)
-	}
-
 	inputs[0].Skill.Name = "mutated"
 	inputsAgain := manager.MCPCatalogInputs()
 	for _, input := range inputsAgain {
@@ -148,62 +137,29 @@ func TestMCPCatalogStoreRetainsSameDisplayNameAndIndependentNamespaces(t *testin
 		}
 	}
 
-	manager.RegisterMCPPrompts(nil)
-	if len(manager.MCPCatalogInputs()) != 2 || len(manager.MCPSkillCatalogInputs()) != 2 {
-		t.Fatal("clearing prompts also cleared resource-backed skills")
-	}
-	manager.RegisterMCPSkillCatalogInputs(nil)
-	if len(manager.MCPCatalogInputs()) != 0 {
-		t.Fatal("clearing resources left stale MCP catalog inputs")
-	}
-}
-
-func TestMCPRevisionDeletionAndReconnectProducesRevokeAndReenable(t *testing.T) {
-	input := task14ResourceInput(t, "srv", svcmcp.Resource{URI: "skill://review/SKILL.md", Name: "review"}, "body")
-	before, err := NewCatalogSnapshot(1, []EffectiveSkill{task14EffectiveSkill(input, 1)})
-	if err != nil {
+	if err := manager.ReplaceMCPCatalogInputsAtGeneration(manager.ProjectGeneration(), []MCPCatalogInput{prompt}); err != nil {
 		t.Fatal(err)
 	}
-	disconnected, err := NewCatalogSnapshot(2, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	removed, err := DiffCatalog(before, disconnected)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(removed.Revokes) != 1 || removed.Revokes[0].ID != input.ID || removed.Revokes[0].Reason != CatalogRevokeDeleted {
-		t.Fatalf("removal delta = %#v", removed)
-	}
-
-	reconnectedSkill := task14EffectiveSkill(input, 2)
-	reconnected, err := NewCatalogSnapshot(3, []EffectiveSkill{reconnectedSkill})
-	if err != nil {
-		t.Fatal(err)
-	}
-	coalesced, err := CoalesceCatalogSnapshots(before, disconnected, reconnected)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(coalesced.Upserts) != 1 || coalesced.Upserts[0].Skill.ID != input.ID || coalesced.Upserts[0].Reason != CatalogUpsertReenabled {
-		t.Fatalf("reconnect delta = %#v", coalesced)
+	remaining := manager.MCPCatalogInputs()
+	if len(remaining) != 1 || remaining[0].ID != prompt.ID {
+		t.Fatalf("clearing resources changed prompt entries: %#v", remaining)
 	}
 }
 
 func TestMCPCatalogRefreshRetainsStateOnReadErrorAndRecovers(t *testing.T) {
 	t.Setenv(FeatureFlagMCPSkills, "1")
-	manager := NewManager()
+	manager := newCatalogManagerForTest()
 	goodRaw := &task14MCPRawCaller{
-		resources: []svcmcp.Resource{{URI: "skill://review/SKILL.md", Name: "review"}},
-		reads: map[string]svcmcp.ReadResourceResult{
-			"skill://review/SKILL.md": {Contents: []svcmcp.ResourceContent{{Text: "body"}}},
+		resources: []catalog.Resource{{URI: "skill://review/SKILL.md", Name: "review"}},
+		reads: map[string]catalog.ReadResourceResult{
+			"skill://review/SKILL.md": {Contents: []catalog.ResourceContent{{Text: "body"}}},
 		},
 	}
-	goodState := task14ConnectedState("srv", goodRaw)
-	if err := RefreshMCPSkillCatalogFromConnections(context.Background(), manager, []svcmcp.MCPServerConnection{goodState}); err != nil {
+	goodState := task14ConnectedState(t, "srv", goodRaw)
+	if err := task14RefreshCurrentMCPCatalog(context.Background(), manager, []mcpmanager.MCPServerConnection{goodState}); err != nil {
 		t.Fatal(err)
 	}
-	initial := manager.MCPSkillCatalogInputs()
+	initial := manager.MCPCatalogInputs()
 	if len(initial) != 1 {
 		t.Fatalf("initial inputs = %#v", initial)
 	}
@@ -212,47 +168,47 @@ func TestMCPCatalogRefreshRetainsStateOnReadErrorAndRecovers(t *testing.T) {
 		resources: goodRaw.resources,
 		readErr:   errors.New("temporary read failure"),
 	}
-	failingState := task14ConnectedState("srv", failingRaw)
-	if err := RefreshMCPSkillCatalogFromConnections(context.Background(), manager, []svcmcp.MCPServerConnection{failingState}); err == nil {
+	failingState := task14ConnectedState(t, "srv", failingRaw)
+	if err := task14RefreshCurrentMCPCatalog(context.Background(), manager, []mcpmanager.MCPServerConnection{failingState}); err == nil {
 		t.Fatal("read failure was not reported")
 	}
-	afterFailure := manager.MCPSkillCatalogInputs()
+	afterFailure := manager.MCPCatalogInputs()
 	if !reflect.DeepEqual(afterFailure, initial) {
 		t.Fatalf("transient error replaced last authoritative state:\nbefore=%#v\nafter=%#v", initial, afterFailure)
 	}
 
-	if err := RefreshMCPSkillCatalogFromConnections(context.Background(), manager, []svcmcp.MCPServerConnection{{
-		Name: "srv", Type: svcmcp.MCPStateFailed,
+	if err := task14RefreshCurrentMCPCatalog(context.Background(), manager, []mcpmanager.MCPServerConnection{{
+		Name: "srv", Type: mcpmanager.MCPStateFailed,
 	}}); err != nil {
 		t.Fatal(err)
 	}
-	if len(manager.MCPSkillCatalogInputs()) != 0 {
+	if len(manager.MCPCatalogInputs()) != 0 {
 		t.Fatal("successful disconnected snapshot did not clear resources")
 	}
-	if err := RefreshMCPSkillCatalogFromConnections(context.Background(), manager, []svcmcp.MCPServerConnection{goodState}); err != nil {
+	if err := task14RefreshCurrentMCPCatalog(context.Background(), manager, []mcpmanager.MCPServerConnection{goodState}); err != nil {
 		t.Fatal(err)
 	}
-	reconnected := manager.MCPSkillCatalogInputs()
+	reconnected := manager.MCPCatalogInputs()
 	if len(reconnected) != 1 || reconnected[0].ID != initial[0].ID {
 		t.Fatalf("reconnect identity changed: %#v", reconnected)
 	}
 
 	t.Setenv(FeatureFlagMCPSkills, "0")
-	if err := RefreshMCPSkillCatalogFromConnections(context.Background(), manager, []svcmcp.MCPServerConnection{goodState}); err != nil {
+	if err := task14RefreshCurrentMCPCatalog(context.Background(), manager, []mcpmanager.MCPServerConnection{goodState}); err != nil {
 		t.Fatal(err)
 	}
-	if len(manager.MCPSkillCatalogInputs()) != 0 {
+	if len(manager.MCPCatalogInputs()) != 0 {
 		t.Fatal("feature-gated empty snapshot did not clear resources")
 	}
 }
 
 func TestMCPDigestTracksExactMultipartRemoteMarkdown(t *testing.T) {
-	parts := []svcmcp.ResourceContent{{Text: "first\r\n"}, {Text: "second\n"}}
+	parts := []catalog.ResourceContent{{Text: "first\r\n"}, {Text: "second\n"}}
 	markdown, ok := mcpSkillMarkdown(parts)
 	if !ok {
 		t.Fatal("multipart markdown was not produced")
 	}
-	input := task14ResourceInput(t, "srv", svcmcp.Resource{URI: "skill://multi/SKILL.md", Name: "multi"}, markdown)
+	input := task14ResourceInput(t, "srv", catalog.Resource{URI: "skill://multi/SKILL.md", Name: "multi"}, markdown)
 	if input.Digest != ComputeSkillDigest("first\r\n\nsecond\n") {
 		t.Fatalf("multipart digest = %q for markdown %q", input.Digest, markdown)
 	}
@@ -261,27 +217,13 @@ func TestMCPDigestTracksExactMultipartRemoteMarkdown(t *testing.T) {
 	}
 }
 
-func TestMCPCatalogSameDisplayNameLocalIdentityRemainsDistinct(t *testing.T) {
-	prompt, err := (MCPPrompt{Name: "shared", Body: "remote"}).CatalogInput()
-	if err != nil {
-		t.Fatal(err)
-	}
-	localLocator, err := CanonicalFilesystemSkillLocator(filepath.Join(t.TempDir(), "shared", "SKILL.md"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	localID, err := ComputeSkillID(SourceProject, localLocator)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prompt.Skill.Name != "shared" || prompt.ID == localID {
-		t.Fatalf("same display name identities: MCP=%q local=%q", prompt.ID, localID)
-	}
-}
-
 func TestMCPCatalogConcurrentReplaceAndSnapshotIsRaceSafe(t *testing.T) {
-	manager := NewManager()
-	input := task14ResourceInput(t, "srv", svcmcp.Resource{URI: "skill://race/SKILL.md", Name: "race"}, "body")
+	manager := newCatalogManagerForTest()
+	input := task14ResourceInput(t, "srv", catalog.Resource{URI: "skill://race/SKILL.md", Name: "race"}, "body")
+	prompt, err := NewMCPPromptCatalogInput("srv", "prompt", "", nil, "body")
+	if err != nil {
+		t.Fatal(err)
+	}
 	var workers sync.WaitGroup
 	for worker := 0; worker < 8; worker++ {
 		workers.Add(1)
@@ -290,13 +232,13 @@ func TestMCPCatalogConcurrentReplaceAndSnapshotIsRaceSafe(t *testing.T) {
 			for iteration := 0; iteration < 100; iteration++ {
 				switch worker % 4 {
 				case 0:
-					manager.RegisterMCPPrompts([]MCPPrompt{{Server: "srv", Name: "prompt", Body: "body"}})
+					_ = manager.ReplaceMCPCatalogInputsAtGeneration(manager.ProjectGeneration(), []MCPCatalogInput{prompt})
 				case 1:
-					manager.RegisterMCPSkillCatalogInputs([]MCPCatalogInput{input})
+					_ = manager.ReplaceMCPCatalogInputsAtGeneration(manager.ProjectGeneration(), []MCPCatalogInput{input})
 				case 2:
 					_ = manager.MCPCatalogInputs()
 				default:
-					_ = manager.MCPPrompts()
+					_ = manager.MCPCatalogInputs()
 				}
 			}
 		}(worker)
@@ -310,8 +252,8 @@ func TestMCPCatalogConcurrentReplaceAndSnapshotIsRaceSafe(t *testing.T) {
 }
 
 type task14MCPRawCaller struct {
-	resources []svcmcp.Resource
-	reads     map[string]svcmcp.ReadResourceResult
+	resources []catalog.Resource
+	reads     map[string]catalog.ReadResourceResult
 	readErr   error
 }
 
@@ -319,7 +261,7 @@ func (caller *task14MCPRawCaller) CallRaw(_ context.Context, method string, para
 	var value any
 	switch method {
 	case "resources/list":
-		value = svcmcp.ListResourcesResult{Resources: caller.resources}
+		value = catalog.ListResourcesResult{Resources: caller.resources}
 	case "resources/read":
 		if caller.readErr != nil {
 			return caller.readErr
@@ -336,17 +278,26 @@ func (caller *task14MCPRawCaller) CallRaw(_ context.Context, method string, para
 	return json.Unmarshal(data, out)
 }
 
-func task14ConnectedState(serverName string, raw *task14MCPRawCaller) svcmcp.MCPServerConnection {
-	return svcmcp.MCPServerConnection{
+func task14ConnectedState(t testing.TB, serverName string, raw *task14MCPRawCaller) mcpmanager.MCPServerConnection {
+	t.Helper()
+	return mcpmanager.MCPServerConnection{
 		Name:         serverName,
-		Type:         svcmcp.MCPStateConnected,
-		Client:       svcmcp.NewClient(raw, nil),
-		Capabilities: svcmcp.ServerCapabilities{"resources": map[string]any{}},
-		Resources:    append([]svcmcp.Resource(nil), raw.resources...),
+		Type:         mcpmanager.MCPStateConnected,
+		Client:       newMCPProtocolTestClient(t, raw),
+		Capabilities: catalog.ServerCapabilities{"resources": map[string]any{}},
+		Resources:    append([]catalog.Resource(nil), raw.resources...),
 	}
 }
 
-func task14ResourceInput(t *testing.T, serverName string, resource svcmcp.Resource, markdown string) MCPCatalogInput {
+func task14RefreshCurrentMCPCatalog(ctx context.Context, manager *Manager, states []mcpmanager.MCPServerConnection) error {
+	inputs, err := DiscoverMCPCatalogInputsFromConnections(ctx, states)
+	if err != nil {
+		return err
+	}
+	return manager.ReplaceMCPCatalogInputsAtGeneration(manager.ProjectGeneration(), inputs)
+}
+
+func task14ResourceInput(t *testing.T, serverName string, resource catalog.Resource, markdown string) MCPCatalogInput {
 	t.Helper()
 	skill := skillFromMCPResource(serverName, resource, markdown)
 	if skill == nil {
@@ -363,7 +314,7 @@ func task14EffectiveSkill(input MCPCatalogInput, revision SkillRevision) Effecti
 	return EffectiveSkill{
 		ID:                 input.ID,
 		Name:               input.Skill.Name,
-		Summary:            input.Skill.EffectiveDescription(),
+		Summary:            input.Skill.effectiveDescription(),
 		Source:             SourceMCP,
 		Locator:            input.Locator,
 		Digest:             input.Digest,

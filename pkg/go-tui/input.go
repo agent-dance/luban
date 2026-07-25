@@ -23,11 +23,11 @@ type Input struct {
 	onChange         func(string)
 
 	// Reactive state
-	text       *State[string]
-	cursorPos  *State[int]
-	scrollPos  *State[int] // horizontal scroll offset (first visible rune index)
-	blink      *State[bool]
-	focused    *State[bool]
+	text      *State[string]
+	cursorPos *State[int]
+	scrollPos *State[int] // horizontal scroll offset (first visible rune index)
+	blink     *State[bool]
+	focused   *State[bool]
 }
 
 // Interface assertions

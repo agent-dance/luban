@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/agent-dance/luban/engine"
+	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -16,14 +16,14 @@ func TestSubagentPermissionSnapshotIgnoresLaterForegroundRules(t *testing.T) {
 	handler := NewCLIPermissionHandler(checker)
 	snapshot := types.ToolRuntimeContext{PermissionMode: "default"}
 
-	decision, err := handler.Check(context.Background(), engine.PermissionRequest{
+	decision, err := handler.Check(context.Background(), permission.PermissionRequest{
 		SessionID: "parent", ToolName: "Write", Input: map[string]any{"file_path": "note.txt"},
 		PermissionSnapshot: &snapshot,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision != engine.PermissionDeny {
+	if decision != permission.PermissionDeny {
 		t.Fatalf("later foreground allow rule changed child snapshot decision: %v", decision)
 	}
 }
@@ -34,10 +34,10 @@ func TestSubagentPermissionSnapshotIgnoresForegroundAlwaysAllowCache(t *testing.
 		return PromptResponse{Decision: DecisionAllow, Outcome: PromptOutcomeApproved}
 	})
 	handler := NewCLIPermissionHandler(checker)
-	request := engine.PermissionRequest{
+	request := permission.PermissionRequest{
 		SessionID: "parent", ToolName: "Write", Input: map[string]any{"file_path": "note.txt"},
 	}
-	if decision, err := handler.Check(context.Background(), request); err != nil || decision != engine.PermissionAllow {
+	if decision, err := handler.Check(context.Background(), request); err != nil || decision != permission.PermissionAllow {
 		t.Fatalf("seed foreground cache: decision=%v err=%v", decision, err)
 	}
 
@@ -50,7 +50,7 @@ func TestSubagentPermissionSnapshotIgnoresForegroundAlwaysAllowCache(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision != engine.PermissionDeny {
+	if decision != permission.PermissionDeny {
 		t.Fatalf("foreground cache changed child snapshot decision: %v", decision)
 	}
 }
@@ -62,14 +62,14 @@ func TestSubagentPermissionSnapshotRulesOverrideForegroundPolicy(t *testing.T) {
 		PermissionMode: "bypassPermissions",
 		DeniedRules:    []types.PermissionRuleValue{{ToolName: "Write"}},
 	}
-	decision, err := handler.Check(context.Background(), engine.PermissionRequest{
+	decision, err := handler.Check(context.Background(), permission.PermissionRequest{
 		SessionID: "parent", ToolName: "Write", Input: map[string]any{"file_path": "note.txt"},
 		PermissionSnapshot: &snapshot,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision != engine.PermissionDeny {
+	if decision != permission.PermissionDeny {
 		t.Fatalf("snapshot deny lost under foreground allow-all: %v", decision)
 	}
 }

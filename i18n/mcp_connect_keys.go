@@ -11,8 +11,6 @@ const (
 	KeyMCPNoServers                Key = "mcp.no_servers"
 	KeyMCPServersSummary           Key = "mcp.servers_summary"
 	KeyMCPDiagnostics              Key = "mcp.diagnostics"
-	KeyMCPManagedEnable            Key = "mcp.managed.enable"
-	KeyMCPManagedDisable           Key = "mcp.managed.disable"
 	KeyMCPEnableFailed             Key = "mcp.enable.failed"
 	KeyMCPDisableFailed            Key = "mcp.disable.failed"
 	KeyMCPNoneEnabled              Key = "mcp.enable.none"
@@ -30,7 +28,6 @@ const (
 	KeyMCPReconnectStateFailed     Key = "mcp.reconnect.state_failed"
 	KeyMCPReconnectUnexpectedState Key = "mcp.reconnect.unexpected_state"
 	KeyMCPAuthOpenURL              Key = "mcp.auth.open_url"
-	KeyMCPAuthClaudeConnector      Key = "mcp.auth.claude_connector"
 	KeyMCPAuthUnsupportedTransport Key = "mcp.auth.unsupported_transport"
 	KeyMCPInvalidServerJSON        Key = "mcp.invalid_server_json"
 	KeyMCPInvalidConfig            Key = "mcp.invalid_config"
@@ -77,32 +74,14 @@ const (
 	KeyMCPScopeLocal               Key = "mcp.scope.local"
 	KeyMCPScopeUser                Key = "mcp.scope.user"
 	KeyMCPScopeProject             Key = "mcp.scope.project"
-	KeyMCPScopeDynamic             Key = "mcp.scope.dynamic"
-	KeyMCPScopeEnterprise          Key = "mcp.scope.enterprise"
-	KeyMCPScopeClaudeAI            Key = "mcp.scope.claude_ai"
-	KeyMCPScopeManaged             Key = "mcp.scope.managed"
 	KeyMCPDoctorNoServers          Key = "mcp.doctor.no_servers"
 	KeyMCPDoctorFailed             Key = "mcp.doctor.failed"
 	KeyMCPDoctorDiagnostics        Key = "mcp.doctor.diagnostics"
 	KeyMCPDoctorConfigured         Key = "mcp.doctor.configured"
-	KeyMCPPromptRan                Key = "mcp.prompt_ran"
 
-	KeyConnectRegistryUnavailable        Key = "connect.registry_unavailable"
-	KeyConnectListHeader                 Key = "connect.list_header"
-	KeyConnectListHint                   Key = "connect.list_hint"
-	KeyConnectUnknownProviderAvailable   Key = "connect.unknown_provider_available"
 	KeyConnectUnknownProvider            Key = "connect.unknown_provider"
-	KeyConnectReady                      Key = "connect.ready"
-	KeyConnectOAuthHint                  Key = "connect.oauth_hint"
-	KeyConnectDeviceHint                 Key = "connect.device_hint"
-	KeyConnectInlineAPIKeyUnsupported    Key = "connect.inline_api_key_unsupported"
-	KeyConnectCredentialStoreCannotSave  Key = "connect.credential_store_cannot_save"
 	KeyConnectCredentialStoreUnavailable Key = "connect.credential_store_unavailable"
-	KeyConnectAPIKeyPrompt               Key = "connect.api_key_prompt"
-	KeyConnectCancelled                  Key = "connect.cancelled"
-	KeyConnectNoAPIKey                   Key = "connect.no_api_key"
 	KeyConnectSaveCredentialsFailed      Key = "connect.save_credentials_failed"
-	KeyConnectCredentialsSaved           Key = "connect.credentials_saved"
 	KeyConnectModelHint                  Key = "connect.model_hint"
 	KeyConnectOAuthUnsupported           Key = "connect.oauth_unsupported"
 	KeyConnectOAuthConfigUnavailable     Key = "connect.oauth_config_unavailable"
@@ -124,8 +103,6 @@ const (
 	KeyConnectEnterCode                  Key = "connect.enter_code"
 	KeyConnectDeviceFailed               Key = "connect.device_failed"
 	KeyConnectDeviceSuccess              Key = "connect.device_success"
-	KeyConnectDeleteCredentialsFailed    Key = "connect.delete_credentials_failed"
-	KeyConnectCredentialsRemoved         Key = "connect.credentials_removed"
 	KeyConnectUnsupportedOS              Key = "connect.unsupported_os"
 )
 
@@ -151,8 +128,6 @@ func init() {
 	add(KeyMCPNoServers, "No MCP servers configured. Use `luban-code mcp add-json` to add one.\n", "尚未配置 MCP 服务器。可使用 `luban-code mcp add-json` 添加。\n", "Keine MCP-Server konfiguriert. Füge mit `luban-code mcp add-json` einen hinzu.\n", "MCP サーバーが設定されていません。`luban-code mcp add-json` で追加できます。\n", "구성된 MCP 서버가 없습니다. `luban-code mcp add-json`으로 추가하세요.\n", "Серверы MCP не настроены. Добавьте сервер командой `luban-code mcp add-json`.\n")
 	add(KeyMCPServersSummary, "MCP servers: %d total (%d connected, %d pending, %d failed, %d needs auth, %d disabled)\n", "MCP 服务器：共 %d 个（已连接 %d、等待中 %d、失败 %d、需要认证 %d、已禁用 %d）\n", "MCP-Server: %d insgesamt (%d verbunden, %d ausstehend, %d fehlgeschlagen, %d benötigen Authentifizierung, %d deaktiviert)\n", "MCP サーバー：合計 %d（接続済み %d、保留中 %d、失敗 %d、要認証 %d、無効 %d）\n", "MCP 서버: 총 %d개(연결됨 %d, 대기 중 %d, 실패 %d, 인증 필요 %d, 비활성화 %d)\n", "Серверы MCP: всего %d (подключено %d, ожидает %d, с ошибками %d, нужна авторизация %d, отключено %d)\n")
 	add(KeyMCPDiagnostics, "Diagnostics:\n", "MCP 诊断：\n", "MCP-Diagnose:\n", "MCP 診断：\n", "MCP 진단:\n", "Диагностика MCP:\n")
-	add(KeyMCPManagedEnable, "MCP server %q is managed by policy and cannot be enabled here\n", "MCP 服务器 %q 由策略管理，无法在此启用\n", "MCP-Server %q wird durch eine Richtlinie verwaltet und kann hier nicht aktiviert werden\n", "MCP サーバー %q はポリシーで管理されているため、ここでは有効にできません\n", "MCP 서버 %q은(는) 정책으로 관리되므로 여기서 활성화할 수 없습니다\n", "Сервер MCP %q управляется политикой, поэтому включить его здесь нельзя\n")
-	add(KeyMCPManagedDisable, "MCP server %q is managed by policy and cannot be disabled here\n", "MCP 服务器 %q 由策略管理，无法在此禁用\n", "MCP-Server %q wird durch eine Richtlinie verwaltet und kann hier nicht deaktiviert werden\n", "MCP サーバー %q はポリシーで管理されているため、ここでは無効にできません\n", "MCP 서버 %q은(는) 정책으로 관리되므로 여기서 비활성화할 수 없습니다\n", "Сервер MCP %q управляется политикой, поэтому отключить его здесь нельзя\n")
 	add(KeyMCPEnableFailed, "Failed to enable MCP server %q: %v\n", "启用 MCP 服务器 %q 失败：%v\n", "MCP-Server %q konnte nicht aktiviert werden: %v\n", "MCP サーバー %q を有効にできませんでした：%v\n", "MCP 서버 %q을(를) 활성화하지 못했습니다: %v\n", "Не удалось включить сервер MCP %q: %v\n")
 	add(KeyMCPDisableFailed, "Failed to disable MCP server %q: %v\n", "禁用 MCP 服务器 %q 失败：%v\n", "MCP-Server %q konnte nicht deaktiviert werden: %v\n", "MCP サーバー %q を無効にできませんでした：%v\n", "MCP 서버 %q을(를) 비활성화하지 못했습니다: %v\n", "Не удалось отключить сервер MCP %q: %v\n")
 	add(KeyMCPNoneEnabled, "No MCP servers were enabled.\n", "没有启用任何 MCP 服务器。\n", "Es wurden keine MCP-Server aktiviert.\n", "有効にした MCP サーバーはありません。\n", "활성화된 MCP 서버가 없습니다.\n", "Ни один сервер MCP не был включён.\n")
@@ -170,7 +145,6 @@ func init() {
 	add(KeyMCPReconnectStateFailed, "Failed to reconnect to %s: %s\n", "%s 重新连接失败：%s\n", "Erneute Verbindung mit %s fehlgeschlagen: %s\n", "%s への再接続に失敗しました：%s\n", "%s에 다시 연결하지 못했습니다: %s\n", "Не удалось повторно подключиться к %s: %s\n")
 	add(KeyMCPReconnectUnexpectedState, "After reconnecting, %s is in state %s.\n", "重新连接后，%s 处于“%s”状态。\n", "Nach der erneuten Verbindung befindet sich %s im Status %s.\n", "再接続後、%s は %s 状態です。\n", "다시 연결한 후 %s의 상태는 %s입니다.\n", "После повторного подключения %s находится в состоянии %s.\n")
 	add(KeyMCPAuthOpenURL, "Open this URL in your browser to authenticate MCP server %q:", "请在浏览器中打开此 URL，以认证 MCP 服务器 %q：", "Öffne diese URL im Browser, um den MCP-Server %q zu authentifizieren:", "MCP サーバー %q を認証するには、この URL をブラウザーで開いてください：", "MCP 서버 %q을(를) 인증하려면 브라우저에서 이 URL을 여세요:", "Откройте этот URL в браузере, чтобы авторизовать сервер MCP %q:")
-	add(KeyMCPAuthClaudeConnector, "MCP server %q is a claude.ai connector. Authenticate it in the Claude connector settings.", "MCP 服务器 %q 是 claude.ai connector。请在 Claude connector 设置中完成认证。", "MCP-Server %q ist ein claude.ai-Connector. Authentifiziere ihn in den Claude-Connector-Einstellungen.", "MCP サーバー %q は claude.ai connector です。Claude の connector 設定で認証してください。", "MCP 서버 %q은(는) claude.ai connector입니다. Claude connector 설정에서 인증하세요.", "Сервер MCP %q является connector claude.ai. Авторизуйте его в настройках connector Claude.")
 	add(KeyMCPAuthUnsupportedTransport, "MCP server %q uses the %s transport, which does not support OAuth authentication.", "MCP 服务器 %q 使用 %s transport，不支持 OAuth 认证。", "MCP-Server %q verwendet den Transport %s, der keine OAuth-Authentifizierung unterstützt.", "MCP サーバー %q は %s transport を使用しており、OAuth 認証には対応していません。", "MCP 서버 %q은(는) OAuth 인증을 지원하지 않는 %s transport를 사용합니다.", "Сервер MCP %q использует transport %s, который не поддерживает авторизацию OAuth.")
 	add(KeyMCPInvalidServerJSON, "Invalid MCP server JSON: %v\n", "MCP 服务器 JSON 无效：%v\n", "Ungültiges JSON für den MCP-Server: %v\n", "MCP サーバーの JSON が無効です：%v\n", "MCP 서버 JSON이 잘못되었습니다: %v\n", "Недопустимый JSON сервера MCP: %v\n")
 	add(KeyMCPInvalidConfig, "Invalid MCP configuration:\n", "MCP 配置无效：\n", "Ungültige MCP-Konfiguration:\n", "MCP 設定が無効です：\n", "MCP 구성이 잘못되었습니다:\n", "Недопустимая конфигурация MCP:\n")
@@ -217,32 +191,14 @@ func init() {
 	add(KeyMCPScopeLocal, "local", "本地", "lokal", "ローカル", "로컬", "локальная")
 	add(KeyMCPScopeUser, "user", "用户", "Benutzer", "ユーザー", "사용자", "пользовательская")
 	add(KeyMCPScopeProject, "project", "项目", "Projekt", "プロジェクト", "프로젝트", "проектная")
-	add(KeyMCPScopeDynamic, "dynamic", "动态", "dynamisch", "動的", "동적", "динамическая")
-	add(KeyMCPScopeEnterprise, "enterprise", "企业", "Unternehmen", "エンタープライズ", "엔터프라이즈", "корпоративная")
-	add(KeyMCPScopeClaudeAI, "claude.ai", "claude.ai", "claude.ai", "claude.ai", "claude.ai", "claude.ai")
-	add(KeyMCPScopeManaged, "managed", "托管", "verwaltet", "管理対象", "관리됨", "управляемая")
 	add(KeyMCPDoctorNoServers, "no MCP servers configured", "未配置 MCP 服务器", "keine MCP-Server konfiguriert", "MCP サーバー未設定", "구성된 MCP 서버 없음", "серверы MCP не настроены")
 	add(KeyMCPDoctorFailed, "%d server(s): %d failed, %d need authentication, %d pending, %d disabled", "%d 个服务器：%d 个失败、%d 个需要认证、%d 个等待中、%d 个已禁用", "%d Server: %d fehlgeschlagen, %d benötigen Authentifizierung, %d ausstehend, %d deaktiviert", "サーバー %d 台：失敗 %d、要認証 %d、保留中 %d、無効 %d", "서버 %d개: 실패 %d, 인증 필요 %d, 대기 중 %d, 비활성화 %d", "Серверов: %d; с ошибками: %d, нужна авторизация: %d, ожидает: %d, отключено: %d")
 	add(KeyMCPDoctorDiagnostics, "%d server(s) configured; diagnostics: %s", "%d 个服务器已配置；诊断：%s", "%d Server konfiguriert; Diagnose: %s", "サーバー %d 台を設定済み；診断：%s", "서버 %d개 구성됨; 진단: %s", "Серверов настроено: %d; диагностика: %s")
 	add(KeyMCPDoctorConfigured, "%d server(s) configured: %d connected, %d pending, %d disabled", "%d 个服务器已配置：%d 个已连接、%d 个等待中、%d 个已禁用", "%d Server konfiguriert: %d verbunden, %d ausstehend, %d deaktiviert", "サーバー %d 台を設定済み：接続済み %d、保留中 %d、無効 %d", "서버 %d개 구성됨: 연결됨 %d, 대기 중 %d, 비활성화 %d", "Серверов настроено: %d; подключено: %d, ожидает: %d, отключено: %d")
-	add(KeyMCPPromptRan, "Ran MCP prompt %s.\n", "已运行 MCP prompt %s。\n", "MCP-Prompt %s wurde ausgeführt.\n", "MCP prompt %s を実行しました。\n", "MCP prompt %s을(를) 실행했습니다.\n", "MCP-промпт %s выполнен.\n")
 
-	add(KeyConnectRegistryUnavailable, "Provider registry is unavailable.\n", "Provider 注册表不可用。\n", "Provider-Registry ist nicht verfügbar.\n", "Provider レジストリを利用できません。\n", "Provider 레지스트리를 사용할 수 없습니다.\n", "Реестр Provider недоступен.\n")
-	add(KeyConnectListHeader, "Provider connections:\n", "Provider 连接：\n", "Provider-Verbindungen:\n", "Provider 接続：\n", "Provider 연결:\n", "Подключения Provider:\n")
-	add(KeyConnectListHint, "\nUse /connect <provider> to set up authentication.\n  --oauth   Use OAuth PKCE (opens a browser)\n  --device  Use Device Authorization (no browser redirect)\n  --delete  Remove stored credentials\n", "\n使用 /connect <provider> 设置认证。\n  --oauth   使用 OAuth PKCE（打开浏览器）\n  --device  使用 Device Authorization（不进行浏览器重定向）\n  --delete  删除已保存的凭据\n", "\nRichte die Authentifizierung mit /connect <provider> ein.\n  --oauth   OAuth PKCE verwenden (öffnet einen Browser)\n  --device  Device Authorization verwenden (keine Browser-Umleitung)\n  --delete  Gespeicherte Zugangsdaten entfernen\n", "\n/connect <provider> で認証を設定します。\n  --oauth   OAuth PKCE を使用（ブラウザーを開く）\n  --device  Device Authorization を使用（ブラウザーのリダイレクトなし）\n  --delete  保存済みの認証情報を削除\n", "\n/connect <provider>로 인증을 설정하세요.\n  --oauth   OAuth PKCE 사용(브라우저 열기)\n  --device  Device Authorization 사용(브라우저 리디렉션 없음)\n  --delete  저장된 자격 증명 삭제\n", "\nНастройте авторизацию командой /connect <provider>.\n  --oauth   Использовать OAuth PKCE (откроется браузер)\n  --device  Использовать Device Authorization (без перенаправления браузера)\n  --delete  Удалить сохранённые учётные данные\n")
-	add(KeyConnectUnknownProviderAvailable, "Unknown Provider %q. Available: %s", "未知 Provider %q。可用项：%s", "Unbekannter Provider %q. Verfügbar: %s", "不明な Provider %q です。利用可能：%s", "알 수 없는 Provider %q입니다. 사용 가능: %s", "Неизвестный Provider %q. Доступны: %s")
 	add(KeyConnectUnknownProvider, "Unknown Provider %q", "未知 Provider %q", "Unbekannter Provider %q", "不明な Provider %q", "알 수 없는 Provider %q", "Неизвестный Provider %q")
-	add(KeyConnectReady, "✅ %s is ready: %s.\n", "✅ %s 已就绪：%s。\n", "✅ %s ist bereit: %s.\n", "✅ %s は準備完了です：%s。\n", "✅ %s이(가) 준비되었습니다: %s.\n", "✅ %s готов: %s.\n")
-	add(KeyConnectOAuthHint, "💡 %s supports OAuth authentication: /connect %s --oauth\n", "💡 %s 支持 OAuth 认证：/connect %s --oauth\n", "💡 %s unterstützt OAuth-Authentifizierung: /connect %s --oauth\n", "💡 %s は OAuth 認証に対応しています：/connect %s --oauth\n", "💡 %s은(는) OAuth 인증을 지원합니다: /connect %s --oauth\n", "💡 %s поддерживает авторизацию OAuth: /connect %s --oauth\n")
-	add(KeyConnectDeviceHint, "💡 %s supports Device Authorization: /connect %s --device\n", "💡 %s 支持 Device Authorization：/connect %s --device\n", "💡 %s unterstützt Device Authorization: /connect %s --device\n", "💡 %s は Device Authorization に対応しています：/connect %s --device\n", "💡 %s은(는) Device Authorization을 지원합니다: /connect %s --device\n", "💡 %s поддерживает Device Authorization: /connect %s --device\n")
-	add(KeyConnectInlineAPIKeyUnsupported, "%s cannot be configured through inline API key entry.\n", "%s 不支持通过内联输入 API key 进行配置。\n", "%s kann nicht über die direkte Eingabe eines API-Schlüssels konfiguriert werden.\n", "%s は API キーの直接入力では設定できません。\n", "%s은(는) API 키 직접 입력으로 구성할 수 없습니다.\n", "%s нельзя настроить путём прямого ввода API-ключа.\n")
-	add(KeyConnectCredentialStoreCannotSave, "Credential storage is unavailable; credentials cannot be saved.", "凭据存储不可用，无法保存凭据。", "Der Zugangsdaten-Speicher ist nicht verfügbar; Zugangsdaten können nicht gespeichert werden.", "認証情報ストアを利用できないため、認証情報を保存できません。", "자격 증명 저장소를 사용할 수 없어 자격 증명을 저장할 수 없습니다.", "Хранилище учётных данных недоступно; сохранить их невозможно.")
 	add(KeyConnectCredentialStoreUnavailable, "Credential storage is unavailable.", "凭据存储不可用。", "Der Zugangsdaten-Speicher ist nicht verfügbar.", "認証情報ストアを利用できません。", "자격 증명 저장소를 사용할 수 없습니다.", "Хранилище учётных данных недоступно.")
-	add(KeyConnectAPIKeyPrompt, "Enter the API key for %s (environment variable: %s): ", "请输入 %s 的 API key（环境变量：%s）：", "API-Schlüssel für %s eingeben (Umgebungsvariable: %s): ", "%s の API キーを入力してください（環境変数：%s）：", "%s의 API 키를 입력하세요(환경 변수: %s): ", "Введите API-ключ для %s (переменная среды: %s): ")
-	add(KeyConnectCancelled, "(cancelled)\n", "（已取消）\n", "(abgebrochen)\n", "（キャンセルしました）\n", "(취소됨)\n", "(отменено)\n")
-	add(KeyConnectNoAPIKey, "No API key entered; cancelled.\n", "未输入 API key，已取消。\n", "Kein API-Schlüssel eingegeben; Vorgang abgebrochen.\n", "API キーが入力されなかったため、キャンセルしました。\n", "API 키를 입력하지 않아 취소했습니다.\n", "API-ключ не введён; операция отменена.\n")
 	add(KeyConnectSaveCredentialsFailed, "Failed to save credentials:", "保存凭据失败：", "Zugangsdaten konnten nicht gespeichert werden:", "認証情報を保存できませんでした：", "자격 증명을 저장하지 못했습니다:", "Не удалось сохранить учётные данные:")
-	add(KeyConnectCredentialsSaved, "✅ Credentials saved for %s.\n", "✅ 已保存 %s 的凭据。\n", "✅ Zugangsdaten für %s gespeichert.\n", "✅ %s の認証情報を保存しました。\n", "✅ %s의 자격 증명을 저장했습니다.\n", "✅ Учётные данные для %s сохранены.\n")
 	add(KeyConnectModelHint, "   Switch with '/model %s/<model>'.\n", "   可使用 '/model %s/<model>' 切换。\n", "   Wechsle mit '/model %s/<model>'.\n", "   '/model %s/<model>' で切り替えられます。\n", "   '/model %s/<model>'로 전환하세요.\n", "   Для переключения используйте '/model %s/<model>'.\n")
 	add(KeyConnectOAuthUnsupported, "%s does not support OAuth PKCE authentication.", "%s 不支持 OAuth PKCE 认证。", "%s unterstützt keine OAuth-PKCE-Authentifizierung.", "%s は OAuth PKCE 認証に対応していません。", "%s은(는) OAuth PKCE 인증을 지원하지 않습니다.", "%s не поддерживает авторизацию OAuth PKCE.")
 	add(KeyConnectOAuthConfigUnavailable, "OAuth configuration is unavailable for %s.", "%s 的 OAuth 配置不可用。", "Für %s ist keine OAuth-Konfiguration verfügbar.", "%s の OAuth 設定を利用できません。", "%s의 OAuth 구성을 사용할 수 없습니다.", "Конфигурация OAuth для %s недоступна.")
@@ -264,7 +220,5 @@ func init() {
 	add(KeyConnectEnterCode, "   Enter the code: %s\n", "   输入代码：%s\n", "   Code eingeben: %s\n", "   コードを入力：%s\n", "   코드 입력: %s\n", "   Введите код: %s\n")
 	add(KeyConnectDeviceFailed, "Device Authorization failed:", "Device Authorization 失败：", "Device Authorization fehlgeschlagen:", "Device Authorization に失敗しました：", "Device Authorization에 실패했습니다:", "Ошибка Device Authorization:")
 	add(KeyConnectDeviceSuccess, "\n✅ Device Authorization succeeded for %s.\n", "\n✅ %s 的 Device Authorization 成功。\n", "\n✅ Device Authorization für %s erfolgreich.\n", "\n✅ %s の Device Authorization に成功しました。\n", "\n✅ %s의 Device Authorization에 성공했습니다.\n", "\n✅ Device Authorization для %s выполнена.\n")
-	add(KeyConnectDeleteCredentialsFailed, "Failed to delete credentials:", "删除凭据失败：", "Zugangsdaten konnten nicht gelöscht werden:", "認証情報を削除できませんでした：", "자격 증명을 삭제하지 못했습니다:", "Не удалось удалить учётные данные:")
-	add(KeyConnectCredentialsRemoved, "Credentials removed for %s.\n", "已删除 %s 的凭据。\n", "Zugangsdaten für %s entfernt.\n", "%s の認証情報を削除しました。\n", "%s의 자격 증명을 삭제했습니다.\n", "Учётные данные для %s удалены.\n")
 	add(KeyConnectUnsupportedOS, "Opening a browser is not supported on %s.", "%s 暂不支持打开浏览器。", "Das Öffnen eines Browsers wird unter %s nicht unterstützt.", "%s ではブラウザーを開けません。", "%s에서는 브라우저 열기를 지원하지 않습니다.", "Открытие браузера не поддерживается в %s.")
 }

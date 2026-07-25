@@ -42,8 +42,8 @@ func TestAutoDetectOpenAI(t *testing.T) {
 		"PROVIDER",
 		"DEEPSEEK_API_KEY",
 		"ANTHROPIC_API_KEY",
-		"CLAUDE_CODE_USE_BEDROCK",
-		"CLAUDE_CODE_USE_VERTEX",
+		"LUBAN_CODE_USE_BEDROCK",
+		"LUBAN_CODE_USE_VERTEX",
 	)
 	setEnv(t, map[string]string{
 		"OPENAI_API_KEY": "sk-test-openai-key",
@@ -67,8 +67,8 @@ func TestAutoDetectOpenAI_OverridesDefault(t *testing.T) {
 	clearEnv(t,
 		"PROVIDER",
 		"DEEPSEEK_API_KEY",
-		"CLAUDE_CODE_USE_BEDROCK",
-		"CLAUDE_CODE_USE_VERTEX",
+		"LUBAN_CODE_USE_BEDROCK",
+		"LUBAN_CODE_USE_VERTEX",
 	)
 	setEnv(t, map[string]string{
 		"ANTHROPIC_API_KEY": "anthro-key",
@@ -89,8 +89,8 @@ func TestAutoDetectOpenAI_OverridesDefault(t *testing.T) {
 func TestAutoDetectOpenAI_ExplicitProviderWins(t *testing.T) {
 	clearEnv(t,
 		"DEEPSEEK_API_KEY",
-		"CLAUDE_CODE_USE_BEDROCK",
-		"CLAUDE_CODE_USE_VERTEX",
+		"LUBAN_CODE_USE_BEDROCK",
+		"LUBAN_CODE_USE_VERTEX",
 	)
 	setEnv(t, map[string]string{
 		"PROVIDER":          "anthropic",
@@ -116,8 +116,8 @@ func TestAutoDetectOpenAI_MissingKey(t *testing.T) {
 		"DEEPSEEK_API_KEY",
 		"ANTHROPIC_API_KEY",
 		"OPENAI_API_KEY",
-		"CLAUDE_CODE_USE_BEDROCK",
-		"CLAUDE_CODE_USE_VERTEX",
+		"LUBAN_CODE_USE_BEDROCK",
+		"LUBAN_CODE_USE_VERTEX",
 	)
 
 	p, err := NewFromEnvWithOverrides("", "")
@@ -138,8 +138,8 @@ func TestAutoDetectOpenAI_CLIOverrideTakesPrecedence(t *testing.T) {
 	clearEnv(t,
 		"PROVIDER",
 		"DEEPSEEK_API_KEY",
-		"CLAUDE_CODE_USE_BEDROCK",
-		"CLAUDE_CODE_USE_VERTEX",
+		"LUBAN_CODE_USE_BEDROCK",
+		"LUBAN_CODE_USE_VERTEX",
 	)
 	setEnv(t, map[string]string{
 		"OPENAI_API_KEY":    "sk-test-openai-key",
@@ -160,8 +160,8 @@ func TestAutoDetectDeepSeek(t *testing.T) {
 		"PROVIDER",
 		"ANTHROPIC_API_KEY",
 		"OPENAI_API_KEY",
-		"CLAUDE_CODE_USE_BEDROCK",
-		"CLAUDE_CODE_USE_VERTEX",
+		"LUBAN_CODE_USE_BEDROCK",
+		"LUBAN_CODE_USE_VERTEX",
 	)
 	setEnv(t, map[string]string{
 		"DEEPSEEK_API_KEY": "sk-test-deepseek-key",
@@ -179,48 +179,24 @@ func TestAutoDetectDeepSeek(t *testing.T) {
 	}
 }
 
-func TestAutoDetectAnthropicFromLegacyOAuthToken(t *testing.T) {
+func TestDeepSeekModelEnvUsesConfiguredID(t *testing.T) {
 	clearEnv(t,
-		"PROVIDER",
-		"DEEPSEEK_API_KEY",
-		"ANTHROPIC_API_KEY",
-		"ANTHROPIC_AUTH_TOKEN",
-		"OPENAI_API_KEY",
-		"CLAUDE_CODE_USE_BEDROCK",
-		"CLAUDE_CODE_USE_VERTEX",
-	)
-	setEnv(t, map[string]string{
-		"OAUTH_ACCESS_TOKEN": "legacy-oauth-token",
-	})
-
-	p, err := NewFromEnvWithOverrides("", "")
-	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
-	}
-	if p.Name() != "anthropic" {
-		t.Fatalf("expected anthropic provider, got %s", p.Name())
-	}
-}
-
-func TestDeepSeekLegacyModelEnvNormalizesToV4Flash(t *testing.T) {
-	clearEnv(t,
-		"PROVIDER",
 		"ANTHROPIC_API_KEY",
 		"OPENAI_API_KEY",
-		"CLAUDE_CODE_USE_BEDROCK",
-		"CLAUDE_CODE_USE_VERTEX",
+		"LUBAN_CODE_USE_BEDROCK",
+		"LUBAN_CODE_USE_VERTEX",
 	)
 	setEnv(t, map[string]string{
 		"PROVIDER":         "deepseek",
 		"DEEPSEEK_API_KEY": "sk-test-deepseek-key",
-		"DEEPSEEK_MODEL":   "deepseek-reasoner",
+		"DEEPSEEK_MODEL":   "deepseek-v4-pro",
 	})
 
 	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
-		t.Fatalf("expected no error, got: %v", err)
+		t.Fatalf("NewFromEnvWithOverrides: %v", err)
 	}
-	if p.ModelID() != "deepseek-v4-flash" {
-		t.Fatalf("expected legacy alias to normalize to deepseek-v4-flash, got %s", p.ModelID())
+	if p.ModelID() != "deepseek-v4-pro" {
+		t.Fatalf("model = %q, want exact configured ID", p.ModelID())
 	}
 }

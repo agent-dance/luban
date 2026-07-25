@@ -41,18 +41,19 @@ type Rule struct {
 }
 
 // CheckOptions applies per-request permission behavior without mutating the
-// session-level checker. Subagents use this to mirror Claude Code's per-agent
-// permissionMode semantics.
+// session-level checker. Subagents use this to inherit per-agent permission
+// mode semantics from the parent session.
 type CheckOptions struct {
-	ModeOverride      *Mode
-	AvoidPrompts      bool
-	Required          bool
-	policyRequiredAsk bool
-	Prompt            *PromptRequest
-	ctx               context.Context
-	response          *PromptResponse
-	noCache           bool
-	runtimeSnapshot   *types.ToolRuntimeContext
+	ModeOverride           *Mode
+	AvoidPrompts           bool
+	Required               bool
+	policyRequiredAsk      bool
+	toolLocalReadOnlyAllow bool
+	Prompt                 *PromptRequest
+	ctx                    context.Context
+	response               *PromptResponse
+	noCache                bool
+	runtimeSnapshot        *types.ToolRuntimeContext
 }
 
 // Checker evaluates permission decisions for tool usage
@@ -60,12 +61,8 @@ type Checker struct {
 	mode             Mode
 	rules            []Rule
 	mu               sync.RWMutex
-	sessionCache     map[string]Decision                                  // cached "always allow" decisions for this session
-	promptFunc       func(toolName string, input map[string]any) Decision // interactive prompt
+	sessionCache     map[string]Decision // cached "always allow" decisions for this session
 	structuredPrompt StructuredPromptFunc
-
-	// Phase 4: Feature gates for conditional tool availability
-	featureGates map[string]bool
 
 	// frozen is set to true after the first call to Check(). Once frozen,
 	// SetMode will refuse to switch to ModeAllowAll, preventing prompt-injection
@@ -83,19 +80,11 @@ func NewChecker(mode Mode, rules []Rule) *Checker {
 		mode:         mode,
 		rules:        rules,
 		sessionCache: make(map[string]Decision),
-		featureGates: make(map[string]bool),
 	}
 }
 
-// SetPromptFunc sets the interactive prompt function for AskAlways mode
-func (c *Checker) SetPromptFunc(fn func(toolName string, input map[string]any) Decision) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.promptFunc = fn
-}
-
 // SetStructuredPromptFunc installs the lossless, cancellable permission and
-// plan decision surface. The legacy prompt remains as a fallback.
+// plan decision surface.
 func (c *Checker) SetStructuredPromptFunc(fn StructuredPromptFunc) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -112,7 +101,7 @@ func (c *Checker) CheckPrompt(ctx context.Context, request PromptRequest, opts C
 	opts.Prompt = &request
 	opts.ctx = ctx
 	opts.response = &response
-	decision := c.CheckWithOptions(request.ToolName, request.Input, opts)
+	decision := c.checkWithOptions(request.ToolName, request.Input, opts)
 	if response.Outcome == "" {
 		response = responseForDecision(decision)
 	} else if response.Choice == "" {
@@ -122,7 +111,7 @@ func (c *Checker) CheckPrompt(ctx context.Context, request PromptRequest, opts C
 }
 
 // ResetSession clears decisions whose scope is the active conversation while
-// preserving configured rules, tool lists, feature gates, and the user's mode.
+// preserving configured rules, tool lists, and the user's mode.
 func (c *Checker) ResetSession() {
 	c.mu.Lock()
 	c.sessionCache = make(map[string]Decision)
@@ -130,34 +119,8 @@ func (c *Checker) ResetSession() {
 	c.mu.Unlock()
 }
 
-// IsFeatureEnabled checks if a feature gate is enabled
-// Phase 4: Used for conditional tool availability
-func (c *Checker) IsFeatureEnabled(feature string) bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.featureGates[feature]
-}
-
-// SetFeatureGate enables or disables a feature gate
-// Phase 4: Allows runtime control of tool availability
-func (c *Checker) SetFeatureGate(feature string, enabled bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.featureGates[feature] = enabled
-}
-
-// SetFeatureGates sets multiple feature gates at once
-// Phase 4: Bulk update of feature gates
-func (c *Checker) SetFeatureGates(gates map[string]bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	for feature, enabled := range gates {
-		c.featureGates[feature] = enabled
-	}
-}
-
-// SetMode changes the permission mode. Once Check() has been called at least
-// once the session is considered "frozen": switching to ModeAllowAll is
+// SetMode changes the permission mode. Once a permission has been evaluated,
+// the session is considered "frozen": switching to ModeAllowAll is
 // rejected to prevent prompt-injection from escalating privileges mid-session.
 func (c *Checker) SetMode(m Mode) error {
 	return c.setMode(m, false)
@@ -188,14 +151,9 @@ func (c *Checker) Mode() Mode {
 	return c.mode
 }
 
-// Check evaluates whether a tool can be used with the given input
-func (c *Checker) Check(toolName string, input map[string]any) Decision {
-	return c.CheckWithOptions(toolName, input, CheckOptions{})
-}
-
-// CheckWithOptions evaluates whether a tool can be used with request-scoped
+// checkWithOptions evaluates whether a tool can be used with request-scoped
 // behavior such as a temporary mode override or non-interactive prompt denial.
-func (c *Checker) CheckWithOptions(toolName string, input map[string]any, opts CheckOptions) Decision {
+func (c *Checker) checkWithOptions(toolName string, input map[string]any, opts CheckOptions) Decision {
 	// Freeze the session on first call — prevents later escalation to ModeAllowAll.
 	// Snapshot mode and tool lists under the same lock to avoid data races.
 	c.mu.Lock()
@@ -257,20 +215,6 @@ func (c *Checker) CheckWithOptions(toolName string, input map[string]any, opts C
 		}
 	}
 
-	// TestingPermission mirrors the TS testing helper: it always goes through
-	// an interactive permission prompt and never caches allow decisions.
-	if toolName == "TestingPermission" {
-		if opts.AvoidPrompts || !c.hasPrompt() {
-			return DecisionDeny
-		}
-		opts.noCache = true
-		opts = withPromptRuleSource(opts, permissionText(i18n.KeyPermissionTestingPolicy))
-		d := c.askOrCache(toolName, input, opts)
-		if d == DecisionAllowOnce {
-			return DecisionAllow
-		}
-		return d
-	}
 	if rule, matched := matchingRule(snapshotAskRules, toolName, input); matched {
 		opts = withPromptRuleSource(opts, configuredAskRuleSource(rule))
 		return c.askOrCache(toolName, input, opts)
@@ -280,9 +224,6 @@ func (c *Checker) CheckWithOptions(toolName string, input map[string]any, opts C
 	case ModeAllowAll:
 		return DecisionAllow
 	case ModeAskAlways:
-		if d, handled := c.handleAdvisoryAsk(toolName, input, opts); handled {
-			return d
-		}
 		if isLowRiskShellInvocation(toolName, input) {
 			return DecisionAllow
 		}
@@ -298,10 +239,14 @@ func (c *Checker) CheckWithOptions(toolName string, input map[string]any, opts C
 				return c.askOrCache(toolName, input, opts)
 			}
 		}
-		if d, handled := c.handleAdvisoryAsk(toolName, input, opts); handled {
-			return d
-		}
 		if decision, matched := matchingRuleDecision(rules, toolName, input); matched && decision == DecisionAllow {
+			return DecisionAllow
+		}
+		// A tool-local read-only allow proves that the exact normalized input
+		// passed the tool's own directory/scope checks. Consume it only after
+		// bypass-immune, mandatory, snapshot, and explicit rule decisions above.
+		// ModeAskAlways intentionally never reaches this branch.
+		if opts.toolLocalReadOnlyAllow && toolSupportsLocalReadOnlyAllow(toolName) {
 			return DecisionAllow
 		}
 		if isLowRiskShellInvocation(toolName, input) {
@@ -313,12 +258,13 @@ func (c *Checker) CheckWithOptions(toolName string, input map[string]any, opts C
 	return DecisionAsk
 }
 
-func (c *Checker) handleAdvisoryAsk(toolName string, input map[string]any, opts CheckOptions) (Decision, bool) {
-	if d, reason := AdvisoryCheck(toolName, input); d == DecisionAsk {
-		opts = withPromptReason(opts, reason, permissionText(i18n.KeyPermissionAdvisoryPolicy))
-		return c.askOrCache(toolName, input, opts), true
+func toolSupportsLocalReadOnlyAllow(toolName string) bool {
+	switch toolName {
+	case "Read", "Glob", "Grep":
+		return true
+	default:
+		return false
 	}
-	return DecisionDeny, false
 }
 
 func (c *Checker) handleMandatoryAsk(toolName string, input map[string]any, opts CheckOptions) (Decision, bool) {
@@ -383,7 +329,6 @@ func (c *Checker) askOrCache(toolName string, input map[string]any, opts CheckOp
 
 	c.mu.RLock()
 	structuredPrompt := c.structuredPrompt
-	legacyPrompt := c.promptFunc
 	c.mu.RUnlock()
 
 	var response PromptResponse
@@ -396,8 +341,6 @@ func (c *Checker) askOrCache(toolName string, input map[string]any, opts CheckOp
 			ctx = context.Background()
 		}
 		response = structuredPrompt(ctx, request)
-	} else if legacyPrompt != nil {
-		response = responseForDecision(legacyPrompt(toolName, input))
 	} else {
 		response = responseForDecision(DecisionDeny)
 	}
@@ -483,26 +426,6 @@ func clonePermissionRuntimeContext(source types.ToolRuntimeContext) types.ToolRu
 	cloned.DeniedRules = append([]types.PermissionRuleValue(nil), source.DeniedRules...)
 	cloned.AskRules = append([]types.PermissionRuleValue(nil), source.AskRules...)
 	return cloned
-}
-
-func (c *Checker) evaluateRules(toolName string, input map[string]any) Decision {
-	if decision, matched := matchingRuleDecision(c.rules, toolName, input); matched {
-		if decision == DecisionAsk {
-			return c.askOrCache(toolName, input, CheckOptions{})
-		}
-		return decision
-	}
-	if isLowRiskShellInvocation(toolName, input) {
-		return DecisionAllow
-	}
-	// No matching rule — ask
-	return c.askOrCache(toolName, input, CheckOptions{})
-}
-
-func (c *Checker) hasPrompt() bool {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.structuredPrompt != nil || c.promptFunc != nil
 }
 
 func withPromptReason(opts CheckOptions, reason, source string) CheckOptions {
@@ -603,10 +526,8 @@ func (c *Checker) cacheKey(toolName string, input map[string]any) string {
 			h := sha256.Sum256([]byte(cmd))
 			return fmt.Sprintf("%s:%x", toolName, h[:8])
 		}
-	case "Write", "FileWrite", "Edit", "FileEdit", "Read", "FileRead",
-		"FileDelete", "FileAppend":
-		// W4 fix: include file path in cache key for all file-based tools,
-		// preventing "FileDelete foo.go → Allow" from caching for "FileDelete .env".
+	case "Write", "Edit", "Read":
+		// Include the file path so approval for one file cannot authorize another.
 		if fp, ok := input["file_path"].(string); ok {
 			return fmt.Sprintf("%s:%s", toolName, filepath.Clean(fp))
 		}
@@ -614,17 +535,6 @@ func (c *Checker) cacheKey(toolName string, input map[string]any) string {
 		if fp, ok := input["notebook_path"].(string); ok {
 			return fmt.Sprintf("%s:%s", toolName, filepath.Clean(fp))
 		}
-	case "FileMove", "FileLink":
-		// Cache key includes both path fields.
-		src, _ := input["source"].(string)
-		dst, _ := input["destination"].(string)
-		if src == "" {
-			src, _ = input["target"].(string)
-		}
-		if dst == "" {
-			dst, _ = input["link_path"].(string)
-		}
-		return fmt.Sprintf("%s:%s→%s", toolName, filepath.Clean(src), filepath.Clean(dst))
 	case "SendMessage":
 		target := sendMessageTarget(input)
 		if msg, ok := input["message"]; ok {
@@ -651,7 +561,7 @@ func (c *Checker) cacheKey(toolName string, input map[string]any) string {
 func isLowRiskShellInvocation(toolName string, input map[string]any) bool {
 	switch toolName {
 	case "Bash", "PowerShell":
-		return ClassifyRisk(toolName, input) == RiskLow
+		return classifyRisk(toolName, input) == RiskLow
 	default:
 		return false
 	}

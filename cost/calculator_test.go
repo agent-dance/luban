@@ -282,34 +282,6 @@ func TestCalculateCost_DeepSeekCachedInputIsNotDoubleCharged(t *testing.T) {
 	within(t, "TotalUSD", breakdown.TotalUSD, 0.0002274216, 1e-12)
 }
 
-// ── FormatUSD ────────────────────────────────────────────────────────────────
-
-func TestFormatUSD(t *testing.T) {
-	cases := []struct {
-		amount float64
-		want   string
-	}{
-		{0.0, "$0.0000"},
-		{0.000006, "$0.0000"}, // rounds to 4 decimal places
-		{0.0034, "$0.0034"},
-		{0.009, "$0.0090"}, // just below 0.01 → 4 decimal places
-		{0.01, "$0.01"},    // exactly 0.01 → 2 decimal places
-		{0.1, "$0.10"},
-		{0.5, "$0.50"},
-		{0.5001, "$0.50"},
-		{1.0, "$1.00"},
-		{1.23456, "$1.23"},
-		{22.05, "$22.05"},
-		{90.0, "$90.00"},
-	}
-	for _, tc := range cases {
-		got := cost.FormatUSD(tc.amount)
-		if got != tc.want {
-			t.Errorf("FormatUSD(%v) = %q, want %q", tc.amount, got, tc.want)
-		}
-	}
-}
-
 // ── LookupPricing (prefix matching) ─────────────────────────────────────────
 
 func TestLookupPricing_ExactAndVersioned(t *testing.T) {

@@ -187,9 +187,9 @@ func TestStreamWriter_NopWriter(t *testing.T) {
 
 func TestStreamWriter_ColumnTracking(t *testing.T) {
 	type tc struct {
-		writes   []string
-		width    int
-		wantCol  int
+		writes  []string
+		width   int
+		wantCol int
 	}
 
 	tests := map[string]tc{
@@ -235,25 +235,6 @@ func TestStreamWriter_ColumnTracking(t *testing.T) {
 				t.Errorf("col = %d, want %d", sw.col, tt.wantCol)
 			}
 		})
-	}
-}
-
-func TestStreamWriter_BackwardCompat(t *testing.T) {
-	app, _ := newInlineTestApp(80, 24, 3)
-	sw := app.StreamAbove()
-
-	// Plain Write still works.
-	n, err := sw.Write([]byte("hello"))
-	if err != nil {
-		t.Fatalf("Write error: %v", err)
-	}
-	if n != 5 {
-		t.Errorf("Write returned n=%d, want 5", n)
-	}
-
-	// Close still works.
-	if err := sw.Close(); err != nil {
-		t.Fatalf("Close error: %v", err)
 	}
 }
 

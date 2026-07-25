@@ -40,38 +40,36 @@ type ConnectionDetail struct {
 	State           ConnectionState
 	Kind            ConnectionKind
 	Source          string
-	Detail          string
 	DetailKey       i18n.Key
 	DetailArgs      []any
 	CanSelectModels bool
 	CanConnect      bool
-	SetupHint       string
 	SetupHintKey    i18n.Key
 	SetupHintArgs   []any
 }
 
-// Localized returns a display-ready copy while retaining Detail and SetupHint
-// as English compatibility fields for callers that have not migrated yet.
-func (d ConnectionDetail) Localized(lang i18n.Language) ConnectionDetail {
-	if d.DetailKey != "" {
-		d.Detail = i18n.Format(lang, d.DetailKey, d.DetailArgs...)
+func (d ConnectionDetail) DetailText(lang i18n.Language) string {
+	if d.DetailKey == "" {
+		return ""
 	}
-	if d.SetupHintKey != "" {
-		d.SetupHint = i18n.Format(lang, d.SetupHintKey, d.SetupHintArgs...)
+	return i18n.Format(lang, d.DetailKey, d.DetailArgs...)
+}
+
+func (d ConnectionDetail) SetupHintText(lang i18n.Language) string {
+	if d.SetupHintKey == "" {
+		return ""
 	}
-	return d
+	return i18n.Format(lang, d.SetupHintKey, d.SetupHintArgs...)
 }
 
 func (d *ConnectionDetail) setDetail(key i18n.Key, args ...any) {
 	d.DetailKey = key
 	d.DetailArgs = append([]any(nil), args...)
-	d.Detail = i18n.Format(i18n.DetectOrLoadLanguage(), key, args...)
 }
 
 func (d *ConnectionDetail) setSetupHint(key i18n.Key, args ...any) {
 	d.SetupHintKey = key
 	d.SetupHintArgs = append([]any(nil), args...)
-	d.SetupHint = i18n.Format(i18n.DetectOrLoadLanguage(), key, args...)
 }
 
 // ConnectionState returns a typed connection status for a registered provider.
@@ -131,16 +129,6 @@ func (r *ProviderRegistry) connectionStateForInfo(info ProviderInfo) ConnectionD
 		base.CanConnect = false
 		return base
 	}
-	if info.Name == "anthropic" && os.Getenv("OAUTH_ACCESS_TOKEN") != "" {
-		base.State = ConnectionStateConnected
-		base.Kind = ConnectionKindEnv
-		base.Source = "OAUTH_ACCESS_TOKEN"
-		base.setDetail(i18n.KeyProviderConnectionEnvSet, "OAUTH_ACCESS_TOKEN")
-		base.CanSelectModels = true
-		base.CanConnect = false
-		return base
-	}
-
 	switch info.Name {
 	case "bedrock":
 		return bedrockConnectionDetail(base)
@@ -190,12 +178,6 @@ func credentialConnectionDetail(info ProviderInfo, entry CredentialEntry) (Conne
 		}
 		detail.Kind = ConnectionKindAPIKey
 		detail.setDetail(i18n.KeyProviderConnectionCredentialAPIKey)
-	case "env":
-		if entry.APIKey == "" {
-			return ConnectionDetail{}, false
-		}
-		detail.Kind = ConnectionKindEnv
-		detail.setDetail(i18n.KeyProviderConnectionImportedEnv)
 	case "oauth":
 		if entry.AccessToken == "" && entry.RefreshToken == "" {
 			return ConnectionDetail{}, false

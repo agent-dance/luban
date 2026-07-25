@@ -9,34 +9,35 @@ import (
 	"sort"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/agent-dance/luban/i18n"
+	mcpauth "github.com/agent-dance/luban/internal/mcp/auth"
+	"github.com/agent-dance/luban/internal/mcp/catalog"
+	mcpmanager "github.com/agent-dance/luban/internal/mcp/manager"
 	"github.com/agent-dance/luban/provider"
-	svcmcp "github.com/agent-dance/luban/services/mcp"
 	"github.com/agent-dance/luban/types"
 )
 
 type mcpTestQueryLoop struct{}
 
-func (*mcpTestQueryLoop) SetMessages([]types.Message)   {}
-func (*mcpTestQueryLoop) Messages() []types.Message     { return nil }
-func (*mcpTestQueryLoop) Model() string                 { return "test-model" }
-func (*mcpTestQueryLoop) SetModel(string)               {}
-func (*mcpTestQueryLoop) ContextUsage() (int, int)      { return 0, 0 }
-func (*mcpTestQueryLoop) SetProvider(provider.Provider) {}
+func (*mcpTestQueryLoop) SetMessagesPreservingToolUseLedger([]types.Message) {}
+func (*mcpTestQueryLoop) Messages() []types.Message                          { return nil }
+func (*mcpTestQueryLoop) Model() string                                      { return "test-model" }
+func (*mcpTestQueryLoop) SetModel(string)                                    {}
+func (*mcpTestQueryLoop) ContextUsage() (int, int)                           { return 0, 0 }
+func (*mcpTestQueryLoop) SetProvider(provider.Provider)                      {}
 
 type fakeMCPBackend struct {
-	states      map[string]svcmcp.MCPServerConnection
+	states      map[string]mcpmanager.MCPServerConnection
 	sources     map[string]string
 	diagnostics []string
 	toggles     []string
 	reconnects  []string
 }
 
-func newFakeMCPBackend(states ...svcmcp.MCPServerConnection) *fakeMCPBackend {
+func newFakeMCPBackend(states ...mcpmanager.MCPServerConnection) *fakeMCPBackend {
 	f := &fakeMCPBackend{
-		states:  make(map[string]svcmcp.MCPServerConnection),
+		states:  make(map[string]mcpmanager.MCPServerConnection),
 		sources: make(map[string]string),
 	}
 	for _, state := range states {
@@ -54,49 +55,30 @@ func (f *fakeMCPBackend) ServerNames() []string {
 	return names
 }
 
-func (f *fakeMCPBackend) Snapshot() []svcmcp.MCPServerConnection {
+func (f *fakeMCPBackend) Snapshot() []mcpmanager.MCPServerConnection {
 	names := f.ServerNames()
-	out := make([]svcmcp.MCPServerConnection, 0, len(names))
+	out := make([]mcpmanager.MCPServerConnection, 0, len(names))
 	for _, name := range names {
 		out = append(out, f.states[name])
 	}
 	return out
 }
 
-func (f *fakeMCPBackend) HealthSnapshot() svcmcp.HealthSnapshot {
-	snapshot := svcmcp.HealthSnapshot{GeneratedAt: time.Unix(1, 0)}
-	for _, state := range f.states {
-		switch state.Type {
-		case svcmcp.MCPStatePending:
-			snapshot.Counts.Pending++
-		case svcmcp.MCPStateConnected:
-			snapshot.Counts.Connected++
-		case svcmcp.MCPStateFailed:
-			snapshot.Counts.Failed++
-		case svcmcp.MCPStateNeedsAuth:
-			snapshot.Counts.NeedsAuth++
-		case svcmcp.MCPStateDisabled:
-			snapshot.Counts.Disabled++
-		}
-	}
-	return snapshot
-}
-
-func (f *fakeMCPBackend) State(name string) (svcmcp.MCPServerConnection, bool) {
+func (f *fakeMCPBackend) State(name string) (mcpmanager.MCPServerConnection, bool) {
 	state, ok := f.states[name]
 	return state, ok
 }
 
-func (f *fakeMCPBackend) AddConfig(name string, cfg svcmcp.MCPServerConfig) {
-	f.states[name] = svcmcp.MCPServerConnection{Name: name, Type: svcmcp.MCPStatePending, Config: cfg}
+func (f *fakeMCPBackend) AddConfig(name string, cfg catalog.MCPServerConfig) {
+	f.states[name] = mcpmanager.MCPServerConnection{Name: name, Type: mcpmanager.MCPStatePending, Config: cfg}
 }
 
-func (f *fakeMCPBackend) SetConfigs(configs map[string]svcmcp.MCPServerConfig) {
-	next := make(map[string]svcmcp.MCPServerConnection, len(configs))
+func (f *fakeMCPBackend) SetConfigs(configs map[string]catalog.MCPServerConfig) {
+	next := make(map[string]mcpmanager.MCPServerConnection, len(configs))
 	for name, cfg := range configs {
 		state := f.states[name]
 		if state.Name == "" {
-			state = svcmcp.MCPServerConnection{Name: name, Type: svcmcp.MCPStatePending}
+			state = mcpmanager.MCPServerConnection{Name: name, Type: mcpmanager.MCPStatePending}
 		}
 		state.Config = cfg
 		next[name] = state
@@ -104,27 +86,27 @@ func (f *fakeMCPBackend) SetConfigs(configs map[string]svcmcp.MCPServerConfig) {
 	f.states = next
 }
 
-func (f *fakeMCPBackend) ToggleEnabled(_ context.Context, name string, enabled bool) (svcmcp.MCPServerConnection, error) {
+func (f *fakeMCPBackend) ToggleEnabled(_ context.Context, name string, enabled bool) (mcpmanager.MCPServerConnection, error) {
 	state, ok := f.states[name]
 	if !ok {
-		return svcmcp.MCPServerConnection{}, fmt.Errorf("not found")
+		return mcpmanager.MCPServerConnection{}, fmt.Errorf("not found")
 	}
 	if enabled {
-		state.Type = svcmcp.MCPStatePending
+		state.Type = mcpmanager.MCPStatePending
 	} else {
-		state.Type = svcmcp.MCPStateDisabled
+		state.Type = mcpmanager.MCPStateDisabled
 	}
 	f.states[name] = state
 	f.toggles = append(f.toggles, fmt.Sprintf("%s=%t", name, enabled))
 	return state, nil
 }
 
-func (f *fakeMCPBackend) Reconnect(_ context.Context, name string) (svcmcp.MCPServerConnection, error) {
+func (f *fakeMCPBackend) Reconnect(_ context.Context, name string) (mcpmanager.MCPServerConnection, error) {
 	state, ok := f.states[name]
 	if !ok {
-		return svcmcp.MCPServerConnection{}, fmt.Errorf("not found")
+		return mcpmanager.MCPServerConnection{}, fmt.Errorf("not found")
 	}
-	state.Type = svcmcp.MCPStateConnected
+	state.Type = mcpmanager.MCPStateConnected
 	f.states[name] = state
 	f.reconnects = append(f.reconnects, name)
 	return state, nil
@@ -138,39 +120,39 @@ type fakeMCPAuth struct {
 	result mcpAuthResult
 }
 
-func (f fakeMCPAuth) AuthURL(context.Context, string, svcmcp.MCPServerConfig) (mcpAuthResult, error) {
+func (f fakeMCPAuth) AuthURL(context.Context, string, catalog.MCPServerConfig) (mcpAuthResult, error) {
 	return f.result, nil
 }
 
 func TestMCPListShowsStatesCountsCapabilitiesAndDiagnostics(t *testing.T) {
 	backend := newFakeMCPBackend(
-		svcmcp.MCPServerConnection{
+		mcpmanager.MCPServerConnection{
 			Name:         "github",
-			Type:         svcmcp.MCPStateConnected,
-			Config:       svcmcp.MCPServerConfig{Type: svcmcp.TransportHTTP, Scope: svcmcp.ScopeUser},
-			Capabilities: svcmcp.ServerCapabilities{"tools": map[string]any{}, "resources": map[string]any{}},
-			Tools:        []svcmcp.ToolDefinition{{Name: "search"}},
-			Resources:    []svcmcp.Resource{{URI: "repo://one"}},
-			Prompts:      []svcmcp.PromptDefinition{{Name: "triage"}},
+			Type:         mcpmanager.MCPStateConnected,
+			Config:       catalog.MCPServerConfig{Type: catalog.TransportHTTP, Scope: catalog.ScopeUser},
+			Capabilities: catalog.ServerCapabilities{"tools": map[string]any{}, "resources": map[string]any{}},
+			Tools:        []catalog.ToolDefinition{{Name: "search"}},
+			Resources:    []catalog.Resource{{URI: "repo://one"}},
+			Prompts:      []catalog.PromptDefinition{{Name: "triage"}},
 		},
-		svcmcp.MCPServerConnection{
+		mcpmanager.MCPServerConnection{
 			Name:                 "broken",
-			Type:                 svcmcp.MCPStateFailed,
-			Config:               svcmcp.MCPServerConfig{Type: svcmcp.TransportStdio, Scope: svcmcp.ScopeLocal},
+			Type:                 mcpmanager.MCPStateFailed,
+			Config:               catalog.MCPServerConfig{Type: catalog.TransportStdio, Scope: catalog.ScopeLocal},
 			Error:                "spawn failed",
 			ReconnectAttempt:     2,
 			MaxReconnectAttempts: 5,
 		},
-		svcmcp.MCPServerConnection{
+		mcpmanager.MCPServerConnection{
 			Name:      "remote",
-			Type:      svcmcp.MCPStateNeedsAuth,
-			Config:    svcmcp.MCPServerConfig{Type: svcmcp.TransportSSE, Scope: svcmcp.ScopeProject},
-			NeedsAuth: &svcmcp.NeedsAuthState{Scope: "repo read", ResourceMetadataURL: "https://auth.example/.well-known/oauth-protected-resource"},
+			Type:      mcpmanager.MCPStateNeedsAuth,
+			Config:    catalog.MCPServerConfig{Type: catalog.TransportSSE, Scope: catalog.ScopeProject},
+			NeedsAuth: &mcpauth.NeedsAuthState{Scope: "repo read", ResourceMetadataURL: "https://auth.example/.well-known/oauth-protected-resource"},
 		},
-		svcmcp.MCPServerConnection{
+		mcpmanager.MCPServerConnection{
 			Name:   "off",
-			Type:   svcmcp.MCPStateDisabled,
-			Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportStdio, Scope: svcmcp.ScopeLocal},
+			Type:   mcpmanager.MCPStateDisabled,
+			Config: catalog.MCPServerConfig{Type: catalog.TransportStdio, Scope: catalog.ScopeLocal},
 		},
 	)
 	backend.sources["github"] = "/tmp/settings.json"
@@ -193,11 +175,26 @@ func TestMCPListShowsStatesCountsCapabilitiesAndDiagnostics(t *testing.T) {
 	}
 }
 
+func TestBuildMCPStatusReportProjectsCountsFromSnapshot(t *testing.T) {
+	backend := newFakeMCPBackend(
+		mcpmanager.MCPServerConnection{Name: "pending", Type: mcpmanager.MCPStatePending},
+		mcpmanager.MCPServerConnection{Name: "connected", Type: mcpmanager.MCPStateConnected},
+		mcpmanager.MCPServerConnection{Name: "failed", Type: mcpmanager.MCPStateFailed},
+		mcpmanager.MCPServerConnection{Name: "auth", Type: mcpmanager.MCPStateNeedsAuth},
+		mcpmanager.MCPServerConnection{Name: "disabled", Type: mcpmanager.MCPStateDisabled},
+	)
+
+	report := buildMCPStatusReport(backend, i18n.LangEN)
+	if report.Counts != (mcpStatusCounts{Pending: 1, Connected: 1, Failed: 1, NeedsAuth: 1, Disabled: 1}) {
+		t.Fatalf("status counts = %#v", report.Counts)
+	}
+}
+
 func TestMCPCommandCanRegisterAsSlashCommand(t *testing.T) {
-	backend := newFakeMCPBackend(svcmcp.MCPServerConnection{
+	backend := newFakeMCPBackend(mcpmanager.MCPServerConnection{
 		Name:   "demo",
-		Type:   svcmcp.MCPStatePending,
-		Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportStdio},
+		Type:   mcpmanager.MCPStatePending,
+		Config: catalog.MCPServerConfig{Type: catalog.TransportStdio},
 	})
 	registry := NewRegistry()
 	RegisterMCPCommand(registry, backend)
@@ -212,17 +209,17 @@ func TestMCPCommandCanRegisterAsSlashCommand(t *testing.T) {
 }
 
 func TestMCPCommandPrefersLiveContextBackend(t *testing.T) {
-	backend := newFakeMCPBackend(svcmcp.MCPServerConnection{
+	backend := newFakeMCPBackend(mcpmanager.MCPServerConnection{
 		Name:   "live-runtime",
-		Type:   svcmcp.MCPStateConnected,
-		Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportHTTP},
+		Type:   mcpmanager.MCPStateConnected,
+		Config: catalog.MCPServerConfig{Type: catalog.TransportHTTP},
 	})
 	var out strings.Builder
 	ctx := &Context{
-		CWD:        t.TempDir(),
-		MCPBackend: backend,
-		QueryLoop:  &mcpTestQueryLoop{},
-		OnEvent:    func(text string) { out.WriteString(text) },
+		CWD:                   t.TempDir(),
+		MCPBackend:            backend,
+		QueryLoop:             &mcpTestQueryLoop{},
+		OnCommandPresentation: captureCompletedCommand(&out),
 	}
 
 	if err := NewMCPCommand(nil).Execute(ctx, "list"); err != nil {
@@ -234,18 +231,19 @@ func TestMCPCommandPrefersLiveContextBackend(t *testing.T) {
 }
 
 func TestDoctorPrefersLiveContextMCPBackend(t *testing.T) {
-	backend := newFakeMCPBackend(svcmcp.MCPServerConnection{
+	backend := newFakeMCPBackend(mcpmanager.MCPServerConnection{
 		Name:   "broken-live-runtime",
-		Type:   svcmcp.MCPStateFailed,
-		Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportStdio},
+		Type:   mcpmanager.MCPStateFailed,
+		Config: catalog.MCPServerConfig{Type: catalog.TransportStdio},
 		Error:  "live transport failed",
 	})
 	var out strings.Builder
 	ctx := &Context{
-		CWD:        t.TempDir(),
-		MCPBackend: backend,
-		QueryLoop:  &mcpTestQueryLoop{},
-		OnEvent:    func(text string) { out.WriteString(text) },
+		CWD:              t.TempDir(),
+		MCPBackend:       backend,
+		QueryLoop:        &mcpTestQueryLoop{},
+		ProviderRegistry: provider.DefaultRegistry(),
+		OnEvent:          func(text string) { out.WriteString(text) },
 	}
 
 	if err := (&doctorCmd{}).Execute(ctx, ""); err != nil {
@@ -258,11 +256,11 @@ func TestDoctorPrefersLiveContextMCPBackend(t *testing.T) {
 }
 
 func TestMCPListJSONIsMachineReadable(t *testing.T) {
-	backend := newFakeMCPBackend(svcmcp.MCPServerConnection{
+	backend := newFakeMCPBackend(mcpmanager.MCPServerConnection{
 		Name:   "github",
-		Type:   svcmcp.MCPStateConnected,
-		Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportHTTP},
-		Tools:  []svcmcp.ToolDefinition{{Name: "search"}},
+		Type:   mcpmanager.MCPStateConnected,
+		Config: catalog.MCPServerConfig{Type: catalog.TransportHTTP},
+		Tools:  []catalog.ToolDefinition{{Name: "search"}},
 	})
 	out := runMCPCommand(t, &mcpCmd{backend: backend}, "--json")
 	var report mcpStatusReport
@@ -275,11 +273,11 @@ func TestMCPListJSONIsMachineReadable(t *testing.T) {
 }
 
 func TestMCPHumanOutputUsesRuntimeLanguageButJSONStaysStable(t *testing.T) {
-	backend := newFakeMCPBackend(svcmcp.MCPServerConnection{
+	backend := newFakeMCPBackend(mcpmanager.MCPServerConnection{
 		Name:   "server-7",
-		Type:   svcmcp.MCPStateConnected,
-		Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportHTTP, Scope: svcmcp.ScopeProject},
-		Tools:  []svcmcp.ToolDefinition{{Name: "search"}},
+		Type:   mcpmanager.MCPStateConnected,
+		Config: catalog.MCPServerConfig{Type: catalog.TransportHTTP, Scope: catalog.ScopeProject},
+		Tools:  []catalog.ToolDefinition{{Name: "search"}},
 	})
 
 	human := runMCPCommandWithLanguage(t, &mcpCmd{backend: backend}, t.TempDir(), i18n.LangZH, "list")
@@ -297,7 +295,7 @@ func TestMCPHumanOutputUsesRuntimeLanguageButJSONStaysStable(t *testing.T) {
 	if err := json.Unmarshal([]byte(machine), &report); err != nil {
 		t.Fatalf("unmarshal localized JSON report: %v\n%s", err, machine)
 	}
-	if len(report.Servers) != 1 || report.Servers[0].State != svcmcp.MCPStateConnected || report.Servers[0].Scope != svcmcp.ScopeProject || report.Servers[0].AuthStatus != "authenticated" {
+	if len(report.Servers) != 1 || report.Servers[0].State != mcpmanager.MCPStateConnected || report.Servers[0].Scope != catalog.ScopeProject || report.Servers[0].AuthStatus != "authenticated" {
 		t.Fatalf("machine-readable values were localized: %#v", report.Servers)
 	}
 }
@@ -305,8 +303,8 @@ func TestMCPHumanOutputUsesRuntimeLanguageButJSONStaysStable(t *testing.T) {
 func TestMCPEnableDisableAllPersistsState(t *testing.T) {
 	tmp := t.TempDir()
 	backend := newFakeMCPBackend(
-		svcmcp.MCPServerConnection{Name: "one", Type: svcmcp.MCPStatePending, Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportStdio}},
-		svcmcp.MCPServerConnection{Name: "two", Type: svcmcp.MCPStateConnected, Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportHTTP}},
+		mcpmanager.MCPServerConnection{Name: "one", Type: mcpmanager.MCPStatePending, Config: catalog.MCPServerConfig{Type: catalog.TransportStdio}},
+		mcpmanager.MCPServerConnection{Name: "two", Type: mcpmanager.MCPStateConnected, Config: catalog.MCPServerConfig{Type: catalog.TransportHTTP}},
 	)
 	_ = runMCPCommandWithCWD(t, &mcpCmd{backend: backend}, tmp, "disable all")
 	if got := strings.Join(backend.toggles, ","); got != "one=false,two=false" {
@@ -337,10 +335,10 @@ func TestMCPUnknownServerBranches(t *testing.T) {
 }
 
 func TestMCPReconnectAndAuthURL(t *testing.T) {
-	backend := newFakeMCPBackend(svcmcp.MCPServerConnection{
+	backend := newFakeMCPBackend(mcpmanager.MCPServerConnection{
 		Name:   "remote",
-		Type:   svcmcp.MCPStateNeedsAuth,
-		Config: svcmcp.MCPServerConfig{Type: svcmcp.TransportHTTP, URL: "https://mcp.example"},
+		Type:   mcpmanager.MCPStateNeedsAuth,
+		Config: catalog.MCPServerConfig{Type: catalog.TransportHTTP, URL: "https://mcp.example"},
 	})
 	cmd := &mcpCmd{
 		backend: backend,
@@ -384,6 +382,44 @@ func TestMCPAddJSONAndRemovePersistSettings(t *testing.T) {
 	}
 }
 
+func TestMCPAddJSONReportsWarningAndStillRegisters(t *testing.T) {
+	const variable = "LUBAN_TEST_MCP_COMMAND_WARNING_MISSING"
+	unsetMCPCommandEnvForTest(t, variable)
+	tmp := t.TempDir()
+	backend := newFakeMCPBackend()
+	out := runMCPCommandWithCWD(t, &mcpCmd{backend: backend}, tmp,
+		`add-json warning-only {"type":"stdio","command":"${LUBAN_TEST_MCP_COMMAND_WARNING_MISSING}"}`)
+	if !strings.Contains(out, i18n.Format(i18n.LangEN, i18n.KeyMCPValidationMissingEnv, variable)) {
+		t.Fatalf("warning output omitted validation diagnostic:\n%s", out)
+	}
+	if !strings.Contains(out, `Added MCP server "warning-only"`) {
+		t.Fatalf("warning prevented successful add:\n%s", out)
+	}
+	if _, ok := backend.State("warning-only"); !ok {
+		t.Fatal("warning-only server was not registered")
+	}
+}
+
+func TestRuntimeMCPBackendSkipsOnlyFatallyInvalidServers(t *testing.T) {
+	t.Setenv("HOME", filepath.Join(t.TempDir(), "home"))
+	root := t.TempDir()
+	data := []byte(`{"mcpServers":{"valid":{"type":"stdio","command":"node"},"invalid":{"type":"stdio","command":""}}}`)
+	if err := os.WriteFile(filepath.Join(root, ".mcp.json"), data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	backend := newRuntimeMCPBackend(root, i18n.LangEN)
+	if _, ok := backend.State("valid"); !ok {
+		t.Fatal("valid server was not registered")
+	}
+	if _, ok := backend.State("invalid"); ok {
+		t.Fatal("fatally invalid server was registered")
+	}
+	if diagnostics := strings.Join(backend.Diagnostics(), "\n"); !strings.Contains(diagnostics, "mcpServers.invalid") {
+		t.Fatalf("fatal diagnostic was silently dropped: %q", diagnostics)
+	}
+}
+
 func TestMCPDoctorUsesManagerDiagnostics(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", filepath.Join(tmp, "home"))
@@ -413,7 +449,11 @@ func runMCPCommandWithCWD(t *testing.T, cmd Command, cwd, args string) string {
 func runMCPCommandWithLanguage(t *testing.T, cmd Command, cwd string, language i18n.Language, args string) string {
 	t.Helper()
 	var sb strings.Builder
-	ctx := &Context{CWD: cwd, Language: language, OnEvent: func(s string) { sb.WriteString(s) }}
+	ctx := &Context{
+		CWD: cwd, Language: language,
+		OnEvent:               func(value string) { sb.WriteString(value) },
+		OnCommandPresentation: captureCompletedCommand(&sb),
+	}
 	if err := cmd.Execute(ctx, args); err != nil {
 		t.Fatalf("Execute(%q): %v", args, err)
 	}
@@ -435,4 +475,19 @@ func readSettingsMap(t *testing.T, path string) map[string]any {
 
 func sortStrings(values []string) {
 	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
+}
+
+func unsetMCPCommandEnvForTest(t *testing.T, key string) {
+	t.Helper()
+	value, existed := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if existed {
+			_ = os.Setenv(key, value)
+			return
+		}
+		_ = os.Unsetenv(key)
+	})
 }

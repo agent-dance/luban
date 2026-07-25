@@ -1,7 +1,6 @@
 package brand
 
 import (
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,30 +18,6 @@ func TestProductIdentity(t *testing.T) {
 	}
 	if InstructionsFile != "LUBAN.md" {
 		t.Fatalf("instructions file = %q, want LUBAN.md", InstructionsFile)
-	}
-	if RateLimitEnv != "LUBAN_CODE_RATE_LIMIT" {
-		t.Fatalf("rate limit env = %q, want LUBAN_CODE_RATE_LIMIT", RateLimitEnv)
-	}
-}
-
-func TestLegacyDeepSeekIdentity(t *testing.T) {
-	if LegacyDeepSeekCommandName != "deepseek-code" {
-		t.Fatalf("legacy DeepSeek command = %q", LegacyDeepSeekCommandName)
-	}
-	if LegacyDeepSeekConfigDirName != ".deepseek-code" {
-		t.Fatalf("legacy DeepSeek config directory = %q", LegacyDeepSeekConfigDirName)
-	}
-	if LegacyDeepSeekInstructionsFile != "DEEPSEEK.md" {
-		t.Fatalf("legacy DeepSeek instructions file = %q", LegacyDeepSeekInstructionsFile)
-	}
-	if LegacyDeepSeekRateLimitEnv != "DEEPSEEK_CODE_RATE_LIMIT" {
-		t.Fatalf("legacy DeepSeek rate limit env = %q", LegacyDeepSeekRateLimitEnv)
-	}
-
-	t.Setenv("HOME", t.TempDir())
-	want := filepath.Join(HomeDir(), LegacyDeepSeekConfigDirName)
-	if got := LegacyDeepSeekUserConfigDir(); got != want {
-		t.Fatalf("legacy DeepSeek user config directory = %q, want %q", got, want)
 	}
 }
 

@@ -4,14 +4,8 @@
 .vscode/
 
 # Local agent/runtime state
-.a3/
-.claude/
 .luban-code/
-.omc/
-.omx/
-.prc-code/
 tool-results/
-tools/.claude/
 transcript-*.txt
 /em_page.html
 /weather.jsonl
@@ -34,6 +28,5 @@ dist/
 *.exe
 *.test
 debug.test*
-/claude-code-go
-/go-claude
+/luban-code
 /luban

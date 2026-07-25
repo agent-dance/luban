@@ -10,8 +10,6 @@ const (
 	KeyToolRuntimeBackgroundTaskNotFound            Key = "tool.runtime.background.task_not_found"
 	KeyToolRuntimeBackgroundOutputDirCreateFailed   Key = "tool.runtime.background.output_dir_create_failed"
 	KeyToolRuntimeBackgroundCommandStartFailed      Key = "tool.runtime.background.command_start_failed"
-	KeyToolRuntimeCronSentinelReserved              Key = "tool.runtime.cron.sentinel_reserved"
-	KeyToolRuntimeCronPromptSentinelUnknown         Key = "tool.runtime.cron.prompt_sentinel_unknown"
 	KeyToolRuntimeTeamUniqueNameGenerationFailed    Key = "tool.runtime.team.unique_name_generation_failed"
 )
 
@@ -57,20 +55,6 @@ func init() {
 		"バックグラウンドコマンドを開始できませんでした: %v",
 		"백그라운드 명령을 시작할 수 없습니다: %v",
 		"Не удалось запустить фоновую команду: %v")
-	add(KeyToolRuntimeCronSentinelReserved,
-		"%s %q is reserved for %s; use a plain prompt or %q with %s",
-		"%s %q 保留给 %s 使用；请改用普通 prompt，或将 %q 用于 %s",
-		"%s %q ist für %s reserviert; verwende einen einfachen Prompt oder %q mit %s",
-		"%s %q は %s 用に予約されています。通常の prompt を使うか、%q を %s で使用してください",
-		"%s %q은(는) %s용으로 예약되어 있습니다. 일반 prompt를 사용하거나 %q을(를) %s에서 사용하세요",
-		"%s %q зарезервирован для %s; используйте обычный prompt или %q с %s")
-	add(KeyToolRuntimeCronPromptSentinelUnknown,
-		"unknown %s %q",
-		"未知的 %s %q",
-		"Unbekannter %s %q",
-		"不明な %s %q",
-		"알 수 없는 %s %q",
-		"Неизвестный %s %q")
 	add(KeyToolRuntimeTeamUniqueNameGenerationFailed,
 		"failed to generate a unique %s name",
 		"无法生成唯一的 %s 名称",

@@ -8,7 +8,7 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	home, err := os.MkdirTemp("", "claude-code-go-provider-home-")
+	home, err := os.MkdirTemp("", "luban-provider-home-")
 	if err != nil {
 		panic(err)
 	}

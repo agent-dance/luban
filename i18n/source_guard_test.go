@@ -20,7 +20,6 @@ import (
 const (
 	guardModulePath      = "github.com/agent-dance/luban"
 	guardI18nImportPath  = guardModulePath + "/i18n"
-	guardToolsImportPath = guardModulePath + "/tools"
 	guardTypesImportPath = guardModulePath + "/types"
 	guardGoTUIPath       = "github.com/grindlemire/go-tui"
 )
@@ -67,11 +66,7 @@ var (
 		{Package: guardModulePath + "/commands", Name: "CommandPresentationContract"}: {
 			"CompletedNextAction": {}, "FailedNextAction": {},
 		},
-		{Package: guardModulePath + "/loop", Name: "PermissionRequest"}: {
-			"Action": {}, "Impact": {}, "RiskReason": {}, "RuleSource": {},
-			"ApprovalScope": {}, "Body": {}, "Message": {}, "ReviewDetails": {},
-		},
-		{Package: guardModulePath + "/engine", Name: "PermissionRequest"}: {
+		{Package: guardModulePath + "/internal/contracts/permission", Name: "PermissionRequest"}: {
 			"Action": {}, "Impact": {}, "RiskReason": {}, "RuleSource": {},
 			"ApprovalScope": {}, "Body": {}, "Description": {}, "Message": {},
 			"ReviewDetails": {},
@@ -79,23 +74,18 @@ var (
 		{Package: guardModulePath + "/types", Name: "ToolPermissionResult"}: {
 			"Message": {},
 		},
-		{Package: guardModulePath + "/loop", Name: "Event"}: {
+		{Package: guardModulePath + "/internal/contracts/stream", Name: "Event"}: {
 			"Text": {},
 		},
-		{Package: guardModulePath + "/loop", Name: "ProgressEvent"}: {
+		{Package: guardModulePath + "/internal/contracts/stream", Name: "ProgressEvent"}: {
 			"Message": {},
 		},
-		{Package: guardModulePath + "/loop", Name: "CompactBoundaryEvent"}: {
+		{Package: guardModulePath + "/internal/contracts/stream", Name: "CompactBoundaryEvent"}: {
 			"UserDisplayMessage": {},
 		},
-		{Package: guardModulePath + "/loop", Name: "TombstoneEvent"}: {
+		{Package: guardModulePath + "/internal/contracts/stream", Name: "TombstoneEvent"}: {
 			"Summary": {},
 		},
-	}
-	displayHelperArgs = map[guardTypeID][]int{
-		{Package: guardToolsImportPath, Name: "ErrorResponse"}:  {0},
-		{Package: guardToolsImportPath, Name: "ErrorResponsef"}: {0},
-		{Package: guardToolsImportPath, Name: "StringResponse"}: {0},
 	}
 )
 
@@ -466,8 +456,6 @@ func guardDisplayCallViolations(file *guardParsedFile, call *ast.CallExpr) []gua
 	var indexes []int
 
 	switch {
-	case len(displayHelperArgs[guardTypeID{Package: importPath, Name: name}]) > 0:
-		indexes = displayHelperArgs[guardTypeID{Package: importPath, Name: name}]
 	case importPath == guardGoTUIPath && (name == "WithText" || name == "WithTextPrefix" || name == "WithTextAreaPlaceholder"):
 		indexes = []int{0}
 	case importPath == "fmt" && (name == "Print" || name == "Printf" || name == "Println"):
@@ -763,9 +751,6 @@ func guardEnglishLiterals(file *guardParsedFile, expression ast.Expr) []guardLit
 func guardCallIsLocalized(file *guardParsedFile, call *ast.CallExpr) bool {
 	name, importPath := guardCallName(file, call)
 	if importPath == guardI18nImportPath && (name == "Text" || name == "Format") {
-		return true
-	}
-	if importPath == guardToolsImportPath && (name == "toolRuntimeText" || name == "toolRuntimeFormat") {
 		return true
 	}
 	return strings.HasSuffix(name, "InLanguage") || name == "Localized"

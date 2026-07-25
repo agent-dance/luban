@@ -1,25 +1,23 @@
 package sdk
 
-import "github.com/agent-dance/luban/engine"
-
 // ToolApprovalFunc is an optional callback that can be registered with an
 // SDKServer to decide whether a tool call should be allowed.  It is called
 // synchronously inside Check() before the normal bridge round-trip.
 //
 // Return values:
 //
-//	engine.PermissionAllow  – approve the tool call immediately
-//	engine.PermissionDeny   – deny the tool call immediately
+//	PermissionAllow    – approve the tool call immediately
+//	PermissionDeny     – deny the tool call immediately
 //	-1                      – abstain; fall through to the SDK client bridge
 //
 // The special abstain value (-1) lets the callback indicate "I don't have an
 // opinion" so the normal can_use_tool round-trip still happens.
-type ToolApprovalFunc func(toolName string, input map[string]any) engine.PermissionDecision
+type ToolApprovalFunc func(toolName string, input map[string]any) PermissionDecision
 
 // PermissionAbstain is the sentinel returned by a ToolApprovalFunc to
 // indicate that the callback did not make a decision and the default SDK
 // bridge should be used instead.
-const PermissionAbstain engine.PermissionDecision = -1
+const PermissionAbstain PermissionDecision = -1
 
 // SetToolApproval registers fn as the in-process tool-approval callback.
 // Once registered, every permission Check calls fn first; only when fn returns

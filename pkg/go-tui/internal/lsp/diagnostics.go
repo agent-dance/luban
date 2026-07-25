@@ -25,38 +25,17 @@ type PublishDiagnosticsParams struct {
 	Diagnostics []Diagnostic `json:"diagnostics"`
 }
 
-// publishDiagnostics sends diagnostics for a document.
-// If a DiagnosticsProvider is registered, it delegates to the provider;
-// otherwise it falls back to inline conversion.
-// Gopls diagnostics are merged with parse diagnostics.
+// publishDiagnostics sends provider diagnostics for a document and merges
+// them with gopls diagnostics.
 func (s *Server) publishDiagnostics(doc *Document) {
 	if doc == nil {
 		return
 	}
 
-	var diagnostics []Diagnostic
-
-	if s.router != nil && s.router.registry != nil && s.router.registry.Diagnostics != nil {
-		diags, err := s.router.registry.Diagnostics.Diagnose(doc)
-		if err != nil {
-			log.Server("Diagnostics provider error: %v", err)
-			diagnostics = []Diagnostic{}
-		} else {
-			diagnostics = diags
-		}
-	} else {
-		// No provider registered — fall back to inline conversion of parse errors
-		for _, e := range doc.Errors {
-			diagnostics = append(diagnostics, Diagnostic{
-				Range: Range{
-					Start: Position{Line: e.Pos.Line - 1, Character: e.Pos.Column - 1},
-					End:   Position{Line: e.Pos.Line - 1, Character: e.Pos.Column - 1 + 10},
-				},
-				Severity: DiagnosticSeverityError,
-				Source:   "gsx",
-				Message:  e.Message,
-			})
-		}
+	diagnostics, err := s.router.registry.Diagnostics.Diagnose(doc)
+	if err != nil {
+		log.Server("Diagnostics provider error: %v", err)
+		diagnostics = []Diagnostic{}
 	}
 
 	// Add gopls diagnostics (type errors, undefined identifiers, etc.)

@@ -51,25 +51,20 @@ type DeveloperMessageMetadata struct {
 }
 
 // InternalMessageKind identifies model-visible runtime control messages
-// without relying on their localized text. Empty preserves legacy sessions.
+// without relying on their localized text. The zero value identifies an
+// ordinary message; a non-zero kind requires authenticated runtime provenance.
 type InternalMessageKind string
 
 const (
 	InternalMessageKindOutputTokenRecovery InternalMessageKind = "output_token_recovery"
 	InternalMessageKindCompactBoundary     InternalMessageKind = "compact_boundary"
 	InternalMessageKindCompactSummary      InternalMessageKind = "compact_summary"
-	InternalMessageKindCompactFileRecovery InternalMessageKind = "compact_file_recovery"
 	InternalMessageKindCompactReminder     InternalMessageKind = "compact_reminder"
 	InternalMessageKindBackgroundFollowUp  InternalMessageKind = "background_follow_up"
-	InternalMessageKindFileReadSecurity    InternalMessageKind = "file_read_security"
 	InternalMessageKindSkillCatalog        InternalMessageKind = "skill_catalog"
 	InternalMessageKindUserContext         InternalMessageKind = "user_context"
 	InternalMessageKindGoalContinuation    InternalMessageKind = "goal_continuation"
 	InternalMessageKindSkillInvocation     InternalMessageKind = "skill_invocation"
-	// InternalMessageKindContextCollapseStaged is an ephemeral, process-local
-	// projection marker. Session persistence must reject authenticated values
-	// of this kind until a durable staged-collapse store exists.
-	InternalMessageKindContextCollapseStaged InternalMessageKind = "context_collapse_staged"
 )
 
 // StopReason represents why the model stopped generating
@@ -82,7 +77,8 @@ const (
 )
 
 // ToolOutcome records the deterministic execution result independently from
-// human-readable tool output. Empty values preserve legacy session behavior.
+// human-readable tool output. The zero value means no authoritative outcome
+// has been assigned yet and must not cross a runtime projection boundary.
 type ToolOutcome string
 
 const (
@@ -218,7 +214,7 @@ func (b ContentReplacementBlock) InternalReplacementProvenanceScope() (messageco
 // scope. A process-wide HMAC without a scope is deliberately not a bearer
 // capability: it can be copied between live loops and must never be promoted
 // by reconstruction, persistence, provider, or presentation boundaries.
-func (b ContentReplacementBlock) HasInternalReplacementProvenanceForScope(scope messagecontrol.Scope, allowUnbound bool) bool {
+func (b ContentReplacementBlock) HasInternalReplacementProvenanceForScope(scope messagecontrol.Scope) bool {
 	if !b.HasInternalReplacementProvenance() {
 		return false
 	}
@@ -361,9 +357,7 @@ func (m Message) InternalControlProvenanceScope() (messagecontrol.Scope, bool) {
 }
 
 // HasInternalControlProvenanceForScope accepts only an exact authority scope.
-// allowUnbound is retained for source compatibility but cannot turn a
-// process-wide HMAC into transferable pre-commit authority.
-func (m Message) HasInternalControlProvenanceForScope(scope messagecontrol.Scope, allowUnbound bool) bool {
+func (m Message) HasInternalControlProvenanceForScope(scope messagecontrol.Scope) bool {
 	if !m.HasInternalControlProvenance() {
 		return false
 	}
@@ -385,9 +379,9 @@ func (m Message) IsInternalRuntimeMessage() bool {
 // IsInternalRuntimeMessage. Bound durable controls are privileged only in the
 // exact current namespace and generation; freshly installed unbound controls
 // may be accepted only at a private pre-commit boundary.
-func (m Message) IsInternalRuntimeMessageForScope(scope messagecontrol.Scope, allowUnbound bool) bool {
+func (m Message) IsInternalRuntimeMessageForScope(scope messagecontrol.Scope) bool {
 	return m.InternalKind != InternalMessageKindSkillInvocation &&
-		m.HasInternalControlProvenanceForScope(scope, allowUnbound)
+		m.HasInternalControlProvenanceForScope(scope)
 }
 
 func (m Message) IsTrustedSkillInvocationMessage() bool {
@@ -398,11 +392,11 @@ func (m Message) IsTrustedSkillInvocationMessage() bool {
 	return ok
 }
 
-func (m Message) IsTrustedSkillInvocationMessageForScope(scope messagecontrol.Scope, allowUnbound bool) bool {
+func (m Message) IsTrustedSkillInvocationMessageForScope(scope messagecontrol.Scope) bool {
 	if !m.IsTrustedSkillInvocationMessage() {
 		return false
 	}
-	return m.HasInternalControlProvenanceForScope(scope, allowUnbound)
+	return m.HasInternalControlProvenanceForScope(scope)
 }
 
 // IsTrustedDeveloperMessage reports whether the runtime, rather than an SDK or
@@ -424,11 +418,11 @@ func (m Message) IsTrustedDeveloperMessage() bool {
 	}
 }
 
-func (m Message) IsTrustedDeveloperMessageForScope(scope messagecontrol.Scope, allowUnbound bool) bool {
+func (m Message) IsTrustedDeveloperMessageForScope(scope messagecontrol.Scope) bool {
 	if !m.IsTrustedDeveloperMessage() {
 		return false
 	}
-	return m.HasInternalControlProvenanceForScope(scope, allowUnbound)
+	return m.HasInternalControlProvenanceForScope(scope)
 }
 
 func toolResultTextContent(text string, blocks []ContentBlock) string {
@@ -551,14 +545,4 @@ func (m Message) GetToolUses() []ToolUseBlock {
 		}
 	}
 	return uses
-}
-
-// HasToolUse checks if the message contains any tool use blocks
-func (m Message) HasToolUse() bool {
-	for _, block := range m.Content {
-		if _, ok := block.(ToolUseBlock); ok {
-			return true
-		}
-	}
-	return false
 }

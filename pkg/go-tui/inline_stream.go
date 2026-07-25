@@ -5,9 +5,8 @@ import (
 	"sync/atomic"
 )
 
-// inlineStreamWriter implements io.WriteCloser for streaming text to the
-// inline history region. Writes are queued onto the app's main event loop.
-// Goroutine-safe.
+// inlineStreamWriter streams bytes to the inline history region. Writes are
+// queued onto the app's main event loop. Goroutine-safe.
 type inlineStreamWriter struct {
 	app    *App
 	closed atomic.Bool

@@ -47,7 +47,7 @@ func (m *mockProvider) CreateStream(_ context.Context, _ Params) (<-chan types.S
 // successEvents returns a minimal valid stream that completes cleanly.
 func successEvents() []types.StreamEvent {
 	return []types.StreamEvent{
-		{Type: types.EventMessageStart, Message: &types.APIMessage{Role: types.RoleAssistant}},
+		{Type: types.EventMessageStart},
 		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{Type: types.ContentTypeText}},
 		{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "text_delta", Text: "ok"}},
 		{Type: types.EventContentBlockStop, Index: 0},
@@ -408,20 +408,6 @@ func TestRetry_MaxTokensOverflow_IsRetryable(t *testing.T) {
 	ae := &types.APIError{Status: 400, Message: "max_tokens exceed context length"}
 	if !IsRetryable(ae) {
 		t.Error("expected max_tokens overflow to be retryable")
-	}
-}
-
-// TestIs429Error / TestIs529Error / TestIsPromptTooLong
-
-func TestIs429Error(t *testing.T) {
-	if !Is429Error(&types.APIError{Status: 429}) {
-		t.Error("expected true for 429")
-	}
-	if Is429Error(&types.APIError{Status: 500}) {
-		t.Error("expected false for 500")
-	}
-	if Is429Error(errors.New("generic")) {
-		t.Error("expected false for generic error")
 	}
 }
 

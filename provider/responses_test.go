@@ -159,7 +159,7 @@ func TestConvertToolsToResponsesAPI(t *testing.T) {
 		},
 	}
 
-	result := convertToolsToResponsesAPI(tools)
+	result := convertToolsToResponsesAPIWithStrictMode(tools, true)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(result))
 	}
@@ -186,7 +186,7 @@ func TestConvertToolsToResponsesAPI_EmptyProperties(t *testing.T) {
 			InputSchema: types.JSONSchema{Type: "object"},
 		},
 	}
-	result := convertToolsToResponsesAPI(tools)
+	result := convertToolsToResponsesAPIWithStrictMode(tools, true)
 	schema := result[0]["parameters"].(types.JSONSchema)
 	if schema.Properties == nil {
 		t.Error("expected Properties to be non-nil (empty map)")
@@ -201,7 +201,7 @@ func TestConvertMessagesToResponsesAPI_FullHistory(t *testing.T) {
 		types.UserMessage("how are you?"),
 	}
 
-	input := convertMessagesToResponsesAPI(msgs, "")
+	input := convertMessagesToResponsesAPIForParams(Params{Messages: msgs}, "")
 	if len(input) != 3 {
 		t.Fatalf("expected 3 input items, got %d", len(input))
 	}
@@ -224,7 +224,7 @@ func TestConvertMessagesToResponsesAPI_WithPrevID(t *testing.T) {
 		types.UserMessage("how are you?"),
 	}
 
-	input := convertMessagesToResponsesAPI(msgs, "resp_prev123")
+	input := convertMessagesToResponsesAPIForParams(Params{Messages: msgs}, "resp_prev123")
 	if len(input) != 1 {
 		t.Fatalf("expected 1 input item (only new user message), got %d", len(input))
 	}
@@ -257,7 +257,7 @@ func TestConvertMessagesToResponsesAPI_ToolResults(t *testing.T) {
 	}
 
 	// With previous response ID — only send tool results
-	input := convertMessagesToResponsesAPI(msgs, "resp_prev")
+	input := convertMessagesToResponsesAPIForParams(Params{Messages: msgs}, "resp_prev")
 	if len(input) != 1 {
 		t.Fatalf("expected 1 input item, got %d", len(input))
 	}
@@ -301,7 +301,7 @@ func TestConvertMessagesToResponsesAPI_StructuredToolResults(t *testing.T) {
 		}),
 	}
 
-	input := convertMessagesToResponsesAPI(msgs, "resp_prev")
+	input := convertMessagesToResponsesAPIForParams(Params{Messages: msgs}, "resp_prev")
 	if len(input) != 2 {
 		t.Fatalf("expected 2 input items, got %d", len(input))
 	}
@@ -348,7 +348,7 @@ func TestConvertMessagesToResponsesAPI_ToolReferenceResults(t *testing.T) {
 		}),
 	}
 
-	input := convertMessagesToResponsesAPI(msgs, "resp_prev")
+	input := convertMessagesToResponsesAPIForParams(Params{Messages: msgs}, "resp_prev")
 	if len(input) != 2 {
 		t.Fatalf("expected 2 input items, got %d", len(input))
 	}
@@ -385,7 +385,7 @@ func TestConvertMessagesToResponsesAPI_ParallelStructuredToolResultsStayAdjacent
 		),
 	}
 
-	input := convertMessagesToResponsesAPI(msgs, "resp_prev")
+	input := convertMessagesToResponsesAPIForParams(Params{Messages: msgs}, "resp_prev")
 	if len(input) != 4 {
 		t.Fatalf("input = %#v, want two outputs followed by two attachment user items", input)
 	}
@@ -779,6 +779,9 @@ func TestResponsesProvider_PreviousResponseIDInRequest(t *testing.T) {
 		APIKey:  "test-key",
 		BaseURL: srv.URL,
 	})
+	// Exercise the official public Responses API contract while routing the
+	// request through the local capture server.
+	p.publicAPIEndpoint = true
 	_, err := p.CreateStream(context.Background(), Params{
 		Messages:           []types.Message{types.UserMessage("continue")},
 		PromptCacheKey:     "session-123",
@@ -795,8 +798,8 @@ func TestResponsesProvider_PreviousResponseIDInRequest(t *testing.T) {
 	if _, ok := capturedBody["max_output_tokens"]; ok {
 		t.Fatalf("default Responses request should omit max_output_tokens: %#v", capturedBody["max_output_tokens"])
 	}
-	if capturedBody["prompt_cache_key"] != "session-123" {
-		t.Errorf("prompt_cache_key = %v, want %q", capturedBody["prompt_cache_key"], "session-123")
+	if got, _ := capturedBody["prompt_cache_key"].(string); !strings.HasPrefix(got, "pcu_") || got == "session-123" {
+		t.Errorf("prompt_cache_key = %v, want opaque credential-scoped route", capturedBody["prompt_cache_key"])
 	}
 }
 
@@ -869,8 +872,8 @@ func TestResponsesProvider_ChatGPTCodexHTTPFallbackUsesStoreFalseAndFullInput(t 
 	if len(input) != 3 {
 		t.Fatalf("input length = %d, want full history length 3", len(input))
 	}
-	if capturedBody["prompt_cache_key"] != "session-123" {
-		t.Errorf("prompt_cache_key = %v, want %q", capturedBody["prompt_cache_key"], "session-123")
+	if got, _ := capturedBody["prompt_cache_key"].(string); !strings.HasPrefix(got, "pcu_") || got == "session-123" {
+		t.Errorf("prompt_cache_key = %v, want opaque credential-scoped route", capturedBody["prompt_cache_key"])
 	}
 }
 
@@ -1093,7 +1096,7 @@ func TestConvertMessagesToResponsesAPI_AssistantWithToolUse(t *testing.T) {
 		},
 	}
 
-	input := convertAllMessagesForResponsesAPI(msgs)
+	input := convertAllMessagesForResponsesAPIWithParams(Params{Messages: msgs})
 	if len(input) != 2 {
 		t.Fatalf("expected 2 items (text + function_call), got %d", len(input))
 	}
@@ -1266,29 +1269,14 @@ func TestParseResponsesHTTPError(t *testing.T) {
 	}
 }
 
-// TestNewFromEnv_ResponsesProvider tests env-based provider creation.
-func TestNewFromEnv_ResponsesProvider(t *testing.T) {
+// TestNewFromEnvWithOverrides_ResponsesProvider tests env-based provider creation.
+func TestNewFromEnvWithOverrides_ResponsesProvider(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	t.Setenv("PROVIDER", "openai")
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
-		t.Fatalf("NewFromEnv: %v", err)
-	}
-	if p.Name() != "openai" {
-		t.Errorf("Name() = %q, want %q", p.Name(), "openai")
-	}
-}
-
-// TestNewFromEnv_OpenAIAutoUpgrade tests OPENAI_USE_RESPONSES env var.
-func TestNewFromEnv_OpenAIAutoUpgrade(t *testing.T) {
-	t.Setenv("OPENAI_API_KEY", "test-key")
-	t.Setenv("PROVIDER", "openai")
-	t.Setenv("OPENAI_USE_RESPONSES", "1")
-
-	p, err := NewFromEnv()
-	if err != nil {
-		t.Fatalf("NewFromEnv: %v", err)
+		t.Fatalf("NewFromEnvWithOverrides: %v", err)
 	}
 	if p.Name() != "openai" {
 		t.Errorf("Name() = %q, want %q", p.Name(), "openai")
@@ -1351,7 +1339,7 @@ func TestResponsesProvider_PromptCacheKeyDisabledWhenOptOut(t *testing.T) {
 	}
 }
 
-func TestResponsesProvider_UserScopedPromptCacheReusesIndependentSessions(t *testing.T) {
+func TestResponsesProvider_PromptCacheReusesIndependentSessions(t *testing.T) {
 	var captured []string
 	sseData := buildSSEStream([]sseEvent{
 		{Type: "response.created", Data: `{"id":"resp_cache_scope"}`},
@@ -1371,11 +1359,10 @@ func TestResponsesProvider_UserScopedPromptCacheReusesIndependentSessions(t *tes
 	defer srv.Close()
 
 	p := NewResponses(Config{
-		ProviderName:          "openai",
-		APIKey:                "same-account-secret",
-		BaseURL:               srv.URL,
-		Model:                 "gpt-5.6-sol",
-		UserScopedPromptCache: true,
+		ProviderName: "openai",
+		APIKey:       "same-account-secret",
+		BaseURL:      srv.URL,
+		Model:        "gpt-5.6-sol",
 	})
 	for _, lineage := range []string{"session-a", "session-b"} {
 		stream, err := p.CreateStream(context.Background(), Params{
@@ -1398,7 +1385,7 @@ func TestResponsesProvider_UserScopedPromptCacheReusesIndependentSessions(t *tes
 	}
 }
 
-func TestResponsesProvider_UserScopedPromptCacheRequestShape(t *testing.T) {
+func TestResponsesProvider_PromptCacheRequestShape(t *testing.T) {
 	var capturedBody map[string]any
 	sseData := buildSSEStream([]sseEvent{
 		{Type: "response.created", Data: `{"id":"resp_cache"}`},
@@ -1413,11 +1400,10 @@ func TestResponsesProvider_UserScopedPromptCacheRequestShape(t *testing.T) {
 	defer srv.Close()
 
 	p := NewResponses(Config{
-		ProviderName:          "openai",
-		APIKey:                "user-secret",
-		BaseURL:               srv.URL,
-		Model:                 "gpt-5.6-sol",
-		UserScopedPromptCache: true,
+		ProviderName: "openai",
+		APIKey:       "user-secret",
+		BaseURL:      srv.URL,
+		Model:        "gpt-5.6-sol",
 	})
 	p.publicAPIEndpoint = true
 	stream, err := p.CreateStream(context.Background(), Params{
@@ -1615,7 +1601,7 @@ func TestResponsesProvider_GPT56ResponsesLiteRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := NewResponses(Config{ProviderName: "openai", APIKey: "test-key", BaseURL: srv.URL, Model: "gpt-5.6-sol", UserScopedPromptCache: true})
+	p := NewResponses(Config{ProviderName: "openai", APIKey: "test-key", BaseURL: srv.URL, Model: "gpt-5.6-sol"})
 	p.firstPartyEndpoint = true
 	p.publicAPIEndpoint = true
 	ch, err := p.CreateStream(context.Background(), Params{

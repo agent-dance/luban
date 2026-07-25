@@ -17,15 +17,11 @@ func TestCompactVisibleKeysCoverEveryLanguage(t *testing.T) {
 		KeyCompactPartialTranscriptRecovery,
 		KeyCompactPartialTranscriptUnavailable,
 		KeyCompactEarlierMessagesPreserved,
-		KeyCompactHistorySnip,
-		KeyCompactFileRecoveryTitle,
 		KeyCompactAttachmentPlanTitle,
 		KeyCompactAttachmentPlanFile,
 		KeyCompactAttachmentPlanModeTitle,
 		KeyCompactAttachmentPlanModeBody,
 		KeyCompactAttachmentSkillsTitle,
-		KeyCompactAttachmentSourceLabel,
-		KeyCompactAttachmentToolUseIDLabel,
 		KeyCompactAttachmentBackgroundTitle,
 		KeyCompactAttachmentUnknownStatus,
 		KeyCompactAttachmentTypeLabel,
@@ -50,7 +46,7 @@ func TestCompactVisibleKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestCompactVisibleCopyPreservesRawPathsAndEnglishCompatibility(t *testing.T) {
+func TestCompactVisibleCopyPreservesRawPathsAndEnglishContract(t *testing.T) {
 	const transcript = "/tmp/session/transcript.jsonl"
 	if got := Format(LangEN, KeyCompactTranscriptRecovery, transcript); got != "If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: "+transcript {
 		t.Fatalf("English transcript guidance changed: %q", got)

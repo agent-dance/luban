@@ -3,6 +3,8 @@ package lsp
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/grindlemire/go-tui/internal/lsp/schema"
 )
 
 func TestWorkspaceSymbolDirect(t *testing.T) {
@@ -125,7 +127,11 @@ func TestGetElementAttributes(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			attrs := getElementAttributes(tt.tag)
+			element := schema.GetElement(tt.tag)
+			var attrs []schema.AttributeDef
+			if element != nil {
+				attrs = element.Attributes
+			}
 			if tt.wantAttrs && len(attrs) == 0 {
 				t.Error("expected attributes, got none")
 			}
@@ -136,7 +142,7 @@ func TestGetElementAttributes(t *testing.T) {
 	}
 }
 
-func TestIsElementTag(t *testing.T) {
+func TestSchemaElementLookup(t *testing.T) {
 	type tc struct {
 		word string
 		want bool
@@ -158,15 +164,15 @@ func TestIsElementTag(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := isElementTag(tt.word)
+			got := schema.GetElement(tt.word) != nil
 			if got != tt.want {
-				t.Errorf("isElementTag(%q) = %v, want %v", tt.word, got, tt.want)
+				t.Errorf("schema element lookup for %q = %v, want %v", tt.word, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestIsInClassAttribute(t *testing.T) {
+func TestResolveCursorContextClassAttribute(t *testing.T) {
 	type tc struct {
 		content    string
 		line       int
@@ -276,13 +282,14 @@ templ Hello() {
 			server.docs.Open("file:///test.gsx", tt.content, 1)
 			doc := server.docs.Get("file:///test.gsx")
 
-			gotInAttr, gotPrefix := server.isInClassAttribute(doc, Position{Line: tt.line, Character: tt.character})
+			ctx := ResolveCursorContext(doc, Position{Line: tt.line, Character: tt.character})
+			gotInAttr, gotPrefix := ctx.InClassAttr, ctx.Word
 
 			if gotInAttr != tt.wantInAttr {
-				t.Errorf("isInClassAttribute() inAttr = %v, want %v", gotInAttr, tt.wantInAttr)
+				t.Errorf("ResolveCursorContext InClassAttr = %v, want %v", gotInAttr, tt.wantInAttr)
 			}
-			if gotPrefix != tt.wantPrefix {
-				t.Errorf("isInClassAttribute() prefix = %q, want %q", gotPrefix, tt.wantPrefix)
+			if tt.wantInAttr && gotPrefix != tt.wantPrefix {
+				t.Errorf("ResolveCursorContext Word = %q, want %q", gotPrefix, tt.wantPrefix)
 			}
 		})
 	}
@@ -291,8 +298,7 @@ templ Hello() {
 func TestGetTailwindCompletions(t *testing.T) {
 	type tc struct {
 		prefix    string
-		wantCount int // -1 means we just check > 0
-		wantFirst string
+		wantCount int  // -1 means we just check > 0
 		checkAll  bool // if true, check that all returned items have the prefix
 	}
 
@@ -321,8 +327,7 @@ func TestGetTailwindCompletions(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			server := NewServer(nil, nil)
-			items := server.getTailwindCompletions(tt.prefix)
+			items := schema.MatchClasses(tt.prefix)
 
 			if tt.wantCount == -1 {
 				if len(items) == 0 {
@@ -335,19 +340,19 @@ func TestGetTailwindCompletions(t *testing.T) {
 			// Check that all items have the prefix if requested
 			if tt.checkAll {
 				for _, item := range items {
-					if len(item.Label) < len(tt.prefix) || item.Label[:len(tt.prefix)] != tt.prefix {
-						t.Errorf("item %q does not have prefix %q", item.Label, tt.prefix)
+					if len(item.Name) < len(tt.prefix) || item.Name[:len(tt.prefix)] != tt.prefix {
+						t.Errorf("item %q does not have prefix %q", item.Name, tt.prefix)
 					}
 				}
 			}
 
 			// Check that completion items have documentation
 			for _, item := range items {
-				if item.Documentation == nil || item.Documentation.Value == "" {
-					t.Errorf("item %q missing documentation", item.Label)
+				if item.Description == "" {
+					t.Errorf("item %q missing documentation", item.Name)
 				}
-				if item.Detail == "" {
-					t.Errorf("item %q missing detail (category)", item.Label)
+				if item.Category == "" {
+					t.Errorf("item %q missing detail (category)", item.Name)
 				}
 			}
 		})

@@ -7,13 +7,9 @@ package i18n
 const (
 	KeyToolRuntimeErrorPrefix           Key = "tool.runtime.error.prefix"
 	KeyToolRuntimeInvalidInput          Key = "tool.runtime.error.invalid_input"
-	KeyToolRuntimeInputMarshalFailed    Key = "tool.runtime.error.input_marshal_failed"
-	KeyToolRuntimeInputFormatInvalid    Key = "tool.runtime.error.input_format_invalid"
 	KeyToolRuntimeResponseMarshalFailed Key = "tool.runtime.error.response_marshal_failed"
 	KeyToolRuntimeRequiredFieldMissing  Key = "tool.runtime.error.required_field_missing"
-	KeyToolRuntimeRequiredFieldEmpty    Key = "tool.runtime.error.required_field_empty"
 	KeyToolRuntimeFieldStringRequired   Key = "tool.runtime.error.field_string_required"
-	KeyToolRuntimeFieldBooleanRequired  Key = "tool.runtime.error.field_boolean_required"
 
 	KeyToolRuntimeAgentSourceProjectLabel Key = "tool.runtime.agent.source.project"
 	KeyToolRuntimeAgentSourceUserLabel    Key = "tool.runtime.agent.source.user"
@@ -22,8 +18,6 @@ const (
 	KeyToolRuntimeAgentSourceBuiltinLabel Key = "tool.runtime.agent.source.builtin"
 	KeyToolRuntimeAgentSourceOtherLabel   Key = "tool.runtime.agent.source.other"
 
-	KeyToolRuntimeWatchdogHardDeadlineExceeded        Key = "tool.runtime.background.watchdog.hard_deadline"
-	KeyToolRuntimeWatchdogIdleNoOutput                Key = "tool.runtime.background.watchdog.idle"
 	KeyToolRuntimeBackgroundTaskNotificationTitle     Key = "tool.runtime.background.notification.title"
 	KeyToolRuntimeBackgroundTaskNotification          Key = "tool.runtime.background.notification.message"
 	KeyToolRuntimeBackgroundTaskNotificationWithLabel Key = "tool.runtime.background.notification.message_labeled"
@@ -34,17 +28,9 @@ const (
 	KeyToolRuntimeBlockingSleep                   Key = "tool.runtime.bash.blocking_sleep"
 	KeyToolRuntimeCommandBlocked                  Key = "tool.runtime.bash.command_blocked"
 	KeyToolRuntimeBackgroundUnavailable           Key = "tool.runtime.bash.background_unavailable"
-	KeyToolRuntimeProgressStartingBackground      Key = "tool.runtime.bash.progress.starting_background"
-	KeyToolRuntimeProgressBuildBackgroundFailed   Key = "tool.runtime.bash.progress.build_background_failed"
 	KeyToolRuntimeBuildBackgroundFailed           Key = "tool.runtime.bash.build_background_failed"
-	KeyToolRuntimeProgressStartBackgroundFailed   Key = "tool.runtime.bash.progress.start_background_failed"
 	KeyToolRuntimeStartBackgroundFailed           Key = "tool.runtime.bash.start_background_failed"
-	KeyToolRuntimeProgressBackgroundStarted       Key = "tool.runtime.bash.progress.background_started"
 	KeyToolRuntimeBuildCommandFailed              Key = "tool.runtime.bash.build_command_failed"
-	KeyToolRuntimeProgressRunning                 Key = "tool.runtime.bash.progress.running"
-	KeyToolRuntimeProgressInterrupted             Key = "tool.runtime.bash.progress.interrupted"
-	KeyToolRuntimeProgressFailed                  Key = "tool.runtime.bash.progress.failed"
-	KeyToolRuntimeProgressCompleted               Key = "tool.runtime.bash.progress.completed"
 	KeyToolRuntimeSandboxUnavailable              Key = "tool.runtime.bash.sandbox_unavailable"
 	KeyToolRuntimeLinesTruncated                  Key = "tool.runtime.bash.lines_truncated"
 	KeyToolRuntimeSleepFollowedBy                 Key = "tool.runtime.bash.sleep_followed_by"
@@ -84,20 +70,12 @@ func init() {
 			"Error: %s", "错误：%s", "Fehler: %s", "エラー: %s", "오류: %s", "Ошибка: %s"},
 		KeyToolRuntimeInvalidInput: {
 			"Error: invalid input: %s", "错误：输入无效：%s", "Fehler: Ungültige Eingabe: %s", "エラー: 入力が無効です: %s", "오류: 잘못된 입력: %s", "Ошибка: недопустимые входные данные: %s"},
-		KeyToolRuntimeInputMarshalFailed: {
-			"Could not encode tool input: %v", "无法编码工具输入：%v", "Tool-Eingabe konnte nicht codiert werden: %v", "ツール入力をエンコードできませんでした: %v", "도구 입력을 인코딩할 수 없습니다: %v", "Не удалось закодировать входные данные инструмента: %v"},
-		KeyToolRuntimeInputFormatInvalid: {
-			"Invalid tool input: %v", "工具输入无效：%v", "Ungültige Tool-Eingabe: %v", "ツール入力が無効です: %v", "도구 입력이 잘못되었습니다: %v", "Недопустимые входные данные инструмента: %v"},
 		KeyToolRuntimeResponseMarshalFailed: {
 			"Could not encode tool response: %v", "无法编码工具响应：%v", "Tool-Antwort konnte nicht codiert werden: %v", "ツール応答をエンコードできませんでした: %v", "도구 응답을 인코딩할 수 없습니다: %v", "Не удалось закодировать ответ инструмента: %v"},
 		KeyToolRuntimeRequiredFieldMissing: {
 			"Required field is missing: %q", "缺少必填字段：%q", "Erforderliches Feld fehlt: %q", "必須フィールドがありません: %q", "필수 필드가 없습니다: %q", "Отсутствует обязательное поле: %q"},
-		KeyToolRuntimeRequiredFieldEmpty: {
-			"Required field is empty: %q", "必填字段为空：%q", "Erforderliches Feld ist leer: %q", "必須フィールドが空です: %q", "필수 필드가 비어 있습니다: %q", "Обязательное поле пусто: %q"},
 		KeyToolRuntimeFieldStringRequired: {
 			"Field %q is missing or is not a string", "字段 %q 缺失或不是字符串", "Feld %q fehlt oder ist keine Zeichenfolge", "フィールド %q がないか、文字列ではありません", "필드 %q이(가) 없거나 문자열이 아닙니다", "Поле %q отсутствует или не является строкой"},
-		KeyToolRuntimeFieldBooleanRequired: {
-			"Field %q is missing or is not a boolean", "字段 %q 缺失或不是布尔值", "Feld %q fehlt oder ist kein boolescher Wert", "フィールド %q がないか、真偽値ではありません", "필드 %q이(가) 없거나 불리언 값이 아닙니다", "Поле %q отсутствует или не является логическим значением"},
 	}
 	for key, values := range entries {
 		semanticTranslations[key] = map[Language]string{
@@ -115,8 +93,6 @@ func init() {
 	addToolRuntime(KeyToolRuntimeAgentSourceBuiltinLabel, "Built-in agents", "内置 Agent", "Integrierte Agents", "組み込み Agent", "내장 Agent", "Встроенные Agent")
 	addToolRuntime(KeyToolRuntimeAgentSourceOtherLabel, "%s agents", "%s Agent", "%s-Agents", "%s Agent", "%s Agent", "Agent: %s")
 
-	addToolRuntime(KeyToolRuntimeWatchdogHardDeadlineExceeded, "hard deadline exceeded (%s)", "已超过硬截止时间（%s）", "Harte Frist überschritten (%s)", "ハード期限を超過しました（%s）", "하드 데드라인을 초과했습니다(%s)", "Превышен жёсткий срок (%s)")
-	addToolRuntime(KeyToolRuntimeWatchdogIdleNoOutput, "idle for %s (no output)", "已空闲 %s（无输出）", "Seit %s inaktiv (keine Ausgabe)", "%s の間アイドル状態です（出力なし）", "%s 동안 유휴 상태입니다(출력 없음)", "Нет активности %s (вывода нет)")
 	addToolRuntime(KeyToolRuntimeBackgroundTaskNotificationTitle, "Background task %s", "后台任务 %s", "Hintergrundaufgabe %s", "バックグラウンドタスク %s", "백그라운드 작업 %s", "Фоновая задача: %s")
 	addToolRuntime(KeyToolRuntimeBackgroundTaskNotification, "task %s (%s) %s with exit=%d", "任务 %s（%s）状态为 %s，exit=%d", "Aufgabe %s (%s) ist %s, exit=%d", "タスク %s（%s）は %s、exit=%d", "작업 %s(%s)의 상태가 %s입니다. exit=%d", "Задача %s (%s): %s, exit=%d")
 	addToolRuntime(KeyToolRuntimeBackgroundTaskNotificationWithLabel, "%s: task %s (%s) %s with exit=%d", "%s：任务 %s（%s）状态为 %s，exit=%d", "%s: Aufgabe %s (%s) ist %s, exit=%d", "%s: タスク %s（%s）は %s、exit=%d", "%s: 작업 %s(%s)의 상태가 %s입니다. exit=%d", "%s: задача %s (%s): %s, exit=%d")
@@ -127,17 +103,9 @@ func init() {
 	addToolRuntime(KeyToolRuntimeBlockingSleep, "Blocked: %s. Run blocking commands in the background with run_in_background: true — you'll get a completion notification when done. For streaming events (watching logs, polling APIs), use the Monitor tool. If you genuinely need a delay (rate limiting, deliberate pacing), keep it under 2 seconds.", "已阻止：%s。请使用 run_in_background: true 在后台运行阻塞命令；完成后会收到通知。对于流式事件（查看日志、轮询 API），请使用 Monitor 工具。如果确实需要延迟（限流或有意控制节奏），请控制在 2 秒以内。", "Blockiert: %s. Führe blockierende Befehle mit run_in_background: true im Hintergrund aus; nach Abschluss erhältst du eine Benachrichtigung. Verwende für Streaming-Ereignisse (Logs beobachten, APIs abfragen) das Monitor-Tool. Falls eine Verzögerung wirklich nötig ist, halte sie unter 2 Sekunden.", "ブロックしました: %s。ブロックするコマンドは run_in_background: true でバックグラウンド実行してください。完了時に通知されます。ストリーミングイベント（ログ監視、API ポーリング）には Monitor ツールを使用してください。待機が本当に必要な場合は 2 秒未満にしてください。", "차단됨: %s. 차단 명령은 run_in_background: true로 백그라운드에서 실행하세요. 완료되면 알림을 받습니다. 스트리밍 이벤트(로그 확인, API 폴링)에는 Monitor 도구를 사용하세요. 지연이 꼭 필요하다면 2초 미만으로 유지하세요.", "Заблокировано: %s. Запускайте блокирующие команды в фоне с run_in_background: true; по завершении придёт уведомление. Для потоковых событий (просмотр логов, опрос API) используйте Monitor. Если задержка действительно нужна, ограничьте её двумя секундами.")
 	addToolRuntime(KeyToolRuntimeCommandBlocked, "command blocked: %s", "命令已被阻止：%s", "Befehl blockiert: %s", "コマンドをブロックしました: %s", "명령이 차단되었습니다: %s", "Команда заблокирована: %s")
 	addToolRuntime(KeyToolRuntimeBackgroundUnavailable, "run_in_background is not available in this runtime", "当前 runtime 不支持 run_in_background", "run_in_background ist in dieser Runtime nicht verfügbar", "この runtime では run_in_background を使用できません", "이 runtime에서는 run_in_background를 사용할 수 없습니다", "run_in_background недоступен в этой runtime")
-	addToolRuntime(KeyToolRuntimeProgressStartingBackground, "Starting background command", "正在启动后台命令", "Hintergrundbefehl wird gestartet", "バックグラウンドコマンドを開始しています", "백그라운드 명령을 시작하는 중", "Запуск фоновой команды")
-	addToolRuntime(KeyToolRuntimeProgressBuildBackgroundFailed, "Failed to build background command", "无法构建后台命令", "Hintergrundbefehl konnte nicht erstellt werden", "バックグラウンドコマンドを構築できませんでした", "백그라운드 명령을 구성하지 못했습니다", "Не удалось подготовить фоновую команду")
 	addToolRuntime(KeyToolRuntimeBuildBackgroundFailed, "failed to build background command: %v", "无法构建后台命令：%v", "Hintergrundbefehl konnte nicht erstellt werden: %v", "バックグラウンドコマンドを構築できませんでした: %v", "백그라운드 명령을 구성하지 못했습니다: %v", "Не удалось подготовить фоновую команду: %v")
-	addToolRuntime(KeyToolRuntimeProgressStartBackgroundFailed, "Failed to start background command", "无法启动后台命令", "Hintergrundbefehl konnte nicht gestartet werden", "バックグラウンドコマンドを開始できませんでした", "백그라운드 명령을 시작하지 못했습니다", "Не удалось запустить фоновую команду")
 	addToolRuntime(KeyToolRuntimeStartBackgroundFailed, "failed to start background task: %v", "无法启动后台任务：%v", "Hintergrundaufgabe konnte nicht gestartet werden: %v", "バックグラウンドタスクを開始できませんでした: %v", "백그라운드 작업을 시작하지 못했습니다: %v", "Не удалось запустить фоновую задачу: %v")
-	addToolRuntime(KeyToolRuntimeProgressBackgroundStarted, "Background command started", "后台命令已启动", "Hintergrundbefehl gestartet", "バックグラウンドコマンドを開始しました", "백그라운드 명령이 시작되었습니다", "Фоновая команда запущена")
 	addToolRuntime(KeyToolRuntimeBuildCommandFailed, "failed to build command: %v", "无法构建命令：%v", "Befehl konnte nicht erstellt werden: %v", "コマンドを構築できませんでした: %v", "명령을 구성하지 못했습니다: %v", "Не удалось подготовить команду: %v")
-	addToolRuntime(KeyToolRuntimeProgressRunning, "Running command", "正在运行命令", "Befehl wird ausgeführt", "コマンドを実行しています", "명령 실행 중", "Команда выполняется")
-	addToolRuntime(KeyToolRuntimeProgressInterrupted, "Command interrupted", "命令已中断", "Befehl unterbrochen", "コマンドが中断されました", "명령이 중단되었습니다", "Команда прервана")
-	addToolRuntime(KeyToolRuntimeProgressFailed, "Command failed", "命令执行失败", "Befehl fehlgeschlagen", "コマンドが失敗しました", "명령이 실패했습니다", "Команда завершилась с ошибкой")
-	addToolRuntime(KeyToolRuntimeProgressCompleted, "Command completed", "命令已完成", "Befehl abgeschlossen", "コマンドが完了しました", "명령이 완료되었습니다", "Команда завершена")
 	addToolRuntime(KeyToolRuntimeSandboxUnavailable, "filesystem sandbox is unavailable for this isolated shell", "此隔离 shell 无法使用 filesystem sandbox", "Für diese isolierte Shell ist keine Dateisystem-Sandbox verfügbar", "この隔離 shell では filesystem sandbox を使用できません", "이 격리 shell에서는 filesystem sandbox를 사용할 수 없습니다", "Для этой изолированной shell недоступна filesystem sandbox")
 	addToolRuntime(KeyToolRuntimeLinesTruncated, "... [%d lines truncated] ...", "…［已截断 %d 行］…", "... [%d Zeilen gekürzt] ...", "…［%d 行を省略］…", "... [%d줄 잘림] ...", "... [усечено строк: %d] ...")
 	addToolRuntime(KeyToolRuntimeSleepFollowedBy, "sleep %d followed by: %s", "sleep %d 后接：%s", "Auf sleep %d folgt: %s", "sleep %d の後に続く処理: %s", "sleep %d 다음에 실행됨: %s", "После sleep %d выполняется: %s")
@@ -205,41 +173,40 @@ const (
 	KeyToolRuntimeDestructiveRmdirRecursive          Key = "tool.runtime.safety.rmdir_recursive"
 	KeyToolRuntimeDestructiveDdPath                  Key = "tool.runtime.safety.dd_path"
 
-	KeyToolRuntimeResolvePathFailed             Key = "tool.runtime.file.resolve_path_failed"
-	KeyToolRuntimeStatFileFailed                Key = "tool.runtime.file.stat_failed"
-	KeyToolRuntimeFileMissing                   Key = "tool.runtime.file.missing"
-	KeyToolRuntimePathIsDirectory               Key = "tool.runtime.file.path_is_directory"
-	KeyToolRuntimeFileNotRead                   Key = "tool.runtime.file.not_read"
-	KeyToolRuntimeFilePartiallyRead             Key = "tool.runtime.file.partially_read"
-	KeyToolRuntimeFileViewTransformed           Key = "tool.runtime.file.view_transformed"
-	KeyToolRuntimeEditRangeNotObserved          Key = "tool.runtime.edit.range_not_observed"
-	KeyToolRuntimeReadFileFailed                Key = "tool.runtime.file.read_failed"
-	KeyToolRuntimeFileChangedSinceRead          Key = "tool.runtime.file.changed_since_read"
-	KeyToolRuntimeBashSedReadRequired           Key = "tool.runtime.file.bash_sed_read_required"
-	KeyToolRuntimeWriteFileFailed               Key = "tool.runtime.file.write_failed"
-	KeyToolRuntimeCreateDirectoryFailed         Key = "tool.runtime.file.create_directory_failed"
-	KeyToolRuntimeFileUpdated                   Key = "tool.runtime.file.updated"
-	KeyToolRuntimeFileCreated                   Key = "tool.runtime.file.created"
-	KeyToolRuntimeWriteInvalidData              Key = "tool.runtime.file.write_invalid_data"
-	KeyToolRuntimeEditPlanMode                  Key = "tool.runtime.edit.plan_mode"
-	KeyToolRuntimeEditNoChanges                 Key = "tool.runtime.edit.no_changes"
-	KeyToolRuntimeEditNotebook                  Key = "tool.runtime.edit.notebook"
-	KeyToolRuntimeEditTeamMemorySecret          Key = "tool.runtime.edit.team_memory_secret"
-	KeyToolRuntimeEditSymlink                   Key = "tool.runtime.edit.symlink"
-	KeyToolRuntimeEditFileTooLarge              Key = "tool.runtime.edit.file_too_large"
-	KeyToolRuntimeEditTargetAppeared            Key = "tool.runtime.edit.target_appeared"
-	KeyToolRuntimeEditRecheckTargetFailed       Key = "tool.runtime.edit.recheck_target_failed"
-	KeyToolRuntimeEditStringMissing             Key = "tool.runtime.edit.string_missing"
-	KeyToolRuntimeEditAmbiguousMatch            Key = "tool.runtime.edit.ambiguous_match"
-	KeyToolRuntimeEditCreateExisting            Key = "tool.runtime.edit.create_existing"
-	KeyToolRuntimeEditSummaryReplaceAllModified Key = "tool.runtime.edit.summary_replace_all_modified"
-	KeyToolRuntimeEditSummaryReplaceAll         Key = "tool.runtime.edit.summary_replace_all"
-	KeyToolRuntimeEditSummaryModified           Key = "tool.runtime.edit.summary_modified"
-	KeyToolRuntimeEditSummary                   Key = "tool.runtime.edit.summary"
-	KeyToolRuntimeEditInvalidReplaceAll         Key = "tool.runtime.edit.invalid_replace_all"
-	KeyToolRuntimeEditDidYouMean                Key = "tool.runtime.edit.did_you_mean"
+	KeyToolRuntimeResolvePathFailed       Key = "tool.runtime.file.resolve_path_failed"
+	KeyToolRuntimeStatFileFailed          Key = "tool.runtime.file.stat_failed"
+	KeyToolRuntimeFileMissing             Key = "tool.runtime.file.missing"
+	KeyToolRuntimePathIsDirectory         Key = "tool.runtime.file.path_is_directory"
+	KeyToolRuntimeFileNotRead             Key = "tool.runtime.file.not_read"
+	KeyToolRuntimeFilePartiallyRead       Key = "tool.runtime.file.partially_read"
+	KeyToolRuntimeFileViewTransformed     Key = "tool.runtime.file.view_transformed"
+	KeyToolRuntimeEditRangeNotObserved    Key = "tool.runtime.edit.range_not_observed"
+	KeyToolRuntimeReadFileFailed          Key = "tool.runtime.file.read_failed"
+	KeyToolRuntimeFileChangedSinceRead    Key = "tool.runtime.file.changed_since_read"
+	KeyToolRuntimeBashSedReadRequired     Key = "tool.runtime.file.bash_sed_read_required"
+	KeyToolRuntimeWriteFileFailed         Key = "tool.runtime.file.write_failed"
+	KeyToolRuntimeCreateDirectoryFailed   Key = "tool.runtime.file.create_directory_failed"
+	KeyToolRuntimeFileUpdated             Key = "tool.runtime.file.updated"
+	KeyToolRuntimeFileCreated             Key = "tool.runtime.file.created"
+	KeyToolRuntimeWriteInvalidData        Key = "tool.runtime.file.write_invalid_data"
+	KeyToolRuntimeEditPlanMode            Key = "tool.runtime.edit.plan_mode"
+	KeyToolRuntimeEditNoChanges           Key = "tool.runtime.edit.no_changes"
+	KeyToolRuntimeEditNotebook            Key = "tool.runtime.edit.notebook"
+	KeyToolRuntimeEditTeamMemorySecret    Key = "tool.runtime.edit.team_memory_secret"
+	KeyToolRuntimeEditSymlink             Key = "tool.runtime.edit.symlink"
+	KeyToolRuntimeEditFileTooLarge        Key = "tool.runtime.edit.file_too_large"
+	KeyToolRuntimeEditTargetAppeared      Key = "tool.runtime.edit.target_appeared"
+	KeyToolRuntimeEditRecheckTargetFailed Key = "tool.runtime.edit.recheck_target_failed"
+	KeyToolRuntimeEditStringMissing       Key = "tool.runtime.edit.string_missing"
+	KeyToolRuntimeEditAmbiguousMatch      Key = "tool.runtime.edit.ambiguous_match"
+	KeyToolRuntimeEditCreateExisting      Key = "tool.runtime.edit.create_existing"
+	KeyToolRuntimeEditSummaryReplaceAll   Key = "tool.runtime.edit.summary_replace_all"
+	KeyToolRuntimeEditSummary             Key = "tool.runtime.edit.summary"
+	KeyToolRuntimeEditInvalidData         Key = "tool.runtime.edit.invalid_data"
+	KeyToolRuntimeEditDidYouMean          Key = "tool.runtime.edit.did_you_mean"
 
 	KeyToolRuntimeNotebookUnknownEditMode        Key = "tool.runtime.notebook.unknown_edit_mode"
+	KeyToolRuntimeNotebookInvalidData            Key = "tool.runtime.notebook.invalid_data"
 	KeyToolRuntimeNotebookCellUpdated            Key = "tool.runtime.notebook.cell_updated"
 	KeyToolRuntimeNotebookCellInserted           Key = "tool.runtime.notebook.cell_inserted"
 	KeyToolRuntimeNotebookCellDeleted            Key = "tool.runtime.notebook.cell_deleted"
@@ -312,14 +279,13 @@ func init() {
 	addToolRuntime(KeyToolRuntimeEditStringMissing, "String to replace not found in file.\nString: %s", "在文件中找不到要替换的字符串。\n字符串：%s", "Zu ersetzende Zeichenfolge wurde nicht gefunden.\nZeichenfolge: %s", "置換する文字列がファイル内に見つかりません。\n文字列: %s", "파일에서 바꿀 문자열을 찾을 수 없습니다.\n문자열: %s", "Строка для замены не найдена в файле.\nСтрока: %s")
 	addToolRuntime(KeyToolRuntimeEditAmbiguousMatch, "Found %d matches. Add surrounding context to identify one occurrence, or set replace_all to replace every occurrence.", "%d 个位置与目标匹配。请增加相邻上下文以唯一定位，或设置 replace_all 替换所有匹配项。", "%d Treffer gefunden. Ergänze umgebenden Kontext, um ein Vorkommen eindeutig zu bestimmen, oder setze replace_all, um alle zu ersetzen.", "%d 件一致しました。周辺の文脈を追加して 1 箇所に特定するか、replace_all を設定してすべて置換してください。", "%d개의 일치 항목을 찾았습니다. 한 곳을 식별하도록 주변 문맥을 추가하거나 replace_all을 설정해 모두 바꾸세요.", "Найдено совпадений: %d. Добавьте окружающий контекст, чтобы выбрать одно, или задайте replace_all для замены всех.")
 	addToolRuntime(KeyToolRuntimeEditCreateExisting, "Cannot create a new file because it already exists.", "无法创建新文件：文件已存在。", "Neue Datei kann nicht erstellt werden, da sie bereits vorhanden ist.", "ファイルがすでに存在するため、新規作成できません。", "파일이 이미 있어 새로 만들 수 없습니다.", "Нельзя создать новый файл: он уже существует.")
-	addToolRuntime(KeyToolRuntimeEditSummaryReplaceAllModified, "The file %s has been updated.  The user modified your proposed changes before accepting them. . All %d occurrences were successfully replaced.", "用户调整拟议更改后，文件 %s 已更新；共替换 %d 处。", "Datei %s wurde nach Anpassung der vorgeschlagenen Änderungen aktualisiert. Alle %d Vorkommen wurden ersetzt.", "ユーザーが提案内容を調整した後、ファイル %s を更新しました。%d 件すべてを置換しました。", "사용자가 제안된 변경을 조정한 뒤 파일 %s을(를) 업데이트했습니다. %d개 항목을 모두 바꿨습니다.", "Файл %s обновлён после правок пользователя. Заменены все вхождения: %d.")
 	addToolRuntime(KeyToolRuntimeEditSummaryReplaceAll, "The file %s has been updated. All %d occurrences were successfully replaced.", "文件 %s 已成功更新；共替换 %d 处。", "Datei %s wurde erfolgreich aktualisiert. Alle %d Vorkommen wurden ersetzt.", "ファイル %s を更新しました。%d 件すべてを置換しました。", "파일 %s을(를) 업데이트했습니다. %d개 항목을 모두 바꿨습니다.", "Файл %s успешно обновлён. Заменены все вхождения: %d.")
-	addToolRuntime(KeyToolRuntimeEditSummaryModified, "The file %s has been updated successfully.  The user modified your proposed changes before accepting them. .", "用户调整拟议更改后，文件 %s 已更新。", "Datei %s wurde nach Anpassung der vorgeschlagenen Änderungen aktualisiert.", "ユーザーが提案内容を調整した後、ファイル %s を更新しました。", "사용자가 제안된 변경을 조정한 뒤 파일 %s을(를) 업데이트했습니다.", "Файл %s обновлён после правок пользователя.")
 	addToolRuntime(KeyToolRuntimeEditSummary, "The file %s has been updated successfully.", "文件 %s 已成功更新。", "Datei %s wurde erfolgreich aktualisiert.", "ファイル %s を更新しました。", "파일 %s을(를) 업데이트했습니다.", "Файл %s успешно обновлён.")
-	addToolRuntime(KeyToolRuntimeEditInvalidReplaceAll, "Invalid input: replace_all must be a boolean or \"true\"/\"false\"", "输入无效：replace_all 必须是布尔值或 \"true\"/\"false\"", "Ungültige Eingabe: replace_all muss ein boolescher Wert oder \"true\"/\"false\" sein", "入力が無効です: replace_all は真偽値または \"true\"/\"false\" である必要があります", "잘못된 입력: replace_all은 불리언 또는 \"true\"/\"false\"여야 합니다", "Недопустимый ввод: replace_all должен быть логическим значением или \"true\"/\"false\"")
+	addToolRuntime(KeyToolRuntimeEditInvalidData, "Edit returned invalid typed data", "Edit 返回了无效的类型化数据", "Edit hat ungültige typisierte Daten zurückgegeben", "Edit が無効な型付きデータを返しました", "Edit가 잘못된 형식의 데이터를 반환했습니다", "Edit вернул недопустимые типизированные данные")
 	addToolRuntime(KeyToolRuntimeEditDidYouMean, " Did you mean %s?", " 你是不是想输入 %s？", " Meintest du %s?", " %s のことですか？", " %s을(를) 의미했나요?", " Возможно, имелось в виду %s?")
 
 	addToolRuntime(KeyToolRuntimeNotebookUnknownEditMode, "Unknown edit mode", "未知的编辑模式", "Unbekannter Bearbeitungsmodus", "不明な編集モード", "알 수 없는 편집 모드", "Неизвестный режим редактирования")
+	addToolRuntime(KeyToolRuntimeNotebookInvalidData, "NotebookEdit returned invalid typed data", "NotebookEdit 返回了无效的类型化数据", "NotebookEdit hat ungültige typisierte Daten zurückgegeben", "NotebookEdit が無効な型付きデータを返しました", "NotebookEdit가 잘못된 형식의 결과를 반환했습니다", "NotebookEdit вернул недопустимые типизированные данные")
 	addToolRuntime(KeyToolRuntimeNotebookCellUpdated, "Updated cell %s with %s", "已使用 %s 更新单元格 %s", "Zelle %s mit %s aktualisiert", "セル %s を %s で更新しました", "셀 %s을(를) %s(으)로 업데이트했습니다", "Ячейка %s обновлена: %s")
 	addToolRuntime(KeyToolRuntimeNotebookCellInserted, "Inserted cell %s with %s", "已插入单元格 %s，内容为 %s", "Zelle %s mit %s eingefügt", "セル %s を %s で挿入しました", "셀 %s을(를) %s(으)로 삽입했습니다", "Вставлена ячейка %s: %s")
 	addToolRuntime(KeyToolRuntimeNotebookCellDeleted, "Deleted cell %s", "已删除单元格 %s", "Zelle %s gelöscht", "セル %s を削除しました", "셀 %s을(를) 삭제했습니다", "Ячейка %s удалена")
@@ -363,14 +329,8 @@ const (
 	KeyToolRuntimeMCPUnknownType                        Key = "tool.runtime.mcp.unknown_type"
 	KeyToolRuntimeMCPLargeOutputSaveFailed              Key = "tool.runtime.mcp.large_output_save_failed"
 	KeyToolRuntimeMCPOutputTruncated                    Key = "tool.runtime.mcp.output_truncated"
-	KeyToolRuntimeMCPServerNameRequired                 Key = "tool.runtime.mcp.server_name_required"
-	KeyToolRuntimeMCPToolNameRequired                   Key = "tool.runtime.mcp.tool_name_required"
 	KeyToolRuntimeMCPServerUnavailable                  Key = "tool.runtime.mcp.server_unavailable"
-	KeyToolRuntimeMCPToolNotFound                       Key = "tool.runtime.mcp.tool_not_found"
-	KeyToolRuntimeMCPNoActiveConnection                 Key = "tool.runtime.mcp.no_active_connection"
 	KeyToolRuntimeMCPToolCallFailed                     Key = "tool.runtime.mcp.tool_call_failed"
-	KeyToolRuntimeMCPRequestFailed                      Key = "tool.runtime.mcp.request_failed"
-	KeyToolRuntimeMCPHTTPError                          Key = "tool.runtime.mcp.http_error"
 	KeyToolRuntimeMCPResourcesEmpty                     Key = "tool.runtime.mcp.resources.empty"
 	KeyToolRuntimeMCPResourcesInvalidInput              Key = "tool.runtime.mcp.resources.invalid_input"
 	KeyToolRuntimeMCPResourcesServerNotFound            Key = "tool.runtime.mcp.resources.server_not_found"
@@ -380,12 +340,6 @@ const (
 	KeyToolRuntimeMCPResourcesReconnectNotConnected     Key = "tool.runtime.mcp.resources.reconnect_not_connected"
 	KeyToolRuntimeMCPResourcesUnsupportedAfterReconnect Key = "tool.runtime.mcp.resources.unsupported_after_reconnect"
 	KeyToolRuntimeMCPResourcesMarshalFailed             Key = "tool.runtime.mcp.resources.marshal_failed"
-	KeyToolRuntimeMCPResourcesManagerUnavailable        Key = "tool.runtime.mcp.resources.manager_unavailable"
-	KeyToolRuntimeMCPResourcesConfiguredNotConnected    Key = "tool.runtime.mcp.resources.configured_not_connected"
-	KeyToolRuntimeMCPResourcesServerNotConfigured       Key = "tool.runtime.mcp.resources.server_not_configured"
-	KeyToolRuntimeMCPResourcesLegacyHTTPUnsupported     Key = "tool.runtime.mcp.resources.legacy_http_unsupported"
-	KeyToolRuntimeMCPResourcesNoActiveClientReason      Key = "tool.runtime.mcp.resources.no_active_client_reason"
-	KeyToolRuntimeMCPResourcesDecodeResult              Key = "tool.runtime.mcp.resources.decode_result"
 	KeyToolRuntimeMCPResourcesRequiresAuthentication    Key = "tool.runtime.mcp.resources.requires_authentication"
 	KeyToolRuntimeMCPResourcesDisabled                  Key = "tool.runtime.mcp.resources.disabled"
 	KeyToolRuntimeMCPResourcesPending                   Key = "tool.runtime.mcp.resources.pending"
@@ -417,14 +371,8 @@ func init() {
 	addToolRuntime(KeyToolRuntimeMCPUnknownType, "unknown type", "未知类型", "unbekannter Typ", "不明な種類", "알 수 없는 형식", "неизвестный тип")
 	addToolRuntime(KeyToolRuntimeMCPLargeOutputSaveFailed, "Error: result (%s characters) exceeds the token limit and could not be saved: %s.", "错误：结果（%s 个字符）超出 token 上限，且无法保存：%s。", "Fehler: Das Ergebnis (%s Zeichen) überschreitet das Token-Limit und konnte nicht gespeichert werden: %s.", "エラー: 結果（%s 文字）が token 上限を超え、保存にも失敗しました: %s。", "오류: 결과(%s자)가 token 제한을 초과했으며 저장할 수 없습니다: %s.", "Ошибка: результат (%s символов) превышает лимит token и не может быть сохранён: %s.")
 	addToolRuntime(KeyToolRuntimeMCPOutputTruncated, "\n\n[OUTPUT TRUNCATED — exceeded the %d-token limit]\n\nThe tool output was truncated.", "\n\n[输出已截断——超出 %d token 上限]\n\n工具输出已被截断。", "\n\n[AUSGABE GEKÜRZT — Limit von %d Token überschritten]\n\nDie Tool-Ausgabe wurde gekürzt.", "\n\n[出力を省略 — %d token の上限を超過]\n\nツール出力を省略しました。", "\n\n[출력 잘림 — %d token 제한 초과]\n\n도구 출력이 잘렸습니다.", "\n\n[ВЫВОД УСЕЧЁН — превышен лимит %d token]\n\nВывод инструмента был усечён.")
-	addToolRuntime(KeyToolRuntimeMCPServerNameRequired, "Error: server_name is required", "错误：必须提供 server_name", "Fehler: server_name ist erforderlich", "エラー: server_name は必須です", "오류: server_name이 필요합니다", "Ошибка: требуется server_name")
-	addToolRuntime(KeyToolRuntimeMCPToolNameRequired, "Error: tool_name is required", "错误：必须提供 tool_name", "Fehler: tool_name ist erforderlich", "エラー: tool_name は必須です", "오류: tool_name이 필요합니다", "Ошибка: требуется tool_name")
 	addToolRuntime(KeyToolRuntimeMCPServerUnavailable, "Error: server %q is unavailable (%s). Configured servers: %s", "错误：server %q 不可用（%s）。已配置的 server：%s", "Fehler: Server %q ist nicht verfügbar (%s). Konfigurierte Server: %s", "エラー: server %q は利用できません（%s）。設定済み server: %s", "오류: server %q을(를) 사용할 수 없습니다(%s). 구성된 server: %s", "Ошибка: server %q недоступен (%s). Настроенные server: %s")
-	addToolRuntime(KeyToolRuntimeMCPToolNotFound, "Error: tool %q was not found on server %q. Available tools: %s", "错误：在 server %q 上找不到 tool %q。可用 tool：%s", "Fehler: Tool %q wurde auf Server %q nicht gefunden. Verfügbare Tools: %s", "エラー: server %q に tool %q がありません。利用可能な tool: %s", "오류: server %q에서 tool %q을(를) 찾을 수 없습니다. 사용 가능한 tool: %s", "Ошибка: tool %q не найден на server %q. Доступные tool: %s")
-	addToolRuntime(KeyToolRuntimeMCPNoActiveConnection, "Error: MCP server %q has no active connection", "错误：MCP server %q 没有活动连接", "Fehler: MCP-Server %q hat keine aktive Verbindung", "エラー: MCP server %q に有効な接続がありません", "오류: MCP server %q에 활성 연결이 없습니다", "Ошибка: у MCP server %q нет активного соединения")
 	addToolRuntime(KeyToolRuntimeMCPToolCallFailed, "Error: MCP tool call failed: %s", "错误：MCP tool 调用失败：%s", "Fehler: MCP-Tool-Aufruf fehlgeschlagen: %s", "エラー: MCP tool の呼び出しに失敗しました: %s", "오류: MCP tool 호출 실패: %s", "Ошибка: вызов MCP tool завершился с ошибкой: %s")
-	addToolRuntime(KeyToolRuntimeMCPRequestFailed, "Error: MCP request failed: %s", "错误：MCP 请求失败：%s", "Fehler: MCP-Anfrage fehlgeschlagen: %s", "エラー: MCP リクエストに失敗しました: %s", "오류: MCP 요청 실패: %s", "Ошибка: запрос MCP завершился с ошибкой: %s")
-	addToolRuntime(KeyToolRuntimeMCPHTTPError, "MCP HTTP error %d: %s", "MCP HTTP 错误 %d：%s", "MCP-HTTP-Fehler %d: %s", "MCP HTTP エラー %d: %s", "MCP HTTP 오류 %d: %s", "Ошибка MCP HTTP %d: %s")
 
 	addToolRuntime(KeyToolRuntimeMCPResourcesEmpty, "No resources found. MCP servers may still provide tools even if they have no resources.", "未找到资源；MCP server 仍可能提供 tool。", "Keine Ressourcen gefunden. MCP-Server können weiterhin Tools bereitstellen.", "リソースが見つかりません。MCP server が tool を提供している場合があります。", "리소스를 찾지 못했습니다. MCP server가 tool을 제공할 수 있습니다.", "Ресурсы не найдены. MCP server всё ещё может предоставлять tool.")
 	addToolRuntime(KeyToolRuntimeMCPResourcesInvalidInput, "Error: Invalid input: %s", "错误：输入无效：%s", "Fehler: ungültige Eingabe: %s", "エラー: 入力が無効です: %s", "오류: 잘못된 입력: %s", "Ошибка: недопустимые входные данные: %s")
@@ -435,12 +383,6 @@ func init() {
 	addToolRuntime(KeyToolRuntimeMCPResourcesReconnectNotConnected, "Server %q is not connected after reconnect (%s)", "server %q 重连后仍未连接（%s）", "Server %q ist nach dem Neuverbinden nicht verbunden (%s)", "server %q は再接続後も未接続です（%s）", "server %q이(가) 다시 연결한 후에도 연결되지 않았습니다(%s)", "Server %q не подключён после переподключения (%s)")
 	addToolRuntime(KeyToolRuntimeMCPResourcesUnsupportedAfterReconnect, "Server %q does not advertise resources capability after reconnect", "server %q 重连后仍未声明 resources capability", "Server %q bietet auch nach dem Neuverbinden keine Ressourcenfunktion an", "server %q は再接続後も resources capability を公開していません", "server %q이(가) 다시 연결한 후에도 resources capability를 제공하지 않습니다", "Server %q после переподключения не объявляет capability ресурсов")
 	addToolRuntime(KeyToolRuntimeMCPResourcesMarshalFailed, "Error: could not encode MCP resources: %s", "错误：无法编码 MCP 资源：%s", "Fehler: MCP-Ressourcen konnten nicht codiert werden: %s", "エラー: MCP リソースをエンコードできませんでした: %s", "오류: MCP 리소스를 인코딩할 수 없습니다: %s", "Ошибка: не удалось закодировать ресурсы MCP: %s")
-	addToolRuntime(KeyToolRuntimeMCPResourcesManagerUnavailable, "MCP manager is unavailable", "MCP manager 不可用", "MCP-Manager ist nicht verfügbar", "MCP manager を利用できません", "MCP manager를 사용할 수 없습니다", "MCP manager недоступен")
-	addToolRuntime(KeyToolRuntimeMCPResourcesConfiguredNotConnected, "Server is configured but not connected", "server 已配置但未连接", "Server ist konfiguriert, aber nicht verbunden", "server は設定済みですが未接続です", "server가 구성되었지만 연결되지 않았습니다", "Server настроен, но не подключён")
-	addToolRuntime(KeyToolRuntimeMCPResourcesServerNotConfigured, "Server is not configured", "server 未配置", "Server ist nicht konfiguriert", "server は設定されていません", "server가 구성되지 않았습니다", "Server не настроен")
-	addToolRuntime(KeyToolRuntimeMCPResourcesLegacyHTTPUnsupported, "Legacy HTTP MCP fallback does not support resources/list aggregation", "旧版 HTTP MCP fallback 不支持 resources/list 聚合", "Der alte HTTP-MCP-Fallback unterstützt keine resources/list-Aggregation", "従来の HTTP MCP fallback は resources/list の集約に対応していません", "레거시 HTTP MCP fallback은 resources/list 집계를 지원하지 않습니다", "Устаревший HTTP MCP fallback не поддерживает агрегацию resources/list")
-	addToolRuntime(KeyToolRuntimeMCPResourcesNoActiveClientReason, "Server has no active MCP client", "server 没有活动的 MCP client", "Server hat keinen aktiven MCP-Client", "server に有効な MCP client がありません", "server에 활성 MCP client가 없습니다", "У server нет активного MCP client")
-	addToolRuntime(KeyToolRuntimeMCPResourcesDecodeResult, "Could not decode resources/list result", "无法解码 resources/list 结果", "resources/list-Ergebnis konnte nicht decodiert werden", "resources/list の結果をデコードできませんでした", "resources/list 결과를 디코딩할 수 없습니다", "Не удалось декодировать результат resources/list")
 	addToolRuntime(KeyToolRuntimeMCPResourcesRequiresAuthentication, "Server requires authentication", "server 需要身份验证", "Server erfordert Authentifizierung", "server には認証が必要です", "server에 인증이 필요합니다", "Server требует аутентификации")
 	addToolRuntime(KeyToolRuntimeMCPResourcesDisabled, "Server is disabled", "server 已禁用", "Server ist deaktiviert", "server は無効です", "server가 비활성화되었습니다", "Server отключён")
 	addToolRuntime(KeyToolRuntimeMCPResourcesPending, "Server is waiting to connect", "server 正在等待连接", "Server wartet auf die Verbindung", "server は接続待ちです", "server가 연결을 기다리고 있습니다", "Server ожидает подключения")
@@ -547,13 +489,13 @@ const (
 )
 
 func init() {
-	addToolRuntime(KeyToolRuntimeLSPInitializeForLanguage, "Could not initialize LSP for %s", "无法为 %s 初始化 LSP", "LSP für %s konnte nicht initialisiert werden", "%s の LSP を初期化できませんでした", "%s용 LSP를 초기화할 수 없습니다", "Не удалось инициализировать LSP для %s")
+	addToolRuntime(KeyToolRuntimeLSPInitializeForLanguage, "Could not initialize LSP for %s: %v", "无法为 %s 初始化 LSP：%v", "LSP für %s konnte nicht initialisiert werden: %v", "%s の LSP を初期化できませんでした: %v", "%s용 LSP를 초기화할 수 없습니다: %v", "Не удалось инициализировать LSP для %s: %v")
 	addToolRuntime(KeyToolRuntimeLSPNoServerConfigured, "No LSP server is configured for language %q", "未为语言 %q 配置 LSP server", "Für die Sprache %q ist kein LSP-Server konfiguriert", "言語 %q 用の LSP server が設定されていません", "언어 %q에 구성된 LSP server가 없습니다", "Для языка %q не настроен LSP server")
-	addToolRuntime(KeyToolRuntimeLSPStdinPipe, "Could not open stdin pipe", "无法打开 stdin 管道", "stdin-Pipe konnte nicht geöffnet werden", "stdin パイプを開けませんでした", "stdin 파이프를 열 수 없습니다", "Не удалось открыть канал stdin")
-	addToolRuntime(KeyToolRuntimeLSPStdoutPipe, "Could not open stdout pipe", "无法打开 stdout 管道", "stdout-Pipe konnte nicht geöffnet werden", "stdout パイプを開けませんでした", "stdout 파이프를 열 수 없습니다", "Не удалось открыть канал stdout")
-	addToolRuntime(KeyToolRuntimeLSPStartProcess, "Could not start %q", "无法启动 %q", "%q konnte nicht gestartet werden", "%q を起動できませんでした", "%q을(를) 시작할 수 없습니다", "Не удалось запустить %q")
-	addToolRuntime(KeyToolRuntimeLSPInitializeRequest, "LSP initialize request failed", "LSP initialize 请求失败", "LSP-initialize-Anfrage fehlgeschlagen", "LSP initialize リクエストに失敗しました", "LSP initialize 요청 실패", "Запрос LSP initialize завершился с ошибкой")
-	addToolRuntime(KeyToolRuntimeLSPInitializedNotification, "LSP initialized notification failed", "LSP initialized 通知失败", "LSP-initialized-Benachrichtigung fehlgeschlagen", "LSP initialized 通知に失敗しました", "LSP initialized 알림 실패", "Уведомление LSP initialized завершилось с ошибкой")
+	addToolRuntime(KeyToolRuntimeLSPStdinPipe, "Could not open stdin pipe: %v", "无法打开 stdin 管道：%v", "stdin-Pipe konnte nicht geöffnet werden: %v", "stdin パイプを開けませんでした: %v", "stdin 파이프를 열 수 없습니다: %v", "Не удалось открыть канал stdin: %v")
+	addToolRuntime(KeyToolRuntimeLSPStdoutPipe, "Could not open stdout pipe: %v", "无法打开 stdout 管道：%v", "stdout-Pipe konnte nicht geöffnet werden: %v", "stdout パイプを開けませんでした: %v", "stdout 파이프를 열 수 없습니다: %v", "Не удалось открыть канал stdout: %v")
+	addToolRuntime(KeyToolRuntimeLSPStartProcess, "Could not start %q: %v", "无法启动 %q：%v", "%q konnte nicht gestartet werden: %v", "%q を起動できませんでした: %v", "%q을(를) 시작할 수 없습니다: %v", "Не удалось запустить %q: %v")
+	addToolRuntime(KeyToolRuntimeLSPInitializeRequest, "LSP initialize request failed: %v", "LSP initialize 请求失败：%v", "LSP-initialize-Anfrage fehlgeschlagen: %v", "LSP initialize リクエストに失敗しました: %v", "LSP initialize 요청 실패: %v", "Запрос LSP initialize завершился с ошибкой: %v")
+	addToolRuntime(KeyToolRuntimeLSPInitializedNotification, "LSP initialized notification failed: %v", "LSP initialized 通知失败：%v", "LSP-initialized-Benachrichtigung fehlgeschlagen: %v", "LSP initialized 通知に失敗しました: %v", "LSP initialized 알림 실패: %v", "Уведомление LSP initialized завершилось с ошибкой: %v")
 	addToolRuntime(KeyToolRuntimeLSPMissingOperation, "Error: operation is required", "错误：必须提供 operation", "Fehler: operation ist erforderlich", "エラー: operation は必須です", "오류: operation이 필요합니다", "Ошибка: требуется operation")
 	addToolRuntime(KeyToolRuntimeLSPMissingFilePath, "Error: filePath is required", "错误：必须提供 filePath", "Fehler: filePath ist erforderlich", "エラー: filePath は必須です", "오류: filePath가 필요합니다", "Ошибка: требуется filePath")
 	addToolRuntime(KeyToolRuntimeLSPInvalidLine, "Error: line must be a positive integer", "错误：line 必须是正整数", "Fehler: line muss eine positive ganze Zahl sein", "エラー: line は正の整数である必要があります", "오류: line은 양의 정수여야 합니다", "Ошибка: line должен быть положительным целым числом")
@@ -584,7 +526,6 @@ const (
 	KeyToolRuntimeAskUserNotes                  Key = "tool.runtime.ask_user.notes"
 	KeyToolRuntimeAskUserAnsweredContinue       Key = "tool.runtime.ask_user.answered_continue"
 	KeyToolRuntimeAskUserAnswered               Key = "tool.runtime.ask_user.answered"
-	KeyToolRuntimeAskUserRemoteUnavailable      Key = "tool.runtime.ask_user.remote_unavailable"
 	KeyToolRuntimeAskUserPlanApproval           Key = "tool.runtime.ask_user.plan_approval"
 	KeyToolRuntimeAskUserReadAnswerFailed       Key = "tool.runtime.ask_user.read_answer_failed"
 	KeyToolRuntimeAskUserInteractiveUnavailable Key = "tool.runtime.ask_user.interactive_unavailable"
@@ -612,10 +553,6 @@ const (
 	KeyToolRuntimeAskUserOtherReserved          Key = "tool.runtime.ask_user.other_reserved"
 	KeyToolRuntimeAskUserPreviewMultiSelect     Key = "tool.runtime.ask_user.preview_multi_select"
 	KeyToolRuntimeAskUserPreviewTooLong         Key = "tool.runtime.ask_user.preview_too_long"
-	KeyToolRuntimeAskUserPreviewHTMLFragment    Key = "tool.runtime.ask_user.preview_html_fragment"
-	KeyToolRuntimeAskUserPreviewHTMLUnsafe      Key = "tool.runtime.ask_user.preview_html_unsafe"
-	KeyToolRuntimeAskUserPreviewHTMLRequired    Key = "tool.runtime.ask_user.preview_html_required"
-	KeyToolRuntimeAskUserPreviewOptionContext   Key = "tool.runtime.ask_user.preview_option_context"
 )
 
 func init() {
@@ -623,7 +560,6 @@ func init() {
 	addToolRuntime(KeyToolRuntimeAskUserNotes, "user notes: %s", "用户备注：%s", "Benutzernotizen: %s", "ユーザーのメモ: %s", "사용자 메모: %s", "Заметки пользователя: %s")
 	addToolRuntime(KeyToolRuntimeAskUserAnsweredContinue, "User has answered your questions: %s. You can now continue with the user's answers in mind.", "用户已回答你的问题：%s。现在可以基于这些答案继续。", "Der Benutzer hat deine Fragen beantwortet: %s. Du kannst mit diesen Antworten fortfahren.", "ユーザーが質問に回答しました: %s。この回答を踏まえて続行できます。", "사용자가 질문에 답했습니다: %s. 이 답변을 바탕으로 계속할 수 있습니다.", "Пользователь ответил на вопросы: %s. Можно продолжить с учётом этих ответов.")
 	addToolRuntime(KeyToolRuntimeAskUserAnswered, "User has answered your questions: %s", "用户已回答你的问题：%s", "Der Benutzer hat deine Fragen beantwortet: %s", "ユーザーが質問に回答しました: %s", "사용자가 질문에 답했습니다: %s", "Пользователь ответил на вопросы: %s")
-	addToolRuntime(KeyToolRuntimeAskUserRemoteUnavailable, "Error: AskUserQuestion is unavailable in remote-channel mode (KAIROS_CHANNELS is set). Use SendUserMessage and let the user respond out of band.", "错误：远程 channel 模式下无法使用 AskUserQuestion（已设置 KAIROS_CHANNELS）。请改用 SendUserMessage，让用户通过外部 channel 回复。", "Fehler: AskUserQuestion ist im Remote-Channel-Modus nicht verfügbar (KAIROS_CHANNELS ist gesetzt). Verwende SendUserMessage; die Antwort erfolgt außerhalb des Programms.", "エラー: リモート channel モード（KAIROS_CHANNELS が設定済み）では AskUserQuestion を使用できません。SendUserMessage を使い、外部 channel で回答してもらってください。", "오류: 원격 channel 모드(KAIROS_CHANNELS 설정)에서는 AskUserQuestion을 사용할 수 없습니다. SendUserMessage를 사용하고 외부 channel에서 답변을 받으세요.", "Ошибка: AskUserQuestion недоступен в режиме удалённого channel (задан KAIROS_CHANNELS). Используйте SendUserMessage и получите ответ вне приложения.")
 	addToolRuntime(KeyToolRuntimeAskUserPlanApproval, "Error: AskUserQuestion cannot ask for approval in plan mode. Use ExitPlanMode instead. Question: %q", "错误：计划模式下不能通过 AskUserQuestion 请求批准，请改用 ExitPlanMode。问题：%q", "Fehler: AskUserQuestion kann im Planungsmodus keine Genehmigung abfragen. Verwende stattdessen ExitPlanMode. Frage: %q", "エラー: plan mode では AskUserQuestion で承認を求められません。代わりに ExitPlanMode を使用してください。質問: %q", "오류: plan mode에서는 AskUserQuestion으로 승인을 요청할 수 없습니다. ExitPlanMode를 사용하세요. 질문: %q", "Ошибка: AskUserQuestion не может запрашивать одобрение в режиме планирования. Используйте ExitPlanMode. Вопрос: %q")
 	addToolRuntime(KeyToolRuntimeAskUserReadAnswerFailed, "Error reading answer: %s", "读取回答时出错：%s", "Fehler beim Lesen der Antwort: %s", "回答の読み込みエラー: %s", "답변 읽기 오류: %s", "Ошибка чтения ответа: %s")
 	addToolRuntime(KeyToolRuntimeAskUserInteractiveUnavailable, "The interactive question surface is unavailable. Ask the user in normal conversation instead.", "交互式提问界面不可用。请改为在普通对话中询问用户。", "Die interaktive Frageoberfläche ist nicht verfügbar. Frage stattdessen im normalen Gespräch nach.", "対話式の質問画面を利用できません。代わりに通常の会話でユーザーに質問してください。", "대화형 질문 화면을 사용할 수 없습니다. 대신 일반 대화에서 사용자에게 질문하세요.", "Интерактивный интерфейс вопросов недоступен. Задайте вопрос пользователю в обычном диалоге.")
@@ -651,92 +587,6 @@ func init() {
 	addToolRuntime(KeyToolRuntimeAskUserOtherReserved, "Other is reserved and added automatically by the UI", "Other 为保留项，由 UI 自动添加", "Other ist reserviert und wird von der UI automatisch hinzugefügt", "Other は予約済みで、UI が自動的に追加します", "Other는 예약되어 있으며 UI가 자동으로 추가합니다", "Other зарезервирован и автоматически добавляется UI")
 	addToolRuntime(KeyToolRuntimeAskUserPreviewMultiSelect, "preview is not allowed for multiSelect questions", "multiSelect 问题不允许使用 preview", "preview ist bei multiSelect-Fragen nicht zulässig", "multiSelect の質問では preview を使用できません", "multiSelect 질문에는 preview를 사용할 수 없습니다", "preview недопустим для вопросов multiSelect")
 	addToolRuntime(KeyToolRuntimeAskUserPreviewTooLong, "preview exceeds %d characters", "preview 超过 %d 个字符", "preview überschreitet %d Zeichen", "preview が %d 文字を超えています", "preview가 %d자를 초과합니다", "preview превышает %d символов")
-	addToolRuntime(KeyToolRuntimeAskUserPreviewHTMLFragment, "preview must be an HTML fragment, not a full document (no <html>, <body>, or <!DOCTYPE>)", "preview 必须是 HTML 片段，不能是完整文档（不得包含 <html>、<body> 或 <!DOCTYPE>）", "preview muss ein HTML-Fragment sein, kein vollständiges Dokument (ohne <html>, <body> oder <!DOCTYPE>)", "preview は完全な文書ではなく HTML 断片にしてください（<html>、<body>、<!DOCTYPE> は使用不可）", "preview는 전체 문서가 아닌 HTML 조각이어야 합니다(<html>, <body>, <!DOCTYPE> 사용 불가)", "preview должен быть фрагментом HTML, а не полным документом (без <html>, <body> и <!DOCTYPE>)")
-	addToolRuntime(KeyToolRuntimeAskUserPreviewHTMLUnsafe, "preview must not contain <script> or <style>; use inline style attributes if needed", "preview 不得包含 <script> 或 <style>；如有需要，请使用内联 style 属性", "preview darf kein <script> oder <style> enthalten; bei Bedarf Inline-style-Attribute verwenden", "preview に <script> や <style> を含めることはできません。必要に応じてインライン style 属性を使用してください", "preview에 <script> 또는 <style>을 포함할 수 없습니다. 필요한 경우 인라인 style 속성을 사용하세요", "preview не должен содержать <script> или <style>; при необходимости используйте встроенный атрибут style")
-	addToolRuntime(KeyToolRuntimeAskUserPreviewHTMLRequired, "preview must contain HTML because previewFormat is html; wrap it in an element such as <div> or <pre>", "previewFormat 为 html 时，preview 必须包含 HTML；请用 <div> 或 <pre> 等元素包裹", "preview muss HTML enthalten, da previewFormat auf html gesetzt ist; Inhalt etwa in <div> oder <pre> einschließen", "previewFormat が html のため、preview には HTML が必要です。<div> や <pre> などの要素で囲んでください", "previewFormat이 html이므로 preview에 HTML이 필요합니다. <div> 또는 <pre> 같은 요소로 감싸세요", "preview должен содержать HTML, поскольку previewFormat равен html; оберните содержимое, например, в <div> или <pre>")
-	addToolRuntime(KeyToolRuntimeAskUserPreviewOptionContext, "Option %q in question %q: %s", "问题 %q 中的选项 %q：%s", "Option %q in Frage %q: %s", "質問 %q の選択肢 %q: %s", "질문 %q의 옵션 %q: %s", "Вариант %q в вопросе %q: %s")
-}
-
-const (
-	KeyToolRuntimeCronDisabled            Key = "tool.runtime.cron.disabled"
-	KeyToolRuntimeCronBooleanRequired     Key = "tool.runtime.cron.boolean_required"
-	KeyToolRuntimeCronUnexpectedParameter Key = "tool.runtime.cron.unexpected_parameter"
-	KeyToolRuntimeCronSessionOnly         Key = "tool.runtime.cron.session_only"
-	KeyToolRuntimeCronPersisted           Key = "tool.runtime.cron.persisted"
-	KeyToolRuntimeCronRecurringCreated    Key = "tool.runtime.cron.recurring_created"
-	KeyToolRuntimeCronOneShotCreated      Key = "tool.runtime.cron.one_shot_created"
-	KeyToolRuntimeCronCreateInvalidResult Key = "tool.runtime.cron.create_invalid_result"
-	KeyToolRuntimeCronInvalidExpression   Key = "tool.runtime.cron.invalid_expression"
-	KeyToolRuntimeCronNoFutureMatch       Key = "tool.runtime.cron.no_future_match"
-	KeyToolRuntimeCronCancelled           Key = "tool.runtime.cron.cancelled"
-	KeyToolRuntimeCronDeleteOwnedByOther  Key = "tool.runtime.cron.delete_owned_by_other"
-	KeyToolRuntimeCronDeleteNotFound      Key = "tool.runtime.cron.delete_not_found"
-	KeyToolRuntimeCronNoJobs              Key = "tool.runtime.cron.no_jobs"
-	KeyToolRuntimeCronKindOneShot         Key = "tool.runtime.cron.kind_one_shot"
-	KeyToolRuntimeCronKindRecurring       Key = "tool.runtime.cron.kind_recurring"
-	KeyToolRuntimeCronScopeSessionOnly    Key = "tool.runtime.cron.scope_session_only"
-	KeyToolRuntimeCronEveryMinute         Key = "tool.runtime.cron.every_minute"
-	KeyToolRuntimeCronEveryMinutes        Key = "tool.runtime.cron.every_minutes"
-	KeyToolRuntimeCronEveryHour           Key = "tool.runtime.cron.every_hour"
-	KeyToolRuntimeCronEveryHourAtMinute   Key = "tool.runtime.cron.every_hour_at_minute"
-	KeyToolRuntimeCronAtMinuteSuffix      Key = "tool.runtime.cron.at_minute_suffix"
-	KeyToolRuntimeCronEveryHours          Key = "tool.runtime.cron.every_hours"
-	KeyToolRuntimeCronEveryDayAt          Key = "tool.runtime.cron.every_day_at"
-	KeyToolRuntimeCronEveryWeekdayAt      Key = "tool.runtime.cron.every_weekday_at"
-	KeyToolRuntimeCronWeekdaysAt          Key = "tool.runtime.cron.weekdays_at"
-	KeyToolRuntimeCronSunday              Key = "tool.runtime.cron.day.sunday"
-	KeyToolRuntimeCronMonday              Key = "tool.runtime.cron.day.monday"
-	KeyToolRuntimeCronTuesday             Key = "tool.runtime.cron.day.tuesday"
-	KeyToolRuntimeCronWednesday           Key = "tool.runtime.cron.day.wednesday"
-	KeyToolRuntimeCronThursday            Key = "tool.runtime.cron.day.thursday"
-	KeyToolRuntimeCronFriday              Key = "tool.runtime.cron.day.friday"
-	KeyToolRuntimeCronSaturday            Key = "tool.runtime.cron.day.saturday"
-	KeyToolRuntimeCronAM                  Key = "tool.runtime.cron.am"
-	KeyToolRuntimeCronPM                  Key = "tool.runtime.cron.pm"
-	KeyToolRuntimeCronMissedPlural        Key = "tool.runtime.cron.missed_plural"
-	KeyToolRuntimeCronMissedSingle        Key = "tool.runtime.cron.missed_single"
-	KeyToolRuntimeCronMissedEntry         Key = "tool.runtime.cron.missed_entry"
-)
-
-func init() {
-	addToolRuntime(KeyToolRuntimeCronDisabled, "Cron is disabled by CLAUDE_CODE_DISABLE_CRON=1. Set it to 0 or unset it to enable Cron.", "CLAUDE_CODE_DISABLE_CRON=1 已禁用 Cron。将其设为 0 或取消设置即可启用 Cron。", "Cron ist durch CLAUDE_CODE_DISABLE_CRON=1 deaktiviert. Zum Aktivieren auf 0 setzen oder entfernen.", "CLAUDE_CODE_DISABLE_CRON=1 により Cron が無効です。0 に設定するか、設定を解除してください。", "CLAUDE_CODE_DISABLE_CRON=1로 Cron이 비활성화되었습니다. 0으로 설정하거나 해제하면 Cron을 사용할 수 있습니다.", "Cron отключён параметром CLAUDE_CODE_DISABLE_CRON=1. Установите 0 или удалите переменную.")
-	addToolRuntime(KeyToolRuntimeCronBooleanRequired, "Error: invalid input: %s must be a boolean or \"true\"/\"false\"", "错误：输入无效：%s 必须是布尔值或 \"true\"/\"false\"", "Fehler: ungültige Eingabe: %s muss ein boolescher Wert oder \"true\"/\"false\" sein", "エラー: 入力が無効です: %s は真偽値または \"true\"/\"false\" である必要があります", "오류: 잘못된 입력: %s은(는) 불리언 또는 \"true\"/\"false\"여야 합니다", "Ошибка: недопустимый ввод: %s должен быть логическим значением или \"true\"/\"false\"")
-	addToolRuntime(KeyToolRuntimeCronUnexpectedParameter, "Error: invalid input: unexpected parameter `%s`", "错误：输入无效：未预期的参数 %q", "Fehler: ungültige Eingabe: unerwarteter Parameter %q", "エラー: 入力が無効です: 不明なパラメータ %q", "오류: 잘못된 입력: 예기치 않은 매개변수 %q", "Ошибка: недопустимый ввод: неожиданный параметр %q")
-	addToolRuntime(KeyToolRuntimeCronSessionOnly, "Session-only (not written to disk, dies when Claude exits)", "仅限当前 session（不会写入磁盘，Claude 退出时移除）", "Nur für diese Sitzung (nicht auf Datenträger gespeichert; beim Beenden von Claude entfernt)", "この session のみ（ディスクには保存されず、Claude の終了時に削除）", "현재 session 전용(디스크에 쓰지 않으며 Claude 종료 시 삭제)", "Только для текущей session (не записывается на диск; удаляется при выходе из Claude)")
-	addToolRuntime(KeyToolRuntimeCronPersisted, "Persisted to .claude/scheduled_tasks.json", "已持久化至 .claude/scheduled_tasks.json", "In .claude/scheduled_tasks.json gespeichert", ".claude/scheduled_tasks.json に保存済み", ".claude/scheduled_tasks.json에 저장됨", "Сохранено в .claude/scheduled_tasks.json")
-	addToolRuntime(KeyToolRuntimeCronRecurringCreated, "Scheduled recurring job %s (%s). %s. Auto-expires after 7 days. Use CronDelete to cancel sooner.", "已安排重复任务 %s（%s）。%s。任务将在 7 天后自动到期；如需提前取消，请使用 CronDelete。", "Wiederkehrende Aufgabe %s (%s) geplant. %s. Sie läuft nach 7 Tagen automatisch ab; zum früheren Abbrechen CronDelete verwenden.", "繰り返しジョブ %s（%s）をスケジュールしました。%s。7 日後に自動失効します。早めに取り消すには CronDelete を使用してください。", "반복 작업 %s(%s)을 예약했습니다. %s. 7일 후 자동 만료됩니다. 더 일찍 취소하려면 CronDelete를 사용하세요.", "Повторяющаяся задача %s (%s) запланирована. %s. Она автоматически истечёт через 7 дней; для ранней отмены используйте CronDelete.")
-	addToolRuntime(KeyToolRuntimeCronOneShotCreated, "Scheduled one-shot task %s (%s). %s. It will fire once then auto-delete.", "已安排一次性任务 %s（%s）。%s。任务执行一次后会自动删除。", "Einmalige Aufgabe %s (%s) geplant. %s. Sie wird einmal ausgeführt und anschließend automatisch gelöscht.", "単発タスク %s（%s）をスケジュールしました。%s。1 回実行後に自動削除されます。", "일회성 작업 %s(%s)을 예약했습니다. %s. 한 번 실행된 뒤 자동 삭제됩니다.", "Одноразовая задача %s (%s) запланирована. %s. Она выполнится один раз и будет автоматически удалена.")
-	addToolRuntime(KeyToolRuntimeCronCreateInvalidResult, "CronCreate returned an invalid typed result", "CronCreate 返回了无效的类型化结果", "CronCreate hat ein ungültiges typisiertes Ergebnis zurückgegeben", "CronCreate が無効な型付き結果を返しました", "CronCreate가 잘못된 형식의 결과를 반환했습니다", "CronCreate вернул недопустимый типизированный результат")
-	addToolRuntime(KeyToolRuntimeCronInvalidExpression, "Invalid cron expression %q. Expected 5 fields: M H DoM Mon DoW.", "cron 表达式 %q 无效。应包含 5 个字段：M H DoM Mon DoW。", "Ungültiger Cron-Ausdruck %q. Erwartet werden 5 Felder: M H DoM Mon DoW.", "cron 式 %q は無効です。5 フィールド（M H DoM Mon DoW）が必要です。", "cron 표현식 %q이(가) 잘못되었습니다. M H DoM Mon DoW 5개 필드가 필요합니다.", "Недопустимое выражение cron %q. Ожидаются 5 полей: M H DoM Mon DoW.")
-	addToolRuntime(KeyToolRuntimeCronNoFutureMatch, "Cron expression %q does not match any date in the next year.", "cron 表达式 %q 在未来一年内没有匹配的日期。", "Cron-Ausdruck %q trifft im nächsten Jahr auf kein Datum zu.", "cron 式 %q は今後 1 年以内のどの日付にも一致しません。", "cron 표현식 %q이(가) 향후 1년 동안 어떤 날짜와도 일치하지 않습니다.", "Выражение cron %q не соответствует ни одной дате в следующем году.")
-	addToolRuntime(KeyToolRuntimeCronCancelled, "Cancelled job %s.", "已取消任务 %s。", "Aufgabe %s abgebrochen.", "ジョブ %s を取り消しました。", "작업 %s을(를) 취소했습니다.", "Задача %s отменена.")
-	addToolRuntime(KeyToolRuntimeCronDeleteOwnedByOther, "Cannot delete cron job %q because it belongs to another agent", "无法删除 cron 任务 %q：该任务属于另一个 Agent", "Cron-Aufgabe %q kann nicht gelöscht werden, da sie einem anderen Agent gehört", "cron ジョブ %q は別の Agent が所有しているため削除できません", "cron 작업 %q은(는) 다른 Agent 소유이므로 삭제할 수 없습니다", "Нельзя удалить задачу cron %q: она принадлежит другому Agent")
-	addToolRuntime(KeyToolRuntimeCronDeleteNotFound, "No scheduled job has ID %q", "没有 ID 为 %q 的计划任务", "Keine geplante Aufgabe mit ID %q gefunden", "ID %q のスケジュール済みジョブはありません", "ID가 %q인 예약 작업이 없습니다", "Запланированная задача с ID %q не найдена")
-	addToolRuntime(KeyToolRuntimeCronNoJobs, "No scheduled jobs.", "没有计划任务。", "Keine geplanten Aufgaben.", "スケジュール済みジョブはありません。", "예약된 작업이 없습니다.", "Запланированных задач нет.")
-	addToolRuntime(KeyToolRuntimeCronKindOneShot, " (one-shot)", "（一次性）", " (einmalig)", "（単発）", "(일회성)", " (одноразовая)")
-	addToolRuntime(KeyToolRuntimeCronKindRecurring, " (recurring)", "（重复）", " (wiederkehrend)", "（繰り返し）", "(반복)", " (повторяющаяся)")
-	addToolRuntime(KeyToolRuntimeCronScopeSessionOnly, " [session-only]", " [仅当前 session]", " [nur Sitzung]", " [session のみ]", " [session 전용]", " [только session]")
-	addToolRuntime(KeyToolRuntimeCronEveryMinute, "Every minute", "每分钟", "Jede Minute", "毎分", "매분", "Каждую минуту")
-	addToolRuntime(KeyToolRuntimeCronEveryMinutes, "Every %s minutes", "每 %s 分钟", "Alle %s Minuten", "%s 分ごと", "%s분마다", "Каждые %s минут")
-	addToolRuntime(KeyToolRuntimeCronEveryHour, "Every hour", "每小时", "Jede Stunde", "毎時", "매시간", "Каждый час")
-	addToolRuntime(KeyToolRuntimeCronEveryHourAtMinute, "Every hour at :%s", "每小时的 :%s", "Jede Stunde um :%s", "毎時 :%s", "매시간 :%s", "Каждый час в :%s")
-	addToolRuntime(KeyToolRuntimeCronAtMinuteSuffix, " at :%s", "，在 :%s", " um :%s", " :%s", " :%s", " в :%s")
-	addToolRuntime(KeyToolRuntimeCronEveryHours, "Every %s hours", "每 %s 小时", "Alle %s Stunden", "%s 時間ごと", "%s시간마다", "Каждые %s часов")
-	addToolRuntime(KeyToolRuntimeCronEveryDayAt, "Every day at %s", "每天 %s", "Täglich um %s", "毎日 %s", "매일 %s", "Каждый день в %s")
-	addToolRuntime(KeyToolRuntimeCronEveryWeekdayAt, "Every %s at %s", "每周%s %s", "Jeden %s um %s", "毎週%s %s", "매주 %s %s", "Каждый %s в %s")
-	addToolRuntime(KeyToolRuntimeCronWeekdaysAt, "Weekdays at %s", "工作日 %s", "Werktags um %s", "平日 %s", "평일 %s", "По будням в %s")
-	addToolRuntime(KeyToolRuntimeCronSunday, "Sunday", "周日", "Sonntag", "日曜日", "일요일", "воскресенье")
-	addToolRuntime(KeyToolRuntimeCronMonday, "Monday", "周一", "Montag", "月曜日", "월요일", "понедельник")
-	addToolRuntime(KeyToolRuntimeCronTuesday, "Tuesday", "周二", "Dienstag", "火曜日", "화요일", "вторник")
-	addToolRuntime(KeyToolRuntimeCronWednesday, "Wednesday", "周三", "Mittwoch", "水曜日", "수요일", "среда")
-	addToolRuntime(KeyToolRuntimeCronThursday, "Thursday", "周四", "Donnerstag", "木曜日", "목요일", "четверг")
-	addToolRuntime(KeyToolRuntimeCronFriday, "Friday", "周五", "Freitag", "金曜日", "금요일", "пятница")
-	addToolRuntime(KeyToolRuntimeCronSaturday, "Saturday", "周六", "Samstag", "土曜日", "토요일", "суббота")
-	addToolRuntime(KeyToolRuntimeCronAM, "AM", "上午", "vorm.", "午前", "오전", "AM")
-	addToolRuntime(KeyToolRuntimeCronPM, "PM", "下午", "nachm.", "午後", "오후", "PM")
-	addToolRuntime(KeyToolRuntimeCronMissedPlural, "The following one-shot scheduled tasks were missed while Claude was not running. They have already been removed from .claude/scheduled_tasks.json.\n\nDo NOT execute these prompts yet. First use the AskUserQuestion tool to ask whether to run each one now. Only execute if the user confirms.", "Claude 未运行期间错过了以下一次性任务；这些任务已从 .claude/scheduled_tasks.json 中移除。\n\n暂时不要执行这些 prompt。请先使用 AskUserQuestion 逐项询问是否立即运行，仅执行用户确认的任务。", "Die folgenden einmaligen Aufgaben wurden verpasst, während Claude nicht lief, und aus .claude/scheduled_tasks.json entfernt.\n\nDiese Prompts noch nicht ausführen. Frage mit AskUserQuestion für jede Aufgabe nach und führe nur bestätigte Aufgaben aus.", "Claude の停止中に次の単発タスクが実行されず、.claude/scheduled_tasks.json から削除されました。\n\nまだ prompt を実行しないでください。AskUserQuestion で各タスクを今実行するか確認し、ユーザーが承認したものだけ実行してください。", "Claude가 실행되지 않는 동안 다음 일회성 작업을 놓쳤으며 .claude/scheduled_tasks.json에서 삭제했습니다.\n\n아직 prompt를 실행하지 마세요. AskUserQuestion으로 각 작업을 지금 실행할지 묻고 사용자가 확인한 작업만 실행하세요.", "Следующие одноразовые задачи были пропущены, пока Claude не работал, и удалены из .claude/scheduled_tasks.json.\n\nПока не выполняйте эти prompt. С помощью AskUserQuestion спросите о каждой задаче и выполняйте только подтверждённые пользователем.")
-	addToolRuntime(KeyToolRuntimeCronMissedSingle, "The following one-shot scheduled task was missed while Claude was not running. It has already been removed from .claude/scheduled_tasks.json.\n\nDo NOT execute this prompt yet. First use the AskUserQuestion tool to ask whether to run it now. Only execute if the user confirms.", "Claude 未运行期间错过了以下一次性任务；该任务已从 .claude/scheduled_tasks.json 中移除。\n\n暂时不要执行该 prompt。请先使用 AskUserQuestion 询问是否立即运行，仅在用户确认后执行。", "Die folgende einmalige Aufgabe wurde verpasst, während Claude nicht lief, und aus .claude/scheduled_tasks.json entfernt.\n\nDiesen Prompt noch nicht ausführen. Frage mit AskUserQuestion nach und führe ihn nur nach Bestätigung aus.", "Claude の停止中に次の単発タスクが実行されず、.claude/scheduled_tasks.json から削除されました。\n\nまだ prompt を実行しないでください。AskUserQuestion で今実行するか確認し、ユーザーが承認した場合だけ実行してください。", "Claude가 실행되지 않는 동안 다음 일회성 작업을 놓쳤으며 .claude/scheduled_tasks.json에서 삭제했습니다.\n\n아직 prompt를 실행하지 마세요. AskUserQuestion으로 지금 실행할지 묻고 사용자가 확인한 경우에만 실행하세요.", "Следующая одноразовая задача была пропущена, пока Claude не работал, и удалена из .claude/scheduled_tasks.json.\n\nПока не выполняйте этот prompt. С помощью AskUserQuestion спросите, нужно ли выполнить его сейчас, и запускайте только после подтверждения.")
-	addToolRuntime(KeyToolRuntimeCronMissedEntry, "[%s, created %s]", "[%s，创建于 %s]", "[%s, erstellt %s]", "[%s、作成日時 %s]", "[%s, 생성 %s]", "[%s, создано %s]")
 }
 
 const (
@@ -898,50 +748,24 @@ func init() {
 }
 
 const (
-	KeyToolRuntimeMCPURLElicitationHandlerNil Key = "tool.runtime.mcp.url_elicitation.handler_nil"
-	KeyToolRuntimeMCPDynamicNotInitialized    Key = "tool.runtime.mcp.dynamic_not_initialized"
-	KeyToolRuntimeMCPToolCallFailedPlain      Key = "tool.runtime.mcp.tool_call_failed_plain"
-	KeyToolRuntimeMCPSessionRecoveryFailed    Key = "tool.runtime.mcp.session_recovery_failed"
-	KeyToolRuntimeMCPServerUnavailableReason  Key = "tool.runtime.mcp.server_unavailable_reason"
-	KeyToolRuntimeMCPURLElicitationRetryLimit Key = "tool.runtime.mcp.url_elicitation.retry_limit"
-	KeyToolRuntimeMCPURLElicitationInvalid    Key = "tool.runtime.mcp.url_elicitation.invalid"
-	KeyToolRuntimeMCPURLElicitationRequired   Key = "tool.runtime.mcp.url_elicitation.required"
-	KeyToolRuntimeMCPURLElicitationFailed     Key = "tool.runtime.mcp.url_elicitation.failed"
-	KeyToolRuntimeMCPURLElicitationCanceled   Key = "tool.runtime.mcp.url_elicitation.canceled"
-	KeyToolRuntimeMCPURLElicitationDeclined   Key = "tool.runtime.mcp.url_elicitation.declined"
-	KeyToolRuntimeMCPURLElicitationRejected   Key = "tool.runtime.mcp.url_elicitation.rejected"
-	KeyToolRuntimeMCPProgressStarted          Key = "tool.runtime.mcp.progress.started"
-	KeyToolRuntimeMCPProgressHeartbeat        Key = "tool.runtime.mcp.progress.heartbeat"
-	KeyToolRuntimeMCPProgressCompleted        Key = "tool.runtime.mcp.progress.completed"
-	KeyToolRuntimeMCPProgressFailed           Key = "tool.runtime.mcp.progress.failed"
-	KeyToolRuntimeMCPProgressMessage          Key = "tool.runtime.mcp.progress.message"
-	KeyToolRuntimeMCPServerDisabled           Key = "tool.runtime.mcp.server_disabled"
-	KeyToolRuntimeMCPFailedToConnect          Key = "tool.runtime.mcp.failed_to_connect"
-	KeyToolRuntimeMCPServerConnectFailed      Key = "tool.runtime.mcp.server_connect_failed"
-	KeyToolRuntimeMCPServerConnecting         Key = "tool.runtime.mcp.server_connecting"
-	KeyToolRuntimeMCPServerNotConnected       Key = "tool.runtime.mcp.server_not_connected"
-	KeyToolRuntimeMCPServerNeedsAuth          Key = "tool.runtime.mcp.server_needs_auth"
-	KeyToolRuntimeMCPCallTimedOut             Key = "tool.runtime.mcp.call_timed_out"
+	KeyToolRuntimeMCPDynamicNotInitialized   Key = "tool.runtime.mcp.dynamic_not_initialized"
+	KeyToolRuntimeMCPToolCallFailedPlain     Key = "tool.runtime.mcp.tool_call_failed_plain"
+	KeyToolRuntimeMCPSessionRecoveryFailed   Key = "tool.runtime.mcp.session_recovery_failed"
+	KeyToolRuntimeMCPServerUnavailableReason Key = "tool.runtime.mcp.server_unavailable_reason"
+	KeyToolRuntimeMCPServerDisabled          Key = "tool.runtime.mcp.server_disabled"
+	KeyToolRuntimeMCPFailedToConnect         Key = "tool.runtime.mcp.failed_to_connect"
+	KeyToolRuntimeMCPServerConnectFailed     Key = "tool.runtime.mcp.server_connect_failed"
+	KeyToolRuntimeMCPServerConnecting        Key = "tool.runtime.mcp.server_connecting"
+	KeyToolRuntimeMCPServerNotConnected      Key = "tool.runtime.mcp.server_not_connected"
+	KeyToolRuntimeMCPServerNeedsAuth         Key = "tool.runtime.mcp.server_needs_auth"
+	KeyToolRuntimeMCPCallTimedOut            Key = "tool.runtime.mcp.call_timed_out"
 )
 
 func init() {
-	addToolRuntime(KeyToolRuntimeMCPURLElicitationHandlerNil, "MCP URL elicitation handler is nil", "MCP URL elicitation handler 为空", "MCP-URL-Elicitation-Handler ist nil", "MCP URL elicitation handler が nil です", "MCP URL elicitation handler가 nil입니다", "Handler MCP URL elicitation равен nil")
 	addToolRuntime(KeyToolRuntimeMCPDynamicNotInitialized, "Error: dynamic MCP tool is not initialized", "错误：动态 MCP tool 尚未初始化", "Fehler: Dynamisches MCP-Tool ist nicht initialisiert", "エラー: 動的 MCP tool が初期化されていません", "오류: 동적 MCP tool이 초기화되지 않았습니다", "Ошибка: динамический MCP tool не инициализирован")
 	addToolRuntime(KeyToolRuntimeMCPToolCallFailedPlain, "MCP tool call failed", "MCP tool 调用失败", "MCP-Tool-Aufruf fehlgeschlagen", "MCP tool の呼び出しに失敗しました", "MCP tool 호출 실패", "Вызов MCP tool завершился с ошибкой")
 	addToolRuntime(KeyToolRuntimeMCPSessionRecoveryFailed, "Error: MCP session recovery failed for %q: %s", "错误：无法恢复 %q 的 MCP session：%s", "Fehler: Wiederherstellung der MCP-Sitzung für %q fehlgeschlagen: %s", "エラー: %q の MCP session を復元できませんでした: %s", "오류: %q의 MCP session 복구 실패: %s", "Ошибка: не удалось восстановить session MCP для %q: %s")
 	addToolRuntime(KeyToolRuntimeMCPServerUnavailableReason, "Error: MCP server %q is unavailable: %s", "错误：MCP server %q 不可用：%s", "Fehler: MCP-Server %q ist nicht verfügbar: %s", "エラー: MCP server %q は利用できません: %s", "오류: MCP server %q을(를) 사용할 수 없습니다: %s", "Ошибка: MCP server %q недоступен: %s")
-	addToolRuntime(KeyToolRuntimeMCPURLElicitationRetryLimit, "Error: URL elicitation retry limit reached for MCP tool %q", "错误：MCP tool %q 的 URL elicitation 重试次数已达上限", "Fehler: Wiederholungslimit für URL-Elicitation des MCP-Tools %q erreicht", "エラー: MCP tool %q の URL elicitation が再試行上限に達しました", "오류: MCP tool %q의 URL elicitation 재시도 제한에 도달했습니다", "Ошибка: достигнут предел повторов URL elicitation для MCP tool %q")
-	addToolRuntime(KeyToolRuntimeMCPURLElicitationInvalid, "Error: MCP tool %q requires URL elicitation but did not provide a valid URL request", "错误：MCP tool %q 需要 URL elicitation，但未提供有效的 URL 请求", "Fehler: MCP-Tool %q erfordert URL-Elicitation, hat aber keine gültige URL-Anfrage geliefert", "エラー: MCP tool %q には URL elicitation が必要ですが、有効な URL リクエストがありません", "오류: MCP tool %q에 URL elicitation이 필요하지만 유효한 URL 요청이 없습니다", "Ошибка: MCP tool %q требует URL elicitation, но не предоставил допустимый запрос URL")
-	addToolRuntime(KeyToolRuntimeMCPURLElicitationRequired, "Error: MCP tool %q requires the user to open a URL before it can continue", "错误：MCP tool %q 需要用户先打开 URL 才能继续", "Fehler: Für MCP-Tool %q muss der Benutzer eine URL öffnen, bevor es fortfahren kann", "エラー: MCP tool %q を続行するには、ユーザーが URL を開く必要があります", "오류: MCP tool %q을(를) 계속하려면 사용자가 URL을 열어야 합니다", "Ошибка: для продолжения MCP tool %q пользователю необходимо открыть URL")
-	addToolRuntime(KeyToolRuntimeMCPURLElicitationFailed, "Error: URL elicitation failed for MCP tool %q: %s", "错误：MCP tool %q 的 URL elicitation 失败：%s", "Fehler: URL-Elicitation für MCP-Tool %q fehlgeschlagen: %s", "エラー: MCP tool %q の URL elicitation に失敗しました: %s", "오류: MCP tool %q의 URL elicitation 실패: %s", "Ошибка: URL elicitation для MCP tool %q завершился с ошибкой: %s")
-	addToolRuntime(KeyToolRuntimeMCPURLElicitationCanceled, "canceled", "已取消", "abgebrochen", "キャンセルされました", "취소됨", "отменён")
-	addToolRuntime(KeyToolRuntimeMCPURLElicitationDeclined, "declined", "已拒绝", "abgelehnt", "拒否されました", "거절됨", "отклонён")
-	addToolRuntime(KeyToolRuntimeMCPURLElicitationRejected, "URL elicitation was %s. Tool %q could not complete because the user must open a URL.", "URL elicitation %s。tool %q 无法完成，因为需要用户打开 URL。", "URL-Elicitation wurde %s. Tool %q konnte nicht abgeschlossen werden, da der Benutzer eine URL öffnen muss.", "URL elicitation は%s。ユーザーが URL を開く必要があるため、tool %q を完了できませんでした。", "URL elicitation이 %s. 사용자가 URL을 열어야 하므로 tool %q을(를) 완료할 수 없습니다.", "URL elicitation был %s. Tool %q не завершён, поскольку пользователь должен открыть URL.")
-	addToolRuntime(KeyToolRuntimeMCPProgressStarted, "started", "已开始", "gestartet", "開始", "시작됨", "запущено")
-	addToolRuntime(KeyToolRuntimeMCPProgressHeartbeat, "still running (heartbeat %d)", "仍在运行（heartbeat %d）", "läuft weiter (Heartbeat %d)", "引き続き実行中（heartbeat %d）", "계속 실행 중(heartbeat %d)", "всё ещё выполняется (heartbeat %d)")
-	addToolRuntime(KeyToolRuntimeMCPProgressCompleted, "completed", "已完成", "abgeschlossen", "完了", "완료됨", "завершено")
-	addToolRuntime(KeyToolRuntimeMCPProgressFailed, "failed", "失败", "fehlgeschlagen", "失敗", "실패", "ошибка")
-	addToolRuntime(KeyToolRuntimeMCPProgressMessage, "MCP %s/%s %s", "MCP %s/%s %s", "MCP %s/%s %s", "MCP %s/%s %s", "MCP %s/%s %s", "MCP %s/%s %s")
 	addToolRuntime(KeyToolRuntimeMCPServerDisabled, "Error: MCP server %q is disabled", "错误：MCP server %q 已禁用", "Fehler: MCP-Server %q ist deaktiviert", "エラー: MCP server %q は無効です", "오류: MCP server %q이(가) 비활성화되었습니다", "Ошибка: MCP server %q отключён")
 	addToolRuntime(KeyToolRuntimeMCPFailedToConnect, "failed to connect", "连接失败", "Verbindung fehlgeschlagen", "接続に失敗しました", "연결 실패", "не удалось подключиться")
 	addToolRuntime(KeyToolRuntimeMCPServerConnectFailed, "Error: MCP server %q failed to connect: %s", "错误：MCP server %q 连接失败：%s", "Fehler: Verbindung zu MCP-Server %q fehlgeschlagen: %s", "エラー: MCP server %q への接続に失敗しました: %s", "오류: MCP server %q 연결 실패: %s", "Ошибка: не удалось подключиться к MCP server %q: %s")

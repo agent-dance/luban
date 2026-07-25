@@ -13,8 +13,8 @@ type ModelInfo struct {
 	// ID is the canonical model identifier (e.g. "claude-sonnet-4-20250514").
 	ID string
 
-	// Aliases lists accepted provider aliases that resolve to ID without being
-	// shown as duplicate entries in model pickers.
+	// Aliases lists current provider identifiers that resolve to ID without
+	// being shown as duplicate entries in model pickers.
 	Aliases []string
 
 	// Name is the human-readable display name (e.g. "Claude Sonnet 4").
@@ -43,7 +43,6 @@ type ModelInfo struct {
 	CacheCreatePer1M float64
 
 	// CostCurrency is the ISO 4217 billing currency for all Cost* fields.
-	// Empty means USD for backward compatibility with older catalog payloads.
 	CostCurrency string
 
 	// CanReason indicates the model supports extended thinking / reasoning.
@@ -125,9 +124,39 @@ func identifierPrefixMatchLength(identifier, id string) int {
 
 // Register adds or updates a model in the catalog.
 func (c *ModelCatalog) Register(m ModelInfo) {
+	m.CostCurrency = strings.ToUpper(strings.TrimSpace(m.CostCurrency))
+	if m.CostCurrency == "" {
+		panic("provider: model CostCurrency is required")
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.models[modelCatalogKey(m.Provider, m.ID)] = m
+}
+
+// ReplaceProviderModels atomically replaces all catalog entries belonging to
+// provider. It is used when a compatible endpoint refreshes its model list.
+func (c *ModelCatalog) ReplaceProviderModels(provider string, models []ModelInfo) {
+	provider = CanonicalProviderName(provider)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key, model := range c.models {
+		if CanonicalProviderName(model.Provider) == provider {
+			delete(c.models, key)
+		}
+	}
+	for _, model := range models {
+		model.Provider = provider
+		model.CostCurrency = strings.ToUpper(strings.TrimSpace(model.CostCurrency))
+		if model.CostCurrency == "" {
+			model.CostCurrency = "USD"
+		}
+		c.models[modelCatalogKey(provider, model.ID)] = model
+	}
+}
+
+// RemoveProvider deletes every model associated with provider.
+func (c *ModelCatalog) RemoveProvider(provider string) {
+	c.ReplaceProviderModels(provider, nil)
 }
 
 // Get returns a model by its exact ID.
@@ -290,11 +319,7 @@ func (c *ModelCatalog) Count() int {
 
 // BillingCurrency returns the normalized billing currency for this model.
 func (m ModelInfo) BillingCurrency() string {
-	currency := strings.ToUpper(strings.TrimSpace(m.CostCurrency))
-	if currency == "" {
-		return "USD"
-	}
-	return currency
+	return strings.ToUpper(strings.TrimSpace(m.CostCurrency))
 }
 
 // CostCurrencySymbol returns a compact display symbol for a billing currency.
@@ -363,7 +388,7 @@ func CatalogDefaultModel(provider, fallback string) string {
 //go:generate python3 scripts/catalog_sync.py
 
 // DefaultCatalog returns a ModelCatalog pre-populated with generated provider
-// metadata plus local-only model aliases.
+// metadata plus local-only model identifiers.
 func DefaultCatalog() *ModelCatalog {
 	c := NewModelCatalog()
 	registerGeneratedCatalog(c)
@@ -373,49 +398,49 @@ func DefaultCatalog() *ModelCatalog {
 }
 
 func registerLocalCatalog(c *ModelCatalog) {
-	c.Register(ModelInfo{
+	c.Register(ModelInfo{CostCurrency: "USD",
 		ID: "llama3.1", Name: "Llama 3.1",
 		Provider: "ollama", ContextWindow: 131072,
 		CanReason: false, CanUseTools: true, CanSeeImages: false,
 		APIFormat: "chat-completions", IsDefault: true,
 	})
-	c.Register(ModelInfo{
+	c.Register(ModelInfo{CostCurrency: "USD",
 		ID: "llama3.2", Name: "Llama 3.2",
 		Provider: "ollama", ContextWindow: 131072,
 		CanReason: false, CanUseTools: true, CanSeeImages: true,
 		APIFormat: "chat-completions",
 	})
-	c.Register(ModelInfo{
+	c.Register(ModelInfo{CostCurrency: "USD",
 		ID: "llama3.3", Name: "Llama 3.3",
 		Provider: "ollama", ContextWindow: 131072,
 		CanReason: false, CanUseTools: true, CanSeeImages: false,
 		APIFormat: "chat-completions",
 	})
-	c.Register(ModelInfo{
+	c.Register(ModelInfo{CostCurrency: "USD",
 		ID: "qwen2.5-coder", Name: "Qwen 2.5 Coder",
 		Provider: "ollama", ContextWindow: 32768,
 		CanReason: false, CanUseTools: true, CanSeeImages: false,
 		APIFormat: "chat-completions",
 	})
-	c.Register(ModelInfo{
+	c.Register(ModelInfo{CostCurrency: "USD",
 		ID: "qwen2.5", Name: "Qwen 2.5",
 		Provider: "ollama", ContextWindow: 32768,
 		CanReason: false, CanUseTools: true, CanSeeImages: false,
 		APIFormat: "chat-completions",
 	})
-	c.Register(ModelInfo{
+	c.Register(ModelInfo{CostCurrency: "USD",
 		ID: "codellama", Name: "Code Llama",
 		Provider: "ollama", ContextWindow: 16384,
 		CanReason: false, CanUseTools: true, CanSeeImages: false,
 		APIFormat: "chat-completions",
 	})
-	c.Register(ModelInfo{
+	c.Register(ModelInfo{CostCurrency: "USD",
 		ID: "phi4", Name: "Phi-4",
 		Provider: "ollama", ContextWindow: 16384,
 		CanReason: false, CanUseTools: true, CanSeeImages: false,
 		APIFormat: "chat-completions",
 	})
-	c.Register(ModelInfo{
+	c.Register(ModelInfo{CostCurrency: "USD",
 		ID: "deepseek-r1", Name: "DeepSeek R1 (local)",
 		Provider: "ollama", ContextWindow: 64000,
 		CanReason: true, CanUseTools: false, CanSeeImages: false,

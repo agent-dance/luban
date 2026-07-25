@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/agent-dance/luban/commands"
-	"github.com/agent-dance/luban/compact"
+	"github.com/agent-dance/luban/internal/runtime/compact"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -86,7 +86,7 @@ func TestCompactCommandParityPassesCustomInstructions(t *testing.T) {
 		OnEvent:   func(string) {},
 		CompactFunc: func(customInstructions string) error {
 			seen = customInstructions
-			ql.SetMessages([]types.Message{types.UserMessage("compacted")})
+			ql.SetMessagesPreservingToolUseLedger([]types.Message{types.UserMessage("compacted")})
 			return nil
 		},
 	}

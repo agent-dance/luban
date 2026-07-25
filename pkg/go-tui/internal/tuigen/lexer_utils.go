@@ -27,13 +27,6 @@ func (l *Lexer) skipWhitespaceAndCollectComments() {
 	}
 }
 
-// skipWhitespaceOnly skips spaces and tabs only, no comments.
-func (l *Lexer) skipWhitespaceOnly() {
-	for l.ch == ' ' || l.ch == '\t' || l.ch == '\r' {
-		l.readChar()
-	}
-}
-
 // collectLineComment reads a // comment and adds it to pendingComments.
 func (l *Lexer) collectLineComment() {
 	startPos := l.pos
@@ -138,54 +131,28 @@ func (l *Lexer) readIdentifier() Token {
 func (l *Lexer) readAtKeyword() Token {
 	l.readChar() // consume @
 
-	// Save the position of the keyword start (after @) for deprecated keywords
-	kwLine := l.line
-	kwColumn := l.column
-	kwStartPos := l.pos
-
 	startPos := l.pos
 	for isLetter(l.ch) {
 		l.readChar()
 	}
 	keyword := l.source[startPos:l.pos]
 
-	switch keyword {
-	case "for", "if", "else":
-		// Record diagnostic error (shows as squiggly underline in LSP).
-		// Still emit the correct bare token so the parser can continue.
-		l.errors.AddErrorf(l.position(), "@%s is no longer supported, use bare \"%s\" instead", keyword, keyword)
-		l.tokenLine = kwLine
-		l.tokenColumn = kwColumn
-		l.tokenStartPos = kwStartPos
-		switch keyword {
-		case "for":
-			return l.makeToken(TokenFor, "for")
-		case "if":
-			return l.makeToken(TokenIf, "if")
-		default: // "else"
-			return l.makeToken(TokenElse, "else")
+	if len(keyword) > 0 {
+		firstRune, _ := utf8.DecodeRuneInString(keyword)
+		if unicode.IsUpper(firstRune) {
+			// Uppercase: component function call @Header()
+			return l.makeToken(TokenAtCall, keyword)
 		}
-	case "let":
-		l.errors.AddErrorf(l.position(), "@let is no longer supported, use \"name := <element>\" instead")
-		return l.makeToken(TokenError, "@let")
-	default:
-		if len(keyword) > 0 {
-			firstRune, _ := utf8.DecodeRuneInString(keyword)
-			if unicode.IsUpper(firstRune) {
-				// Uppercase: component function call @Header()
-				return l.makeToken(TokenAtCall, keyword)
-			}
-			// Lowercase: component expression @c.textarea (renders a Component)
-			// Continue reading the full expression (field access, etc.)
-			for l.ch == '.' || isLetter(l.ch) || isDigit(l.ch) {
-				l.readChar()
-			}
-			expr := l.source[startPos:l.pos]
-			return l.makeToken(TokenAtExpr, expr)
+		// Lowercase: component expression @c.textarea (renders a Component)
+		// Continue reading the full expression (field access, etc.)
+		for l.ch == '.' || isLetter(l.ch) || isDigit(l.ch) {
+			l.readChar()
 		}
-		l.errors.AddErrorf(l.position(), "unknown @ keyword: @%s", keyword)
-		return l.makeToken(TokenError, "@"+keyword)
+		expr := l.source[startPos:l.pos]
+		return l.makeToken(TokenAtExpr, expr)
 	}
+	l.errors.AddErrorf(l.position(), "unknown @ keyword: @%s", keyword)
+	return l.makeToken(TokenError, "@"+keyword)
 }
 
 // isLetter returns true if the rune is a letter or underscore.

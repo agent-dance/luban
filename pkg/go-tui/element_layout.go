@@ -1,42 +1,10 @@
 package tui
 
-import "strings"
-
-// hasTextContent reports whether the element carries any textual content that
-// should participate in intrinsic-size / height-for-width calculations. An
-// element has text content when either its legacy .text field is set OR when
-// it has any StyledSpans (rich text with per-run styling). The StyledSpans
-// case is important: code blocks and other syntax-highlighted content are
-// emitted as StyledSpans without a text value, and before this check they
-// were treated as empty by the layout engine — collapsing their intrinsic
-// height to 0 and causing lines to overlap.
+// hasTextContent reports whether the element carries textual content that
+// should participate in intrinsic-size and height-for-width calculations.
+// Styled-span setters maintain text as the canonical layout value.
 func (e *Element) hasTextContent() bool {
-	if e.text != "" {
-		return true
-	}
-	for _, s := range e.styledSpans {
-		if s.Text != "" {
-			return true
-		}
-	}
-	return false
-}
-
-// effectiveText returns the concatenated textual content of the element,
-// preferring the legacy .text field and falling back to StyledSpans. Used by
-// layout to compute widths and wrap points.
-func (e *Element) effectiveText() string {
-	if e.text != "" {
-		return e.text
-	}
-	if len(e.styledSpans) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	for _, s := range e.styledSpans {
-		b.WriteString(s.Text)
-	}
-	return b.String()
+	return e.text != ""
 }
 
 // --- Implement Layoutable interface ---
@@ -129,10 +97,9 @@ func (e *Element) IntrinsicSize() (width, height int) {
 		return w, h
 	}
 
-	// Text content has explicit intrinsic size. Either a legacy .text value
-	// or a non-empty StyledSpans list counts as text content.
+	// Text content has explicit intrinsic size.
 	if e.hasTextContent() {
-		textWidth := stringWidth(e.effectiveText())
+		textWidth := stringWidth(e.text)
 		textHeight := 1
 		// Add padding to get the element's intrinsic size
 		width = textWidth + e.style.Padding.Horizontal()
@@ -261,7 +228,7 @@ func (e *Element) HeightForWidth(width int) int {
 			}
 			return h
 		}
-		lines := wrapText(e.effectiveText(), contentWidth)
+		lines := wrapText(e.text, contentWidth)
 		lineCount := len(lines)
 		// Account for line spacing: N lines occupy N + (N-1)*lineSpacing rows
 		lineSpacing := e.style.LineSpacing

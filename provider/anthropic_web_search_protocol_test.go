@@ -157,13 +157,13 @@ func TestAnthropicNonStreamingWebSearchBlocksAreNotDropped(t *testing.T) {
 }
 
 func TestAnthropicWebSearchServerBlocksRoundTripInAssistantMessage(t *testing.T) {
-	messages := convertToAnthropicMessages([]types.Message{{
+	messages := convertToAnthropicMessagesForParams(Params{Messages: []types.Message{{
 		Role: types.RoleAssistant,
 		Content: []types.ContentBlock{
 			types.UnknownBlock{Type: types.ContentTypeServerToolUse, Raw: json.RawMessage(`{"type":"server_tool_use","id":"srv_1","name":"web_search","input":{"query":"go"}}`)},
 			types.UnknownBlock{Type: types.ContentTypeWebSearchToolResult, Raw: json.RawMessage(`{"type":"web_search_tool_result","tool_use_id":"srv_1","content":[]}`)},
 		},
-	}})
+	}}})
 	if len(messages) != 1 || len(messages[0].Content) != 2 {
 		t.Fatalf("round-tripped messages = %+v", messages)
 	}

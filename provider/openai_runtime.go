@@ -67,7 +67,7 @@ func catalogOpenAIAPIFormat(model string) string {
 	}
 }
 
-func resolveOpenAIResponsesMode(authToken, requestedFormat, baseURL, model string, forceResponses bool) bool {
+func resolveOpenAIResponsesMode(authToken, requestedFormat, baseURL, model string) bool {
 	if strings.TrimSpace(authToken) != "" {
 		return true
 	}
@@ -76,9 +76,6 @@ func resolveOpenAIResponsesMode(authToken, requestedFormat, baseURL, model strin
 		return true
 	case "chat-completions":
 		return false
-	}
-	if forceResponses {
-		return true
 	}
 	// A model ID describes model capabilities, not the protocol implemented by
 	// an arbitrary OpenAI-compatible gateway. Keep custom endpoints on the broad
@@ -102,8 +99,8 @@ func resolveOpenAIResponsesMode(authToken, requestedFormat, baseURL, model strin
 // native protocol on compatible gateways without breaking chat-only servers.
 // Explicit protocol choices remain authoritative; the protocol provider
 // remembers a 404/405/501 Responses endpoint failure and falls back to Chat.
-func shouldNegotiateOpenAIResponses(authToken, requestedFormat, baseURL, model string, forceResponses bool) bool {
-	if strings.TrimSpace(authToken) != "" || forceResponses || !isCustomOpenAIBaseURL(baseURL) {
+func shouldNegotiateOpenAIResponses(authToken, requestedFormat, baseURL, model string) bool {
+	if strings.TrimSpace(authToken) != "" || !isCustomOpenAIBaseURL(baseURL) {
 		return false
 	}
 	switch strings.ToLower(strings.TrimSpace(requestedFormat)) {
@@ -124,10 +121,6 @@ func isOpenAIPublicAPIBaseURL(raw string) bool {
 
 func isFirstPartyOpenAIResponsesBaseURL(raw string) bool {
 	return isOpenAIPublicAPIBaseURL(raw) || isOpenAIChatGPTCodexBaseURL(raw)
-}
-
-func shouldUseOpenAIResponsesLite(baseURL, model string) bool {
-	return isFirstPartyOpenAIResponsesBaseURL(baseURL) && isOpenAIResponsesLiteModel(model)
 }
 
 func isOpenAIResponsesLiteModel(model string) bool {

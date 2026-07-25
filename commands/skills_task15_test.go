@@ -215,7 +215,6 @@ func TestSkillsVisibilityReadOnlyPolicyCodesAreLocalizedOnEverySurface(t *testin
 				want := i18n.Text(lang, test.key)
 				outputs := []string{
 					formatSkillsList(lang, backend.snapshot, "session-a"),
-					FormatInteractiveSkillsToggleResult(lang, result),
 				}
 				commandOutput, outcome := executeTask15SkillsLanguage(t, backend, lang, "set managed off --scope project")
 				if outcome != CommandOutcomeFailed {
@@ -235,56 +234,22 @@ func TestSkillsVisibilityReadOnlyPolicyCodesAreLocalizedOnEverySurface(t *testin
 	}
 }
 
-func TestSkillsLegacyEnablePreservesAdvancedEnabledVisibility(t *testing.T) {
-	for _, visibility := range []skills.Visibility{skills.VisibilityNameOnly, skills.VisibilityManualOnly} {
-		t.Run(string(visibility), func(t *testing.T) {
-			row := task15Skill("skill:project:alpha", "alpha", skills.SourceProject)
-			row.Visibility = visibility
-			row.VisibilitySource = skills.SkillScopeProject
-			row.DescriptionVisible = false
-			if visibility == skills.VisibilityManualOnly {
-				row.ModelVisible = false
-			}
-			backend := newTask15Backend(t, row)
-
-			output, outcome := executeTask15Skills(t, backend, "enable alpha")
-			if outcome != CommandOutcomeSucceeded {
-				t.Fatalf("outcome = %s, output = %q", outcome, output)
-			}
-			if len(backend.setCalls) != 0 {
-				t.Fatalf("legacy enable rewrote advanced visibility: %#v", backend.setCalls)
-			}
-			for _, forbidden := range []string{"Set skill", "to auto", "at session scope"} {
-				if strings.Contains(output, forbidden) {
-					t.Fatalf("legacy enable claimed an auto write via %q: %q", forbidden, output)
-				}
-			}
-			for _, want := range []string{"already enabled", "Effective visibility remains " + string(visibility), "source: project"} {
-				if !strings.Contains(output, want) {
-					t.Fatalf("output omitted %q: %q", want, output)
-				}
-			}
-		})
-	}
-}
-
 func TestSkillsInteractiveBackendPreservesTypedAuthoritativeResult(t *testing.T) {
 	row := task15Skill("skill:project:alpha", "alpha", skills.SourceProject)
 	backend := newTask15Backend(t, row)
 	tests := []struct {
 		outcome skills.ProjectVisibilityToggleOutcome
 		reason  skills.ProjectVisibilityToggleReason
-		want    string
 	}{
-		{skills.ProjectVisibilityToggleCommitted, skills.ProjectVisibilityToggleReasonNone, "now has"},
-		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonSessionOverride, "session override"},
-		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonStaleRevision, "catalog changed"},
-		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonUnknownSkill, "no longer exists"},
-		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonReadOnly, "read-only"},
-		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonPersistenceFailed, "could not be saved"},
-		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonLiveApplyRolledBack, "rolled back"},
-		{skills.ProjectVisibilityToggleDegraded, skills.ProjectVisibilityToggleReasonRollbackFailed, "rollback also failed"},
-		{skills.ProjectVisibilityToggleDegraded, skills.ProjectVisibilityToggleReasonAuthoritativeRefresh, "refresh failed"},
+		{skills.ProjectVisibilityToggleCommitted, skills.ProjectVisibilityToggleReasonNone},
+		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonSessionOverride},
+		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonStaleRevision},
+		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonUnknownSkill},
+		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonReadOnly},
+		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonPersistenceFailed},
+		{skills.ProjectVisibilityToggleRejected, skills.ProjectVisibilityToggleReasonLiveApplyRolledBack},
+		{skills.ProjectVisibilityToggleDegraded, skills.ProjectVisibilityToggleReasonRollbackFailed},
+		{skills.ProjectVisibilityToggleDegraded, skills.ProjectVisibilityToggleReasonAuthoritativeRefresh},
 	}
 	for _, test := range tests {
 		backend.toggleResult = skills.ProjectVisibilityToggleResult{
@@ -309,9 +274,6 @@ func TestSkillsInteractiveBackendPreservesTypedAuthoritativeResult(t *testing.T)
 			got.Snapshot.Revision != backend.snapshot.Revision {
 			t.Fatalf("toggle result = %#v, %v", got, err)
 		}
-		if receipt := FormatInteractiveSkillsToggleResult(i18n.LangEN, got); !strings.Contains(strings.ToLower(receipt), test.want) {
-			t.Fatalf("receipt %q omitted %q", receipt, test.want)
-		}
 	}
 	if len(backend.toggleCalls) != len(tests) {
 		t.Fatalf("toggle calls = %#v", backend.toggleCalls)
@@ -335,11 +297,12 @@ func TestSkillsVisibilityProjectTextOffFeedsInteractiveLastNonOff(t *testing.T) 
 	store, err := skills.NewFileOverrideStoreAt(skills.OverrideStorePaths{
 		UserSettings:    filepath.Join(root, "user-settings.json"),
 		ProjectSettings: filepath.Join(root, "project-settings.json"),
-	}, nil, nil)
+	}, nil, skills.NewMemorySessionOverrideLayer())
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := skills.NewManagerWithOverrideStore(store, skills.DirSource{Dir: filepath.Join(root, "skills"), Source: skills.SourceProject})
+	manager := skills.NewManager(skills.DirSource{Dir: filepath.Join(root, "skills"), Source: skills.SourceProject})
+	manager.SetOverrideStore(store)
 
 	executeTask15Skills(t, manager, "set alpha manual-only --scope project")
 	executeTask15Skills(t, manager, "set alpha off --scope project")
@@ -376,11 +339,12 @@ func TestSkillsVisibilityProjectTextOffDefaultsInteractiveRestoreToAuto(t *testi
 	store, err := skills.NewFileOverrideStoreAt(skills.OverrideStorePaths{
 		UserSettings:    filepath.Join(root, "user-settings.json"),
 		ProjectSettings: filepath.Join(root, "project-settings.json"),
-	}, nil, nil)
+	}, nil, skills.NewMemorySessionOverrideLayer())
 	if err != nil {
 		t.Fatal(err)
 	}
-	manager := skills.NewManagerWithOverrideStore(store, skills.DirSource{Dir: filepath.Join(root, "skills"), Source: skills.SourceProject})
+	manager := skills.NewManager(skills.DirSource{Dir: filepath.Join(root, "skills"), Source: skills.SourceProject})
+	manager.SetOverrideStore(store)
 
 	executeTask15Skills(t, manager, "set alpha off --scope project")
 	snapshot, err := manager.Snapshot("session-a")
@@ -411,7 +375,7 @@ func TestSkillsSkillInvokerUsesCentralOriginAndPreservesOmittedArguments(t *test
 		return types.ToolResult{Content: "ok"}, nil
 	})
 	request := SkillInvocationRequest{
-		SessionID: "session-a", Selector: "alpha", ExpectedRevision: 3,
+		SessionID: "session-a", Selector: "alpha", ExpectedRevision: 3, ExpectedProjectGeneration: 7,
 		Origin: skills.InvocationOriginUser,
 	}
 	result, err := invoker.InvokeSkill(context.Background(), request)
@@ -422,6 +386,12 @@ func TestSkillsSkillInvokerUsesCentralOriginAndPreservesOmittedArguments(t *test
 	request.Origin = "unknown"
 	if _, err := invoker.InvokeSkill(context.Background(), request); err == nil {
 		t.Fatal("unknown invocation origin was accepted")
+	}
+
+	request.Origin = skills.InvocationOriginUser
+	request.ExpectedProjectGeneration = 0
+	if _, err := invoker.InvokeSkill(context.Background(), request); err == nil {
+		t.Fatal("unpinned project generation was accepted")
 	}
 }
 
@@ -437,15 +407,14 @@ type task15ToggleCall struct {
 }
 
 type task15Backend struct {
-	t              *testing.T
-	snapshot       skills.CatalogSnapshot
-	snapshotErr    error
-	setCalls       []skills.VisibilityOverride
-	resetCalls     []task15ResetCall
-	toggleResult   skills.ProjectVisibilityToggleResult
-	toggleErr      error
-	toggleCalls    []task15ToggleCall
-	legacyDisabled map[string]bool
+	t            *testing.T
+	snapshot     skills.CatalogSnapshot
+	snapshotErr  error
+	setCalls     []skills.VisibilityOverride
+	resetCalls   []task15ResetCall
+	toggleResult skills.ProjectVisibilityToggleResult
+	toggleErr    error
+	toggleCalls  []task15ToggleCall
 }
 
 func newTask15Backend(t *testing.T, rows ...skills.EffectiveSkill) *task15Backend {
@@ -454,26 +423,37 @@ func newTask15Backend(t *testing.T, rows ...skills.EffectiveSkill) *task15Backen
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &task15Backend{t: t, snapshot: snapshot, legacyDisabled: make(map[string]bool)}
+	return &task15Backend{t: t, snapshot: snapshot}
 }
 
 func (backend *task15Backend) Snapshot(string) (skills.CatalogSnapshot, error) {
 	return backend.snapshot.Clone(), backend.snapshotErr
 }
 
-func (backend *task15Backend) Resolve(_ string, selector string) (skills.ResolvedSkill, bool, error) {
-	id := skills.SkillID(selector)
+func (backend *task15Backend) SnapshotBinding(string) (skills.CatalogBinding, error) {
+	return skills.CatalogBinding{ProjectGeneration: 1, Snapshot: backend.snapshot.Clone()}, backend.snapshotErr
+}
+
+func (backend *task15Backend) ResolveLatest(request skills.SkillResolveRequest, _ func(skills.ResolvedSkill) error) (skills.SkillResolveResult, error) {
+	id := skills.SkillID(request.Selector)
 	row, found := backend.snapshot.Find(id)
 	if !found {
-		return skills.ResolvedSkill{}, false, nil
+		return skills.SkillResolveResult{Outcome: skills.SkillResolveNotFound, CatalogRevision: backend.snapshot.Revision}, nil
 	}
-	return skills.ResolvedSkill{
+	resolved := skills.ResolvedSkill{
 		Effective: row,
 		Skill: &skills.Skill{
 			Name: row.Name, Description: row.Summary, Source: row.Source,
 			FilePath: string(row.Locator), SkillDir: "/skills/" + row.Name,
 		},
-	}, true, nil
+	}
+	outcome := skills.SkillResolveResolved
+	if request.ExpectedRevision != 0 && request.ExpectedRevision != row.Revision {
+		outcome = skills.SkillResolveStale
+	}
+	return skills.SkillResolveResult{
+		Outcome: outcome, CatalogRevision: backend.snapshot.Revision, Resolved: &resolved,
+	}, nil
 }
 
 func (backend *task15Backend) SetVisibility(_ string, override skills.VisibilityOverride) (skills.CatalogSnapshot, error) {
@@ -493,41 +473,6 @@ func (backend *task15Backend) RefreshSnapshot(string) (skills.CatalogSnapshot, e
 func (backend *task15Backend) ToggleProjectVisibility(sessionID string, id skills.SkillID, revision skills.CatalogRevision) (skills.ProjectVisibilityToggleResult, error) {
 	backend.toggleCalls = append(backend.toggleCalls, task15ToggleCall{sessionID: sessionID, id: id, revision: revision})
 	return backend.toggleResult, backend.toggleErr
-}
-
-func (backend *task15Backend) SetEnabled(_ string, name string, enabled bool) (bool, bool) {
-	row, found := task15FindName(backend.snapshot, name)
-	if !found {
-		return false, false
-	}
-	wasDisabled := backend.legacyDisabled[name]
-	if enabled == !wasDisabled {
-		return false, true
-	}
-	backend.legacyDisabled[name] = !enabled
-	visibility := skills.VisibilityOff
-	if enabled {
-		visibility = skills.VisibilityAuto
-	}
-	backend.update(row.ID, visibility, skills.SkillScopeSession)
-	return true, true
-}
-
-func (backend *task15Backend) SetAllEnabled(_ string, enabled bool) int {
-	changed := 0
-	for _, row := range backend.snapshot.Skills {
-		isEnabled := row.Visibility != skills.VisibilityOff
-		if isEnabled == enabled {
-			continue
-		}
-		changed++
-		visibility := skills.VisibilityOff
-		if enabled {
-			visibility = skills.VisibilityAuto
-		}
-		backend.update(row.ID, visibility, skills.SkillScopeSession)
-	}
-	return changed
 }
 
 func (backend *task15Backend) update(id skills.SkillID, visibility skills.Visibility, scope skills.SkillScope) skills.CatalogSnapshot {
@@ -559,15 +504,6 @@ func (backend *task15Backend) update(id skills.SkillID, visibility skills.Visibi
 	return snapshot.Clone()
 }
 
-func task15FindName(snapshot skills.CatalogSnapshot, name string) (skills.EffectiveSkill, bool) {
-	for _, row := range snapshot.Skills {
-		if row.Name == name && row.ShadowedBy == "" {
-			return row, true
-		}
-	}
-	return skills.EffectiveSkill{}, false
-}
-
 func task15Skill(id skills.SkillID, name string, source skills.SkillSource) skills.EffectiveSkill {
 	return skills.EffectiveSkill{
 		ID: id, Name: name, Summary: "Summary for " + name, Source: source,
@@ -591,7 +527,7 @@ func executeTask15SkillsLanguage(t *testing.T, backend SkillsBackend, lang i18n.
 		OnEvent:               func(value string) { output.WriteString(value) },
 		OnCommandDomainResult: func(result CommandDomainResult) { outcome = result.Outcome },
 	}
-	if err := NewSkillsCommand(backend).Execute(ctx, args); err != nil {
+	if err := NewSkillsCommand().Execute(ctx, args); err != nil {
 		t.Fatal(err)
 	}
 	return output.String(), outcome

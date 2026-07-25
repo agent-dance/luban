@@ -2,8 +2,6 @@ package prompt
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -32,9 +30,6 @@ func TestBuildSystemPromptBasic(t *testing.T) {
 	if !strings.Contains(prompt, "LUBAN Code") {
 		t.Error("expected base identity to mention LUBAN Code")
 	}
-	if strings.Contains(prompt, "Anthropic's official CLI") {
-		t.Error("LUBAN Code must not claim to be Anthropic's official CLI")
-	}
 	if strings.Contains(prompt, "Today's date is ") {
 		t.Error("did not expect date in base system prompt")
 	}
@@ -59,8 +54,8 @@ func TestBuildSystemPromptBlocks(t *testing.T) {
 	if blocks[1].Text == "" || blocks[1].Cache {
 		t.Fatalf("expected uncached dynamic block, got %#v", blocks[1])
 	}
-	if got := blocks.String(); got != BuildSystemPrompt(nil, cfg) {
-		t.Fatal("block string form should match legacy BuildSystemPrompt output")
+	if got := blocks.JoinedText(); got != BuildSystemPrompt(nil, cfg) {
+		t.Fatal("joined prompt blocks should match BuildSystemPrompt output")
 	}
 }
 
@@ -77,7 +72,7 @@ func TestBuildSystemPromptWithCustomInstructions(t *testing.T) {
 	}
 }
 
-func TestUserContextMetaMessageCarriesDateAndClaudeMd(t *testing.T) {
+func TestUserContextMetaMessageCarriesDateAndInstructions(t *testing.T) {
 	cfg := Config{CustomInstructions: "Always use TypeScript"}
 	ctx := (UserContextBuilder{
 		Date: time.Date(2026, 7, 10, 0, 0, 0, 0, time.UTC),
@@ -93,7 +88,7 @@ func TestUserContextMetaMessageCarriesDateAndClaudeMd(t *testing.T) {
 	text := msg.GetText()
 	assertInOrder(t, text, []string{
 		"<system-reminder>",
-		"# claudeMd",
+		"# instructions",
 		"Always use TypeScript",
 		"# currentDate",
 		"Today's date is 2026-07-10.",
@@ -147,57 +142,5 @@ func TestBuildSystemPromptToolDescOverridesTools(t *testing.T) {
 	}
 	if strings.Contains(prompt, "Run commands") {
 		t.Error("auto-generated tool descriptions should not appear when custom provided")
-	}
-}
-
-func TestLoadClaudeMDExisting(t *testing.T) {
-	dir := t.TempDir()
-	fp := filepath.Join(dir, "CLAUDE.md")
-	os.WriteFile(fp, []byte("  my instructions  "), 0644)
-
-	result := LoadClaudeMD(fp)
-	if result != "my instructions" {
-		t.Errorf("expected trimmed content, got '%s'", result)
-	}
-}
-
-func TestLoadClaudeMDNonexistent(t *testing.T) {
-	result := LoadClaudeMD("/nonexistent/CLAUDE.md")
-	if result != "" {
-		t.Errorf("expected empty string for missing file, got '%s'", result)
-	}
-}
-
-func TestLoadClaudeMDFallback(t *testing.T) {
-	dir := t.TempDir()
-	fp := filepath.Join(dir, "fallback.md")
-	os.WriteFile(fp, []byte("fallback content"), 0644)
-
-	result := LoadClaudeMD("/nonexistent/primary.md", fp)
-	if result != "fallback content" {
-		t.Errorf("expected fallback content, got '%s'", result)
-	}
-}
-
-func TestBaseIdentity(t *testing.T) {
-	identity := baseIdentity()
-	if !strings.Contains(identity, "LUBAN Code") {
-		t.Error("expected LUBAN Code in identity")
-	}
-	if !strings.Contains(identity, "# System") {
-		t.Error("expected sectioned system prompt")
-	}
-}
-
-func TestBuildToolDescriptions(t *testing.T) {
-	tools := []types.Tool{
-		&mockTool{name: "TestTool", desc: "Does testing"},
-	}
-	desc := buildToolDescriptions(tools)
-	if !strings.Contains(desc, "## TestTool") {
-		t.Error("expected tool name as header")
-	}
-	if !strings.Contains(desc, "Does testing") {
-		t.Error("expected tool description")
 	}
 }

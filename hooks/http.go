@@ -205,8 +205,6 @@ func executeHTTPHook(parentCtx context.Context, hook Hook, input HookInput) Hook
 
 	lastOutput.ExitCode = -1
 	lastOutput.ExecutionError = i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyHookAttemptsFailed, attempts, lastErr)
-	lastOutput.Stderr = lastOutput.ExecutionError
-	lastOutput.StderrBytes = int64(len(lastOutput.Stderr))
 	lastOutput.Block = false // network errors are non-blocking by default
 	return lastOutput
 }

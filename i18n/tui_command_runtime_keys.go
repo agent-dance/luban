@@ -37,20 +37,28 @@ const (
 	KeyRuntimeProviderError        Key = "runtime.provider.error"
 	KeyRuntimeProviderUnknown      Key = "runtime.provider.unknown"
 
-	KeyRuntimeRiskLow               Key = "runtime.risk.low"
-	KeyRuntimeDecisionScopeRule     Key = "runtime.decision.scope_rule"
-	KeyRuntimeDecisionEvidenceName  Key = "runtime.decision.evidence_name"
-	KeyRuntimeDecisionSuppliedInput Key = "runtime.decision.supplied_input"
-	KeyRuntimeDecisionReceiptLine   Key = "runtime.decision.receipt_line"
-	KeyRuntimeDecisionApproved      Key = "runtime.decision.outcome.approved"
-	KeyRuntimeDecisionRejected      Key = "runtime.decision.outcome.rejected"
-	KeyRuntimeDecisionEscaped       Key = "runtime.decision.outcome.escaped"
-	KeyRuntimeDecisionShutdown      Key = "runtime.decision.outcome.shutdown"
-	KeyRuntimeDecisionChoiceNone    Key = "runtime.decision.choice.none"
-	KeyRuntimeDecisionChoiceSubmit  Key = "runtime.decision.choice.submit"
-	KeyRuntimePromptKindPermission  Key = "runtime.decision.kind.permission"
-	KeyRuntimePromptKindPlan        Key = "runtime.decision.kind.plan"
-	KeyRuntimePromptKindAskUser     Key = "runtime.decision.kind.ask_user"
+	KeyRuntimeRiskLow                        Key = "runtime.risk.low"
+	KeyRuntimeDecisionScopeRule              Key = "runtime.decision.scope_rule"
+	KeyRuntimeDecisionEvidenceName           Key = "runtime.decision.evidence_name"
+	KeyRuntimeDecisionSuppliedInput          Key = "runtime.decision.supplied_input"
+	KeyRuntimeDecisionReceiptLine            Key = "runtime.decision.receipt_line"
+	KeyRuntimeDecisionApproved               Key = "runtime.decision.outcome.approved"
+	KeyRuntimeDecisionRejected               Key = "runtime.decision.outcome.rejected"
+	KeyRuntimeDecisionEscaped                Key = "runtime.decision.outcome.escaped"
+	KeyRuntimeDecisionShutdown               Key = "runtime.decision.outcome.shutdown"
+	KeyRuntimeDecisionChoiceNone             Key = "runtime.decision.choice.none"
+	KeyRuntimeDecisionChoiceSubmit           Key = "runtime.decision.choice.submit"
+	KeyRuntimePromptKindPermission           Key = "runtime.decision.kind.permission"
+	KeyRuntimePromptKindPlan                 Key = "runtime.decision.kind.plan"
+	KeyRuntimePromptKindAskUser              Key = "runtime.decision.kind.ask_user"
+	KeyRuntimePermissionReviewNormalizedPath Key = "runtime.permission.review.normalized_path"
+	KeyRuntimePermissionReviewAllowedDir     Key = "runtime.permission.review.allowed_directory"
+	KeyRuntimePermissionReviewAccess         Key = "runtime.permission.review.access"
+	KeyRuntimePermissionAccessReadOnly       Key = "runtime.permission.access.read_only"
+	KeyRuntimePermissionAccessWrite          Key = "runtime.permission.access.write"
+	KeyRuntimePermissionAccessExecute        Key = "runtime.permission.access.execute"
+	KeyRuntimePermissionReviewMatchedRule    Key = "runtime.permission.review.matched_rule"
+	KeyRuntimePermissionReviewRequiredScope  Key = "runtime.permission.review.required_scope"
 
 	KeyRuntimePresentationLevelHidden     Key = "runtime.presentation.level.hidden"
 	KeyRuntimePresentationLevelFolded     Key = "runtime.presentation.level.folded"
@@ -84,17 +92,11 @@ const (
 	KeyRuntimeSkillSourceManaged        Key = "runtime.skill.source.managed"
 	KeyRuntimeSkillSourcePlugin         Key = "runtime.skill.source.plugin"
 	KeyRuntimeSkillSourceBundled        Key = "runtime.skill.source.bundled"
-	KeyRuntimeSkillSourceLegacy         Key = "runtime.skill.source.legacy"
 	KeyRuntimeSkillContextInline        Key = "runtime.skill.context.inline"
 	KeyRuntimeSkillContextFork          Key = "runtime.skill.context.fork"
 
 	KeyRuntimeProjectInstructionsTemplate Key = "runtime.command.project_instructions_template"
 	KeyRuntimeDoctorUnknownVersion        Key = "runtime.command.doctor.unknown_version"
-	KeyRuntimeMCPPromptRegistryMissing    Key = "runtime.command.mcp_prompt.registry_missing"
-	KeyRuntimeMCPPromptRunnerMissing      Key = "runtime.command.mcp_prompt.runner_missing"
-	KeyRuntimeMCPPromptQueryLoopMissing   Key = "runtime.command.mcp_prompt.query_loop_missing"
-	KeyRuntimeMCPPromptRunFailed          Key = "runtime.command.mcp_prompt.run_failed"
-	KeyRuntimeMCPPromptTarget             Key = "runtime.command.mcp_prompt.target"
 	KeyRuntimeSettingsParseError          Key = "runtime.command.settings_parse_error"
 	KeyRuntimeCommandActivityActionFailed Key = "runtime.command.activity_action_failed"
 	KeyRuntimeCommandDetailFailed         Key = "runtime.command.detail_failed"
@@ -178,6 +180,14 @@ func init() {
 	add(KeyRuntimePromptKindPermission, "permission", "权限", "Berechtigung", "権限", "권한", "разрешение")
 	add(KeyRuntimePromptKindPlan, "plan", "计划", "Plan", "計画", "계획", "план")
 	add(KeyRuntimePromptKindAskUser, "question", "提问", "Frage", "質問", "질문", "вопрос")
+	add(KeyRuntimePermissionReviewNormalizedPath, "Normalized path: %s", "规范化路径：%s", "Normalisierter Pfad: %s", "正規化されたパス: %s", "정규화된 경로: %s", "Нормализованный путь: %s")
+	add(KeyRuntimePermissionReviewAllowedDir, "Allowed directory: %s", "允许目录：%s", "Zulässiges Verzeichnis: %s", "許可されたディレクトリ: %s", "허용된 디렉터리: %s", "Разрешённый каталог: %s")
+	add(KeyRuntimePermissionReviewAccess, "Access: %s", "访问类型：%s", "Zugriff: %s", "アクセス: %s", "접근 유형: %s", "Доступ: %s")
+	add(KeyRuntimePermissionAccessReadOnly, "read-only", "只读", "schreibgeschützt", "読み取り専用", "읽기 전용", "только чтение")
+	add(KeyRuntimePermissionAccessWrite, "write", "写入", "Schreiben", "書き込み", "쓰기", "запись")
+	add(KeyRuntimePermissionAccessExecute, "execute", "执行", "Ausführen", "実行", "실행", "выполнение")
+	add(KeyRuntimePermissionReviewMatchedRule, "Matched rule: %s", "命中的规则：%s", "Angewendete Regel: %s", "一致したルール: %s", "일치한 규칙: %s", "Применённое правило: %s")
+	add(KeyRuntimePermissionReviewRequiredScope, "Required approval scope: this invocation", "强制审批范围：仅本次调用", "Umfang der erforderlichen Genehmigung: dieser Aufruf", "必須承認の範囲: この呼び出しのみ", "필수 승인 범위: 이번 호출", "Область обязательного подтверждения: только этот вызов")
 
 	add(KeyRuntimePresentationLevelHidden, "hidden member", "隐藏成员", "ausgeblendetes Mitglied", "非表示メンバー", "숨겨진 항목", "скрытый элемент")
 	add(KeyRuntimePresentationLevelFolded, "collapsed", "已折叠", "eingeklappt", "折りたたみ", "접힘", "свёрнуто")
@@ -211,17 +221,11 @@ func init() {
 	add(KeyRuntimeSkillSourceManaged, "managed", "托管", "verwaltet", "管理対象", "관리됨", "управляемый")
 	add(KeyRuntimeSkillSourcePlugin, "plugin", "插件", "Plugin", "プラグイン", "플러그인", "плагин")
 	add(KeyRuntimeSkillSourceBundled, "bundled", "内置", "mitgeliefert", "同梱", "기본 제공", "встроенный")
-	add(KeyRuntimeSkillSourceLegacy, "legacy commands", "旧版命令", "Legacy-Befehle", "旧形式のコマンド", "레거시 명령", "устаревшие команды")
 	add(KeyRuntimeSkillContextInline, "current conversation", "当前对话", "aktuelle Unterhaltung", "現在の会話", "현재 대화", "текущий диалог")
 	add(KeyRuntimeSkillContextFork, "isolated Agent", "隔离的 Agent", "isolierter Agent", "分離された Agent", "격리된 Agent", "изолированный Agent")
 
 	add(KeyRuntimeProjectInstructionsTemplate, "# Project Instructions\n\nAdd project-specific instructions for LUBAN Code here.\nThese instructions are loaded at the start of every conversation.\n\n## Examples\n- \"Always use TypeScript strict mode\"\n- \"Run tests with: go test ./...\"\n- \"Follow the existing code style in src/\"\n", "# 项目说明\n\n请在此添加 LUBAN Code 的项目专用说明。\n每次开始对话时都会加载这些说明。\n\n## 示例\n- \"始终启用 TypeScript strict mode\"\n- \"运行测试：go test ./...\"\n- \"遵循 src/ 中现有的代码风格\"\n", "# Projektanweisungen\n\nFüge hier projektspezifische Anweisungen für LUBAN Code hinzu.\nDiese Anweisungen werden zu Beginn jeder Unterhaltung geladen.\n\n## Beispiele\n- \"TypeScript immer im strict mode verwenden\"\n- \"Tests ausführen mit: go test ./...\"\n- \"Dem bestehenden Codestil in src/ folgen\"\n", "# プロジェクト指示\n\nLUBAN Code 用のプロジェクト固有の指示をここに追加してください。\nこの指示は会話の開始時に毎回読み込まれます。\n\n## 例\n- \"TypeScript の strict mode を常に使用する\"\n- \"テストを実行: go test ./...\"\n- \"src/ の既存のコードスタイルに従う\"\n", "# 프로젝트 지침\n\nLUBAN Code용 프로젝트별 지침을 여기에 추가하세요.\n이 지침은 대화를 시작할 때마다 불러옵니다.\n\n## 예시\n- \"항상 TypeScript strict mode 사용\"\n- \"테스트 실행: go test ./...\"\n- \"src/의 기존 코드 스타일 준수\"\n", "# Инструкции проекта\n\nДобавьте здесь инструкции проекта для LUBAN Code.\nОни загружаются в начале каждого диалога.\n\n## Примеры\n- \"Всегда использовать strict mode в TypeScript\"\n- \"Запускать тесты командой: go test ./...\"\n- \"Следовать существующему стилю кода в src/\"\n")
 	add(KeyRuntimeDoctorUnknownVersion, "unknown version", "版本未知", "unbekannte Version", "バージョン不明", "버전 알 수 없음", "версия неизвестна")
-	add(KeyRuntimeMCPPromptRegistryMissing, "The command registry is unavailable.", "命令注册表不可用。", "Die Befehlsregistrierung ist nicht verfügbar.", "コマンドレジストリを利用できません。", "명령 레지스트리를 사용할 수 없습니다.", "Реестр команд недоступен.")
-	add(KeyRuntimeMCPPromptRunnerMissing, "MCP prompt execution is unavailable.", "MCP prompt 执行不可用。", "Die Ausführung von MCP-Prompts ist nicht verfügbar.", "MCP prompt を実行できません。", "MCP prompt 실행을 사용할 수 없습니다.", "Выполнение MCP prompt недоступно.")
-	add(KeyRuntimeMCPPromptQueryLoopMissing, "The current query loop cannot run this MCP prompt.", "当前查询循环无法运行此 MCP prompt。", "Die aktuelle Abfrageschleife kann diesen MCP-Prompt nicht ausführen.", "現在のクエリループではこの MCP prompt を実行できません。", "현재 쿼리 루프에서 이 MCP prompt를 실행할 수 없습니다.", "Текущий цикл запросов не может выполнить этот MCP prompt.")
-	add(KeyRuntimeMCPPromptRunFailed, "Could not run MCP prompt %s: %v", "无法运行 MCP prompt %s：%v", "MCP-Prompt %s konnte nicht ausgeführt werden: %v", "MCP prompt %s を実行できませんでした: %v", "MCP prompt %s을(를) 실행할 수 없습니다: %v", "Не удалось выполнить MCP prompt %s: %v")
-	add(KeyRuntimeMCPPromptTarget, "MCP prompt", "MCP prompt", "MCP-Prompt", "MCP prompt", "MCP prompt", "MCP prompt")
 	add(KeyRuntimeSettingsParseError, "Could not parse settings.json: %v", "无法解析 settings.json：%v", "settings.json konnte nicht gelesen werden: %v", "settings.json を解析できませんでした: %v", "settings.json을 파싱할 수 없습니다: %v", "Не удалось разобрать settings.json: %v")
 	add(KeyRuntimeCommandActivityActionFailed, "Could not %s activity %s", "无法执行活动操作“%s”（活动 %s）", "Die Aktivitätsaktion „%s“ für %s konnte nicht ausgeführt werden", "アクティビティ操作「%s」を %s に対して実行できませんでした", "활동 작업 ‘%s’을(를) %s에 실행할 수 없습니다", "Не удалось выполнить действие «%s» для активности %s")
 	add(KeyRuntimeCommandDetailFailed, "Could not change details for %s", "无法更改 %s 的详细信息", "Details für %s konnten nicht geändert werden", "%s の詳細表示を変更できませんでした", "%s의 세부 정보를 변경할 수 없습니다", "Не удалось изменить детализацию для %s")
@@ -387,7 +391,7 @@ func RuntimeSkillSourceLabel(lang Language, code string) string {
 	keys := map[string]Key{
 		"project": KeyRuntimeSkillSourceProject, "user": KeyRuntimeSkillSourceUser,
 		"managed": KeyRuntimeSkillSourceManaged, "plugin": KeyRuntimeSkillSourcePlugin,
-		"bundled": KeyRuntimeSkillSourceBundled, "commands_legacy": KeyRuntimeSkillSourceLegacy,
+		"bundled": KeyRuntimeSkillSourceBundled,
 	}
 	if code == "mcp" {
 		return "MCP"

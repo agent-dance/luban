@@ -18,9 +18,6 @@ func TestToolValidationResidualCatalogIsComplete(t *testing.T) {
 
 func TestToolValidationResidualCatalogPreservesRuntimeValues(t *testing.T) {
 	for _, lang := range AllLanguages() {
-		if got := Format(lang, KeyToolGrepUnknownTypeSuggestion, "raw-type", "raw-suggestion"); !strings.Contains(got, "raw-type") || !strings.Contains(got, "raw-suggestion") {
-			t.Fatalf("%s grep suggestion lost raw values: %q", lang.Code(), got)
-		}
 		if got := Format(lang, KeyToolNotificationHookFailed, "hook-id", 17, "raw-stderr"); !strings.Contains(got, "hook-id") || !strings.Contains(got, "17") || !strings.Contains(got, "raw-stderr") {
 			t.Fatalf("%s notification failure lost raw values: %q", lang.Code(), got)
 		}

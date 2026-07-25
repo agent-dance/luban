@@ -1,4 +1,4 @@
-// Package brand centralizes LUBAN Code product identity and migration names.
+// Package brand centralizes LUBAN Code product identity.
 package brand
 
 import (
@@ -11,28 +11,16 @@ const (
 	RuntimeName = DisplayName
 	CommandName = "luban-code"
 
-	LegacyDeepSeekCommandName = "deepseek-code"
-	LegacyCommandName         = "claude-code-go"
-
-	ConfigDirName               = ".luban-code"
-	LegacyDeepSeekConfigDirName = ".deepseek-code"
-	LegacyConfigDirName         = ".claude"
-	LegacyGoConfigDirName       = ".claude-go"
-
-	InstructionsFile               = "LUBAN.md"
-	LegacyDeepSeekInstructionsFile = "DEEPSEEK.md"
-	AgentsFile                     = "AGENTS.md"
-	LegacyInstructionsFile         = "CLAUDE.md"
+	ConfigDirName         = ".luban-code"
+	InstructionsFile      = "LUBAN.md"
+	LocalInstructionsFile = "LUBAN.local.md"
+	AgentsFile            = "AGENTS.md"
 
 	DefaultProvider      = "deepseek"
 	DeepSeekProvider     = "deepseek"
 	DeepSeekDefaultModel = "deepseek-v4-flash"
 	DeepSeekProModel     = "deepseek-v4-pro"
 	DeepSeekBaseURL      = "https://api.deepseek.com/v1"
-
-	RateLimitEnv               = "LUBAN_CODE_RATE_LIMIT"
-	LegacyDeepSeekRateLimitEnv = "DEEPSEEK_CODE_RATE_LIMIT"
-	LegacyRateLimitEnv         = "CLAUDE_RATE_LIMIT"
 )
 
 var (
@@ -84,40 +72,4 @@ func UserConfigDir() string {
 		return ConfigDirName
 	}
 	return filepath.Join(home, ConfigDirName)
-}
-
-func LegacyUserConfigDir() string {
-	home := HomeDir()
-	if home == "" {
-		return LegacyConfigDirName
-	}
-	return filepath.Join(home, LegacyConfigDirName)
-}
-
-func LegacyDeepSeekUserConfigDir() string {
-	home := HomeDir()
-	if home == "" {
-		return LegacyDeepSeekConfigDirName
-	}
-	return filepath.Join(home, LegacyDeepSeekConfigDirName)
-}
-
-func LegacyUserGoDir() string {
-	home := HomeDir()
-	if home == "" {
-		return LegacyGoConfigDirName
-	}
-	return filepath.Join(home, LegacyGoConfigDirName)
-}
-
-func SessionsDir() string {
-	return filepath.Join(UserConfigDir(), "sessions")
-}
-
-func MemoryPath() string {
-	return filepath.Join(UserConfigDir(), "memory.json")
-}
-
-func HistoryPath() string {
-	return filepath.Join(UserConfigDir(), "history")
 }

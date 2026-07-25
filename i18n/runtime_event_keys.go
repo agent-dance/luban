@@ -37,7 +37,6 @@ const (
 	KeyRuntimeAutoCompactFailed           Key = "runtime.compaction.auto_failed"
 	KeyRuntimePostCompactCleanupFailed    Key = "runtime.compaction.cleanup_failed"
 	KeyRuntimeCompactionCommitFailed      Key = "runtime.compaction.commit_failed"
-	KeyRuntimeContextOverflowDrain        Key = "runtime.compaction.context_overflow_drain"
 	KeyRuntimeProviderRejectionRetry      Key = "runtime.provider_rejection.retry"
 	KeyRuntimeReactiveCompact             Key = "runtime.compaction.reactive"
 	KeyRuntimeMediaStrip                  Key = "runtime.compaction.media_strip"
@@ -60,7 +59,6 @@ const (
 	KeyRuntimePlanRuleGate                Key = "runtime.permission.plan.rule.gate"
 	KeyRuntimePlanScopeTransition         Key = "runtime.permission.plan.scope.transition"
 	KeyRuntimePlanAllowedPrompts          Key = "runtime.permission.plan.allowed_prompts"
-	KeyRuntimePlanAutoModeFallback        Key = "runtime.permission.plan.auto_mode_fallback"
 	KeyRuntimePermissionTargetInput       Key = "runtime.permission.target.input"
 	KeyRuntimeMissingToolResult           Key = "runtime.tool.missing_result"
 )
@@ -177,9 +175,6 @@ func init() {
 		"コンテキスト圧縮を確定できなかったため、元の会話を復元しました",
 		"컨텍스트 압축을 커밋하지 못해 원래 대화를 복원했습니다",
 		"Не удалось зафиксировать сжатие контекста; исходный диалог восстановлен")
-	add(KeyRuntimeContextOverflowDrain,
-		"Context overflow; drained %d staged context collapses and retrying", "上下文溢出；已清理 %d 个暂存的上下文折叠，正在重试", "Kontextüberlauf; %d vorgemerkte Kontextreduzierungen geleert, erneuter Versuch",
-		"コンテキストがあふれました。保留中のコンテキスト折りたたみ %d 件を解放して再試行します", "컨텍스트 초과. 대기 중인 컨텍스트 축소 %d개를 비우고 다시 시도합니다", "Переполнение контекста; сброшено отложенных свёрток: %d, выполняется повтор")
 	add(KeyRuntimeProviderRejectionRetry,
 		"The Provider rejected the request; recovery completed and the request is being retried", "Provider 拒绝了请求；恢复完成后正在重试", "Der Provider hat die Anfrage abgelehnt; die Wiederherstellung ist abgeschlossen und die Anfrage wird erneut versucht",
 		"Provider がリクエストを拒否しました。復旧後に再試行しています", "Provider가 요청을 거부했습니다. 복구를 완료하고 다시 시도합니다", "Provider отклонил запрос; восстановление завершено, выполняется повтор")
@@ -231,8 +226,6 @@ func init() {
 		"This transition out of Plan mode", "本次退出 Plan 模式", "Dieser Übergang aus dem Plan-Modus", "今回の Plan モード終了", "이번 Plan 모드 종료", "Этот выход из режима Plan")
 	add(KeyRuntimePlanAllowedPrompts,
 		"Allowed prompts:\n%s", "允许的 prompt：\n%s", "Zulässige Prompts:\n%s", "許可された prompt:\n%s", "허용된 prompt:\n%s", "Разрешённые prompt:\n%s")
-	add(KeyRuntimePlanAutoModeFallback,
-		"Auto-mode fallback: %s", "自动模式回退：%s", "Fallback im Automatikmodus: %s", "自動モードの fallback: %s", "자동 모드 fallback: %s", "Fallback автоматического режима: %s")
 	add(KeyRuntimePermissionTargetInput,
 		"Supplied input", "所提供的输入", "Angegebene Eingabe", "指定された入力", "제공된 입력", "Указанные входные данные")
 	add(KeyRuntimeMissingToolResult,

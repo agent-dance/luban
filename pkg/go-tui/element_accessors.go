@@ -59,6 +59,7 @@ func (e *Element) Text() string {
 // which correctly accounts for text dimensions, padding, and border.
 func (e *Element) SetText(content string) {
 	e.text = content
+	e.styledSpans = nil
 	e.MarkDirty()
 }
 
@@ -79,7 +80,8 @@ func (e *Element) StyledSpans() []StyledSpan {
 	return e.styledSpans
 }
 
-// SetStyledSpans updates the styled spans and rebuilds e.text for layout.
+// SetStyledSpans updates the styled spans and rebuilds the canonical text used
+// by layout and plain-text accessors.
 func (e *Element) SetStyledSpans(spans []StyledSpan) {
 	e.styledSpans = spans
 	var total int
@@ -123,11 +125,6 @@ func (e *Element) SetTruncate(truncate bool) {
 }
 
 // --- Wrap API ---
-
-// wrapsText returns true if this element should wrap text content.
-func (e *Element) wrapsText() bool {
-	return !e.noWrap
-}
 
 // Wrap returns whether text content wraps within this element's width.
 // Wrapping is enabled by default.

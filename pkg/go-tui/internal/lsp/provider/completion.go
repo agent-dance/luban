@@ -16,12 +16,12 @@ type CompletionList struct {
 
 // CompletionItem represents a completion suggestion.
 type CompletionItem struct {
-	Label         string              `json:"label"`
-	Kind          CompletionItemKind  `json:"kind,omitempty"`
-	Detail        string              `json:"detail,omitempty"`
-	Documentation *MarkupContent      `json:"documentation,omitempty"`
-	InsertText    string              `json:"insertText,omitempty"`
-	FilterText    string              `json:"filterText,omitempty"`
+	Label         string             `json:"label"`
+	Kind          CompletionItemKind `json:"kind,omitempty"`
+	Detail        string             `json:"detail,omitempty"`
+	Documentation *MarkupContent     `json:"documentation,omitempty"`
+	InsertText    string             `json:"insertText,omitempty"`
+	FilterText    string             `json:"filterText,omitempty"`
 }
 
 // CompletionItemKind represents the kind of completion item.
@@ -181,4 +181,3 @@ func classPrefix(ctx *CursorContext) string {
 	}
 	return valueContent[lastSpace+1:]
 }
-

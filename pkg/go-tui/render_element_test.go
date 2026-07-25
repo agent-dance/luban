@@ -4,7 +4,6 @@ import "testing"
 
 func TestBufferRowToANSI(t *testing.T) {
 	type tc struct {
-		name     string
 		setup    func(buf *Buffer)
 		row      int
 		contains []string

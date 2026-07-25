@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/agent-dance/luban/i18n"
-	"github.com/agent-dance/luban/session"
+	"github.com/agent-dance/luban/internal/store/session"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -16,12 +16,6 @@ var nonSlugChars = regexp.MustCompile(`[^a-z0-9]+`)
 // ---------------------------------------------------------------------------
 
 type renameCmd struct{}
-
-func (c *renameCmd) Name() string      { return "rename" }
-func (c *renameCmd) Aliases() []string { return nil }
-func (c *renameCmd) Description() string {
-	return builtinCommandDescription("rename")
-}
 
 func (c *renameCmd) Execute(ctx *Context, args string) error {
 	if ctx.SessionStore == nil {

@@ -27,7 +27,7 @@ func TestConvertMessagesToOpenAI_SystemPrompt(t *testing.T) {
 		},
 	}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
 	}
@@ -44,7 +44,7 @@ func TestConvertMessagesToOpenAI_SystemPrompt(t *testing.T) {
 
 func TestConvertMessagesToOpenAI_SystemBlocksJoined(t *testing.T) {
 	params := Params{
-		System: "legacy",
+		System: "ignored single block",
 		SystemBlocks: []prompt.SystemPromptBlock{
 			{Text: "first", Cache: true, CacheScope: prompt.CacheScopeGlobal},
 			{Text: "second", CacheScope: prompt.CacheScopeOrg},
@@ -54,7 +54,7 @@ func TestConvertMessagesToOpenAI_SystemBlocksJoined(t *testing.T) {
 		},
 	}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(msgs) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(msgs))
 	}
@@ -89,7 +89,7 @@ func TestConvertMessagesToOpenAI_ToolResults(t *testing.T) {
 		},
 	}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 
 	// Should be: user, assistant (with tool_calls), tool result
 	if len(msgs) != 3 {
@@ -143,7 +143,7 @@ func TestConvertMessagesToOpenAI_EmptyToolResultUsesOriginalPlaceholder(t *testi
 		},
 	}
 
-	messages := convertMessagesToOpenAI(params)
+	messages := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(messages) != 3 {
 		t.Fatalf("messages = %d, want 3", len(messages))
 	}
@@ -202,7 +202,7 @@ func TestConvertMessagesToOpenAI_StructuredToolResults(t *testing.T) {
 		},
 	}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(msgs) != 4 {
 		t.Fatalf("expected 4 messages, got %d", len(msgs))
 	}
@@ -245,7 +245,7 @@ func TestConvertMessagesToOpenAI_ToolReferenceResults(t *testing.T) {
 		},
 	}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(msgs) != 4 {
 		t.Fatalf("expected 4 messages, got %d", len(msgs))
 	}
@@ -276,7 +276,7 @@ func TestConvertMessagesToOpenAI_ParallelStructuredToolResultsStayAdjacent(t *te
 		),
 	}}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(msgs) != 6 {
 		t.Fatalf("messages = %#v, want user, assistant, two tool results, then two attachment messages", msgs)
 	}
@@ -295,7 +295,7 @@ func TestConvertMessagesToOpenAI_NoSystem(t *testing.T) {
 		},
 	}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
@@ -321,7 +321,7 @@ func TestConvertMessagesToOpenAI_ThinkingBlocksIgnored(t *testing.T) {
 		},
 	}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
@@ -351,7 +351,7 @@ func TestConvertMessagesToOpenAI_UserImageMessage(t *testing.T) {
 		},
 	}
 
-	msgs := convertMessagesToOpenAI(params)
+	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), openAIChatDeveloperNative)
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
@@ -392,7 +392,7 @@ func TestConvertToolsToOpenAI(t *testing.T) {
 		},
 	}
 
-	result := convertToolsToOpenAI(tools)
+	result := convertToolsToOpenAIWithStrictMode(tools, true)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(result))
 	}
@@ -412,8 +412,7 @@ func TestProcessStream_TextOnly(t *testing.T) {
 	// Simulate a simple text-only stream
 	go func() {
 		ch <- types.StreamEvent{
-			Type:    types.EventMessageStart,
-			Message: &types.APIMessage{Role: types.RoleAssistant},
+			Type: types.EventMessageStart,
 		}
 		ch <- types.StreamEvent{
 			Type:         types.EventContentBlockStart,
@@ -479,9 +478,8 @@ func TestProcessStream_ToolUse(t *testing.T) {
 	// Simulate a tool_use stream
 	go func() {
 		ch <- types.StreamEvent{
-			Type:    types.EventMessageStart,
-			Message: &types.APIMessage{Role: types.RoleAssistant},
-			Usage:   &types.Usage{InputTokens: 100},
+			Type:  types.EventMessageStart,
+			Usage: &types.Usage{InputTokens: 100},
 		}
 		ch <- types.StreamEvent{
 			Type:  types.EventContentBlockStart,
@@ -558,8 +556,7 @@ func TestProcessStream_ThinkingBlock(t *testing.T) {
 
 	go func() {
 		ch <- types.StreamEvent{
-			Type:    types.EventMessageStart,
-			Message: &types.APIMessage{Role: types.RoleAssistant},
+			Type: types.EventMessageStart,
 		}
 		// Thinking block
 		ch <- types.StreamEvent{
@@ -629,8 +626,7 @@ func TestProcessStream_ErrorEvent(t *testing.T) {
 
 	go func() {
 		ch <- types.StreamEvent{
-			Type:    types.EventMessageStart,
-			Message: &types.APIMessage{Role: types.RoleAssistant},
+			Type: types.EventMessageStart,
 		}
 		ch <- types.StreamEvent{
 			Type:  types.EventError,
@@ -680,12 +676,12 @@ func TestConvertToAnthropicMessages_RoundTrip(t *testing.T) {
 		}),
 	}
 
-	result := convertToAnthropicMessages(msgs)
+	result := convertToAnthropicMessagesForParams(Params{Messages: msgs})
 	if len(result) != 3 {
 		t.Fatalf("expected 3 messages, got %d", len(result))
 	}
 
-	// Verify structure can be serialized (smoke test for SDK compatibility)
+	// Verify the wire structure can be serialized.
 	for i, msg := range result {
 		data, err := json.Marshal(msg)
 		if err != nil {
@@ -712,7 +708,7 @@ func TestConvertToAnthropicMessages_ThinkingBlock(t *testing.T) {
 		},
 	}
 
-	result := convertToAnthropicMessages(msgs)
+	result := convertToAnthropicMessagesForParams(Params{Messages: msgs})
 	if len(result) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(result))
 	}
@@ -745,7 +741,7 @@ func TestConvertToAnthropicMessages_ToolReferenceResult(t *testing.T) {
 		}),
 	}
 
-	result := convertToAnthropicMessages(msgs)
+	result := convertToAnthropicMessagesForParams(Params{Messages: msgs})
 	if len(result) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(result))
 	}
@@ -773,7 +769,7 @@ func TestConvertToAnthropicMessages_CacheEditsDedupesAndAddsCacheReferences(t *t
 		types.UserMessage("tail cache marker"),
 	}
 
-	result := convertToAnthropicMessages(msgs)
+	result := convertToAnthropicMessagesForParams(Params{Messages: msgs})
 	if len(result) != 2 {
 		t.Fatalf("messages = %d, want 2", len(result))
 	}
@@ -849,7 +845,7 @@ func TestConvertToAnthropicTools(t *testing.T) {
 
 func TestMergedAnthropicBetaHeaderAddsToolSearchBeta(t *testing.T) {
 	t.Setenv("ENABLE_TOOL_SEARCH", "1")
-	t.Setenv("CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS", "")
+	t.Setenv("LUBAN_CODE_DISABLE_EXPERIMENTAL_BETAS", "")
 
 	got := mergedAnthropicBetaHeader("existing-beta")
 	if !contains(got, "existing-beta") || !contains(got, toolSearchBetaHeader1P) {
@@ -857,13 +853,12 @@ func TestMergedAnthropicBetaHeaderAddsToolSearchBeta(t *testing.T) {
 	}
 }
 
-// --- NewFromEnv tests ---
+// --- NewFromEnvWithOverrides tests ---
 
-func TestNewFromEnv_MissingAPIKey(t *testing.T) {
+func TestNewFromEnvWithOverrides_MissingAPIKey(t *testing.T) {
 	t.Setenv("PROVIDER", "anthropic")
 	t.Setenv("ANTHROPIC_API_KEY", "")
 	t.Setenv("ANTHROPIC_AUTH_TOKEN", "")
-	t.Setenv("OAUTH_ACCESS_TOKEN", "")
 
 	registry := DefaultRegistry()
 	oldStore := registry.CredentialStoreRef()
@@ -875,7 +870,7 @@ func TestNewFromEnv_MissingAPIKey(t *testing.T) {
 		registry.SetOAuthHook(oldHook)
 	})
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
 		t.Fatalf("unexpected startup error: %v", err)
 	}
@@ -884,10 +879,10 @@ func TestNewFromEnv_MissingAPIKey(t *testing.T) {
 	}
 }
 
-func TestNewFromEnv_Ollama(t *testing.T) {
+func TestNewFromEnvWithOverrides_Ollama(t *testing.T) {
 	t.Setenv("PROVIDER", "ollama")
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -896,11 +891,11 @@ func TestNewFromEnv_Ollama(t *testing.T) {
 	}
 }
 
-func TestNewFromEnv_OpenAI(t *testing.T) {
+func TestNewFromEnvWithOverrides_OpenAI(t *testing.T) {
 	t.Setenv("PROVIDER", "openai")
 	t.Setenv("OPENAI_API_KEY", "test-key")
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -909,11 +904,11 @@ func TestNewFromEnv_OpenAI(t *testing.T) {
 	}
 }
 
-func TestNewFromEnv_OpenAIMissingKey(t *testing.T) {
+func TestNewFromEnvWithOverrides_OpenAIMissingKey(t *testing.T) {
 	t.Setenv("PROVIDER", "openai")
 	t.Setenv("OPENAI_API_KEY", "")
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
 		t.Fatalf("unexpected startup error: %v", err)
 	}
@@ -925,11 +920,11 @@ func TestNewFromEnv_OpenAIMissingKey(t *testing.T) {
 	}
 }
 
-func TestNewFromEnv_DeepSeekMissingKey(t *testing.T) {
+func TestNewFromEnvWithOverrides_DeepSeekMissingKey(t *testing.T) {
 	t.Setenv("PROVIDER", "deepseek")
 	t.Setenv("DEEPSEEK_API_KEY", "")
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
 		t.Fatalf("unexpected startup error: %v", err)
 	}
@@ -941,11 +936,11 @@ func TestNewFromEnv_DeepSeekMissingKey(t *testing.T) {
 	}
 }
 
-func TestNewFromEnv_Anthropic(t *testing.T) {
+func TestNewFromEnvWithOverrides_Anthropic(t *testing.T) {
 	t.Setenv("PROVIDER", "anthropic")
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 
-	p, err := NewFromEnv()
+	p, err := NewFromEnvWithOverrides("", "")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -954,10 +949,10 @@ func TestNewFromEnv_Anthropic(t *testing.T) {
 	}
 }
 
-func TestNewFromEnv_UnknownProviderReturnsError(t *testing.T) {
+func TestNewFromEnvWithOverrides_UnknownProviderReturnsError(t *testing.T) {
 	t.Setenv("PROVIDER", "myprovider")
-	t.Setenv("CLAUDE_CODE_USE_BEDROCK", "")
-	t.Setenv("CLAUDE_CODE_USE_VERTEX", "")
+	t.Setenv("LUBAN_CODE_USE_BEDROCK", "")
+	t.Setenv("LUBAN_CODE_USE_VERTEX", "")
 
 	_, err := NewFromEnvWithOverrides("myprovider", "")
 	if err == nil {

@@ -27,7 +27,7 @@ func textAreaGraphemes(text string) []textAreaGrapheme {
 
 // textAreaGraphemeBoundaries returns rune offsets for every user-perceived
 // character boundary, including 0 and the end of the string. TextArea keeps
-// rune offsets for persistence compatibility, while editing snaps to these
+// rune offsets as its public cursor representation, while editing snaps to these
 // boundaries so combining sequences and emoji stay intact.
 func textAreaGraphemeBoundaries(text string) []int {
 	boundaries := []int{0}

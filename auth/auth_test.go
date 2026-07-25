@@ -95,41 +95,7 @@ func TestLoadCredentialsNotExist(t *testing.T) {
 	}
 }
 
-func TestNewStoreLoadsLegacyDeepSeekCredentialsBeforeClaude(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
-
-	writeCredentials := func(dir, token string) {
-		t.Helper()
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		data, err := json.Marshal(Credentials{AccessToken: token, TokenType: "Bearer"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, credentialsFile), data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	writeCredentials(filepath.Join(home, ".claude"), "claude-token")
-	writeCredentials(filepath.Join(home, ".deepseek-code"), "deepseek-token")
-
-	store, err := NewStore()
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
-	}
-	creds, err := store.LoadCredentials()
-	if err != nil {
-		t.Fatalf("LoadCredentials: %v", err)
-	}
-	if creds == nil || creds.AccessToken != "deepseek-token" {
-		t.Fatalf("credentials = %#v, want legacy DeepSeek token", creds)
-	}
-}
-
-func TestNewStoreWritesOnlyLUBANCredentials(t *testing.T) {
+func TestNewStoreWritesLUBANCredentials(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -143,9 +109,6 @@ func TestNewStoreWritesOnlyLUBANCredentials(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, ".luban-code", credentialsFile)); err != nil {
 		t.Fatalf("expected LUBAN credentials: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(home, ".deepseek-code", credentialsFile)); !os.IsNotExist(err) {
-		t.Fatalf("legacy DeepSeek credentials should not be written, err=%v", err)
 	}
 }
 

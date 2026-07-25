@@ -19,7 +19,7 @@ type CredentialEntry struct {
 	Provider string `json:"provider"`
 
 	// AuthMethod describes how the credential was obtained.
-	// Values: "api_key", "oauth", "env"
+	// Values: "api_key", "oauth"
 	AuthMethod string `json:"auth_method"`
 
 	// APIKey is the provider API key, or an optional exchanged API key for OAuth entries.
@@ -46,13 +46,25 @@ type CredentialEntry struct {
 	// BaseURL is an optional custom API base URL.
 	BaseURL string `json:"base_url,omitempty"`
 
+	// APIStyle selects the compatibility protocol used for model discovery and
+	// inference. Empty entries predate compatible aggregate providers.
+	APIStyle APIStyle `json:"api_style,omitempty"`
+
+	// DisplayName and UserDefined persist providers created through the generic
+	// gateway flow without requiring a second configuration file.
+	DisplayName string `json:"display_name,omitempty"`
+	UserDefined bool   `json:"user_defined,omitempty"`
+
+	// Models caches the most recently discovered catalog so a configured
+	// provider remains selectable before its next online refresh.
+	Models []ModelInfo `json:"models,omitempty"`
+
 	// LastUsed records when this credential was last used.
 	LastUsed time.Time `json:"last_used"`
 }
 
 // credentialFile is the persisted JSON structure.
 type credentialFile struct {
-	Version int                        `json:"version"`
 	Entries map[string]CredentialEntry `json:"entries"`
 }
 
@@ -85,23 +97,6 @@ func NewCredentialStore() (*CredentialStore, error) {
 	store, err := NewCredentialStoreAt(filepath.Join(dir, "auth.json"))
 	if err != nil {
 		return nil, err
-	}
-	if len(store.entries) == 0 {
-		legacyPaths := []string{
-			filepath.Join(brand.LegacyDeepSeekUserConfigDir(), "auth.json"),
-			filepath.Join(brand.LegacyUserConfigDir(), "auth.json"),
-			filepath.Join(brand.LegacyUserGoDir(), "auth.json"),
-		}
-		for _, legacyPath := range legacyPaths {
-			if legacyPath == store.path {
-				continue
-			}
-			legacy, legacyErr := NewCredentialStoreAt(legacyPath)
-			if legacyErr == nil && len(legacy.entries) > 0 {
-				store.entries = legacy.entries
-				break
-			}
-		}
 	}
 	return store, nil
 }
@@ -185,76 +180,9 @@ func (s *CredentialStore) HasCredentials(provider string) bool {
 			return true
 		}
 		return entry.RefreshToken != ""
-	case "env":
-		// Credentials imported from environment — the actual env var check
-		// is done by the registry; here we just confirm the entry exists.
-		return entry.APIKey != ""
 	default:
 		return false
 	}
-}
-
-// MigrateFromEnv imports API keys from well-known environment variables
-// into the credential store. Only creates entries for providers that don't
-// already have credentials stored.
-//
-// Returns the number of newly imported entries.
-func (s *CredentialStore) MigrateFromEnv() int {
-	envMappings := []struct {
-		provider   string
-		envKey     string
-		authMethod string
-	}{
-		{"anthropic", "ANTHROPIC_API_KEY", "env"},
-		{"anthropic", "OAUTH_ACCESS_TOKEN", "oauth"},
-		{"openai", "OPENAI_API_KEY", "env"},
-		{"deepseek", "DEEPSEEK_API_KEY", "env"},
-		{"gemini", "GEMINI_API_KEY", "env"},
-		{"groq", "GROQ_API_KEY", "env"},
-		{"xai", "XAI_API_KEY", "env"},
-		{"mistral", "MISTRAL_API_KEY", "env"},
-		{"zhipu", "ZHIPU_API_KEY", "env"},
-		{"minimax", "MINIMAX_API_KEY", "env"},
-		{"kimi", "MOONSHOT_API_KEY", "env"},
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	count := 0
-	for _, m := range envMappings {
-		// Skip if already has an entry.
-		if _, exists := s.entries[m.provider]; exists {
-			continue
-		}
-
-		key := os.Getenv(m.envKey)
-		if key == "" {
-			continue
-		}
-
-		entry := CredentialEntry{
-			Provider:   m.provider,
-			AuthMethod: m.authMethod,
-			APIKey:     key,
-			LastUsed:   time.Now(),
-		}
-
-		if m.authMethod == "oauth" {
-			entry.AccessToken = key
-			entry.APIKey = ""
-		}
-
-		s.entries[m.provider] = entry
-		count++
-	}
-
-	// Persist if any entries were added.
-	if count > 0 {
-		_ = s.save() // best effort; entries are still in memory
-	}
-
-	return count
 }
 
 // UpdateLastUsed updates the LastUsed timestamp for a provider.
@@ -302,7 +230,6 @@ func (s *CredentialStore) save() error {
 	}
 
 	f := credentialFile{
-		Version: 1,
 		Entries: s.entries,
 	}
 
@@ -349,13 +276,9 @@ var (
 )
 
 // DefaultCredentialStore returns the singleton CredentialStore.
-// On first call it loads from ~/.luban-code/auth.json and migrates env vars.
 func DefaultCredentialStore() (*CredentialStore, error) {
 	defaultCredStoreOnce.Do(func() {
 		defaultCredStoreInst, defaultCredStoreErr = NewCredentialStore()
-		if defaultCredStoreErr == nil {
-			defaultCredStoreInst.MigrateFromEnv()
-		}
 	})
 	return defaultCredStoreInst, defaultCredStoreErr
 }

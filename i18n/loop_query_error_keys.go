@@ -6,7 +6,6 @@ package i18n
 const (
 	KeyLoopQueryCompactionNotConfigured       Key = "loop.query.compaction_not_configured"
 	KeyLoopQueryMessageHistoryLimitExceeded   Key = "loop.query.message_history_limit_exceeded"
-	KeyLoopQuerySessionCompactionFailed       Key = "loop.query.session_compaction_failed"
 	KeyLoopQueryForcedCompactionFailed        Key = "loop.query.forced_compaction_failed"
 	KeyLoopQuerySnapshotSkillCatalogFailed    Key = "loop.query.snapshot_skill_catalog_failed"
 	KeyLoopQueryPlanSkillCatalogFailed        Key = "loop.query.plan_skill_catalog_failed"
@@ -21,7 +20,6 @@ const (
 	KeyLoopQueryStreamMissingAfterAttempts    Key = "loop.query.stream_missing_after_attempts"
 	KeyLoopQueryStreamFallbackFailed          Key = "loop.query.stream_fallback_failed"
 	KeyLoopQueryStreamAfterModelFallback      Key = "loop.query.stream_after_model_fallback"
-	KeyLoopQueryStreamRetryFailed             Key = "loop.query.stream_retry_failed"
 	KeyLoopQueryStreamAfterRetry              Key = "loop.query.stream_after_retry"
 	KeyLoopQueryStreamAfterFallback           Key = "loop.query.stream_after_fallback"
 	KeyLoopQueryStreamRecoveryFailed          Key = "loop.query.stream_recovery_failed"
@@ -33,7 +31,6 @@ const (
 	KeyLoopQueryHookCancelled                 Key = "loop.query.hook_cancelled"
 	KeyLoopQueryHookFailedClosed              Key = "loop.query.hook_failed_closed"
 	KeyLoopQueryHookRefused                   Key = "loop.query.hook_refused"
-	KeyLoopVisibleForceTruncated              Key = "loop.visible.force_truncated"
 	KeyLoopVisibleOutputTokenRecovery         Key = "loop.visible.output_token_recovery"
 	KeyLoopVisibleTokenBudgetContinuation     Key = "loop.visible.token_budget_continuation"
 	KeyLoopVisibleGoalReasonDefault           Key = "loop.visible.goal_reason_default"
@@ -55,7 +52,6 @@ const (
 var loopQueryErrorKeys = [...]Key{
 	KeyLoopQueryCompactionNotConfigured,
 	KeyLoopQueryMessageHistoryLimitExceeded,
-	KeyLoopQuerySessionCompactionFailed,
 	KeyLoopQueryForcedCompactionFailed,
 	KeyLoopQuerySnapshotSkillCatalogFailed,
 	KeyLoopQueryPlanSkillCatalogFailed,
@@ -70,7 +66,6 @@ var loopQueryErrorKeys = [...]Key{
 	KeyLoopQueryStreamMissingAfterAttempts,
 	KeyLoopQueryStreamFallbackFailed,
 	KeyLoopQueryStreamAfterModelFallback,
-	KeyLoopQueryStreamRetryFailed,
 	KeyLoopQueryStreamAfterRetry,
 	KeyLoopQueryStreamAfterFallback,
 	KeyLoopQueryStreamRecoveryFailed,
@@ -82,7 +77,6 @@ var loopQueryErrorKeys = [...]Key{
 	KeyLoopQueryHookCancelled,
 	KeyLoopQueryHookFailedClosed,
 	KeyLoopQueryHookRefused,
-	KeyLoopVisibleForceTruncated,
 	KeyLoopVisibleOutputTokenRecovery,
 	KeyLoopVisibleTokenBudgetContinuation,
 	KeyLoopVisibleGoalReasonDefault,
@@ -118,14 +112,6 @@ func init() {
 			"会話には %d 件のメッセージがあり、安全上限の %d 件を超えています。上限超過分の履歴は送信も切り詰めもされていません。圧縮してから再試行してください。",
 			"대화에 메시지가 %d개 있어 안전 한도 %d개를 초과했습니다. 한도를 초과한 기록은 전송하거나 잘라내지 않았습니다. 대화를 압축한 뒤 다시 시도하세요.",
 			"В диалоге %d сообщений — это выше безопасного предела %d. Превышающая предел история не была отправлена или усечена; сожмите диалог перед повторной попыткой.",
-		},
-		KeyLoopQuerySessionCompactionFailed: {
-			"session-memory compaction failed: %v",
-			"会话内存压缩失败：%v",
-			"Die Komprimierung des Sitzungsspeichers ist fehlgeschlagen: %v",
-			"セッションメモリの圧縮に失敗しました: %v",
-			"세션 메모리 압축에 실패했습니다: %v",
-			"Не удалось сжать память сеанса: %v",
 		},
 		KeyLoopQueryForcedCompactionFailed: {
 			"forced compaction failed: %v",
@@ -219,10 +205,6 @@ func init() {
 			"Stream processing failed after model fallback: %v", "切换 fallback model 后处理 stream 仍失败：%v", "Stream-Verarbeitung nach dem Modell-Fallback fehlgeschlagen: %v",
 			"fallback model への切り替え後も stream の処理に失敗しました: %v", "fallback model로 전환한 후에도 stream 처리에 실패했습니다: %v", "Обработка потока после переключения на fallback model завершилась ошибкой: %v",
 		},
-		KeyLoopQueryStreamRetryFailed: {
-			"Stream processing failed; retry also failed: %v", "处理 stream 失败，重试也失败：%v", "Stream-Verarbeitung fehlgeschlagen; auch der erneute Versuch ist fehlgeschlagen: %v",
-			"stream の処理に失敗し、再試行にも失敗しました: %v", "stream 처리에 실패했고 재시도도 실패했습니다: %v", "Не удалось обработать поток; повторная попытка также завершилась ошибкой: %v",
-		},
 		KeyLoopQueryStreamAfterRetry: {
 			"Stream processing failed after retry: %v", "重试后处理 stream 仍失败：%v", "Stream-Verarbeitung nach dem erneuten Versuch fehlgeschlagen: %v",
 			"再試行後も stream の処理に失敗しました: %v", "재시도 후에도 stream 처리에 실패했습니다: %v", "Обработка потока после повторной попытки завершилась ошибкой: %v",
@@ -266,10 +248,6 @@ func init() {
 		KeyLoopQueryHookRefused: {
 			"hook refused model I/O", "hook 拒绝了 model I/O", "Hook hat die Modell-I/O verweigert",
 			"hook が model I/O を拒否しました", "hook이 model I/O를 거부했습니다", "Hook отклонил ввод-вывод модели",
-		},
-		KeyLoopVisibleForceTruncated: {
-			"[%d earlier messages were force-truncated due to compaction failure]", "[压缩失败，已强制截断前面的 %d 条消息]", "[%d frühere Nachrichten wurden nach einem Komprimierungsfehler zwangsweise gekürzt]",
-			"[圧縮に失敗したため、以前のメッセージ %d 件を強制的に切り詰めました]", "[압축에 실패하여 이전 메시지 %d개를 강제로 잘랐습니다]", "[Из-за ошибки сжатия принудительно усечено предыдущих сообщений: %d]",
 		},
 		KeyLoopVisibleOutputTokenRecovery: {
 			"Output token limit hit. Resume directly - no apology, no recap of what you were doing. Pick up mid-thought if that is where the cut happened. Break remaining work into smaller pieces.",

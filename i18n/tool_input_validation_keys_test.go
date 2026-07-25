@@ -48,7 +48,7 @@ func TestToolInputValidationCatalogCoversEveryLanguageAndPreservesRawValues(t *t
 	}
 }
 
-func TestToolInputValidationEnglishCompatibility(t *testing.T) {
+func TestToolInputValidationEnglishContract(t *testing.T) {
 	fixture := localizedToolInputValidationFixture{tool: "StrictContract", field: "extra"}
 	want := "<tool_use_error>InputValidationError: StrictContract failed due to the following issue:\nAn unexpected parameter `extra` was provided</tool_use_error>"
 	if got := FormatToolInputValidationError(LangEN, fixture); got != want {

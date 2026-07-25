@@ -9,6 +9,13 @@ import (
 // It is created in TestMain before any tests run.
 var testApp *App
 
+func (a *App) resetDirty() {
+	if a == nil {
+		panic("tui: nil app in resetDirty")
+	}
+	a.dirty.Store(false)
+}
+
 func TestMain(m *testing.M) {
 	testApp = &App{
 		stopCh:       make(chan struct{}),

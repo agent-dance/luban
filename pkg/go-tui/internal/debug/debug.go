@@ -125,11 +125,6 @@ func Log(format string, args ...any) {
 	logFile.Sync()
 }
 
-// Logf is an alias for Log.
-func Logf(format string, args ...any) {
-	Log(format, args...)
-}
-
 // Topic writes a message to the debug log only if the given topic is enabled.
 // Topics are enabled via the DEBUG env var: DEBUG=keys,dispatch enables those
 // two topics. DEBUG=1 or DEBUG=* enables all topics.

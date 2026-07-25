@@ -7,20 +7,21 @@ import (
 	"reflect"
 	"testing"
 
-	svcmcp "github.com/agent-dance/luban/services/mcp"
+	"github.com/agent-dance/luban/internal/mcp/catalog"
+	mcpmanager "github.com/agent-dance/luban/internal/mcp/manager"
 )
 
 type mcpSkillRawCaller struct {
 	t         *testing.T
-	resources []svcmcp.Resource
-	reads     map[string]svcmcp.ReadResourceResult
+	resources []catalog.Resource
+	reads     map[string]catalog.ReadResourceResult
 }
 
 func (f *mcpSkillRawCaller) CallRaw(_ context.Context, method string, params any, out any) error {
 	var value any
 	switch method {
 	case "resources/list":
-		value = svcmcp.ListResourcesResult{Resources: f.resources}
+		value = catalog.ListResourcesResult{Resources: f.resources}
 	case "resources/read":
 		uri := params.(map[string]any)["uri"].(string)
 		value = f.reads[uri]
@@ -36,19 +37,19 @@ func (f *mcpSkillRawCaller) CallRaw(_ context.Context, method string, params any
 
 func TestMCPSkillsFeatureGateDisablesDiscovery(t *testing.T) {
 	t.Setenv(FeatureFlagMCPSkills, "")
-	client := svcmcp.NewClient(&mcpSkillRawCaller{t: t}, nil)
-	skills, err := DiscoverMCPSkillsFromConnections(context.Background(), []svcmcp.MCPServerConnection{{
+	client := newMCPProtocolTestClient(t, &mcpSkillRawCaller{t: t})
+	inputs, err := discoverMCPResourceCatalogInputsFromConnections(context.Background(), []mcpmanager.MCPServerConnection{{
 		Name:         "srv",
-		Type:         svcmcp.MCPStateConnected,
+		Type:         mcpmanager.MCPStateConnected,
 		Client:       client,
-		Capabilities: svcmcp.ServerCapabilities{"resources": map[string]any{}},
-		Resources:    []svcmcp.Resource{{URI: "skill://review", Name: "review"}},
+		Capabilities: catalog.ServerCapabilities{"resources": map[string]any{}},
+		Resources:    []catalog.Resource{{URI: "skill://review", Name: "review"}},
 	}})
 	if err != nil {
-		t.Fatalf("DiscoverMCPSkillsFromConnections: %v", err)
+		t.Fatalf("discoverMCPResourceCatalogInputsFromConnections: %v", err)
 	}
-	if len(skills) != 0 {
-		t.Fatalf("expected no skills when gate disabled, got %#v", skills)
+	if len(inputs) != 0 {
+		t.Fatalf("expected no skills when gate disabled, got %#v", inputs)
 	}
 }
 
@@ -68,29 +69,29 @@ effort: high
 Review $owner/$repo.`
 	raw := &mcpSkillRawCaller{
 		t: t,
-		resources: []svcmcp.Resource{
+		resources: []catalog.Resource{
 			{URI: "skill://review/SKILL.md", Name: "review", Description: "fallback"},
 			{URI: "file://ignored", Name: "ignored"},
 		},
-		reads: map[string]svcmcp.ReadResourceResult{
-			"skill://review/SKILL.md": {Contents: []svcmcp.ResourceContent{{URI: "skill://review/SKILL.md", Text: markdown, MimeType: "text/markdown"}}},
+		reads: map[string]catalog.ReadResourceResult{
+			"skill://review/SKILL.md": {Contents: []catalog.ResourceContent{{URI: "skill://review/SKILL.md", Text: markdown, MimeType: "text/markdown"}}},
 		},
 	}
-	client := svcmcp.NewClient(raw, nil)
-	discovered, err := DiscoverMCPSkillsFromConnections(context.Background(), []svcmcp.MCPServerConnection{{
+	client := newMCPProtocolTestClient(t, raw)
+	discovered, err := discoverMCPResourceCatalogInputsFromConnections(context.Background(), []mcpmanager.MCPServerConnection{{
 		Name:         "github",
-		Type:         svcmcp.MCPStateConnected,
+		Type:         mcpmanager.MCPStateConnected,
 		Client:       client,
-		Capabilities: svcmcp.ServerCapabilities{"resources": map[string]any{}},
+		Capabilities: catalog.ServerCapabilities{"resources": map[string]any{}},
 		Resources:    raw.resources,
 	}})
 	if err != nil {
-		t.Fatalf("DiscoverMCPSkillsFromConnections: %v", err)
+		t.Fatalf("discoverMCPResourceCatalogInputsFromConnections: %v", err)
 	}
 	if len(discovered) != 1 {
 		t.Fatalf("skills = %#v", discovered)
 	}
-	skill := discovered[0]
+	skill := discovered[0].Skill
 	if skill.Name != "github:review" {
 		t.Fatalf("name = %q", skill.Name)
 	}
@@ -122,51 +123,57 @@ Review $owner/$repo.`
 	}
 }
 
-func TestMCPSkillsReadBase64MarkdownAndRegisterIndependentlyFromPrompts(t *testing.T) {
+func TestMCPSkillsReadBase64MarkdownAndRegisterUnifiedCatalog(t *testing.T) {
 	t.Setenv(FeatureFlagMCPSkills, "1")
 	body := "---\ndescription: Encoded skill\n---\nencoded body"
 	raw := &mcpSkillRawCaller{
 		t:         t,
-		resources: []svcmcp.Resource{{URI: "skill://encoded", Name: "encoded"}},
-		reads: map[string]svcmcp.ReadResourceResult{
-			"skill://encoded": {Contents: []svcmcp.ResourceContent{{URI: "skill://encoded", Blob: base64.StdEncoding.EncodeToString([]byte(body)), MimeType: "text/markdown"}}},
+		resources: []catalog.Resource{{URI: "skill://encoded", Name: "encoded"}},
+		reads: map[string]catalog.ReadResourceResult{
+			"skill://encoded": {Contents: []catalog.ResourceContent{{URI: "skill://encoded", Blob: base64.StdEncoding.EncodeToString([]byte(body)), MimeType: "text/markdown"}}},
 		},
 	}
-	client := svcmcp.NewClient(raw, nil)
-	discovered, err := DiscoverMCPSkillsFromConnections(context.Background(), []svcmcp.MCPServerConnection{{
+	client := newMCPProtocolTestClient(t, raw)
+	discovered, err := discoverMCPResourceCatalogInputsFromConnections(context.Background(), []mcpmanager.MCPServerConnection{{
 		Name:         "srv",
-		Type:         svcmcp.MCPStateConnected,
+		Type:         mcpmanager.MCPStateConnected,
 		Client:       client,
-		Capabilities: svcmcp.ServerCapabilities{"resources": map[string]any{}},
+		Capabilities: catalog.ServerCapabilities{"resources": map[string]any{}},
 		Resources:    raw.resources,
 	}})
 	if err != nil {
-		t.Fatalf("DiscoverMCPSkillsFromConnections: %v", err)
+		t.Fatalf("discoverMCPResourceCatalogInputsFromConnections: %v", err)
 	}
-	manager := NewManager()
-	manager.RegisterMCPPrompts([]MCPPrompt{{Server: "srv", Name: "prompt", Description: "prompt desc", Body: "prompt body"}})
-	manager.RegisterMCPSkills(discovered)
+	if len(discovered) != 1 {
+		t.Fatalf("discovered = %#v", discovered)
+	}
+	resourceInput := discovered[0]
+	promptInput, err := NewMCPPromptCatalogInput("srv", "prompt", "prompt desc", nil, "prompt body")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := newCatalogManagerForTest()
+	if err := manager.ReplaceMCPCatalogInputsAtGeneration(manager.ProjectGeneration(), []MCPCatalogInput{promptInput, resourceInput}); err != nil {
+		t.Fatal(err)
+	}
 
-	if manager.Get("srv:prompt") == nil {
-		t.Fatal("prompt-backed MCP skill should remain registered")
-	}
-	got := manager.Get("srv:encoded")
-	if got == nil {
-		t.Fatal("resource-backed MCP skill should be registered")
-	}
+	resolvedLoaderTestSkill(t, manager, "srv:prompt")
+	got := resolvedLoaderTestSkill(t, manager, "srv:encoded")
 	if got.Content != "encoded body" {
 		t.Fatalf("content = %q", got.Content)
 	}
-	if len(manager.MCPSkills()) != 1 {
-		t.Fatalf("MCPSkills snapshot = %#v", manager.MCPSkills())
+	if err := manager.ReplaceMCPCatalogInputsAtGeneration(manager.ProjectGeneration(), []MCPCatalogInput{promptInput}); err != nil {
+		t.Fatal(err)
 	}
-
-	InvalidateMCPSkills(manager)
-	if manager.Get("srv:encoded") != nil {
-		t.Fatal("expected InvalidateMCPSkills to clear resource-backed MCP skills")
-	}
-	if manager.Get("srv:prompt") == nil {
-		t.Fatal("prompt-backed MCP skill should not be cleared by resource skill invalidation")
+	generation := manager.ProjectGeneration()
+	encoded, encodedErr := manager.ResolveLatest(SkillResolveRequest{
+		SessionID: "session", Selector: "srv:encoded", Origin: InvocationOriginUser, ExpectedProjectGeneration: generation,
+	}, nil)
+	prompt, promptErr := manager.ResolveLatest(SkillResolveRequest{
+		SessionID: "session", Selector: "srv:prompt", Origin: InvocationOriginUser, ExpectedProjectGeneration: generation,
+	}, nil)
+	if encodedErr != nil || promptErr != nil || encoded.Outcome != SkillResolveNotFound || prompt.Outcome != SkillResolveResolved {
+		t.Fatal("unified catalog replacement did not publish the exact projection")
 	}
 }
 
@@ -174,23 +181,23 @@ func TestMCPSkillsDeriveNameFromSkillMDSiblingDirectory(t *testing.T) {
 	t.Setenv(FeatureFlagMCPSkills, "1")
 	raw := &mcpSkillRawCaller{
 		t:         t,
-		resources: []svcmcp.Resource{{URI: "skill://catalog/review/SKILL.md"}},
-		reads: map[string]svcmcp.ReadResourceResult{
-			"skill://catalog/review/SKILL.md": {Contents: []svcmcp.ResourceContent{{Text: "---\ndescription: Review\n---\nbody"}}},
+		resources: []catalog.Resource{{URI: "skill://catalog/review/SKILL.md"}},
+		reads: map[string]catalog.ReadResourceResult{
+			"skill://catalog/review/SKILL.md": {Contents: []catalog.ResourceContent{{Text: "---\ndescription: Review\n---\nbody"}}},
 		},
 	}
-	client := svcmcp.NewClient(raw, nil)
-	discovered, err := DiscoverMCPSkillsFromConnections(context.Background(), []svcmcp.MCPServerConnection{{
+	client := newMCPProtocolTestClient(t, raw)
+	discovered, err := discoverMCPResourceCatalogInputsFromConnections(context.Background(), []mcpmanager.MCPServerConnection{{
 		Name:         "srv",
-		Type:         svcmcp.MCPStateConnected,
+		Type:         mcpmanager.MCPStateConnected,
 		Client:       client,
-		Capabilities: svcmcp.ServerCapabilities{"resources": map[string]any{}},
+		Capabilities: catalog.ServerCapabilities{"resources": map[string]any{}},
 		Resources:    raw.resources,
 	}})
 	if err != nil {
-		t.Fatalf("DiscoverMCPSkillsFromConnections: %v", err)
+		t.Fatalf("discoverMCPResourceCatalogInputsFromConnections: %v", err)
 	}
-	if len(discovered) != 1 || discovered[0].Name != "srv:review" {
+	if len(discovered) != 1 || discovered[0].Skill.Name != "srv:review" {
 		t.Fatalf("discovered = %#v", discovered)
 	}
 }
@@ -198,13 +205,13 @@ func TestMCPSkillsDeriveNameFromSkillMDSiblingDirectory(t *testing.T) {
 func TestMCPSkillsSkipDisconnectedAndNoResourceCapability(t *testing.T) {
 	t.Setenv(FeatureFlagMCPSkills, "1")
 	raw := &mcpSkillRawCaller{t: t}
-	client := svcmcp.NewClient(raw, nil)
-	discovered, err := DiscoverMCPSkillsFromConnections(context.Background(), []svcmcp.MCPServerConnection{
-		{Name: "pending", Type: svcmcp.MCPStatePending, Client: client, Capabilities: svcmcp.ServerCapabilities{"resources": map[string]any{}}},
-		{Name: "tools-only", Type: svcmcp.MCPStateConnected, Client: client, Capabilities: svcmcp.ServerCapabilities{"tools": map[string]any{}}},
+	client := newMCPProtocolTestClient(t, raw)
+	discovered, err := discoverMCPResourceCatalogInputsFromConnections(context.Background(), []mcpmanager.MCPServerConnection{
+		{Name: "pending", Type: mcpmanager.MCPStatePending, Client: client, Capabilities: catalog.ServerCapabilities{"resources": map[string]any{}}},
+		{Name: "tools-only", Type: mcpmanager.MCPStateConnected, Client: client, Capabilities: catalog.ServerCapabilities{"tools": map[string]any{}}},
 	})
 	if err != nil {
-		t.Fatalf("DiscoverMCPSkillsFromConnections: %v", err)
+		t.Fatalf("discoverMCPResourceCatalogInputsFromConnections: %v", err)
 	}
 	if len(discovered) != 0 {
 		t.Fatalf("expected no discovered skills, got %#v", discovered)

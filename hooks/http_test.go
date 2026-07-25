@@ -506,8 +506,8 @@ func TestHTTPHookTruncationDetected(t *testing.T) {
 	if output.ExitCode == 0 {
 		t.Error("expected non-zero exit code when response is truncated")
 	}
-	if !strings.Contains(output.Stderr, "truncated") {
-		t.Errorf("expected 'truncated' in stderr, got: %q", output.Stderr)
+	if !strings.Contains(output.ExecutionError, "truncated") {
+		t.Errorf("expected 'truncated' in execution error, got: %q", output.ExecutionError)
 	}
 }
 

@@ -222,15 +222,3 @@ func TestSplitCommaSafe(t *testing.T) {
 		}
 	}
 }
-
-func TestQuoteProblematicValues(t *testing.T) {
-	input := "paths: src/**/*.{ts,tsx}\nname: simple"
-	result := quoteProblematicValues(input)
-	if !strings.Contains(result, `paths: "src`) {
-		t.Errorf("expected quoted paths, got: %q", result)
-	}
-	if strings.Contains(result, `name: "simple"`) {
-		t.Errorf("simple values should not be quoted, got: %q", result)
-	}
-}
-

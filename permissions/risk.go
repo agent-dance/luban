@@ -15,39 +15,10 @@ const (
 	RiskHigh                    // destructive, external, or out-of-CWD writes
 )
 
-// String returns a human-readable risk level name.
-func (r RiskLevel) String() string {
-	switch r {
-	case RiskLow:
-		return "Low"
-	case RiskMedium:
-		return "Medium"
-	case RiskHigh:
-		return "High"
-	}
-	return "Unknown"
-}
-
 // lowRiskTools are read-only tools that never modify state.
 var lowRiskTools = map[string]bool{
 	"Read": true, "Glob": true, "Grep": true,
-	// LSP variants
-	"LSP":                       true,
-	"lsp_diagnostics":           true,
-	"lsp_diagnostics_directory": true,
-	"lsp_find_references":       true,
-	"lsp_goto_definition":       true,
-	"lsp_hover":                 true,
-	"lsp_document_symbols":      true,
-	"lsp_workspace_symbols":     true,
-	"lsp_servers":               true,
-}
-
-// mediumRiskTools make network requests but don't write local state.
-var mediumRiskTools = map[string]bool{
-	"HttpGet":  true,
-	"HttpPost": true,
-	"Ping":     true,
+	"LSP": true,
 }
 
 // highRiskBashPatterns are substrings that escalate a Bash command to High.
@@ -162,13 +133,10 @@ var mediumRiskPowerShellCommands = map[string]bool{
 	"pip": true, "pip3": true, "git": true,
 }
 
-// ClassifyRisk returns the risk level for a tool call.
-func ClassifyRisk(toolName string, input map[string]any) RiskLevel {
+// classifyRisk returns the risk level for a tool call.
+func classifyRisk(toolName string, input map[string]any) RiskLevel {
 	if lowRiskTools[toolName] {
 		return RiskLow
-	}
-	if mediumRiskTools[toolName] {
-		return RiskMedium
 	}
 	switch toolName {
 	case "Write", "Edit":
@@ -280,7 +248,7 @@ func classifyBashCommand(cmd string) RiskLevel {
 	if containsAbsoluteRedirect(cmd) {
 		return RiskHigh
 	}
-	if IsReadOnlyBashCommand(cmd) {
+	if isReadOnlyBashCommand(cmd) {
 		return RiskLow
 	}
 
@@ -327,7 +295,7 @@ func classifyPowerShellCommand(cmd string) RiskLevel {
 	if containsPowerShellRedirect(cmd) {
 		return RiskHigh
 	}
-	if IsReadOnlyPowerShellCommand(cmd) {
+	if isReadOnlyPowerShellCommand(cmd) {
 		return RiskLow
 	}
 
@@ -351,7 +319,7 @@ func classifyPowerShellCommand(cmd string) RiskLevel {
 	return RiskHigh
 }
 
-func IsReadOnlyPowerShellCommand(cmd string) bool {
+func isReadOnlyPowerShellCommand(cmd string) bool {
 	segments, ok := splitPowerShellReadOnlySegments(cmd)
 	if !ok || len(segments) == 0 {
 		return false
@@ -488,9 +456,9 @@ func containsPowerShellRedirect(command string) bool {
 	return false
 }
 
-// IsReadOnlyBashCommand returns true for commands that are treated as
+// isReadOnlyBashCommand returns true for commands that are treated as
 // read-only for permission auto-allow purposes.
-func IsReadOnlyBashCommand(cmd string) bool {
+func isReadOnlyBashCommand(cmd string) bool {
 	if containsUnquotedExpansion(cmd) {
 		return false
 	}

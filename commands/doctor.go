@@ -136,91 +136,16 @@ func checkProviderCredentials(ctx *Context) checkResult {
 		providerName = brand.DefaultProvider
 	}
 
-	// Determine the env key for the current provider from the registry.
-	var envKey string
-	var displayName string
-	if ctx.ProviderRegistry != nil {
-		if info, ok := ctx.ProviderRegistry.Get(providerName); ok {
-			envKey = info.EnvKey
-			displayName = info.DisplayName
-		}
+	displayName := providerName
+	if info, ok := ctx.ProviderRegistry.Get(providerName); ok && info.DisplayName != "" {
+		displayName = info.DisplayName
 	}
-	if displayName == "" {
-		displayName = providerName
+	connection := ctx.ProviderRegistry.ConnectionState(providerName)
+	r.ok = connection.CanSelectModels
+	if connection.DisplayName != "" {
+		displayName = connection.DisplayName
 	}
-
-	if ctx.ProviderRegistry != nil {
-		connection := ctx.ProviderRegistry.ConnectionState(providerName).Localized(ctx.Language)
-		r.ok = connection.CanSelectModels
-		if connection.DisplayName != "" {
-			displayName = connection.DisplayName
-		}
-		r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialState, displayName, connection.Detail)
-		return r
-	}
-
-	// Check environment variable.
-	if apiKey := os.Getenv(envKey); apiKey != "" {
-		r.ok = true
-		r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialEnv, displayName, envKey, maskKey(apiKey))
-		return r
-	}
-	if providerName == "anthropic" {
-		if authToken := os.Getenv("ANTHROPIC_AUTH_TOKEN"); authToken != "" {
-			r.ok = true
-			r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialAuthToken, displayName, maskKey(authToken))
-			return r
-		}
-	}
-
-	// Check CredentialStore.
-	if ctx.CredentialStore != nil {
-		if entry, ok := ctx.CredentialStore.Get(providerName); ok {
-			switch entry.AuthMethod {
-			case "api_key":
-				if entry.APIKey != "" {
-					r.ok = true
-					r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialStore, displayName, maskKey(entry.APIKey))
-					return r
-				}
-			case "oauth":
-				if entry.AccessToken != "" {
-					r.ok = true
-					r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialOAuth, displayName)
-					return r
-				}
-			case "env":
-				if entry.APIKey != "" {
-					r.ok = true
-					r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialImported, displayName, maskKey(entry.APIKey))
-					return r
-				}
-			}
-		}
-	}
-
-	// Special fallback checks for cloud providers.
-	switch providerName {
-	case "bedrock":
-		if os.Getenv("AWS_ACCESS_KEY_ID") != "" || os.Getenv("AWS_PROFILE") != "" || os.Getenv("AWS_BEARER_TOKEN_BEDROCK") != "" {
-			r.ok = true
-			r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialAWS, displayName)
-			return r
-		}
-	case "vertex":
-		if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") != "" || os.Getenv("GOOGLE_CLOUD_PROJECT") != "" {
-			r.ok = true
-			r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialGCP, displayName)
-			return r
-		}
-	}
-
-	r.ok = false
-	if providerName == "anthropic" {
-		r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialAnthropicMissing, displayName)
-		return r
-	}
-	r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialMissing, displayName, envKey)
+	r.message = i18n.Format(ctx.Language, i18n.KeyDoctorCredentialState, displayName, connection.DetailText(ctx.Language))
 	return r
 }
 
@@ -239,23 +164,17 @@ func checkModelAvailable(ctx *Context) checkResult {
 		return r
 	}
 
-	// If we have a catalog, verify the model exists.
-	if ctx.ProviderRegistry != nil {
-		catalog := ctx.ProviderRegistry.Catalog()
-		if catalog != nil {
-			if info, found := catalog.ResolveForProvider(providerName, model); found {
-				r.ok = true
-				parts := []string{fmt.Sprintf("%s/%s", providerName, model)}
-				if info.ContextWindow > 0 {
-					parts = append(parts, i18n.Format(ctx.Language, i18n.KeyDoctorContextWindow, provider.FormatContextWindow(info.ContextWindow)))
-				}
-				if info.CanReason {
-					parts = append(parts, i18n.Text(ctx.Language, i18n.KeyDoctorReasoning))
-				}
-				r.message = strings.Join(parts, ", ")
-				return r
-			}
+	if info, found := ctx.ProviderRegistry.Catalog().ResolveForProvider(providerName, model); found {
+		r.ok = true
+		parts := []string{fmt.Sprintf("%s/%s", providerName, model)}
+		if info.ContextWindow > 0 {
+			parts = append(parts, i18n.Format(ctx.Language, i18n.KeyDoctorContextWindow, provider.FormatContextWindow(info.ContextWindow)))
 		}
+		if info.CanReason {
+			parts = append(parts, i18n.Text(ctx.Language, i18n.KeyDoctorReasoning))
+		}
+		r.message = strings.Join(parts, ", ")
+		return r
 	}
 
 	// No catalog or model not found — still report what we have.
@@ -293,14 +212,6 @@ func checkOllamaServer(lang i18n.Language) checkResult {
 	r.ok = true
 	r.message = i18n.Format(lang, i18n.KeyDoctorOllamaRunning, baseURL)
 	return r
-}
-
-// maskKey returns a masked version of a key showing prefix and last 4 chars.
-func maskKey(key string) string {
-	if len(key) <= 8 {
-		return "***"
-	}
-	return key[:4] + "..." + key[len(key)-4:]
 }
 
 // checkGit verifies git is installed and cwd is a repo.
@@ -372,11 +283,6 @@ func checkSandbox(lang i18n.Language) checkResult {
 	return r
 }
 
-// checkMCPServers reports the same services/mcp manager state used by /mcp.
-func checkMCPServers(cwd string) checkResult {
-	return checkMCPServersWithBackend(cwd, nil)
-}
-
 func checkMCPServersWithBackend(cwd string, backend MCPBackend) checkResult {
 	return mcpDoctorCheckWithBackend(cwd, backend)
 }
@@ -413,23 +319,13 @@ func checkConfig(cwd string, lang i18n.Language) checkResult {
 	home, _ := os.UserHomeDir()
 	candidates := []string{
 		filepath.Join(cwd, brand.ConfigDirName, "settings.json"),
-		filepath.Join(cwd, brand.LegacyDeepSeekConfigDirName, "settings.json"),
-		filepath.Join(cwd, brand.LegacyConfigDirName, "settings.json"),
 		filepath.Join(home, brand.ConfigDirName, "settings.json"),
-		filepath.Join(home, brand.LegacyDeepSeekConfigDirName, "settings.json"),
-		filepath.Join(home, brand.LegacyConfigDirName, "settings.json"),
 	}
-	claudeMD := []string{
+	instructions := []string{
 		filepath.Join(cwd, brand.InstructionsFile),
-		filepath.Join(cwd, brand.LegacyDeepSeekInstructionsFile),
 		filepath.Join(cwd, brand.AgentsFile),
-		filepath.Join(cwd, brand.LegacyInstructionsFile),
 		filepath.Join(cwd, brand.ConfigDirName, brand.InstructionsFile),
-		filepath.Join(cwd, brand.LegacyDeepSeekConfigDirName, brand.LegacyDeepSeekInstructionsFile),
-		filepath.Join(cwd, brand.LegacyConfigDirName, brand.LegacyInstructionsFile),
 		filepath.Join(home, brand.ConfigDirName, brand.InstructionsFile),
-		filepath.Join(home, brand.LegacyDeepSeekConfigDirName, brand.LegacyDeepSeekInstructionsFile),
-		filepath.Join(home, brand.LegacyConfigDirName, brand.LegacyInstructionsFile),
 	}
 
 	var found []string
@@ -453,7 +349,7 @@ func checkConfig(cwd string, lang i18n.Language) checkResult {
 		break
 	}
 
-	for _, p := range claudeMD {
+	for _, p := range instructions {
 		if _, err := os.Stat(p); err == nil {
 			found = append(found, filepath.Base(p))
 			break
@@ -473,17 +369,4 @@ func checkConfig(cwd string, lang i18n.Language) checkResult {
 	r.ok = true
 	r.message = i18n.Format(lang, i18n.KeyDoctorConfigValid, strings.Join(found, ", "))
 	return r
-}
-
-func firstReadableFile(paths []string) (string, []byte, error) {
-	for _, path := range paths {
-		data, err := os.ReadFile(path)
-		if err == nil {
-			return path, data, nil
-		}
-		if !os.IsNotExist(err) {
-			return path, nil, err
-		}
-	}
-	return "", nil, os.ErrNotExist
 }

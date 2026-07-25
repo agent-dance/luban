@@ -420,12 +420,6 @@ func ParseAndGenerate(filename, source string) ([]byte, error) {
 	return parseAndGenerate(filename, source, false)
 }
 
-// parseAndGenerateSkipImports is like ParseAndGenerate but uses format.Source
-// instead of imports.Process. This is much faster for tests.
-func parseAndGenerateSkipImports(filename, source string) ([]byte, error) {
-	return parseAndGenerate(filename, source, true)
-}
-
 func parseAndGenerate(filename, source string, skipImports bool) ([]byte, error) {
 	lexer := NewLexer(filename, source)
 	parser := NewParser(lexer)

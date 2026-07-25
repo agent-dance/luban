@@ -8,16 +8,17 @@ import (
 	"sort"
 	"strings"
 
-	svcmcp "github.com/agent-dance/luban/services/mcp"
+	"github.com/agent-dance/luban/internal/mcp/catalog"
+	mcpmanager "github.com/agent-dance/luban/internal/mcp/manager"
 )
 
-// DiscoverMCPPromptCatalogInputsFromConnections resolves prompts/get with
+// discoverMCPPromptCatalogInputsFromConnections resolves prompts/get with
 // stable placeholder values, turning the exact remotely returned template into
 // the Skill body. SkillTool later substitutes those named placeholders with
 // invocation arguments, so prompt-backed and resource-backed MCP skills share
 // one execution and revision contract.
-func DiscoverMCPPromptCatalogInputsFromConnections(ctx context.Context, states []svcmcp.MCPServerConnection) ([]MCPCatalogInput, error) {
-	if !MCPSkillsFeatureEnabled() {
+func discoverMCPPromptCatalogInputsFromConnections(ctx context.Context, states []mcpmanager.MCPServerConnection) ([]MCPCatalogInput, error) {
+	if !mcpSkillsFeatureEnabled() {
 		return nil, nil
 	}
 	if ctx == nil {
@@ -26,10 +27,10 @@ func DiscoverMCPPromptCatalogInputsFromConnections(ctx context.Context, states [
 	var out []MCPCatalogInput
 	var errs []error
 	for _, state := range states {
-		if state.Type != svcmcp.MCPStateConnected || state.Client == nil || !mcpCapabilityExists(state.Capabilities, "prompts") {
+		if state.Type != mcpmanager.MCPStateConnected || state.Client == nil || !mcpCapabilityExists(state.Capabilities, "prompts") {
 			continue
 		}
-		prompts := append([]svcmcp.PromptDefinition(nil), state.Prompts...)
+		prompts := append([]catalog.PromptDefinition(nil), state.Prompts...)
 		if len(prompts) == 0 {
 			result, err := state.Client.ListPrompts(ctx)
 			if err != nil {
@@ -61,10 +62,7 @@ func DiscoverMCPPromptCatalogInputsFromConnections(ctx context.Context, states [
 			if description == "" {
 				description = strings.TrimSpace(result.Description)
 			}
-			input, inputErr := (MCPPrompt{
-				Server: state.Name, Name: name, Description: description,
-				WhenToUse: description, ArgNames: argNames, Body: body,
-			}).CatalogInput()
+			input, inputErr := NewMCPPromptCatalogInput(state.Name, name, description, argNames, body)
 			if inputErr != nil {
 				errs = append(errs, fmt.Errorf("skills: catalog MCP prompt %s from %s: %w", name, state.Name, inputErr))
 				continue
@@ -78,9 +76,9 @@ func DiscoverMCPPromptCatalogInputsFromConnections(ctx context.Context, states [
 
 // DiscoverMCPCatalogInputsFromConnections resolves both MCP prompt templates
 // and skill:// resources as one all-or-nothing projection.
-func DiscoverMCPCatalogInputsFromConnections(ctx context.Context, states []svcmcp.MCPServerConnection) ([]MCPCatalogInput, error) {
-	resourceInputs, resourceErr := DiscoverMCPSkillCatalogInputsFromConnections(ctx, states)
-	promptInputs, promptErr := DiscoverMCPPromptCatalogInputsFromConnections(ctx, states)
+func DiscoverMCPCatalogInputsFromConnections(ctx context.Context, states []mcpmanager.MCPServerConnection) ([]MCPCatalogInput, error) {
+	resourceInputs, resourceErr := discoverMCPResourceCatalogInputsFromConnections(ctx, states)
+	promptInputs, promptErr := discoverMCPPromptCatalogInputsFromConnections(ctx, states)
 	if err := errors.Join(resourceErr, promptErr); err != nil {
 		return nil, err
 	}
@@ -89,7 +87,7 @@ func DiscoverMCPCatalogInputsFromConnections(ctx context.Context, states []svcmc
 	return inputs, nil
 }
 
-func mcpPromptArgumentNames(arguments []svcmcp.PromptArgument) []string {
+func mcpPromptArgumentNames(arguments []catalog.PromptArgument) []string {
 	out := make([]string, 0, len(arguments))
 	for _, argument := range arguments {
 		if name := strings.TrimSpace(argument.Name); name != "" {
@@ -99,7 +97,7 @@ func mcpPromptArgumentNames(arguments []svcmcp.PromptArgument) []string {
 	return out
 }
 
-func mcpPromptTemplateBody(messages []svcmcp.PromptMessage) string {
+func mcpPromptTemplateBody(messages []catalog.PromptMessage) string {
 	parts := make([]string, 0, len(messages))
 	for _, message := range messages {
 		body := mcpPromptContentText(message.Content)
@@ -114,7 +112,7 @@ func mcpPromptTemplateBody(messages []svcmcp.PromptMessage) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func mcpPromptContentText(content svcmcp.PromptContent) string {
+func mcpPromptContentText(content catalog.PromptContent) string {
 	switch content.Type {
 	case "text":
 		return content.Text

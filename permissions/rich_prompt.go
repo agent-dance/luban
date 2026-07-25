@@ -2,6 +2,7 @@ package permissions
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"strings"
@@ -26,8 +27,7 @@ var (
 			Padding(0, 1)
 )
 
-// RichPrompt is a styled, risk-aware interactive permission prompt that
-// implements the same promptFunc signature used by Checker.SetPromptFunc.
+// RichPrompt is a styled, risk-aware interactive permission prompt.
 type RichPrompt struct {
 	w       io.Writer
 	scanner *bufio.Scanner
@@ -39,11 +39,14 @@ func NewRichPrompt(w io.Writer, r io.Reader) *RichPrompt {
 	return &RichPrompt{w: w, scanner: bufio.NewScanner(r)}
 }
 
-// PromptFunc returns a function compatible with Checker.SetPromptFunc.
-func (rp *RichPrompt) PromptFunc() func(toolName string, input map[string]any) Decision {
-	return func(toolName string, input map[string]any) Decision {
-		return rp.ask(toolName, input)
+// DecisionRequest implements the structured permission prompt contract.
+func (rp *RichPrompt) DecisionRequest(ctx context.Context, request PromptRequest) PromptResponse {
+	if err := ctx.Err(); err != nil {
+		return PromptResponse{DecisionID: request.DecisionID, Decision: DecisionDeny, Outcome: PromptOutcomeCancelled}
 	}
+	response := responseForDecision(rp.ask(request.ToolName, request.Input))
+	response.DecisionID = request.DecisionID
+	return response
 }
 
 // ask displays the rich prompt and returns the user's Decision.
@@ -51,7 +54,7 @@ func (rp *RichPrompt) ask(toolName string, input map[string]any) Decision {
 	rp.mu.Lock()
 	defer rp.mu.Unlock()
 
-	risk := ClassifyRisk(toolName, input)
+	risk := classifyRisk(toolName, input)
 	preview := previewFor(toolName, input)
 	lang := i18n.DetectOrLoadLanguage()
 
@@ -127,7 +130,7 @@ func (rp *RichPrompt) buildDetail(toolName string, input map[string]any) string 
 			}
 			return cmd
 		}
-	case "Write", "Edit", "Read", "FileRead", "FileWrite", "FileEdit":
+	case "Write", "Edit", "Read":
 		if fp, ok := input["file_path"].(string); ok {
 			return fp
 		}
@@ -141,10 +144,6 @@ func (rp *RichPrompt) buildDetail(toolName string, input map[string]any) string 
 	case "Glob":
 		if pat, ok := input["pattern"].(string); ok {
 			return "pattern=" + pat
-		}
-	case "HttpGet", "HttpPost":
-		if url, ok := input["url"].(string); ok {
-			return url
 		}
 	case "SendMessage":
 		target := sendMessageTarget(input)

@@ -15,18 +15,29 @@ func TestSDKBrandKeysCoverEveryLanguage(t *testing.T) {
 		KeySDKInvalidJSONEnvelope,
 		KeySDKUnknownMessageType,
 		KeySDKParseUserMessage,
+		KeySDKUserUUIDRequired,
 		KeySDKExtractMessageText,
+		KeySDKUnsupportedMessageContent,
 		KeySDKStreamEndedWithoutFinalEvent,
+		KeySDKQueryCancelled,
+		KeySDKQueryAlreadyActive,
 		KeySDKParseControlRequest,
+		KeySDKControlRequestIDRequired,
+		KeySDKControlRequestIDConflict,
 		KeySDKParseRequestSubtype,
 		KeySDKUnsupportedControlSubtype,
+		KeySDKControlUnavailableDuringQuery,
 		KeySDKParseControlPayload,
 		KeySDKMarshalInitializeResponse,
 		KeySDKMarshalResumeResponse,
+		KeySDKMarshalCompactResponse,
 		KeySDKMarshalContextUsage,
 		KeySDKParseControlResponse,
 		KeySDKUnrecognizedControlResponsePayload,
 		KeySDKMarshalOutput,
+		KeySDKWriteOutput,
+		KeySDKServeAlreadyStarted,
+		KeySDKPermissionDuplicateRequestID,
 	}
 
 	for _, key := range keys {
@@ -50,24 +61,37 @@ func TestSDKBrandEnglishCopyRemainsCompatible(t *testing.T) {
 		KeySDKInvalidJSONEnvelope:                "sdk: invalid JSON envelope: raw-error",
 		KeySDKUnknownMessageType:                 `sdk: unknown message type "raw-value"`,
 		KeySDKParseUserMessage:                   "sdk: parse user message: raw-error",
+		KeySDKUserUUIDRequired:                   "user message uuid is required",
 		KeySDKExtractMessageText:                 "sdk: extract message text: raw-error",
+		KeySDKUnsupportedMessageContent:          "unsupported user message content",
 		KeySDKStreamEndedWithoutFinalEvent:       "stream ended without final event",
+		KeySDKQueryCancelled:                     "query cancelled",
+		KeySDKQueryAlreadyActive:                 "another query is already running",
 		KeySDKParseControlRequest:                "sdk: parse control_request: raw-error",
+		KeySDKControlRequestIDRequired:           "control request_id is required",
+		KeySDKControlRequestIDConflict:           `control request ID "raw-value" was reused with a different payload`,
 		KeySDKParseRequestSubtype:                "parse request subtype: raw-error",
 		KeySDKUnsupportedControlSubtype:          `unsupported control subtype "raw-value"`,
+		KeySDKControlUnavailableDuringQuery:      `control subtype "raw-value" is unavailable while a query is running`,
 		KeySDKParseControlPayload:                "parse raw-value: raw-error",
 		KeySDKMarshalInitializeResponse:          "marshal initialize response: raw-error",
 		KeySDKMarshalResumeResponse:              "marshal resume response: raw-error",
+		KeySDKMarshalCompactResponse:             "marshal compact response: raw-error",
 		KeySDKMarshalContextUsage:                "marshal context usage: raw-error",
 		KeySDKParseControlResponse:               "sdk: parse control_response: raw-error",
 		KeySDKUnrecognizedControlResponsePayload: "sdk: unrecognized control_response payload: raw-value",
 		KeySDKMarshalOutput:                      "sdk: marshal output: raw-error",
+		KeySDKWriteOutput:                        "sdk: write output: raw-error",
+		KeySDKServeAlreadyStarted:                "sdk server can only be served once",
+		KeySDKPermissionDuplicateRequestID:       `sdk: permission request ID "raw-value" is already pending`,
 	}
 
 	for key, expected := range want {
 		var got string
 		switch key {
-		case KeySDKUnknownMessageType, KeySDKUnsupportedControlSubtype:
+		case KeySDKUnknownMessageType, KeySDKUnsupportedControlSubtype,
+			KeySDKControlUnavailableDuringQuery, KeySDKPermissionDuplicateRequestID,
+			KeySDKControlRequestIDConflict:
 			got = Format(LangEN, key, "raw-value")
 		case KeySDKParseControlPayload:
 			got = Format(LangEN, key, "raw-value", errors.New("raw-error"))
@@ -75,8 +99,8 @@ func TestSDKBrandEnglishCopyRemainsCompatible(t *testing.T) {
 			got = Format(LangEN, key, "raw-value")
 		case KeySDKStdinReadError, KeySDKInvalidJSONEnvelope, KeySDKParseUserMessage,
 			KeySDKExtractMessageText, KeySDKParseControlRequest, KeySDKParseRequestSubtype,
-			KeySDKMarshalInitializeResponse, KeySDKMarshalResumeResponse, KeySDKMarshalContextUsage,
-			KeySDKParseControlResponse, KeySDKMarshalOutput:
+			KeySDKMarshalInitializeResponse, KeySDKMarshalResumeResponse, KeySDKMarshalCompactResponse, KeySDKMarshalContextUsage,
+			KeySDKParseControlResponse, KeySDKMarshalOutput, KeySDKWriteOutput:
 			got = Format(LangEN, key, errors.New("raw-error"))
 		default:
 			got = Text(LangEN, key)

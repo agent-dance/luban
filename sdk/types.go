@@ -4,9 +4,6 @@ package sdk
 
 import (
 	"encoding/json"
-
-	"github.com/agent-dance/luban/runtimeevent"
-	"github.com/agent-dance/luban/types"
 )
 
 // ─── Stdin messages (Client → Server) ───────────────────────────────────────
@@ -16,18 +13,18 @@ type SDKUserMessage struct {
 	Type      string          `json:"type"` // "user"
 	Message   json.RawMessage `json:"message"`
 	SessionID string          `json:"session_id,omitempty"`
-	UUID      string          `json:"uuid,omitempty"`
+	UUID      string          `json:"uuid"`
 }
 
-// SDKControlRequest wraps a typed control request from the client.
+// SDKControlRequest wraps a typed control request. Clients send runtime
+// controls; the server uses the same envelope for permission challenges.
 type SDKControlRequest struct {
 	Type      string          `json:"type"` // "control_request"
 	RequestID string          `json:"request_id"`
 	Request   json.RawMessage `json:"request"` // peek "subtype" to route
 }
 
-// SDKControlResponse wraps a typed control response from the client.
-// Used to deliver permission decisions (and other replies) back to the server.
+// SDKControlResponse wraps a typed control response in either direction.
 type SDKControlResponse struct {
 	Type     string          `json:"type"`     // "control_response"
 	Response json.RawMessage `json:"response"` // ControlSuccess or ControlError
@@ -91,24 +88,33 @@ type CompactRequest struct {
 	SessionID string `json:"session_id"`
 }
 
+// CompactResponse is the payload in ControlSuccess.Response for "compact".
+// ContextGeneration is omitted when the runtime has no persisted generation
+// authority for the session.
+type CompactResponse struct {
+	SessionID          string `json:"session_id"`
+	Compacted          bool   `json:"compacted"`
+	BeforeMessageCount int    `json:"before_message_count"`
+	AfterMessageCount  int    `json:"after_message_count"`
+	ContextGeneration  uint64 `json:"context_generation,omitempty"`
+}
+
 // GetContextUsageRequest asks for token usage stats for a session.
 type GetContextUsageRequest struct {
 	Subtype   string `json:"subtype"` // "get_context_usage"
 	SessionID string `json:"session_id,omitempty"`
 }
 
-// PermissionResultMsg is the client's reply to a can_use_tool request.
-// It arrives either as a control_response or embedded inside a control_request.
+// PermissionResultMsg is the result nested in ControlSuccess.Response for a
+// can_use_tool challenge. Correlation belongs to ControlSuccess.RequestID.
 type PermissionResultMsg struct {
-	Subtype   string `json:"subtype"` // "can_use_tool"
-	RequestID string `json:"request_id"`
-	Behavior  string `json:"behavior"`          // "allow" | "deny"
-	Message   string `json:"message,omitempty"` // human-readable reason (deny only)
+	Behavior string `json:"behavior"`          // "allow" | "deny"
+	Message  string `json:"message,omitempty"` // human-readable reason (deny only)
 }
 
 // ─── Control response inner types ───────────────────────────────────────────
 
-// ControlSuccess wraps a successful response payload sent to the client.
+// ControlSuccess wraps a successful control response payload.
 type ControlSuccess struct {
 	Subtype   string          `json:"subtype"` // "success"
 	RequestID string          `json:"request_id"`
@@ -134,90 +140,64 @@ type InitializeResponse struct {
 
 // ─── Stdout messages (Server → Client) ──────────────────────────────────────
 
-// SDKAssistantMessage is a complete or streaming assistant turn.
-type SDKAssistantMessage struct {
-	Type      string          `json:"type"`    // "assistant"
-	Message   json.RawMessage `json:"message"` // API-format message object
-	SessionID string          `json:"session_id"`
-	UUID      string          `json:"uuid"`
-}
-
 // SDKResultMessage is the terminal message for a query stream.
 type SDKResultMessage struct {
-	Type         string   `json:"type"`    // "result"
-	Subtype      string   `json:"subtype"` // "success" | "error_during_execution" | ...
-	SessionID    string   `json:"session_id"`
-	ProjectRoot  string   `json:"project_root,omitempty"`
-	UUID         string   `json:"uuid"`
-	IsError      bool     `json:"is_error"`
-	Result       string   `json:"result,omitempty"` // last text output on success
-	NumTurns     int      `json:"num_turns"`
-	DurationMs   float64  `json:"duration_ms"`
-	TotalCostUSD float64  `json:"total_cost_usd"`
-	Errors       []string `json:"errors,omitempty"` // populated on error subtypes
+	Type        string   `json:"type"`    // "result"
+	Subtype     string   `json:"subtype"` // "success" | "error_during_execution" | ...
+	SessionID   string   `json:"session_id"`
+	ProjectRoot string   `json:"project_root,omitempty"`
+	UUID        string   `json:"uuid"`
+	IsError     bool     `json:"is_error"`
+	Result      string   `json:"result,omitempty"` // last text output on success
+	NumTurns    int      `json:"num_turns"`
+	DurationMs  float64  `json:"duration_ms"`
+	Errors      []string `json:"errors,omitempty"` // populated on error subtypes
 }
 
 // SDKSystemMessage carries system-level notifications (init, error, status).
 type SDKSystemMessage struct {
-	Type        string          `json:"type"`    // "system"
-	Subtype     string          `json:"subtype"` // "init" | "error" | "status"
-	Message     string          `json:"message,omitempty"`
-	SessionID   string          `json:"session_id,omitempty"`
-	ProjectRoot string          `json:"project_root,omitempty"`
-	UUID        string          `json:"uuid,omitempty"`
-	TurnID      string          `json:"turn_id,omitempty"`
-	ToolUseID   string          `json:"tool_use_id,omitempty"`
-	ActorID     string          `json:"actor_id,omitempty"`
-	ActorType   string          `json:"actor_type,omitempty"`
-	WorkUnitID  string          `json:"work_unit_id,omitempty"`
-	Error       *types.APIError `json:"error,omitempty"`
-	Metadata    map[string]any  `json:"metadata,omitempty"`
+	Type       string `json:"type"`    // "system"
+	Subtype    string `json:"subtype"` // "init" | "error" | "status" | "warning"
+	Message    string `json:"message,omitempty"`
+	SessionID  string `json:"session_id,omitempty"`
+	TurnID     string `json:"turn_id,omitempty"`
+	ToolUseID  string `json:"tool_use_id,omitempty"`
+	ActorID    string `json:"actor_id,omitempty"`
+	ActorType  string `json:"actor_type,omitempty"`
+	WorkUnitID string `json:"work_unit_id,omitempty"`
 	// RuntimeEvent is the explicit audience/redaction projection for runtime
-	// failures and warnings. Default SDK output never populates Error, Metadata,
-	// or ProjectRoot from a loop error/warning event.
-	RuntimeEvent *runtimeevent.ProjectedRuntimeEvent `json:"runtime_event,omitempty"`
-	// init-specific
-	Tools []string `json:"tools,omitempty"`
-	Model string   `json:"model,omitempty"`
-}
-
-// SDKControlRequestOut is a control_request sent from server → client.
-// Currently used for can_use_tool permission challenges.
-type SDKControlRequestOut struct {
-	Type      string          `json:"type"` // "control_request"
-	RequestID string          `json:"request_id"`
-	Request   json.RawMessage `json:"request"`
+	// failures and warnings.
+	RuntimeEvent *ProjectedRuntimeEvent `json:"runtime_event,omitempty"`
 }
 
 // PermissionRequestMsg is the can_use_tool challenge sent to the client.
 type PermissionRequestMsg struct {
-	Subtype            string                   `json:"subtype"` // "can_use_tool"
-	SessionID          string                   `json:"session_id,omitempty"`
-	ExecutionSessionID string                   `json:"execution_session_id,omitempty"`
-	TurnID             string                   `json:"turn_id,omitempty"`
-	DecisionID         string                   `json:"decision_id,omitempty"`
-	RequestID          string                   `json:"request_id"`
-	ToolName           string                   `json:"tool_name"`
-	Input              map[string]any           `json:"input"`
-	ToolUseID          string                   `json:"tool_use_id"`
-	ActorID            string                   `json:"actor_id,omitempty"`
-	ActorType          string                   `json:"actor_type,omitempty"`
-	WorkUnitID         string                   `json:"work_unit_id,omitempty"`
-	Kind               string                   `json:"kind,omitempty"`
-	Action             string                   `json:"action,omitempty"`
-	Target             string                   `json:"target,omitempty"`
-	Impact             string                   `json:"impact,omitempty"`
-	RiskReason         string                   `json:"risk_reason,omitempty"`
-	RuleSource         string                   `json:"rule_source,omitempty"`
-	ApprovalScope      string                   `json:"approval_scope,omitempty"`
-	Choices            []string                 `json:"choices,omitempty"`
-	Body               string                   `json:"body,omitempty"`
-	ReviewDetails      []string                 `json:"review_details,omitempty"`
-	PostMode           string                   `json:"post_mode,omitempty"`
-	Description        string                   `json:"description,omitempty"`
-	Mode               string                   `json:"mode,omitempty"`
-	AvoidPrompts       bool                     `json:"avoid_prompts,omitempty"`
-	Message            string                   `json:"message,omitempty"`
-	Suggestions        []types.PermissionUpdate `json:"suggestions,omitempty"`
-	BlockedPath        string                   `json:"blocked_path,omitempty"`
+	Subtype            string             `json:"subtype"` // "can_use_tool"
+	SessionID          string             `json:"session_id,omitempty"`
+	ExecutionSessionID string             `json:"execution_session_id,omitempty"`
+	TurnID             string             `json:"turn_id,omitempty"`
+	DecisionID         string             `json:"decision_id,omitempty"`
+	ToolName           string             `json:"tool_name"`
+	Input              map[string]any     `json:"input"`
+	ToolUseID          string             `json:"tool_use_id"`
+	ActorID            string             `json:"actor_id,omitempty"`
+	ActorType          string             `json:"actor_type,omitempty"`
+	WorkUnitID         string             `json:"work_unit_id,omitempty"`
+	Kind               string             `json:"kind,omitempty"`
+	Action             string             `json:"action,omitempty"`
+	Target             string             `json:"target,omitempty"`
+	Impact             string             `json:"impact,omitempty"`
+	RiskReason         string             `json:"risk_reason,omitempty"`
+	RuleSource         string             `json:"rule_source,omitempty"`
+	ApprovalScope      string             `json:"approval_scope,omitempty"`
+	Choices            []string           `json:"choices,omitempty"`
+	Body               string             `json:"body,omitempty"`
+	ReviewDetails      []string           `json:"review_details,omitempty"`
+	PostMode           string             `json:"post_mode,omitempty"`
+	Description        string             `json:"description,omitempty"`
+	Mode               string             `json:"mode,omitempty"`
+	AvoidPrompts       bool               `json:"avoid_prompts,omitempty"`
+	Message            string             `json:"message,omitempty"`
+	Suggestions        []PermissionUpdate `json:"permission_suggestions,omitempty"`
+	BlockedPath        string             `json:"blocked_path,omitempty"`
 }

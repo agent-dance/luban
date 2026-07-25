@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// SubstituteArguments replaces $ARGUMENTS placeholders in skill content with
+// substituteArguments replaces $ARGUMENTS placeholders in skill content with
 // actual argument values. This aligns with TS substituteArguments in
 // src/utils/argumentSubstitution.ts.
 //
@@ -20,9 +20,9 @@ import (
 //
 // If args is nil (pointer), the content is returned unchanged.
 // If args points to an empty string, placeholders are replaced with empty strings.
-// If appendIfNoPlaceholder is true and no placeholders were found, "ARGUMENTS: {args}"
-// is appended to the content (only if args is non-empty).
-func SubstituteArguments(content string, args *string, appendIfNoPlaceholder bool, argNames []string) string {
+// When no placeholders are present, non-empty arguments are appended as an
+// ARGUMENTS block.
+func substituteArguments(content string, args *string, argNames []string) string {
 	// nil means no args provided — return content unchanged.
 	// Empty string is valid input that should replace placeholders with empty.
 	if args == nil {
@@ -30,7 +30,7 @@ func SubstituteArguments(content string, args *string, appendIfNoPlaceholder boo
 	}
 
 	argsStr := *args
-	parsedArgs := ParseArguments(argsStr)
+	parsedArgs := parseArguments(argsStr)
 	originalContent := content
 
 	// Step 1: Replace named arguments (e.g., $foo, $bar) with their values.
@@ -69,9 +69,8 @@ func SubstituteArguments(content string, args *string, appendIfNoPlaceholder boo
 	// Step 4: Replace $ARGUMENTS with the full arguments string
 	content = strings.ReplaceAll(content, "$ARGUMENTS", argsStr)
 
-	// Step 5: If no placeholders were found and appendIfNoPlaceholder is true,
-	// append "ARGUMENTS: {args}" (only if args is non-empty).
-	if content == originalContent && appendIfNoPlaceholder && argsStr != "" {
+	// Step 5: Append non-empty arguments when no placeholders were found.
+	if content == originalContent && argsStr != "" {
 		content = content + "\n\nARGUMENTS: " + argsStr
 	}
 
@@ -188,13 +187,13 @@ func replaceShorthandArgs(content string, parsedArgs []string) string {
 	return result.String()
 }
 
-// ParseArguments parses an arguments string into individual arguments.
+// parseArguments parses an arguments string into individual arguments.
 // Uses shell-like quoting: quoted strings ("..." or '...') are kept as
 // one token with quotes stripped, backslash escapes are supported outside
 // single quotes (matching TS shell-quote behavior). Unquoted text is
 // split by whitespace.
 // Aligns with TS parseArguments in src/utils/argumentSubstitution.ts.
-func ParseArguments(args string) []string {
+func parseArguments(args string) []string {
 	args = strings.TrimSpace(args)
 	if args == "" {
 		return nil
@@ -239,10 +238,10 @@ func ParseArguments(args string) []string {
 	return result
 }
 
-// ParseArgumentNames parses argument names from the frontmatter 'arguments' field.
+// parseArgumentNames parses argument names from the frontmatter 'arguments' field.
 // Filters out empty strings and numeric-only names (which conflict with $0, $1 shorthand).
 // Aligns with TS parseArgumentNames.
-func ParseArgumentNames(names []string) []string {
+func parseArgumentNames(names []string) []string {
 	var result []string
 	for _, name := range names {
 		name = strings.TrimSpace(name)
@@ -258,40 +257,25 @@ func ParseArgumentNames(names []string) []string {
 	return result
 }
 
-// GenerateProgressiveArgumentHint generates an argument hint showing remaining
-// unfilled args. Returns empty string if all arguments are filled.
-// Aligns with TS generateProgressiveArgumentHint.
-func GenerateProgressiveArgumentHint(argNames []string, typedArgs []string) string {
-	if len(typedArgs) >= len(argNames) {
-		return ""
-	}
-	remaining := argNames[len(typedArgs):]
-	parts := make([]string, len(remaining))
-	for i, name := range remaining {
-		parts[i] = "[" + name + "]"
-	}
-	return strings.Join(parts, " ")
-}
-
-// SubstituteVariables replaces template variables in skill content:
-//   - ${CLAUDE_SKILL_DIR} → skill directory path
-//   - ${CLAUDE_SESSION_ID} → current session ID
+// substituteVariables replaces template variables in skill content:
+//   - ${LUBAN_SKILL_DIR} → skill directory path
+//   - ${LUBAN_SESSION_ID} → current session ID
 //
 // On Windows, backslashes in skillDir are normalized to forward slashes.
 // Aligns with TS getPromptForCommand in src/skills/loadSkillsDir.ts.
-func SubstituteVariables(content, skillDir, sessionID string) string {
-	// Replace ${CLAUDE_SKILL_DIR}
+func substituteVariables(content, skillDir, sessionID string) string {
+	// Replace ${LUBAN_SKILL_DIR}
 	if skillDir != "" {
 		dir := skillDir
 		if runtime.GOOS == "windows" {
 			dir = strings.ReplaceAll(dir, `\`, "/")
 		}
-		content = strings.ReplaceAll(content, "${CLAUDE_SKILL_DIR}", dir)
+		content = strings.ReplaceAll(content, "${LUBAN_SKILL_DIR}", dir)
 	}
 
-	// Replace ${CLAUDE_SESSION_ID}
+	// Replace ${LUBAN_SESSION_ID}
 	if sessionID != "" {
-		content = strings.ReplaceAll(content, "${CLAUDE_SESSION_ID}", sessionID)
+		content = strings.ReplaceAll(content, "${LUBAN_SESSION_ID}", sessionID)
 	}
 
 	return content
@@ -301,10 +285,10 @@ func SubstituteVariables(content, skillDir, sessionID string) string {
 // This is the Go equivalent of the TS getPromptForCommand callback:
 //
 //  1. Prepend base-dir header (if skillDir is set)
-//  2. SubstituteArguments (named, indexed, shorthand, $ARGUMENTS, fallback append)
-//  3. SubstituteVariables (${CLAUDE_SKILL_DIR}, ${CLAUDE_SESSION_ID})
+//  2. Argument substitution (named, indexed, shorthand, $ARGUMENTS, fallback append)
+//  3. Runtime variable substitution (${LUBAN_SKILL_DIR}, ${LUBAN_SESSION_ID})
 //
-// Shell command execution (``!`cmd` `` and ``` ```! cmd ``` ```) is NOT performed
+// Shell command execution (“!`cmd` “ and ``` ```! cmd ``` ```) is NOT performed
 // here — it requires integration with the permission system and BashTool, which
 // is handled at the tool execution layer.
 func PrepareSkillContent(skill *Skill, args *string, sessionID string) string {
@@ -316,32 +300,11 @@ func PrepareSkillContent(skill *Skill, args *string, sessionID string) string {
 	}
 
 	// Step 2: Substitute arguments
-	argNames := ParseArgumentNames(skill.ArgNames)
-	content = SubstituteArguments(content, args, true, argNames)
+	argNames := parseArgumentNames(skill.ArgNames)
+	content = substituteArguments(content, args, argNames)
 
 	// Step 3: Substitute variables
-	content = SubstituteVariables(content, skill.SkillDir, sessionID)
+	content = substituteVariables(content, skill.SkillDir, sessionID)
 
 	return content
-}
-
-// Shell command patterns for future implementation.
-// These match the TS BLOCK_PATTERN and INLINE_PATTERN in promptShellExecution.ts.
-var (
-	// ```! command ``` — code block shell command
-	ShellBlockPattern = regexp.MustCompile("(?s)```!\\s*\n?([\\s\\S]*?)\n?```")
-
-	// !`command` — inline shell command (preceded by whitespace or start of line)
-	ShellInlinePattern = regexp.MustCompile("(?m)(?:^|\\s)!`([^`]+)`")
-)
-
-// HasShellCommands reports whether the content contains embedded shell commands
-// (``!`cmd` `` or ``` ```! cmd ``` ```). This can be used to check whether shell
-// execution is needed before performing the expensive permission/execution flow.
-func HasShellCommands(content string) bool {
-	// Fast path: check for !` substring (93% of skills have none)
-	if !strings.Contains(content, "!`") && !strings.Contains(content, "```!") {
-		return false
-	}
-	return ShellBlockPattern.MatchString(content) || ShellInlinePattern.MatchString(content)
 }

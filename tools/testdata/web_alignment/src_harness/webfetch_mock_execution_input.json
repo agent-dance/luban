@@ -1,5 +1,0 @@
-{
-  "url": "https://example.com",
-  "prompt": "summarize",
-  "mock_result": "Provider fetched summary for summarize"
-}

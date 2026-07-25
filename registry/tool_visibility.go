@@ -7,30 +7,20 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/contracts/toolmeta"
 	"github.com/agent-dance/luban/types"
 )
 
-// ToolDiscoveryMetadata mirrors the subset of original tool-search metadata we
-// need for deferred discovery and ranking.
-type ToolDiscoveryMetadata struct {
-	ShouldDefer bool
-	AlwaysLoad  bool
-	SearchHint  string
-}
-
 type toolDiscoveryMetadataProvider interface {
-	ToolDiscoveryMetadata() ToolDiscoveryMetadata
+	ToolDiscoveryMetadata() toolmeta.Metadata
 }
 
 type toolPermissionIdentityProvider interface {
 	ToolPermissionIdentity() string
 }
-
-type permissionCommitContextKey struct{}
 
 type permissionGrantRecord struct {
 	toolName       string
@@ -41,50 +31,6 @@ type permissionGrantRecord struct {
 	policyCode     string
 	expiresAt      time.Time
 	executable     bool
-}
-
-type permissionCommitReceipt struct {
-	mu       sync.Mutex
-	record   permissionGrantRecord
-	consumed bool
-}
-
-// PermissionCommitStatus distinguishes an ordinary direct call from a
-// present-but-invalid approval receipt. Consumers may apply their conservative
-// direct-execution policy only to Absent; Invalid always fails closed.
-type PermissionCommitStatus uint8
-
-const (
-	PermissionCommitAbsent PermissionCommitStatus = iota
-	PermissionCommitValid
-	PermissionCommitInvalid
-)
-
-func withPermissionCommit(ctx context.Context, record permissionGrantRecord) context.Context {
-	return context.WithValue(ctx, permissionCommitContextKey{}, &permissionCommitReceipt{record: record})
-}
-
-// ConsumePermissionCommit validates and atomically consumes the exact receipt
-// installed by Registry dispatch. A custom Context cannot forge the private
-// receipt type, and the same receipt cannot be replayed or crossed to a second
-// tool/input/policy decision.
-func ConsumePermissionCommit(ctx context.Context, toolName string, input map[string]any, policyCode string) PermissionCommitStatus {
-	receipt, ok := ctx.Value(permissionCommitContextKey{}).(*permissionCommitReceipt)
-	if !ok || receipt == nil {
-		return PermissionCommitAbsent
-	}
-	digest, digestOK := shellPermissionDigest(toolName, input)
-	receipt.mu.Lock()
-	defer receipt.mu.Unlock()
-	if receipt.consumed {
-		return PermissionCommitInvalid
-	}
-	receipt.consumed = true
-	if digestOK && receipt.record.toolName == toolName && receipt.record.digest == digest &&
-		receipt.record.policyCode == policyCode && receipt.record.executable {
-		return PermissionCommitValid
-	}
-	return PermissionCommitInvalid
 }
 
 func shellPermissionDigest(toolName string, input map[string]any) ([32]byte, bool) {
@@ -112,11 +58,6 @@ func permissionBindingForRequest(request types.ToolPermissionRequest) types.Tool
 }
 
 const maxPermissionGrants = 4096
-
-func (r *Registry) issuePermissionGrant(toolName string, input map[string]any, binding types.ToolPermissionBinding, policyCode string, executable bool) string {
-	_, canonical, generation := r.getWithGeneration(toolName)
-	return r.issuePermissionGrantAtGeneration(toolName, canonical, generation, input, binding, policyCode, executable)
-}
 
 func (r *Registry) issuePermissionGrantAtGeneration(toolName, canonical string, generation uint64, input map[string]any, binding types.ToolPermissionBinding, policyCode string, executable bool) string {
 	if r == nil || toolName == "" {
@@ -236,7 +177,7 @@ func permissionOwnerBindingValid(binding types.ToolPermissionBinding, runtime ty
 	return runtimeOwner == owner
 }
 
-var builtinToolDiscoveryMetadata = map[string]ToolDiscoveryMetadata{
+var builtinToolDiscoveryMetadata = map[string]toolmeta.Metadata{
 	"AskUserQuestion":      {ShouldDefer: true, SearchHint: "ask user question decision choices confirmation interview prompt"},
 	"Config":               {ShouldDefer: true, SearchHint: "config configuration settings get set runtime preferences"},
 	"CreateGoal":           {AlwaysLoad: true, SearchHint: "create a persisted session goal when explicitly requested"},
@@ -252,7 +193,6 @@ var builtinToolDiscoveryMetadata = map[string]ToolDiscoveryMetadata{
 	"Grep":                 {SearchHint: "search file contents with regex (ripgrep)"},
 	"LSP":                  {ShouldDefer: true, SearchHint: "language server symbols definitions references diagnostics rename"},
 	"ListMcpResourcesTool": {ShouldDefer: true, SearchHint: "list resources from connected MCP servers"},
-	"MCPTool":              {ShouldDefer: true, SearchHint: "legacy generic mcp server tool call compatibility fallback"},
 	"NotebookEdit":         {ShouldDefer: true, SearchHint: "notebook jupyter ipynb cell output edit"},
 	"Read":                 {ShouldDefer: true, SearchHint: "read files, images, PDFs, notebooks"},
 	"ReadMcpResourceTool":  {ShouldDefer: true, SearchHint: "read a specific MCP resource by URI"},
@@ -266,14 +206,13 @@ var builtinToolDiscoveryMetadata = map[string]ToolDiscoveryMetadata{
 	"TaskUpdate":           {ShouldDefer: true, SearchHint: "task update status metadata progress work item"},
 	"TeamCreate":           {ShouldDefer: true, SearchHint: "team create swarm teammates collaboration"},
 	"TeamDelete":           {ShouldDefer: true, SearchHint: "team delete cleanup swarm teammates collaboration"},
-	"TodoWrite":            {ShouldDefer: true, SearchHint: "todo checklist tasks plan items write update"},
 	"UpdateGoal":           {AlwaysLoad: true, SearchHint: "revise goal acceptance criteria or mark the goal complete or blocked"},
 	"WebFetch":             {ShouldDefer: true, SearchHint: "web fetch page url article website read"},
 	"WebSearch":            {ShouldDefer: true, SearchHint: "web search internet query results search engine"},
 }
 
 // DiscoveryMetadata returns the merged discovery metadata for a tool.
-func DiscoveryMetadata(tool types.Tool) ToolDiscoveryMetadata {
+func DiscoveryMetadata(tool types.Tool) toolmeta.Metadata {
 	meta := builtinToolDiscoveryMetadata[tool.Name()]
 	if provider, ok := tool.(toolDiscoveryMetadataProvider); ok {
 		override := provider.ToolDiscoveryMetadata()
@@ -337,9 +276,6 @@ func toolPermissionNames(tool types.Tool) []string {
 	names := []string{tool.Name()}
 	if identity := PermissionIdentity(tool); identity != "" && identity != tool.Name() {
 		names = append(names, identity)
-	}
-	if aliased, ok := tool.(types.AliasedTool); ok {
-		names = append(names, aliased.Aliases()...)
 	}
 	return names
 }
@@ -445,10 +381,6 @@ func (r *Registry) IsToolEnabled(tool types.Tool) bool {
 	}
 
 	switch tool.Name() {
-	case "TaskCreate", "TaskGet", "TaskList", "TaskUpdate":
-		return featureEnabled(runtime, types.ToolFeatureTaskV2, true)
-	case "TodoWrite":
-		return !featureEnabled(runtime, types.ToolFeatureTaskV2, false)
 	case "TeamCreate", "TeamDelete", "SendMessage":
 		return featureEnabled(runtime, types.ToolFeatureTeams, true)
 	case "RemoteTrigger":
@@ -499,8 +431,8 @@ func (r *Registry) EnabledDefinitions() []types.ToolDefinition {
 }
 
 // VisibleTools returns the tools that should be visible to the model for the
-// current loaded-tool set. If ToolSearch is not registered, all tools remain
-// visible for backward compatibility.
+// current loaded-tool set. When ToolSearch is not enabled, deferred discovery
+// is unavailable, so every runtime-enabled tool is visible.
 func (r *Registry) VisibleTools(loaded map[string]struct{}) []types.Tool {
 	all := r.All()
 	toolSearchEnabled := r.IsToolEnabled(r.Get("ToolSearch"))
@@ -527,9 +459,8 @@ func (r *Registry) VisibleDefinitions(loaded map[string]struct{}) []types.ToolDe
 	return types.ToDefinitions(r.VisibleTools(loaded))
 }
 
-// DeferredTools returns the registry tools that still participate in
-// ToolSearch. Already-loaded tools remain discoverable as harmless no-op
-// selections, mirroring the original behavior.
+// DeferredTools returns every registry tool that participates in ToolSearch.
+// Already-loaded tools remain discoverable so repeated selections are no-ops.
 func (r *Registry) DeferredTools() []types.Tool {
 	all := r.All()
 	deferred := make([]types.Tool, 0, len(all))
@@ -543,27 +474,32 @@ func (r *Registry) DeferredTools() []types.Tool {
 
 // CheckToolPermissions is the single tool-specific pre-execution path used by
 // the loop and direct registry dispatch.
-func (r *Registry) CheckToolPermissions(ctx context.Context, name string, input map[string]any, request types.ToolPermissionRequest) (types.ToolPermissionResult, error) {
+func (r *Registry) CheckToolPermissions(ctx context.Context, name string, input map[string]any, request types.ToolPermissionRequest) (permissionResult types.ToolPermissionResult, permissionErr error) {
 	tool, canonicalTool, toolGeneration := r.getWithGeneration(name)
 	if tool == nil {
-		// Preserve the registry's canonical unknown-tool result and available
-		// names list; ExecuteToolWithError owns that compatibility surface.
+		// ExecuteToolWithError owns the canonical unknown-tool result and
+		// runtime-enabled names list.
 		return types.ToolPermissionResult{Behavior: types.PermissionBehaviorPassthrough}, nil
 	}
+	request.Runtime = r.RuntimeContext()
+	metadata := r.ToolMetadata(tool.Name(), input)
+	defer func() {
+		snapshot := clonePermissionReviewRuntime(request.Runtime)
+		permissionResult.RuntimeSnapshot = &snapshot
+		permissionResult.ToolMetadata = metadata
+	}()
 	if !r.IsToolEnabled(tool) {
 		return types.ToolPermissionResult{
 			Behavior: types.PermissionBehaviorDeny,
 			Message:  i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolDisabled, tool.Name()),
 		}, nil
 	}
-	request.Runtime = r.RuntimeContext()
 	if runtimeOwner := strings.TrimSpace(request.Runtime.SessionID); runtimeOwner != "" && strings.TrimSpace(request.SessionID) == "" {
 		request.SessionID = runtimeOwner
 	}
 	binding := permissionBindingForRequest(request)
 	planDenied := false
 	if strings.EqualFold(strings.TrimSpace(request.Runtime.PermissionMode), "plan") && tool.Name() != "ExitPlanMode" {
-		metadata := r.ToolMetadata(tool.Name(), input)
 		planDenied = metadata.Write || metadata.Destructive
 	}
 	_, blanketDenied := matchingBlanketRule(tool, request.Runtime.DeniedRules)
@@ -629,9 +565,27 @@ func (r *Registry) CheckToolPermissions(ctx context.Context, name string, input 
 	return r.withPermissionGrantAtGeneration(result, tool.Name(), canonicalTool, toolGeneration, input, binding), nil
 }
 
-func (r *Registry) withPermissionGrant(result types.ToolPermissionResult, toolName string, input map[string]any, binding types.ToolPermissionBinding) types.ToolPermissionResult {
-	_, canonical, generation := r.getWithGeneration(toolName)
-	return r.withPermissionGrantAtGeneration(result, toolName, canonical, generation, input, binding)
+func clonePermissionReviewRuntime(source types.ToolRuntimeContext) types.ToolRuntimeContext {
+	cloned := source
+	cloned.AllowedDirs = append([]string(nil), source.AllowedDirs...)
+	cloned.Features = clonePermissionReviewMap(source.Features)
+	cloned.AllowedTools = clonePermissionReviewMap(source.AllowedTools)
+	cloned.DeniedTools = clonePermissionReviewMap(source.DeniedTools)
+	cloned.AllowedRules = append([]types.PermissionRuleValue(nil), source.AllowedRules...)
+	cloned.DeniedRules = append([]types.PermissionRuleValue(nil), source.DeniedRules...)
+	cloned.AskRules = append([]types.PermissionRuleValue(nil), source.AskRules...)
+	return cloned
+}
+
+func clonePermissionReviewMap(source map[string]bool) map[string]bool {
+	if source == nil {
+		return nil
+	}
+	cloned := make(map[string]bool, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
 }
 
 func (r *Registry) withPermissionGrantAtGeneration(result types.ToolPermissionResult, toolName, canonical string, generation uint64, input map[string]any, binding types.ToolPermissionBinding) types.ToolPermissionResult {
@@ -662,42 +616,9 @@ func (r *Registry) withPermissionGrantAtGeneration(result types.ToolPermissionRe
 	return result
 }
 
-var builtinToolMetadata = map[string]types.ToolMetadata{
-	"Read":                 {ReadOnly: true, ConcurrencySafe: true},
-	"Glob":                 {ReadOnly: true, Search: true, ConcurrencySafe: true},
-	"Grep":                 {ReadOnly: true, Search: true, ConcurrencySafe: true},
-	"WebFetch":             {ReadOnly: true, ConcurrencySafe: true},
-	"WebSearch":            {ReadOnly: true, Search: true, ConcurrencySafe: true},
-	"ToolSearch":           {ReadOnly: true, Search: true, ConcurrencySafe: true},
-	"TaskGet":              {ReadOnly: true, ConcurrencySafe: true},
-	"TaskList":             {ReadOnly: true, ConcurrencySafe: true},
-	"TaskOutput":           {ReadOnly: true, ConcurrencySafe: true},
-	"ListMcpResourcesTool": {ReadOnly: true, ConcurrencySafe: true},
-	"ReadMcpResourceTool":  {ReadOnly: true, ConcurrencySafe: true},
-	"AskUserQuestion":      {ReadOnly: true, ConcurrencySafe: true},
-	"EnterPlanMode":        {ReadOnly: true, ConcurrencySafe: true},
-	"GetGoal":              {ReadOnly: true, ConcurrencySafe: true},
-	"Write":                {Write: true},
-	"Edit":                 {Write: true},
-	"NotebookEdit":         {Write: true},
-	"TodoWrite":            {Write: true},
-	"TaskCreate":           {Write: true, ConcurrencySafe: true},
-	"TaskUpdate":           {Write: true, ConcurrencySafe: true},
-	"CreateGoal":           {Write: true},
-	"UpdateGoal":           {Write: true},
-	"CronCreate":           {Write: true},
-	"CronDelete":           {Write: true, Destructive: true},
-	"TeamCreate":           {Write: true},
-	"TeamDelete":           {Write: true, Destructive: true},
-	"TaskStop":             {Write: true, Destructive: true},
-	"ExitPlanMode":         {Write: true},
-	"EnterWorktree":        {Write: true},
-	"ExitWorktree":         {Write: true},
-	"RemoteTrigger":        {Write: true, ConcurrencySafe: true},
-}
-
-// ToolMetadata resolves input-aware metadata first, then shared legacy
-// interfaces, and finally the built-in table for Execute-only tools.
+// ToolMetadata returns the classification declared by the registered tool.
+// Built-in and dynamic tools own this metadata so scheduling and permission
+// behavior cannot silently depend on a registry-side name table.
 func (r *Registry) ToolMetadata(name string, input map[string]any) types.ToolMetadata {
 	tool := r.Get(name)
 	if tool == nil {
@@ -706,27 +627,5 @@ func (r *Registry) ToolMetadata(name string, input map[string]any) types.ToolMet
 	if provider, ok := tool.(types.ToolMetadataProvider); ok {
 		return provider.ToolMetadata(input)
 	}
-	metadata := builtinToolMetadata[tool.Name()]
-	if readOnly, declared := types.ToolReadOnly(tool, input); declared {
-		metadata.ReadOnly = readOnly
-		if readOnly {
-			metadata.Write = false
-		}
-	}
-	if concurrent, declared := types.ToolConcurrencySafety(tool, input); declared {
-		metadata.ConcurrencySafe = concurrent
-	}
-	if tool.Name() == "ExitWorktree" && strings.EqualFold(stringInput(input, "action"), "remove") {
-		metadata.Write = true
-		metadata.Destructive = true
-	}
-	return metadata
-}
-
-func stringInput(input map[string]any, key string) string {
-	if input == nil {
-		return ""
-	}
-	value, _ := input[key].(string)
-	return strings.TrimSpace(value)
+	return types.ToolMetadata{}
 }

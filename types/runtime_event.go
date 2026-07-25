@@ -3,7 +3,6 @@ package types
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -41,14 +40,6 @@ type RuntimeIdentity struct {
 	ActorType         string `json:"actor_type,omitempty"`
 }
 
-// RuntimeRemediation is a stable recovery action. Rendering of PublicKey and
-// PublicArgs is deferred until the final audience and language are known.
-type RuntimeRemediation struct {
-	Action     string   `json:"action"`
-	PublicKey  i18n.Key `json:"public_key"`
-	PublicArgs []any    `json:"public_args,omitempty"`
-}
-
 // RuntimeEvidenceRef is an opaque immutable evidence reference. It deliberately
 // carries no filesystem path; resolving it remains an audit/evidence capability.
 type RuntimeEvidenceRef struct {
@@ -65,9 +56,8 @@ type RuntimeEvent struct {
 	RuntimeIdentity
 	Outcome ToolOutcome `json:"outcome,omitempty"`
 
-	PublicKey   i18n.Key            `json:"public_key"`
-	PublicArgs  []any               `json:"public_args,omitempty"`
-	Remediation *RuntimeRemediation `json:"remediation,omitempty"`
+	PublicKey  i18n.Key `json:"public_key"`
+	PublicArgs []any    `json:"public_args,omitempty"`
 
 	DiagnosticCode  string              `json:"diagnostic_code"`
 	PrivateCause    error               `json:"-"`
@@ -112,8 +102,8 @@ func NewRuntimeEvent(kind RuntimeEventKind, identity RuntimeIdentity, outcome To
 }
 
 // NewToolResultRuntimeEvent adapts a tool result without inferring outcome from
-// IsError, payload fields, status strings, or diagnostic codes. Empty Outcome
-// remains empty so validation can reject or explicitly migrate legacy data.
+// IsError, payload fields, status strings, or diagnostic codes. An unassigned
+// Outcome remains invalid so audience projection rejects the incomplete event.
 func NewToolResultRuntimeEvent(identity RuntimeIdentity, result ToolResultBlock, publicKey i18n.Key, publicArgs []any) RuntimeEvent {
 	event := NewRuntimeEvent(RuntimeEventKindToolResult, identity, result.Outcome, publicKey, publicArgs, "tool.result", nil)
 	event.ToolUseID = result.ToolUseID
@@ -144,10 +134,6 @@ func (e RuntimeEvent) HasAuthoritativeOutcome() bool {
 		return false
 	}
 }
-
-// IsPrivateCause reports whether target occurs anywhere in the private cause
-// chain. It is a convenience for audit and regression tests.
-func (e RuntimeEvent) IsPrivateCause(target error) bool { return errors.Is(e.PrivateCause, target) }
 
 // MarshalJSON fails closed so a caller cannot accidentally create a JSON or
 // audit stream without declaring audience, redaction level, and raw-audit

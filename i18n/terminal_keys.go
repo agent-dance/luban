@@ -13,13 +13,6 @@ const (
 	KeyTerminalCostSummary        Key = "terminal.cost_summary"
 	KeyTerminalContextBar         Key = "terminal.context_bar"
 	KeyTerminalRunning            Key = "terminal.running"
-	KeyTerminalPermissionTitle    Key = "terminal.permission.title"
-	KeyTerminalPermissionTool     Key = "terminal.permission.tool"
-	KeyTerminalPermissionRisk     Key = "terminal.permission.risk"
-	KeyTerminalRiskLow            Key = "terminal.risk.low"
-	KeyTerminalRiskMedium         Key = "terminal.risk.medium"
-	KeyTerminalRiskHigh           Key = "terminal.risk.high"
-	KeyTerminalPermissionAllow    Key = "terminal.permission.allow"
 	KeyScreenReaderStopped        Key = "screen_reader.input_stopped"
 	KeyScreenReaderCommandResume  Key = "screen_reader.command_resumed"
 	KeyScreenReaderCommandPause   Key = "screen_reader.command_suspended"
@@ -75,16 +68,9 @@ func init() {
 	addTerminal(KeyTerminalTools, "Tools: %s", "工具：%s", "Tools: %s", "ツール: %s", "도구: %s", "Инструменты: %s")
 	addTerminal(KeyTerminalTaskHint, "Type a task. Use /help for commands, or 'exit' to quit.", "输入任务。使用 /help 查看命令，或输入“exit”退出。", "Gib eine Aufgabe ein. Nutze /help für Befehle oder 'exit' zum Beenden.", "タスクを入力してください。コマンドは /help、終了は 'exit' です。", "작업을 입력하세요. 명령은 /help, 종료는 'exit'를 사용하세요.", "Введите задачу. Используйте /help для команд или 'exit' для выхода.")
 	addTerminal(KeyTerminalGoodbye, "Goodbye!", "再见！", "Auf Wiedersehen!", "さようなら！", "안녕히 가세요!", "До свидания!")
-	addTerminal(KeyTerminalCostSummary, "💰 Turn: $%.4f | Session: $%.4f | Tokens: %s in / %s out", "💰 本轮：$%.4f | 会话：$%.4f | Token：输入 %s / 输出 %s", "💰 Runde: $%.4f | Sitzung: $%.4f | Token: %s ein / %s aus", "💰 ターン: $%.4f | セッション: $%.4f | トークン: 入力 %s / 出力 %s", "💰 턴: $%.4f | 세션: $%.4f | 토큰: 입력 %s / 출력 %s", "💰 Ход: $%.4f | Сеанс: $%.4f | Токены: %s вход / %s выход")
+	addTerminal(KeyTerminalCostSummary, "💰 Turn: %s%.4f | Session: %s%.4f | Tokens: %s in / %s out", "💰 本轮：%s%.4f | 会话：%s%.4f | Token：输入 %s / 输出 %s", "💰 Runde: %s%.4f | Sitzung: %s%.4f | Token: %s ein / %s aus", "💰 ターン: %s%.4f | セッション: %s%.4f | トークン: 入力 %s / 出力 %s", "💰 턴: %s%.4f | 세션: %s%.4f | 토큰: 입력 %s / 출력 %s", "💰 Ход: %s%.4f | Сеанс: %s%.4f | Токены: %s вход / %s выход")
 	addTerminal(KeyTerminalContextBar, "[Context: %s %.0f%% (%s/%s)]", "[上下文：%s %.0f%%（%s/%s）]", "[Kontext: %s %.0f%% (%s/%s)]", "[コンテキスト: %s %.0f%%（%s/%s）]", "[컨텍스트: %s %.0f%% (%s/%s)]", "[Контекст: %s %.0f%% (%s/%s)]")
 	addTerminal(KeyTerminalRunning, "⚡ Running %s...", "⚡ 正在运行 %s...", "⚡ %s wird ausgeführt...", "⚡ %s を実行中...", "⚡ %s 실행 중...", "⚡ Выполняется %s...")
-	addTerminal(KeyTerminalPermissionTitle, "Permission Required", "需要权限", "Berechtigung erforderlich", "権限が必要です", "권한이 필요합니다", "Требуется разрешение")
-	addTerminal(KeyTerminalPermissionTool, "Tool      : %s", "工具      ：%s", "Tool      : %s", "ツール      : %s", "도구      : %s", "Инструмент: %s")
-	addTerminal(KeyTerminalPermissionRisk, "Risk      : %s %s", "风险      ：%s %s", "Risiko    : %s %s", "リスク      : %s %s", "위험      : %s %s", "Риск      : %s %s")
-	addTerminal(KeyTerminalRiskLow, "low", "低", "niedrig", "低", "낮음", "низкий")
-	addTerminal(KeyTerminalRiskMedium, "medium", "中", "mittel", "中", "중간", "средний")
-	addTerminal(KeyTerminalRiskHigh, "high", "高", "hoch", "高", "높음", "высокий")
-	addTerminal(KeyTerminalPermissionAllow, "Allow? [y/N/a]: ", "允许？[y/N/a]：", "Erlauben? [y/N/a]: ", "許可しますか？ [y/N/a]: ", "허용할까요? [y/N/a]: ", "Разрешить? [y/N/a]: ")
 	addTerminal(KeyScreenReaderStopped, "screen reader input did not stop", "屏幕阅读器输入未停止", "Screenreader-Eingabe wurde nicht beendet", "スクリーンリーダー入力が停止しませんでした", "스크린 리더 입력이 중지되지 않았습니다", "Ввод программы чтения с экрана не остановился")
 	addTerminal(KeyScreenReaderCommandResume, "\nDecision input completed. Command input resumed.\n", "\n决策输入已完成。命令输入已恢复。\n", "\nEntscheidungseingabe abgeschlossen. Befehlseingabe fortgesetzt.\n", "\n決定入力が完了しました。コマンド入力を再開します。\n", "\n결정 입력이 완료되었습니다. 명령 입력을 재개합니다.\n", "\nВвод решения завершён. Ввод команд возобновлён.\n")
 	addTerminal(KeyScreenReaderCommandPause, "\nCommand input suspended while a decision requires attention.\n", "\n决策需要处理时，命令输入已暂停。\n", "\nDie Befehlseingabe ist pausiert, solange eine Entscheidung Aufmerksamkeit erfordert.\n", "\n決定への対応中はコマンド入力を一時停止します。\n", "\n결정에 주의가 필요한 동안 명령 입력이 일시 중지되었습니다.\n", "\nВвод команд приостановлен, пока решение требует внимания.\n")

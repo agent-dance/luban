@@ -8,7 +8,6 @@ const (
 	KeyCommandCompactDescription     Key = "command.compact.description"
 	KeyCommandConfigDescription      Key = "command.config.description"
 	KeyCommandConnectDescription     Key = "command.connect.description"
-	KeyCommandCostDescription        Key = "command.cost.description"
 	KeyCommandDetailDescription      Key = "command.detail.description"
 	KeyCommandDiffDescription        Key = "command.diff.description"
 	KeyCommandDoctorDescription      Key = "command.doctor.description"
@@ -20,10 +19,8 @@ const (
 	KeyCommandInitDescription        Key = "command.init.description"
 	KeyCommandLanguageDescription    Key = "command.language.description"
 	KeyCommandMCPDescription         Key = "command.mcp.description"
-	KeyCommandMemoryDescription      Key = "command.memory.description"
 	KeyCommandModelDescription       Key = "command.model.description"
 	KeyCommandMouseDescription       Key = "command.mouse.description"
-	KeyCommandPasteDescription       Key = "command.paste.description"
 	KeyCommandPermissionsDescription Key = "command.permissions.description"
 	KeyCommandRenameDescription      Key = "command.rename.description"
 	KeyCommandResumeDescription      Key = "command.resume.description"
@@ -40,7 +37,6 @@ var commandDescriptionKeys = map[string]Key{
 	"config":      KeyCommandConfigDescription,
 	"connect":     KeyCommandConnectDescription,
 	"context":     KeyCommandContextDescription,
-	"cost":        KeyCommandCostDescription,
 	"detail":      KeyCommandDetailDescription,
 	"diff":        KeyCommandDiffDescription,
 	"doctor":      KeyCommandDoctorDescription,
@@ -53,10 +49,8 @@ var commandDescriptionKeys = map[string]Key{
 	"init":        KeyCommandInitDescription,
 	"language":    KeyCommandLanguageDescription,
 	"mcp":         KeyCommandMCPDescription,
-	"memory":      KeyCommandMemoryDescription,
 	"model":       KeyCommandModelDescription,
 	"mouse":       KeyCommandMouseDescription,
-	"paste":       KeyCommandPasteDescription,
 	"permissions": KeyCommandPermissionsDescription,
 	"rename":      KeyCommandRenameDescription,
 	"resume":      KeyCommandResumeDescription,
@@ -113,13 +107,6 @@ func init() {
 			"Provider 接続を管理: /connect [provider]",
 			"Provider 연결 관리: /connect [provider]",
 			"Управлять подключениями Provider: /connect [provider]"),
-		KeyCommandCostDescription: commandCore(
-			"Show cumulative token usage for this session",
-			"查看当前会话的累计 token 用量",
-			"Kumulierte Token-Nutzung dieser Sitzung anzeigen",
-			"このセッションの累計トークン使用量を表示",
-			"이 세션의 누적 토큰 사용량 보기",
-			"Показать суммарное использование токенов за сеанс"),
 		KeyCommandDetailDescription: commandCore(
 			"Set the observation detail level",
 			"设置观察信息的详细程度",
@@ -197,13 +184,6 @@ func init() {
 			"MCP サーバーを管理: 一覧、有効化、無効化、再接続、認証",
 			"MCP 서버 관리: 목록, 활성화, 비활성화, 재연결, 인증",
 			"Управлять MCP-серверами: список, включение, отключение, переподключение и аутентификация"),
-		KeyCommandMemoryDescription: commandCore(
-			"Edit LUBAN Code instruction files",
-			"编辑 LUBAN Code 指令文件",
-			"LUBAN Code-Anweisungsdateien bearbeiten",
-			"LUBAN Code の指示ファイルを編集",
-			"LUBAN Code 지침 파일 편집",
-			"Редактировать файлы инструкций LUBAN Code"),
 		KeyCommandModelDescription: commandCore(
 			"Show or switch the model: /model [provider/]<name>",
 			"查看或切换模型：/model [provider/]<name>",
@@ -218,13 +198,6 @@ func init() {
 			"端末のマウスキャプチャーを有効または無効にする",
 			"터미널 마우스 캡처 활성화 또는 비활성화",
 			"Включить или отключить захват мыши в терминале"),
-		KeyCommandPasteDescription: commandCore(
-			"Paste a clipboard image and send it to LUBAN Code",
-			"粘贴剪贴板图片并发送给 LUBAN Code",
-			"Bild aus der Zwischenablage einfügen und an LUBAN Code senden",
-			"クリップボードの画像を貼り付けて LUBAN Code に送信",
-			"클립보드 이미지를 붙여넣어 LUBAN Code로 전송",
-			"Вставить изображение из буфера и отправить его в LUBAN Code"),
 		KeyCommandPermissionsDescription: commandCore(
 			"List tool permissions or run /permissions allow|deny <tool>",
 			"列出工具权限，或运行 /permissions allow|deny <tool>",

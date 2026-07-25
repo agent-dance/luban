@@ -4,14 +4,10 @@ import "testing"
 
 func TestPermissionPolicyKeysCoverEveryLanguage(t *testing.T) {
 	keys := []Key{
-		KeyPermissionModeAllowAllFrozen, KeyPermissionDenyDisallowedTool, KeyPermissionDenyNotAllowedTool,
-		KeyPermissionDenySnapshotRule, KeyPermissionTestingApprovalRequired, KeyPermissionTestingPolicy,
-		KeyPermissionDenyTestingPrompt, KeyPermissionDenySnapshotAsk, KeyPermissionAskAlwaysPolicy,
-		KeyPermissionDenyAskAlways, KeyPermissionDenyRule, KeyPermissionRuleFallback,
-		KeyPermissionAdvisoryPolicy, KeyPermissionMandatoryPolicy, KeyPermissionApprovalRequired,
+		KeyPermissionModeAllowAllFrozen, KeyPermissionAskAlwaysPolicy, KeyPermissionRuleFallback,
+		KeyPermissionMandatoryPolicy, KeyPermissionApprovalRequired,
 		KeyPermissionSnapshotSource, KeyPermissionConfiguredRule, KeyPermissionConfiguredPatternRule,
-		KeyPermissionSafetyProtectedPath, KeyPermissionSafetyUnavailable, KeyPermissionSafetyDangerousCommand,
-		KeyPermissionSafetyShellProtectedPath, KeyPermissionSafetyPowerShell, KeyPermissionPreviewSendMessage,
+		KeyPermissionSafetyProtectedPath, KeyPermissionSafetyUnavailable, KeyPermissionSafetyPowerShell, KeyPermissionPreviewSendMessage,
 		KeyPermissionPreviewSendTarget, KeyPermissionEnvironmentRoot,
 	}
 	for _, key := range keys {

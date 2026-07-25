@@ -31,7 +31,7 @@ func TestSemanticCatalogReorderedArgumentsRenderWithoutFormatErrors(t *testing.T
 	}{
 		{KeyMCPServerRemoved, []any{"server-raw", "/settings/raw"}, []string{"server-raw", "/settings/raw"}},
 		{KeyToolMCPReadFailed, []any{"resource://raw", "server-raw", "cause-raw"}, []string{"resource://raw", "server-raw", "cause-raw"}},
-		{KeyToolLegacyAFilePDFPagesExtracted, []any{7, "/file/raw.pdf", "3 MiB"}, []string{"7", "/file/raw.pdf", "3 MiB"}},
+		{KeyToolFilePDFPagesExtracted, []any{7, "/file/raw.pdf", "3 MiB"}, []string{"7", "/file/raw.pdf", "3 MiB"}},
 	}
 	for _, test := range tests {
 		for _, lang := range AllLanguages() {

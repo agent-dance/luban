@@ -627,11 +627,10 @@ func TestRunExternalDropsInputAlreadyQueuedBeforeHandoffWithoutDroppingUpdates(t
 	term.inRawMode, term.inAltScreen = true, true
 	reader := newExclusiveReader()
 	app := newTerminalHygieneTestApp(term, reader)
-	var keyCalls, updateCalls atomic.Int32
-	app.globalKeyHandler = func(KeyEvent) bool {
-		keyCalls.Add(1)
-		return true
-	}
+	var updateCalls atomic.Int32
+	focusable := newMockFocusable("handoff", true)
+	app.focus.Register(focusable)
+	app.focus.SetFocus(focusable)
 	app.merged <- queuedInputEvent{event: KeyEvent{Key: KeyRune, Rune: 'x'}, generation: app.inputGeneration.Load()}
 	app.merged <- UpdateEvent{fn: func() { updateCalls.Add(1) }}
 
@@ -639,8 +638,8 @@ func TestRunExternalDropsInputAlreadyQueuedBeforeHandoffWithoutDroppingUpdates(t
 		t.Fatal(err)
 	}
 	app.DispatchEvents()
-	if got := keyCalls.Load(); got != 0 {
-		t.Fatalf("queued pre-handoff key was dispatched after resume: calls=%d", got)
+	if focusable.lastEvent != nil {
+		t.Fatalf("queued pre-handoff key was dispatched after resume: event=%#v", focusable.lastEvent)
 	}
 	if got := updateCalls.Load(); got != 1 {
 		t.Fatalf("non-input update was dropped at handoff: calls=%d", got)

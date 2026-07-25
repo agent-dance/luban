@@ -665,17 +665,6 @@ func TestPrintAbove_SyncAndQueuedOrdering(t *testing.T) {
 	}
 }
 
-func TestPrintAbove_AsyncAliasQueues(t *testing.T) {
-	app, emu := newInlineTestApp(80, 24, 3)
-
-	app.PrintAbovelnAsync("alias-async")
-	runQueuedUpdates(app)
-
-	if got := emu.ScreenRow(app.inlineStartRow - 1); got != "alias-async" {
-		t.Fatalf("bottom history row = %q, want %q\n%s", got, "alias-async", emu.DumpState())
-	}
-}
-
 func TestPrintAboveRaw_TracksVisibleRows(t *testing.T) {
 	type tc struct {
 		prints    []string
@@ -1104,13 +1093,13 @@ func TestPrintAboveElement_InsertsRenderedRows(t *testing.T) {
 func TestPrintAboveElement_NoopOutsideInlineMode(t *testing.T) {
 	// Full-screen app (inlineHeight == 0).
 	app := &App{
-		terminal:   NewEmulatorTerminal(80, 24),
-		buffer:     NewBuffer(80, 24),
-		focus:      newFocusManager(),
-		reader:     NewMockEventReader(),
+		terminal:     NewEmulatorTerminal(80, 24),
+		buffer:       NewBuffer(80, 24),
+		focus:        newFocusManager(),
+		reader:       NewMockEventReader(),
 		merged:       make(chan Event, 256),
 		watcherQueue: make(chan func(), 256),
-		stopCh:     make(chan struct{}),
+		stopCh:       make(chan struct{}),
 	}
 
 	// Should not panic.
@@ -1209,13 +1198,13 @@ func TestStreamWriter_WriteElement(t *testing.T) {
 func TestStreamWriter_WriteElement_NopMode(t *testing.T) {
 	// Full-screen app — StreamAbove returns nop writer.
 	app := &App{
-		terminal:   NewEmulatorTerminal(80, 24),
-		buffer:     NewBuffer(80, 24),
-		focus:      newFocusManager(),
-		reader:     NewMockEventReader(),
+		terminal:     NewEmulatorTerminal(80, 24),
+		buffer:       NewBuffer(80, 24),
+		focus:        newFocusManager(),
+		reader:       NewMockEventReader(),
 		merged:       make(chan Event, 256),
 		watcherQueue: make(chan func(), 256),
-		stopCh:     make(chan struct{}),
+		stopCh:       make(chan struct{}),
 	}
 
 	w := app.StreamAbove()

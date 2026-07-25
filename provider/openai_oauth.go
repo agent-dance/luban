@@ -218,6 +218,7 @@ func ResolveCredentialConfig(r *ProviderRegistry, providerName string) (Config, 
 	if entry.BaseURL != "" {
 		cfg.BaseURL = entry.BaseURL
 	}
+	cfg.APIStyle = ParseAPIStyle(string(entry.APIStyle))
 	return cfg, nil
 }
 
@@ -301,10 +302,9 @@ func openAIOAuthConfigFromEntry(entry CredentialEntry) (Config, error) {
 	}
 
 	return Config{
-		AuthToken:             accessToken,
-		BaseURL:               openAIChatGPTCodexBaseURL,
-		Headers:               headers,
-		UserScopedPromptCache: true,
+		AuthToken: accessToken,
+		BaseURL:   openAIChatGPTCodexBaseURL,
+		Headers:   headers,
 	}, nil
 }
 

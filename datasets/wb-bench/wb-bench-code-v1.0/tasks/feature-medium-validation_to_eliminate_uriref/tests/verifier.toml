@@ -1,6 +1,0 @@
-schema_version = "workbuddy.code_lite.verifier.v1"
-family = "pytest_injected"
-
-[run]
-cwd = "/workspace"
-command = '''python -m pytest tests/test_validators.py::test_checking_validity_of_component tests/test_validators.py::test_successful_complex_validation tests/test_validators.py::test_invalid_uri_generates_error tests/test_validators.py::test_invalid_uri_with_invalid_path -v --junitxml=/logs/verifier/results.xml > /logs/verifier/test_output.txt 2>&1'''

@@ -27,7 +27,7 @@ func TestProviderResidualKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
-func TestProviderResidualKeysPreserveEnglishCompatibility(t *testing.T) {
+func TestProviderResidualKeysPreserveEnglishContract(t *testing.T) {
 	diagnostic := errors.New("unexpected EOF")
 	tests := []struct {
 		key  Key

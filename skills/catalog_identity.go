@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	skillIdentityDomain = "claude-code-go/skill-id/v1"
-	skillRevisionDomain = "claude-code-go/skill-revision/v1"
+	skillIdentityDomain = "luban/skill-id/v1"
+	skillRevisionDomain = "luban/skill-revision/v1"
 )
 
 // CanonicalSkillLocator canonicalizes raw according to the source's locator
@@ -26,14 +26,14 @@ func CanonicalSkillLocator(source SkillSource, raw string) (SkillLocator, error)
 	if source == SourceMCP {
 		return CanonicalVirtualSkillLocator(raw)
 	}
-	return CanonicalFilesystemSkillLocator(raw)
+	return canonicalFilesystemSkillLocator(raw)
 }
 
-// CanonicalFilesystemSkillLocator returns an absolute, clean filesystem
+// canonicalFilesystemSkillLocator returns an absolute, clean filesystem
 // locator. Existing symlinks are resolved so a real SKILL.md and an alias to
 // it share one identity. Resolution is intentionally best-effort: a deleted
 // path must remain canonicalizable for persisted overrides and revokes.
-func CanonicalFilesystemSkillLocator(raw string) (SkillLocator, error) {
+func canonicalFilesystemSkillLocator(raw string) (SkillLocator, error) {
 	if err := SkillLocator(raw).Validate(); err != nil {
 		return "", err
 	}
@@ -137,11 +137,11 @@ func ComputeSkillDigest(content string) SkillDigest {
 	return SkillDigest("sha256:" + hex.EncodeToString(sum[:]))
 }
 
-// SkillRevisionInput returns a deterministic encoding of every effective
+// skillRevisionInput returns a deterministic encoding of every effective
 // catalog field except Revision itself. A registry can compare or hash this
 // material to decide whether to advance an entry's monotonic SkillRevision.
 // The returned slice is newly allocated and safe for the caller to retain.
-func SkillRevisionInput(skill EffectiveSkill) ([]byte, error) {
+func skillRevisionInput(skill EffectiveSkill) ([]byte, error) {
 	// Validate all effective-state invariants without requiring a revision that
 	// is, by definition, derived from this material.
 	candidate := skill
@@ -180,11 +180,11 @@ func SkillRevisionInput(skill EffectiveSkill) ([]byte, error) {
 	return material, nil
 }
 
-// SkillRevisionFingerprint hashes SkillRevisionInput into lowercase SHA-256
+// skillRevisionFingerprint hashes skillRevisionInput into lowercase SHA-256
 // hex. It is not a SkillDigest: the value fingerprints effective metadata,
 // while SkillDigest exclusively identifies exact invoked SKILL.md content.
-func SkillRevisionFingerprint(skill EffectiveSkill) (string, error) {
-	material, err := SkillRevisionInput(skill)
+func skillRevisionFingerprint(skill EffectiveSkill) (string, error) {
+	material, err := skillRevisionInput(skill)
 	if err != nil {
 		return "", err
 	}

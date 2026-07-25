@@ -15,6 +15,9 @@ const (
 	KeyCLIParseFailure          Key = "cli.parse.failure"
 	KeyCLIInvalidSessionChars   Key = "cli.session_id.invalid_chars"
 	KeyCLIInvalidSessionParent  Key = "cli.session_id.invalid_parent"
+	KeyCLIInputModeSDKPrint     Key = "cli.input_mode.conflict.sdk_print"
+	KeyCLIStdinReadFailure      Key = "cli.stdin.read_failure"
+	KeyCLIStdinTooLarge         Key = "cli.stdin.too_large"
 	KeyCLIScreenReaderSDK       Key = "cli.screen_reader.conflict.sdk"
 	KeyCLIScreenReaderPrint     Key = "cli.screen_reader.conflict.print"
 	KeyCLIScreenReaderOutput    Key = "cli.screen_reader.conflict.output"
@@ -40,7 +43,6 @@ const (
 	KeyCLIFlagNoColor           Key = "cli.flag.no_color"
 	KeyCLIFlagOutputFormat      Key = "cli.flag.output_format"
 	KeyCLIFlagQuiet             Key = "cli.flag.quiet"
-	KeyCLIFlagTUI               Key = "cli.flag.tui"
 	KeyCLIFlagScreenReader      Key = "cli.flag.screen_reader"
 	KeyCLIFlagAgents            Key = "cli.flag.agents"
 	KeyCLIFlagPromptDump        Key = "cli.flag.prompt_dump"
@@ -64,6 +66,9 @@ func init() {
 	addCLI(KeyCLIParseFailure, "Could not parse command-line options: %v", "无法解析命令行选项：%v", "Befehlszeilenoptionen konnten nicht ausgewertet werden: %v", "コマンドラインオプションを解析できませんでした: %v", "명령줄 옵션을 해석할 수 없습니다: %v", "Не удалось разобрать параметры командной строки: %v")
 	addCLI(KeyCLIInvalidSessionChars, "invalid session ID %q: use only letters, numbers, underscores, dots, colons, and hyphens", "会话 ID %q 无效：只能使用字母、数字、下划线、点、冒号和连字符", "Ungültige Sitzungs-ID %q: Nur Buchstaben, Zahlen, Unterstriche, Punkte, Doppelpunkte und Bindestriche sind erlaubt", "セッション ID %q は無効です。英数字、アンダースコア、ピリオド、コロン、ハイフンのみ使用できます", "세션 ID %q이(가) 올바르지 않습니다. 영문자, 숫자, 밑줄, 마침표, 콜론, 하이픈만 사용하세요", "Недопустимый ID сеанса %q: используйте только буквы, цифры, подчёркивания, точки, двоеточия и дефисы")
 	addCLI(KeyCLIInvalidSessionParent, "invalid session ID %q: '..' is not allowed", "会话 ID %q 无效：不允许包含 '..'", "Ungültige Sitzungs-ID %q: '..' ist nicht erlaubt", "セッション ID %q は無効です。'..' は使用できません", "세션 ID %q이(가) 올바르지 않습니다. '..'은(는) 사용할 수 없습니다", "Недопустимый ID сеанса %q: '..' запрещено")
+	addCLI(KeyCLIInputModeSDKPrint, "--sdk cannot be combined with --print; select one input transport", "--sdk 不能与 --print 同时使用；请选择一种输入传输模式", "--sdk kann nicht mit --print kombiniert werden; wählen Sie genau einen Eingabetransport", "--sdk と --print は同時に指定できません。入力モードを 1 つ選択してください", "--sdk와 --print는 함께 사용할 수 없습니다. 입력 전송 모드를 하나만 선택하세요", "--sdk нельзя сочетать с --print; выберите один режим ввода")
+	addCLI(KeyCLIStdinReadFailure, "Could not read the piped prompt: %v", "无法读取管道中的 prompt：%v", "Der weitergeleitete Prompt konnte nicht gelesen werden: %v", "パイプから prompt を読み取れませんでした: %v", "파이프로 전달된 prompt를 읽을 수 없습니다: %v", "Не удалось прочитать prompt из конвейера: %v")
+	addCLI(KeyCLIStdinTooLarge, "The piped prompt exceeds the %d-byte limit", "管道中的 prompt 超过 %d 字节限制", "Der weitergeleitete Prompt überschreitet das Limit von %d Byte", "パイプからの prompt が %d バイトの上限を超えています", "파이프로 전달된 prompt가 %d바이트 제한을 초과했습니다", "Размер prompt из конвейера превышает предел в %d байт")
 	addCLI(KeyCLIScreenReaderSDK, "--screen-reader cannot be combined with --sdk because both modes use stdin", "--screen-reader 不能与 --sdk 同时使用，因为两种模式都会占用 stdin", "--screen-reader kann nicht mit --sdk kombiniert werden, da beide Modi stdin verwenden", "--screen-reader と --sdk はどちらも stdin を使用するため、同時に指定できません", "--screen-reader와 --sdk는 모두 stdin을 사용하므로 함께 사용할 수 없습니다", "--screen-reader нельзя сочетать с --sdk: оба режима используют stdin")
 	addCLI(KeyCLIScreenReaderPrint, "--screen-reader cannot be combined with --print because both modes use stdin", "--screen-reader 不能与 --print 同时使用，因为两种模式都会占用 stdin", "--screen-reader kann nicht mit --print kombiniert werden, da beide Modi stdin verwenden", "--screen-reader と --print はどちらも stdin を使用するため、同時に指定できません", "--screen-reader와 --print는 모두 stdin을 사용하므로 함께 사용할 수 없습니다", "--screen-reader нельзя сочетать с --print: оба режима используют stdin")
 	addCLI(KeyCLIScreenReaderOutput, "--screen-reader cannot be combined with --output-format=%s; screen-reader output must be append-only text", "--screen-reader 不能与 --output-format=%s 同时使用；屏幕阅读器输出必须为仅追加文本", "--screen-reader kann nicht mit --output-format=%s kombiniert werden; die Ausgabe muss fortlaufender Text sein", "--screen-reader と --output-format=%s は同時に指定できません。出力は追記型テキストである必要があります", "--screen-reader와 --output-format=%s는 함께 사용할 수 없습니다. 스크린 리더 출력은 추가 전용 텍스트여야 합니다", "--screen-reader нельзя сочетать с --output-format=%s; вывод должен быть добавляемым текстом")
@@ -90,7 +95,6 @@ func init() {
 	addCLI(KeyCLIFlagNoColor, "Disable ANSI color output", "禁用 ANSI 彩色输出", "ANSI-Farbausgabe deaktivieren", "ANSI カラー出力を無効化", "ANSI 색상 출력 비활성화", "Отключить цветной вывод ANSI")
 	addCLI(KeyCLIFlagOutputFormat, "Output format: text | json | stream-json", "输出格式：text | json | stream-json", "Ausgabeformat: text | json | stream-json", "出力形式: text | json | stream-json", "출력 형식: text | json | stream-json", "Формат вывода: text | json | stream-json")
 	addCLI(KeyCLIFlagQuiet, "Output only the final assistant text; hide tools, cost, and banners", "仅输出 Assistant 的最终文本；隐藏工具、费用和横幅", "Nur den abschließenden Assistant-Text ausgeben; Tools, Kosten und Banner ausblenden", "Assistant の最終テキストのみ出力し、ツール、料金、バナーを非表示", "Assistant 최종 텍스트만 출력하고 도구, 비용, 배너 숨기기", "Выводить только итоговый текст Assistant; скрыть инструменты, стоимость и баннеры")
-	addCLI(KeyCLIFlagTUI, "Deprecated: TUI is now the default interactive mode", "已弃用：TUI 现为默认交互模式", "Veraltet: TUI ist jetzt der interaktive Standardmodus", "非推奨: TUI は現在デフォルトの対話モードです", "사용 중단됨: 이제 TUI가 기본 대화형 모드입니다", "Устарело: TUI теперь является стандартным интерактивным режимом")
 	addCLI(KeyCLIFlagScreenReader, "Use append-only screen-reader mode without cursor control, mouse capture, or animation", "使用仅追加的屏幕阅读器模式，不启用光标控制、鼠标捕获或动画", "Fortlaufenden Screenreader-Modus ohne Cursorsteuerung, Mauserfassung oder Animation verwenden", "カーソル制御、マウスキャプチャ、アニメーションを使わない追記型スクリーンリーダーモード", "커서 제어, 마우스 캡처, 애니메이션이 없는 추가 전용 스크린 리더 모드 사용", "Использовать добавляемый режим чтения с экрана без управления курсором, захвата мыши и анимации")
 	addCLI(KeyCLIFlagAgents, "JSON object defining additional agents", "定义额外 Agent 的 JSON 对象", "JSON-Objekt zur Definition zusätzlicher Agents", "追加 Agent を定義する JSON オブジェクト", "추가 Agent를 정의하는 JSON 객체", "JSON-объект с определениями дополнительных агентов")
 	addCLI(KeyCLIFlagPromptDump, "Output the rendered prompt blocks and context, then exit without an API call", "输出渲染后的 prompt 块和上下文，然后退出且不调用 API", "Gerenderte Prompt-Blöcke und Kontext ausgeben, dann ohne API-Aufruf beenden", "レンダリング済み prompt ブロックとコンテキストを出力し、API を呼ばずに終了", "렌더링된 prompt 블록과 컨텍스트를 출력하고 API 호출 없이 종료", "Вывести сформированные блоки prompt и контекст, затем завершить работу без вызова API")

@@ -1,19 +1,16 @@
 package i18n
 
 const (
-	KeyCommandPresentationWait                 Key = "command.presentation.wait"
-	KeyCommandPresentationInspectResult        Key = "command.presentation.inspect_result"
-	KeyCommandPresentationInspectError         Key = "command.presentation.inspect_error"
-	KeyCommandPresentationExitRequested        Key = "command.presentation.exit_requested"
-	KeyCommandPresentationCompleted            Key = "command.presentation.completed"
-	KeyCommandPresentationResult               Key = "command.presentation.result"
-	KeyCommandPresentationExtensionSuccess     Key = "command.presentation.extension.success"
-	KeyCommandPresentationExtensionFailure     Key = "command.presentation.extension.failure"
-	KeyCommandPresentationMCPPromptDescription Key = "command.presentation.mcp_prompt.description"
-	KeyCommandPresentationMCPPromptSuccess     Key = "command.presentation.mcp_prompt.success"
-	KeyCommandPresentationMCPPromptFailure     Key = "command.presentation.mcp_prompt.failure"
-	KeyCommandPresentationModelSaveWarning     Key = "command.presentation.model_save_warning"
-	KeyCommandPresentationProviderWarning      Key = "command.presentation.provider_save_warning"
+	KeyCommandPresentationWait             Key = "command.presentation.wait"
+	KeyCommandPresentationInspectResult    Key = "command.presentation.inspect_result"
+	KeyCommandPresentationInspectError     Key = "command.presentation.inspect_error"
+	KeyCommandPresentationExitRequested    Key = "command.presentation.exit_requested"
+	KeyCommandPresentationCompleted        Key = "command.presentation.completed"
+	KeyCommandPresentationResult           Key = "command.presentation.result"
+	KeyCommandPresentationExtensionSuccess Key = "command.presentation.extension.success"
+	KeyCommandPresentationExtensionFailure Key = "command.presentation.extension.failure"
+	KeyCommandPresentationModelSaveWarning Key = "command.presentation.model_save_warning"
+	KeyCommandPresentationProviderWarning  Key = "command.presentation.provider_save_warning"
 
 	KeyCommandOutcomeSucceeded     Key = "command.outcome.succeeded"
 	KeyCommandOutcomeWarning       Key = "command.outcome.warning"
@@ -85,18 +82,12 @@ const (
 	KeyCommandPresentationLanguageFailure    Key = "command.presentation.language.failure"
 	KeyCommandPresentationConnectSuccess     Key = "command.presentation.connect.success"
 	KeyCommandPresentationConnectFailure     Key = "command.presentation.connect.failure"
-	KeyCommandPresentationPasteSuccess       Key = "command.presentation.paste.success"
-	KeyCommandPresentationPasteFailure       Key = "command.presentation.paste.failure"
 	KeyCommandPresentationPermissionsSuccess Key = "command.presentation.permissions.success"
 	KeyCommandPresentationPermissionsFailure Key = "command.presentation.permissions.failure"
-	KeyCommandPresentationCostSuccess        Key = "command.presentation.cost.success"
-	KeyCommandPresentationCostFailure        Key = "command.presentation.cost.failure"
 	KeyCommandPresentationVersionSuccess     Key = "command.presentation.version.success"
 	KeyCommandPresentationVersionFailure     Key = "command.presentation.version.failure"
 	KeyCommandPresentationRenameSuccess      Key = "command.presentation.rename.success"
 	KeyCommandPresentationRenameFailure      Key = "command.presentation.rename.failure"
-	KeyCommandPresentationMemorySuccess      Key = "command.presentation.memory.success"
-	KeyCommandPresentationMemoryFailure      Key = "command.presentation.memory.failure"
 	KeyCommandPresentationDiffSuccess        Key = "command.presentation.diff.success"
 	KeyCommandPresentationDiffFailure        Key = "command.presentation.diff.failure"
 )
@@ -127,12 +118,9 @@ var commandPresentationNextKeys = map[string][2]Key{
 	"mcp":         {KeyCommandPresentationMCPSuccess, KeyCommandPresentationMCPFailure},
 	"language":    {KeyCommandPresentationLanguageSuccess, KeyCommandPresentationLanguageFailure},
 	"connect":     {KeyCommandPresentationConnectSuccess, KeyCommandPresentationConnectFailure},
-	"paste":       {KeyCommandPresentationPasteSuccess, KeyCommandPresentationPasteFailure},
 	"permissions": {KeyCommandPresentationPermissionsSuccess, KeyCommandPresentationPermissionsFailure},
-	"cost":        {KeyCommandPresentationCostSuccess, KeyCommandPresentationCostFailure},
 	"version":     {KeyCommandPresentationVersionSuccess, KeyCommandPresentationVersionFailure},
 	"rename":      {KeyCommandPresentationRenameSuccess, KeyCommandPresentationRenameFailure},
-	"memory":      {KeyCommandPresentationMemorySuccess, KeyCommandPresentationMemoryFailure},
 	"diff":        {KeyCommandPresentationDiffSuccess, KeyCommandPresentationDiffFailure},
 }
 
@@ -145,9 +133,6 @@ func init() {
 	addCommandPresentation(KeyCommandPresentationResult, cp("Result", "结果", "Ergebnis", "結果", "결과", "Результат"))
 	addCommandPresentation(KeyCommandPresentationExtensionSuccess, cp("Review the extension command result before continuing.", "继续前请检查扩展命令的结果。", "Prüfe vor dem Fortfahren das Ergebnis des Erweiterungsbefehls.", "続行する前に拡張コマンドの結果を確認してください。", "계속하기 전에 확장 명령 결과를 검토하세요.", "Перед продолжением проверьте результат команды расширения."))
 	addCommandPresentation(KeyCommandPresentationExtensionFailure, cp("Review the extension error and retry when it is safe.", "请检查扩展错误，并在安全时重试。", "Prüfe den Erweiterungsfehler und wiederhole den Vorgang, wenn es sicher ist.", "拡張機能のエラーを確認し、安全に再試行できる場合はやり直してください。", "확장 오류를 검토하고 안전할 때 다시 시도하세요.", "Проверьте ошибку расширения и повторите попытку, когда это безопасно."))
-	addCommandPresentation(KeyCommandPresentationMCPPromptDescription, cp("MCP prompt %s from %s", "MCP prompt %s（来自 %s）", "MCP-Prompt %s von %s", "MCP prompt %s（%s）", "MCP prompt %s(%s)", "MCP prompt %s с сервера %s"))
-	addCommandPresentation(KeyCommandPresentationMCPPromptSuccess, cp("Continue with the MCP prompt messages added to this session.", "使用已添加到本会话的 MCP prompt 消息继续。", "Fahre mit den dieser Sitzung hinzugefügten MCP-Prompt-Nachrichten fort.", "このセッションに追加された MCP prompt メッセージを使って続行してください。", "이 세션에 추가된 MCP prompt 메시지로 계속하세요.", "Продолжите работу с сообщениями MCP prompt, добавленными в этот сеанс."))
-	addCommandPresentation(KeyCommandPresentationMCPPromptFailure, cp("Check the MCP server, prompt arguments, and connection before retrying.", "检查 MCP server、prompt 参数和连接后重试。", "Prüfe MCP-Server, Prompt-Argumente und Verbindung, bevor du es erneut versuchst.", "MCP server、prompt 引数、接続を確認してから再試行してください。", "MCP server, prompt 인수, 연결을 확인한 후 다시 시도하세요.", "Перед повторной попыткой проверьте MCP-сервер, аргументы prompt и соединение."))
 	addCommandPresentation(KeyCommandPresentationModelSaveWarning, cp("Fix the project settings permissions; the in-memory model selection is already active.", "请修复项目设置权限；内存中的 model 选择已生效。", "Korrigiere die Berechtigungen der Projekteinstellungen; die Modellauswahl im Speicher ist bereits aktiv.", "プロジェクト設定の権限を修正してください。メモリ上の model 選択はすでに有効です。", "프로젝트 설정 권한을 수정하세요. 메모리의 model 선택은 이미 적용되었습니다.", "Исправьте разрешения настроек проекта; выбранная в памяти модель уже активна."))
 	addCommandPresentation(KeyCommandPresentationProviderWarning, cp("Fix the project settings permissions; the in-memory provider and model selection is already active.", "请修复项目设置权限；内存中的 Provider 和 model 选择已生效。", "Korrigiere die Berechtigungen der Projekteinstellungen; die Provider- und Modellauswahl im Speicher ist bereits aktiv.", "プロジェクト設定の権限を修正してください。メモリ上の Provider と model の選択はすでに有効です。", "프로젝트 설정 권한을 수정하세요. 메모리의 Provider 및 model 선택은 이미 적용되었습니다.", "Исправьте разрешения настроек проекта; выбранные в памяти провайдер и модель уже активны."))
 
@@ -196,12 +181,9 @@ func init() {
 	addCommandNext("mcp", cp("Inspect server state or choose an MCP management action.", "检查 server 状态，或选择 MCP 管理操作。", "Prüfe den Serverstatus oder wähle eine MCP-Verwaltungsaktion.", "server 状態を確認するか、MCP 管理操作を選んでください。", "server 상태를 확인하거나 MCP 관리 작업을 선택하세요.", "Проверьте состояние сервера или выберите действие управления MCP."), cp("Check the server, authentication, and connection before retrying /mcp.", "检查 server、认证和连接后重试 /mcp。", "Prüfe Server, Authentifizierung und Verbindung, bevor du /mcp wiederholst.", "server、認証、接続を確認してから /mcp を再試行してください。", "server, 인증, 연결을 확인한 후 /mcp를 다시 시도하세요.", "Проверьте сервер, аутентификацию и соединение перед повтором /mcp."))
 	addCommandNext("language", cp("Continue in the displayed language.", "使用显示的语言继续。", "Fahre in der angezeigten Sprache fort.", "表示された言語で続行してください。", "표시된 언어로 계속하세요.", "Продолжите работу на показанном языке."), cp("Choose a supported language and retry /language.", "选择受支持的语言后重试 /language。", "Wähle eine unterstützte Sprache und wiederhole /language.", "対応する言語を選んで /language を再試行してください。", "지원되는 언어를 선택한 후 /language를 다시 시도하세요.", "Выберите поддерживаемый язык и повторите /language."))
 	addCommandNext("connect", cp("Continue with the reported Provider connection state.", "根据显示的 Provider 连接状态继续。", "Fahre mit dem gemeldeten Provider-Verbindungsstatus fort.", "表示された Provider 接続状態で続行してください。", "표시된 Provider 연결 상태로 계속하세요.", "Продолжите с показанным состоянием подключения Provider."), cp("Keep the previous Provider and repair credentials before retrying.", "保留之前的 Provider，并修复凭据后重试。", "Behalte den vorherigen Provider und repariere die Anmeldedaten vor dem erneuten Versuch.", "以前の Provider を維持し、認証情報を修復してから再試行してください。", "이전 Provider를 유지하고 자격 증명을 수정한 후 다시 시도하세요.", "Сохраните предыдущий Provider и исправьте учётные данные перед повтором."))
-	addCommandNext("paste", cp("Review the pasted content before submitting it.", "提交前请检查粘贴的内容。", "Prüfe den eingefügten Inhalt vor dem Absenden.", "送信する前に貼り付けた内容を確認してください。", "제출하기 전에 붙여넣은 내용을 검토하세요.", "Проверьте вставленные данные перед отправкой."), cp("Restore clipboard access or cancel the paste operation.", "恢复剪贴板访问，或取消粘贴操作。", "Stelle den Zugriff auf die Zwischenablage wieder her oder brich das Einfügen ab.", "クリップボードへのアクセスを復元するか、貼り付けをキャンセルしてください。", "클립보드 접근을 복원하거나 붙여넣기 작업을 취소하세요.", "Восстановите доступ к буферу обмена или отмените вставку."))
 	addCommandNext("permissions", cp("Continue with the displayed permission policy.", "根据显示的权限策略继续。", "Fahre mit der angezeigten Berechtigungsrichtlinie fort.", "表示された権限ポリシーで続行してください。", "표시된 권한 정책으로 계속하세요.", "Продолжите с показанной политикой разрешений."), cp("Correct the permission scope before retrying.", "修正权限范围后重试。", "Korrigiere den Berechtigungsumfang vor dem erneuten Versuch.", "権限範囲を修正してから再試行してください。", "권한 범위를 수정한 후 다시 시도하세요.", "Исправьте область разрешений перед повтором."))
-	addCommandNext("cost", cp("Continue with the reported pricing state.", "根据显示的定价状态继续。", "Fahre mit dem gemeldeten Preisstatus fort.", "表示された料金状態で続行してください。", "표시된 가격 상태로 계속하세요.", "Продолжите с показанным состоянием цен."), cp("Restore usage accounting and retry /cost.", "恢复用量统计后重试 /cost。", "Stelle die Nutzungsabrechnung wieder her und wiederhole /cost.", "使用量集計を復元して /cost を再試行してください。", "사용량 집계를 복원한 후 /cost를 다시 시도하세요.", "Восстановите учёт использования и повторите /cost."))
 	addCommandNext("version", cp("Use the reported version for diagnostics.", "使用显示的版本进行诊断。", "Nutze die gemeldete Version für die Diagnose.", "表示されたバージョンを診断に使用してください。", "표시된 버전을 진단에 사용하세요.", "Используйте показанную версию для диагностики."), cp("Restore version metadata and retry /version.", "恢复版本元数据后重试 /version。", "Stelle die Versionsmetadaten wieder her und wiederhole /version.", "バージョンメタデータを復元して /version を再試行してください。", "버전 메타데이터를 복원한 후 /version을 다시 시도하세요.", "Восстановите метаданные версии и повторите /version."))
 	addCommandNext("rename", cp("Continue with the renamed session.", "在已重命名的会话中继续。", "Fahre mit der umbenannten Sitzung fort.", "名前を変更したセッションで続行してください。", "이름이 변경된 세션에서 계속하세요.", "Продолжите работу в переименованном сеансе."), cp("Keep the current title and retry with a valid name.", "保留当前标题，并使用有效名称重试。", "Behalte den aktuellen Titel und wiederhole den Vorgang mit einem gültigen Namen.", "現在のタイトルを維持し、有効な名前で再試行してください。", "현재 제목을 유지하고 유효한 이름으로 다시 시도하세요.", "Сохраните текущий заголовок и повторите с допустимым именем."))
-	addCommandNext("memory", cp("Review saved instruction changes before continuing.", "继续前请检查已保存的指令更改。", "Prüfe die gespeicherten Anweisungsänderungen vor dem Fortfahren.", "続行する前に保存した指示の変更を確認してください。", "계속하기 전에 저장된 지침 변경 사항을 검토하세요.", "Перед продолжением проверьте сохранённые изменения инструкций."), cp("Resolve editor or file errors before retrying /memory.", "解决编辑器或文件错误后重试 /memory。", "Behebe Editor- oder Dateifehler, bevor du /memory wiederholst.", "エディターまたはファイルのエラーを解決してから /memory を再試行してください。", "편집기 또는 파일 오류를 해결한 후 /memory를 다시 시도하세요.", "Устраните ошибки редактора или файла и повторите /memory."))
 	addCommandNext("diff", cp("Review the displayed diff and retained evidence.", "检查显示的 diff 和保留的证据。", "Prüfe den angezeigten Diff und die beibehaltenen Belege.", "表示された diff と保持されたエビデンスを確認してください。", "표시된 diff와 보존된 증거를 검토하세요.", "Проверьте показанный diff и сохранённые данные."), cp("Restore repository access and retry /diff.", "恢复 repository 访问后重试 /diff。", "Stelle den Repository-Zugriff wieder her und wiederhole /diff.", "repository へのアクセスを復元して /diff を再試行してください。", "repository 접근을 복원한 후 /diff를 다시 시도하세요.", "Восстановите доступ к repository и повторите /diff."))
 }
 

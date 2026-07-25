@@ -67,7 +67,7 @@ func (p *debugProvider) CreateStream(_ context.Context, _ Params) (<-chan types.
 func TestProviderRefDebugObserverCapturesFullExchange(t *testing.T) {
 	stopReason := types.StopReasonToolUse
 	wantEvents := []types.StreamEvent{
-		{Type: types.EventMessageStart, Message: &types.APIMessage{Role: types.RoleAssistant, Usage: types.Usage{InputTokens: 42}}},
+		{Type: types.EventMessageStart, Usage: &types.Usage{InputTokens: 42}},
 		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{Type: types.ContentTypeText}},
 		{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "text_delta", Text: "hello"}},
 		{Type: types.EventContentBlockStop, Index: 0},

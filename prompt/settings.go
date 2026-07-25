@@ -6,31 +6,33 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/agent-dance/luban/config"
 	"github.com/bmatcuk/doublestar/v4"
 )
 
 const (
-	lubanDisableClaudeMdsEnv           = "LUBAN_CODE_DISABLE_CLAUDE_MDS"
-	disableClaudeMdsEnv              = "CLAUDE_CODE_DISABLE_CLAUDE_MDS"
-	deepSeekDisableClaudeMdsEnv      = "DEEPSEEK_CODE_DISABLE_CLAUDE_MDS"
+	disableInstructionsEnv             = "LUBAN_CODE_DISABLE_INSTRUCTIONS"
 	lubanBareModeEnv                   = "LUBAN_CODE_BARE"
-	bareModeEnv                      = "CLAUDE_CODE_BARE"
-	deepSeekBareModeEnv              = "DEEPSEEK_CODE_BARE"
-	additionalDirectoriesClaudeMdEnv = "CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD"
+	additionalDirectoryInstructionsEnv = "LUBAN_CODE_ADDITIONAL_DIRECTORY_INSTRUCTIONS"
 )
 
-// PromptSettings mirrors the original prompt-affecting settings that this
-// package supports. Unsupported original settings are documented in config.
-type PromptSettings = config.PromptSettings
+// PromptSettings contains the prompt-affecting runtime settings.
+type PromptSettings struct {
+	DisableInstructions             bool
+	BareMode                        bool
+	InstructionExcludes             []string
+	AdditionalDirectories           []string
+	AdditionalDirectoryInstructions bool
+	Language                        string
+	OutputStyle                     string
+}
 
 func defaultPromptSettings() PromptSettings {
 	return PromptSettings{
-		DisableClaudeMds:              promptEnvTruthy(lubanDisableClaudeMdsEnv) || promptEnvTruthy(deepSeekDisableClaudeMdsEnv) || promptEnvTruthy(disableClaudeMdsEnv),
-		BareMode:                      promptEnvTruthy(lubanBareModeEnv) || promptEnvTruthy(deepSeekBareModeEnv) || promptEnvTruthy(bareModeEnv),
-		AdditionalDirectoriesClaudeMd: promptEnvTruthy(additionalDirectoriesClaudeMdEnv),
-		Language:                      firstPromptEnv("LUBAN_CODE_LANGUAGE", "DEEPSEEK_CODE_LANGUAGE", "CLAUDE_CODE_LANGUAGE"),
-		OutputStyle:                   firstPromptEnv("LUBAN_CODE_OUTPUT_STYLE", "DEEPSEEK_CODE_OUTPUT_STYLE", "CLAUDE_CODE_OUTPUT_STYLE"),
+		DisableInstructions:             promptEnvTruthy(disableInstructionsEnv),
+		BareMode:                        promptEnvTruthy(lubanBareModeEnv),
+		AdditionalDirectoryInstructions: promptEnvTruthy(additionalDirectoryInstructionsEnv),
+		Language:                        firstPromptEnv("LUBAN_CODE_LANGUAGE"),
+		OutputStyle:                     firstPromptEnv("LUBAN_CODE_OUTPUT_STYLE"),
 	}
 }
 
@@ -48,7 +50,7 @@ func firstPromptEnv(keys ...string) string {
 }
 
 func shouldDiscoverMemory(settings PromptSettings) bool {
-	if settings.DisableClaudeMds {
+	if settings.DisableInstructions {
 		return false
 	}
 	if settings.BareMode && len(nonEmptyStrings(settings.AdditionalDirectories)) == 0 {
@@ -62,14 +64,14 @@ func shouldDiscoverAutoMemory(settings PromptSettings) bool {
 }
 
 func shouldDiscoverAdditionalDirectoryMemory(settings PromptSettings) bool {
-	return settings.AdditionalDirectoriesClaudeMd && len(nonEmptyStrings(settings.AdditionalDirectories)) > 0
+	return settings.AdditionalDirectoryInstructions && len(nonEmptyStrings(settings.AdditionalDirectories)) > 0
 }
 
-func shouldExcludeClaudeMd(path string, typ MemoryType, settings PromptSettings) bool {
+func shouldExcludeInstruction(path string, typ MemoryType, settings PromptSettings) bool {
 	if typ != MemoryTypeUser && typ != MemoryTypeProject && typ != MemoryTypeLocal {
 		return false
 	}
-	patterns := nonEmptyStrings(settings.ClaudeMdExcludes)
+	patterns := nonEmptyStrings(settings.InstructionExcludes)
 	if len(patterns) == 0 {
 		return false
 	}
@@ -79,7 +81,7 @@ func shouldExcludeClaudeMd(path string, typ MemoryType, settings PromptSettings)
 	}
 	for _, pattern := range expandExcludePatterns(patterns) {
 		for _, candidate := range candidates {
-			if matchClaudeMdExclude(pattern, candidate) {
+			if matchInstructionExclude(pattern, candidate) {
 				return true
 			}
 		}
@@ -124,7 +126,7 @@ func staticGlobPrefix(pattern string) string {
 	return filepath.Clean(prefix)
 }
 
-func matchClaudeMdExclude(pattern, candidate string) bool {
+func matchInstructionExclude(pattern, candidate string) bool {
 	pattern = slashPath(pattern)
 	candidate = slashPath(candidate)
 	if ok, err := doublestar.PathMatch(pattern, candidate); err == nil && ok {

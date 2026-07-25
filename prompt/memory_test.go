@@ -16,14 +16,14 @@ func TestDiscoverMemoryFilesPriorityAndNestedOrder(t *testing.T) {
 	child := filepath.Join(project, "child")
 	leaf := filepath.Join(child, "leaf")
 
-	writeFile(t, filepath.Join(managed, "CLAUDE.md"), "managed")
-	writeFile(t, filepath.Join(user, "CLAUDE.md"), "user")
-	writeFile(t, filepath.Join(project, "CLAUDE.md"), "project root")
-	writeFile(t, filepath.Join(project, ".claude", "CLAUDE.md"), "project dot root")
-	writeFile(t, filepath.Join(project, "CLAUDE.local.md"), "local root")
-	writeFile(t, filepath.Join(child, "CLAUDE.md"), "project child")
-	writeFile(t, filepath.Join(leaf, ".claude", "CLAUDE.md"), "project dot leaf")
-	writeFile(t, filepath.Join(leaf, "CLAUDE.local.md"), "local leaf")
+	writeFile(t, filepath.Join(managed, "LUBAN.md"), "managed")
+	writeFile(t, filepath.Join(user, "LUBAN.md"), "user")
+	writeFile(t, filepath.Join(project, "LUBAN.md"), "project root")
+	writeFile(t, filepath.Join(project, ".luban-code", "LUBAN.md"), "project dot root")
+	writeFile(t, filepath.Join(project, "LUBAN.local.md"), "local root")
+	writeFile(t, filepath.Join(child, "AGENTS.md"), "project child")
+	writeFile(t, filepath.Join(leaf, ".luban-code", "LUBAN.md"), "project dot leaf")
+	writeFile(t, filepath.Join(leaf, "LUBAN.local.md"), "local leaf")
 
 	files := discoverMemoryFiles(leaf, memoryPaths{managedDir: managed, userDir: user})
 	got := memoryContents(files)
@@ -49,47 +49,45 @@ func TestDiscoverMemoryFilesPriorityAndNestedOrder(t *testing.T) {
 	}
 }
 
-func TestDiscoverMemoryFilesLoadsLUBANAndLegacyInstructionsInPriorityOrder(t *testing.T) {
+func TestDiscoverMemoryFilesIgnoresHistoricalInstructionNames(t *testing.T) {
 	tmp := t.TempDir()
 	project := filepath.Join(tmp, "project")
-	userClaude := filepath.Join(tmp, ".claude")
-	userDeepSeek := filepath.Join(tmp, ".deepseek-code")
-	userLuban := filepath.Join(tmp, ".luban-code")
+	historicalUserDir := filepath.Join(tmp, "historical-user-config")
+	currentUserDir := filepath.Join(tmp, ".luban-code")
 
-	writeFile(t, filepath.Join(userClaude, "CLAUDE.md"), "user claude")
-	writeFile(t, filepath.Join(userDeepSeek, "DEEPSEEK.md"), "user deepseek")
-	writeFile(t, filepath.Join(userLuban, "LUBAN.md"), "user luban")
-	writeFile(t, filepath.Join(project, "CLAUDE.md"), "project claude")
-	writeFile(t, filepath.Join(project, "AGENTS.md"), "project agents")
-	writeFile(t, filepath.Join(project, "DEEPSEEK.md"), "project deepseek")
-	writeFile(t, filepath.Join(project, "LUBAN.md"), "project luban")
+	writeFile(t, filepath.Join(historicalUserDir, "CLAUDE.md"), "historical user instructions")
+	writeFile(t, filepath.Join(currentUserDir, "LUBAN.md"), "current user instructions")
+	writeFile(t, filepath.Join(project, "CLAUDE.md"), "historical project instructions")
+	writeFile(t, filepath.Join(project, "AGENTS.md"), "project agent instructions")
+	writeFile(t, filepath.Join(project, "LUBAN.md"), "current project instructions")
 
 	files := discoverMemoryFiles(project, memoryPaths{
-		userDirs: []string{userClaude, userDeepSeek, userLuban},
+		userDirs: []string{historicalUserDir, currentUserDir},
 	})
 	got := memoryContents(files)
 	want := []string{
-		"user claude", "user deepseek", "user luban",
-		"project claude", "project agents", "project deepseek", "project luban",
+		"current user instructions",
+		"project agent instructions",
+		"current project instructions",
 	}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
-		t.Fatalf("unexpected branded memory order:\nwant %q\ngot  %q", want, got)
+		t.Fatalf("unexpected instruction discovery result:\nwant %q\ngot  %q", want, got)
 	}
 }
 
-func TestFormatMemoryFilesUsesOriginalStyleBlocksAndDescriptions(t *testing.T) {
+func TestFormatMemoryFilesUsesSourceDescriptions(t *testing.T) {
 	files := []MemoryFileInfo{
-		{Path: "/repo/CLAUDE.md", Type: MemoryTypeProject, Content: " project instructions \n"},
-		{Path: "/repo/CLAUDE.local.md", Type: MemoryTypeLocal, Content: "local instructions"},
-		{Path: "/home/user/.claude/CLAUDE.md", Type: MemoryTypeUser, Content: "user instructions"},
+		{Path: "/repo/LUBAN.md", Type: MemoryTypeProject, Content: " project instructions \n"},
+		{Path: "/repo/LUBAN.local.md", Type: MemoryTypeLocal, Content: "local instructions"},
+		{Path: "/home/user/.luban-code/LUBAN.md", Type: MemoryTypeUser, Content: "user instructions"},
 	}
 
 	got := FormatMemoryFiles(files)
 	assertInOrder(t, got, []string{
 		memoryInstructionPrompt,
-		"Contents of /repo/CLAUDE.md (project instructions, checked into the codebase):\n\nproject instructions",
-		"Contents of /repo/CLAUDE.local.md (user's private project instructions, not checked in):\n\nlocal instructions",
-		"Contents of /home/user/.claude/CLAUDE.md (user's private global instructions for all projects):\n\nuser instructions",
+		"Contents of /repo/LUBAN.md (project instructions, checked into the codebase):\n\nproject instructions",
+		"Contents of /repo/LUBAN.local.md (user's private project instructions, not checked in):\n\nlocal instructions",
+		"Contents of /home/user/.luban-code/LUBAN.md (user's private global instructions for all projects):\n\nuser instructions",
 	})
 }
 
@@ -97,12 +95,12 @@ func TestDiscoverMemoryFilesToleratesMissingDirectorySymlinkAndPermissionErrors(
 	tmp := t.TempDir()
 	project := filepath.Join(tmp, "project")
 	cwd := filepath.Join(project, "nested")
-	if err := os.MkdirAll(filepath.Join(project, ".claude", "CLAUDE.md"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(project, ".luban-code", "LUBAN.md"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(project, "CLAUDE.md"), "project")
+	writeFile(t, filepath.Join(project, "LUBAN.md"), "project")
 
-	broken := filepath.Join(cwd, "CLAUDE.md")
+	broken := filepath.Join(cwd, "LUBAN.md")
 	if runtime.GOOS != "windows" {
 		if err := os.MkdirAll(cwd, 0o755); err != nil {
 			t.Fatal(err)
@@ -112,7 +110,7 @@ func TestDiscoverMemoryFilesToleratesMissingDirectorySymlinkAndPermissionErrors(
 		}
 	}
 
-	local := filepath.Join(project, "CLAUDE.local.md")
+	local := filepath.Join(project, "LUBAN.local.md")
 	writeFile(t, local, "unreadable local")
 	if runtime.GOOS != "windows" {
 		if err := os.Chmod(local, 0); err != nil {
@@ -137,8 +135,8 @@ func TestDiscoverMemoryFilesDeduplicatesSymlinkedPaths(t *testing.T) {
 
 	tmp := t.TempDir()
 	project := filepath.Join(tmp, "project")
-	target := filepath.Join(project, "CLAUDE.md")
-	link := filepath.Join(project, ".claude", "CLAUDE.md")
+	target := filepath.Join(project, "LUBAN.md")
+	link := filepath.Join(project, ".luban-code", "LUBAN.md")
 	writeFile(t, target, "project")
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 		t.Fatal(err)
@@ -153,21 +151,21 @@ func TestDiscoverMemoryFilesDeduplicatesSymlinkedPaths(t *testing.T) {
 	}
 }
 
-func TestDiscoverClaudeMDCompatibilityWrapper(t *testing.T) {
+func TestDiscoverInstructionsUsesCanonicalPaths(t *testing.T) {
 	tmp := t.TempDir()
 	user := filepath.Join(tmp, "user")
 	project := filepath.Join(tmp, "project")
-	writeFile(t, filepath.Join(user, "CLAUDE.md"), "user")
-	writeFile(t, filepath.Join(project, "CLAUDE.md"), "project")
+	writeFile(t, filepath.Join(user, "LUBAN.md"), "user")
+	writeFile(t, filepath.Join(project, "LUBAN.md"), "project")
 
-	t.Setenv("CLAUDE_CONFIG_DIR", user)
+	t.Setenv("LUBAN_CODE_CONFIG_DIR", user)
 	t.Setenv("USER_TYPE", "ant")
-	t.Setenv("CLAUDE_CODE_MANAGED_SETTINGS_PATH", filepath.Join(tmp, "managed"))
+	t.Setenv("LUBAN_CODE_MANAGED_SETTINGS_PATH", filepath.Join(tmp, "managed"))
 
-	got := DiscoverClaudeMD(project)
+	got := DiscoverInstructions(project)
 	assertInOrder(t, got, []string{
-		"Contents of " + filepath.Join(user, "CLAUDE.md"),
-		"Contents of " + filepath.Join(project, "CLAUDE.md"),
+		"Contents of " + filepath.Join(user, "LUBAN.md"),
+		"Contents of " + filepath.Join(project, "LUBAN.md"),
 	})
 }
 

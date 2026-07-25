@@ -192,9 +192,6 @@ type debugResponseBlock struct {
 func newDebugResponse(events []types.StreamEvent, responseError string) *DebugResponse {
 	response := &DebugResponse{Error: responseError}
 	blocks := make(map[int]*debugResponseBlock)
-	role := types.RoleAssistant
-	messageID := ""
-	var startContent []types.ContentBlock
 
 	for _, event := range events {
 		if event.SystemFingerprint != "" {
@@ -202,14 +199,6 @@ func newDebugResponse(events []types.StreamEvent, responseError string) *DebugRe
 		}
 		switch event.Type {
 		case types.EventMessageStart:
-			if event.Message != nil {
-				if event.Message.Role != "" {
-					role = event.Message.Role
-				}
-				messageID = event.Message.ID
-				startContent = event.Message.Content
-				mergeDebugUsage(&response.Usage, &event.Message.Usage)
-			}
 			mergeDebugUsage(&response.Usage, event.Usage)
 		case types.EventContentBlockStart:
 			block := debugBlock(blocks, event.Index)
@@ -237,11 +226,8 @@ func newDebugResponse(events []types.StreamEvent, responseError string) *DebugRe
 	}
 
 	content := buildDebugContent(blocks)
-	if len(content) == 0 && len(startContent) > 0 {
-		content = append([]types.ContentBlock(nil), startContent...)
-	}
-	if len(content) > 0 || messageID != "" {
-		response.Message = &types.Message{ID: messageID, Role: role, Content: content}
+	if len(content) > 0 {
+		response.Message = &types.Message{Role: types.RoleAssistant, Content: content}
 	}
 	return response
 }

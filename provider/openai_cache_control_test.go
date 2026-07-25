@@ -32,16 +32,19 @@ func TestOpenAICompatibleCacheControlMatrix(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			request := captureOpenAICompatibleCacheRequest(t, Config{
+			config := Config{
 				ProviderName: test.providerName,
 				Model:        "cache-test-model",
-			}, Params{
+			}
+			params := Params{
 				Messages:       []types.Message{types.UserMessage("hello")},
 				PromptCacheKey: "shared-cache-lineage",
 				UsePromptCache: true,
-			})
-			if got := request[test.wantField]; got != "shared-cache-lineage" {
-				t.Fatalf("%s = %#v, want inherited cache lineage", test.wantField, got)
+			}
+			request := captureOpenAICompatibleCacheRequest(t, config, params)
+			want := expectedOpenAICompatibleCacheRoutingKey(config, params)
+			if got := request[test.wantField]; got != want {
+				t.Fatalf("%s = %#v, want credential-scoped route %q", test.wantField, got, want)
 			}
 			otherField := "user_id"
 			if test.wantField == otherField {
@@ -104,10 +107,9 @@ func TestUserScopedCacheRoutingReusesWarmRouteAcrossIndependentSessions(t *testi
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			config := Config{
-				ProviderName:          test.providerName,
-				APIKey:                "same-account-secret",
-				Model:                 "cache-test-model",
-				UserScopedPromptCache: true,
+				ProviderName: test.providerName,
+				APIKey:       "same-account-secret",
+				Model:        "cache-test-model",
 			}
 			first := captureOpenAICompatibleCacheRequest(t, config, Params{
 				System:         "stable shared prefix",
@@ -141,16 +143,14 @@ func TestUserScopedCacheRoutingSeparatesProviderCredentials(t *testing.T) {
 		UsePromptCache: true,
 	}
 	first := captureOpenAICompatibleCacheRequest(t, Config{
-		ProviderName:          "deepseek",
-		APIKey:                "first-account-secret",
-		Model:                 "cache-test-model",
-		UserScopedPromptCache: true,
+		ProviderName: "deepseek",
+		APIKey:       "first-account-secret",
+		Model:        "cache-test-model",
 	}, params)
 	second := captureOpenAICompatibleCacheRequest(t, Config{
-		ProviderName:          "deepseek",
-		APIKey:                "second-account-secret",
-		Model:                 "cache-test-model",
-		UserScopedPromptCache: true,
+		ProviderName: "deepseek",
+		APIKey:       "second-account-secret",
+		Model:        "cache-test-model",
 	}, params)
 	if first["user_id"] == second["user_id"] {
 		t.Fatalf("different credentials shared DeepSeek user_id: %#v", first["user_id"])
@@ -164,7 +164,7 @@ func TestDefaultOpenAIEndpointTreatsPromptCacheKeyAsDocumented(t *testing.T) {
 	}
 }
 
-func TestOpenAICompatibleCacheLineageIsIsolatedAcrossConcurrentStreams(t *testing.T) {
+func TestOpenAICompatibleCacheLineageSharesWarmRouteAcrossConcurrentStreams(t *testing.T) {
 	var (
 		mu       sync.Mutex
 		captured = make(map[string]int)
@@ -211,8 +211,13 @@ func TestOpenAICompatibleCacheLineageIsIsolatedAcrossConcurrentStreams(t *testin
 
 	mu.Lock()
 	defer mu.Unlock()
-	if captured["lineage-a"] != 1 || captured["lineage-b"] != 1 || len(captured) != 2 {
-		t.Fatalf("captured cache lineages = %#v", captured)
+	if len(captured) != 1 {
+		t.Fatalf("captured cache routes = %#v, want one credential-scoped route", captured)
+	}
+	for key, count := range captured {
+		if key == "" || key == "lineage-a" || key == "lineage-b" || count != 2 {
+			t.Fatalf("captured cache route = %q count=%d", key, count)
+		}
 	}
 }
 
@@ -246,12 +251,14 @@ func TestOpenAICompatibleFallbackRetriesOnceWithoutRejectedPromptCacheKey(t *tes
 	}))
 	defer server.Close()
 
-	client := NewOpenAI(Config{ProviderName: "groq", APIKey: "test-key", BaseURL: server.URL, Model: "cache-test-model"})
-	stream, err := client.CreateStream(context.Background(), Params{
+	config := Config{ProviderName: "groq", APIKey: "test-key", BaseURL: server.URL, Model: "cache-test-model"}
+	params := Params{
 		Messages:       []types.Message{types.UserMessage("hello")},
 		PromptCacheKey: "lineage-fallback",
 		UsePromptCache: true,
-	})
+	}
+	client := NewOpenAI(config)
+	stream, err := client.CreateStream(context.Background(), params)
 	if err != nil {
 		t.Fatalf("CreateStream: %v", err)
 	}
@@ -273,8 +280,9 @@ func TestOpenAICompatibleFallbackRetriesOnceWithoutRejectedPromptCacheKey(t *tes
 	if len(requests) != 3 {
 		t.Fatalf("request attempts = %d, want one guarded fallback followed by one remembered request", len(requests))
 	}
-	if got := requests[0]["prompt_cache_key"]; got != "lineage-fallback" {
-		t.Fatalf("first request prompt_cache_key = %#v", got)
+	wantCacheKey := expectedOpenAICompatibleCacheRoutingKey(config, params)
+	if got := requests[0]["prompt_cache_key"]; got != wantCacheKey {
+		t.Fatalf("first request prompt_cache_key = %#v, want %q", got, wantCacheKey)
 	}
 	if got, found := requests[1]["prompt_cache_key"]; found {
 		t.Fatalf("fallback request retained rejected prompt_cache_key = %#v", got)
@@ -286,6 +294,13 @@ func TestOpenAICompatibleFallbackRetriesOnceWithoutRejectedPromptCacheKey(t *tes
 
 func TestDocumentedPromptCacheKeyProviderDoesNotSilentlyDropRejectedKey(t *testing.T) {
 	attempts := 0
+	config := Config{ProviderName: "mistral", APIKey: "test-key", Model: "cache-test-model"}
+	params := Params{
+		Messages:       []types.Message{types.UserMessage("hello")},
+		PromptCacheKey: "lineage-required",
+		UsePromptCache: true,
+	}
+	wantCacheKey := expectedOpenAICompatibleCacheRoutingKey(config, params)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		attempts++
 		body, err := io.ReadAll(request.Body)
@@ -298,7 +313,7 @@ func TestDocumentedPromptCacheKeyProviderDoesNotSilentlyDropRejectedKey(t *testi
 			t.Errorf("decode request: %v", err)
 			return
 		}
-		if got := payload["prompt_cache_key"]; got != "lineage-required" {
+		if got := payload["prompt_cache_key"]; got != wantCacheKey {
 			t.Errorf("OpenAI prompt_cache_key = %#v", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -307,12 +322,9 @@ func TestDocumentedPromptCacheKeyProviderDoesNotSilentlyDropRejectedKey(t *testi
 	}))
 	defer server.Close()
 
-	client := NewOpenAI(Config{ProviderName: "mistral", APIKey: "test-key", BaseURL: server.URL, Model: "cache-test-model"})
-	_, err := client.CreateStream(context.Background(), Params{
-		Messages:       []types.Message{types.UserMessage("hello")},
-		PromptCacheKey: "lineage-required",
-		UsePromptCache: true,
-	})
+	config.BaseURL = server.URL
+	client := NewOpenAI(config)
+	_, err := client.CreateStream(context.Background(), params)
 	if err == nil {
 		t.Fatal("CreateStream unexpectedly accepted documented prompt_cache_key rejection")
 	}
@@ -367,6 +379,26 @@ func captureOpenAICompatibleCacheRequest(t *testing.T, config Config, params Par
 		t.Fatal("request was not captured")
 	}
 	return captured
+}
+
+func expectedOpenAICompatibleCacheRoutingKey(config Config, params Params) string {
+	if config.APIKey == "" {
+		config.APIKey = "test-key"
+	}
+	userNamespace := promptCacheUserNamespace(config)
+	if resolveOpenAIChatCacheRouting(config, detectDialect(config), config.BaseURL) == CacheRoutingDeepSeekUserID {
+		return deepSeekCacheUserID(userNamespace)
+	}
+	model := params.Model
+	if model == "" {
+		model = config.Model
+	}
+	return scopedPromptCacheKey(
+		userNamespace,
+		params.PromptCacheKey,
+		model,
+		promptCacheRoutingShardCount(config.ProviderName),
+	)
 }
 
 func writeOpenAICompatibleCacheResponse(w http.ResponseWriter) {

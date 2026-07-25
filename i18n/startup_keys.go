@@ -14,6 +14,12 @@ const (
 	KeyStartupSandboxUnavailable     Key = "startup.sandbox.unavailable"
 	KeyStartupSafetyDenied           Key = "startup.safety.denied"
 	KeyStartupShutdownWarning        Key = "startup.shutdown.warning"
+	KeyStartupShutdownSchedule       Key = "startup.shutdown.schedule"
+	KeyStartupShutdownEngine         Key = "startup.shutdown.engine"
+	KeyStartupShutdownBackground     Key = "startup.shutdown.background"
+	KeyStartupShutdownMCP            Key = "startup.shutdown.mcp"
+	KeyStartupShutdownLSP            Key = "startup.shutdown.lsp"
+	KeyStartupShutdownDebugFile      Key = "startup.shutdown.debug_file"
 	KeyStartupSDKError               Key = "startup.sdk.error"
 	KeyStartupResumeWarning          Key = "startup.session.resume_warning"
 	KeyStartupResumed                Key = "startup.session.resumed"
@@ -21,7 +27,7 @@ const (
 	KeyStartupScreenReaderError      Key = "startup.screen_reader.error"
 	KeyStartupTUIError               Key = "startup.tui.error"
 	KeyPrintQueryRequired            Key = "print.query.required"
-	KeyStartupResolveSessionWarning  Key = "startup.session.resolve_warning"
+	KeyStartupResolveSession         Key = "startup.session.resolve_error"
 	KeyStartupLatestSessionWarning   Key = "startup.session.latest_warning"
 	KeyStartupLoadSessionMetadata    Key = "startup.session.metadata_error"
 	KeyStartupResolveLatestSession   Key = "startup.session.latest_error"
@@ -102,6 +108,54 @@ func init() {
 		"경고: 종료하지 못했습니다: %v\n",
 		"Предупреждение: не удалось завершить работу: %v\n",
 	)
+	semanticTranslations[KeyStartupShutdownSchedule] = startupCopy(
+		"the schedule service did not stop cleanly",
+		"计划任务服务未能正常停止",
+		"Der Zeitplandienst wurde nicht ordnungsgemäß beendet",
+		"スケジュールサービスを正常に停止できませんでした",
+		"예약 서비스가 정상적으로 종료되지 않았습니다",
+		"службу расписания не удалось корректно остановить",
+	)
+	semanticTranslations[KeyStartupShutdownEngine] = startupCopy(
+		"the conversation runtime did not stop cleanly",
+		"会话运行时未能正常停止",
+		"Die Konversationslaufzeit wurde nicht ordnungsgemäß beendet",
+		"会話ランタイムを正常に停止できませんでした",
+		"대화 런타임이 정상적으로 종료되지 않았습니다",
+		"среду выполнения диалога не удалось корректно остановить",
+	)
+	semanticTranslations[KeyStartupShutdownBackground] = startupCopy(
+		"background tasks did not stop cleanly",
+		"后台任务未能正常停止",
+		"Hintergrundaufgaben wurden nicht ordnungsgemäß beendet",
+		"バックグラウンドタスクを正常に停止できませんでした",
+		"백그라운드 작업이 정상적으로 종료되지 않았습니다",
+		"фоновые задачи не удалось корректно остановить",
+	)
+	semanticTranslations[KeyStartupShutdownMCP] = startupCopy(
+		"MCP services did not stop cleanly",
+		"MCP 服务未能正常停止",
+		"Die MCP-Dienste wurden nicht ordnungsgemäß beendet",
+		"MCP サービスを正常に停止できませんでした",
+		"MCP 서비스가 정상적으로 종료되지 않았습니다",
+		"службы MCP не удалось корректно остановить",
+	)
+	semanticTranslations[KeyStartupShutdownLSP] = startupCopy(
+		"language server processes did not stop cleanly",
+		"语言服务器进程未能正常停止",
+		"Die Sprachserverprozesse wurden nicht ordnungsgemäß beendet",
+		"言語サーバープロセスを正常に停止できませんでした",
+		"언어 서버 프로세스가 정상적으로 종료되지 않았습니다",
+		"процессы языковых серверов не удалось корректно остановить",
+	)
+	semanticTranslations[KeyStartupShutdownDebugFile] = startupCopy(
+		"the debug output file did not close cleanly",
+		"调试输出文件未能正常关闭",
+		"Die Debug-Ausgabedatei wurde nicht ordnungsgemäß geschlossen",
+		"デバッグ出力ファイルを正常に閉じることができませんでした",
+		"디버그 출력 파일이 정상적으로 닫히지 않았습니다",
+		"файл отладочного вывода не удалось корректно закрыть",
+	)
 	semanticTranslations[KeyStartupSDKError] = startupCopy("SDK error: %v\n", "SDK 错误：%v\n", "SDK-Fehler: %v\n", "SDK エラー: %v\n", "SDK 오류: %v\n", "Ошибка SDK: %v\n")
 	semanticTranslations[KeyStartupResumeWarning] = startupCopy(
 		"Warning: could not resume session %s: %v\n",
@@ -137,7 +191,7 @@ func init() {
 	)
 	semanticTranslations[KeyStartupTUIError] = startupCopy("TUI error: %v\n", "TUI 错误：%v\n", "TUI-Fehler: %v\n", "TUI エラー: %v\n", "TUI 오류: %v\n", "Ошибка TUI: %v\n")
 	semanticTranslations[KeyPrintQueryRequired] = startupCopy("Error: -p requires a query argument\n", "错误：-p 需要查询参数\n", "Fehler: -p benötigt eine Anfrage\n", "エラー: -p にはクエリ引数が必要です\n", "오류: -p에는 질의 인수가 필요합니다\n", "Ошибка: для -p требуется аргумент запроса\n")
-	semanticTranslations[KeyStartupResolveSessionWarning] = startupCopy("Warning: could not resolve session %s: %v\n", "警告：无法解析会话 %s：%v\n", "Warnung: Sitzung %s konnte nicht aufgelöst werden: %v\n", "警告: セッション %s を解決できませんでした: %v\n", "경고: 세션 %s을(를) 확인할 수 없습니다: %v\n", "Предупреждение: не удалось найти сеанс %s: %v\n")
+	semanticTranslations[KeyStartupResolveSession] = startupCopy("Could not resolve session %s.", "无法解析会话 %s。", "Sitzung %s konnte nicht aufgelöst werden.", "セッション %s を解決できませんでした。", "세션 %s을(를) 확인할 수 없습니다.", "Не удалось найти сеанс %s.")
 	semanticTranslations[KeyStartupLatestSessionWarning] = startupCopy("Warning: could not find the latest session: %v\n", "警告：找不到最近的会话：%v\n", "Warnung: Die letzte Sitzung wurde nicht gefunden: %v\n", "警告: 直近のセッションが見つかりませんでした: %v\n", "경고: 가장 최근 세션을 찾을 수 없습니다: %v\n", "Предупреждение: не удалось найти последний сеанс: %v\n")
 	semanticTranslations[KeyStartupLoadSessionMetadata] = startupCopy("Could not load metadata for session %s: %v", "无法加载会话 %s 的元数据：%v", "Metadaten der Sitzung %s konnten nicht geladen werden: %v", "セッション %s のメタデータを読み込めませんでした: %v", "세션 %s의 메타데이터를 불러올 수 없습니다: %v", "Не удалось загрузить метаданные сеанса %s: %v")
 	semanticTranslations[KeyStartupResolveLatestSession] = startupCopy("Could not resolve the latest session: %v", "无法解析最近的会话：%v", "Die letzte Sitzung konnte nicht aufgelöst werden: %v", "直近のセッションを解決できませんでした: %v", "가장 최근 세션을 확인할 수 없습니다: %v", "Не удалось найти последний сеанс: %v")

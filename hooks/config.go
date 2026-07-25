@@ -11,7 +11,7 @@ import (
 )
 
 // EventHookConfig holds per-event hook configuration as stored in
-// .claude/settings.json under the "hooks" key.
+// .luban-code/settings.json under the "hooks" key.
 //
 // Schema (mirrors the TS HooksSettings type):
 //
@@ -34,10 +34,6 @@ import (
 //	  }
 //	}
 //
-// The legacy flat array format is also supported for backward compatibility:
-//
-//	{"hooks": [{"type":"PreToolUse","command":"echo hi","timeout":5}]}
-
 // HookMatcherConfig is a single matcher entry within an event config.
 type HookMatcherConfig struct {
 	// Matcher is an optional glob/string pattern for the tool name.
@@ -64,52 +60,8 @@ type HookConfig struct {
 	Matcher string `json:"matcher,omitempty"`
 }
 
-// rawSettings is used for flexible JSON unmarshalling that handles both the
-// legacy flat-array format and the new event-map format.
 type rawSettings struct {
-	// Legacy: flat list of Hook structs keyed by "hooks"
-	HooksFlat []Hook `json:"hooks"`
-	// Rich: map from event type to list of matcher configs
-	HooksMap map[string][]HookMatcherConfig `json:"-"`
-}
-
-func (rs *rawSettings) UnmarshalJSON(data []byte) error {
-	// Probe the "hooks" value to detect array-of-Hook vs object format.
-	var probe struct {
-		Hooks json.RawMessage `json:"hooks"`
-	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return err
-	}
-	if len(probe.Hooks) == 0 {
-		return nil
-	}
-
-	if probe.Hooks[0] == '[' {
-		// Legacy flat array
-		var legacy struct {
-			Hooks []Hook `json:"hooks"`
-		}
-		if err := json.Unmarshal(data, &legacy); err != nil {
-			return fmt.Errorf("%s: %w", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyHookConfigLegacyParse), err)
-		}
-		rs.HooksFlat = legacy.Hooks
-		return nil
-	}
-
-	if probe.Hooks[0] == '{' {
-		// Rich event-map format
-		var rich struct {
-			Hooks map[string][]HookMatcherConfig `json:"hooks"`
-		}
-		if err := json.Unmarshal(data, &rich); err != nil {
-			return fmt.Errorf("%s: %w", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyHookConfigMapParse), err)
-		}
-		rs.HooksMap = rich.Hooks
-		return nil
-	}
-
-	return fmt.Errorf("%s", i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyHookConfigUnexpected, probe.Hooks[0]))
+	Hooks map[string][]HookMatcherConfig `json:"hooks"`
 }
 
 // validHookTypes is the set of known HookType event names.
@@ -139,8 +91,6 @@ var validHookTypes = map[string]bool{
 
 // LoadConfig loads hook configuration from a settings.json file and returns a
 // Runner that dispatches the appropriate hook kind for each event type.
-//
-// Both legacy (flat array) and rich (event-map) formats are supported.
 func LoadConfig(settingsPath string) (*Runner, error) {
 	data, err := os.ReadFile(settingsPath)
 	if err != nil {
@@ -160,20 +110,15 @@ func LoadConfigData(data []byte, source string) (*Runner, error) {
 		return nil, fmt.Errorf("%s: %w", i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyHookConfigSettingsParse, source), err)
 	}
 
-	// Legacy path: flat array already has all fields set.
-	if len(raw.HooksFlat) > 0 {
-		return NewRunner(raw.HooksFlat), nil
-	}
-
-	// Rich path: convert event-map to []Hook.
+	// Convert the event map to executable hooks.
 	var hooks []Hook
-	eventNames := make([]string, 0, len(raw.HooksMap))
-	for eventName := range raw.HooksMap {
+	eventNames := make([]string, 0, len(raw.Hooks))
+	for eventName := range raw.Hooks {
 		eventNames = append(eventNames, eventName)
 	}
 	sort.Strings(eventNames)
 	for _, eventName := range eventNames {
-		matchers := raw.HooksMap[eventName]
+		matchers := raw.Hooks[eventName]
 		// C2: Warn on unknown event type names; don't fail so that configs
 		// written by a newer server version still load cleanly.
 		if !validHookTypes[eventName] {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agent-dance/luban/engine"
+	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/permissions"
 )
 
@@ -25,7 +25,7 @@ func TestCLIPermissionHandlerForwardsCompleteStructuredPrompt(t *testing.T) {
 		}
 	})
 	handler := permissions.NewCLIPermissionHandler(checker)
-	request := engine.PermissionRequest{
+	request := permission.PermissionRequest{
 		SessionID:          "session-42",
 		ExecutionSessionID: "agent-session",
 		DecisionID:         "decision:session-42:toolu-7",
@@ -52,7 +52,7 @@ func TestCLIPermissionHandlerForwardsCompleteStructuredPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handler.Check: %v", err)
 	}
-	if decision != engine.PermissionAllowOnce {
+	if decision != permission.PermissionAllowOnce {
 		t.Fatalf("execution decision = %v, want allow once", decision)
 	}
 	if got.DecisionID != request.DecisionID || got.SessionID != request.SessionID || got.ExecutionSessionID != request.ExecutionSessionID || got.ToolUseID != request.ToolUseID {
@@ -91,7 +91,7 @@ func TestPlanPromptKeepsFullBodyAndExecuteStayChoices(t *testing.T) {
 	})
 	handler := permissions.NewCLIPermissionHandler(checker)
 
-	decision, err := handler.Check(context.Background(), engine.PermissionRequest{
+	decision, err := handler.Check(context.Background(), permission.PermissionRequest{
 		SessionID:     "session-plan",
 		DecisionID:    "decision:session-plan:toolu-plan",
 		ToolUseID:     "toolu-plan",
@@ -110,7 +110,7 @@ func TestPlanPromptKeepsFullBodyAndExecuteStayChoices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handler.Check: %v", err)
 	}
-	if decision != engine.PermissionDeny {
+	if decision != permission.PermissionDeny {
 		t.Fatalf("stay in plan decision = %v, want deny execution", decision)
 	}
 	if got.Kind != permissions.PromptKindPlan || got.Body != plan {
@@ -154,7 +154,7 @@ func TestContextCancellationIsNotReportedAsExplicitRejection(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	decision, err := handler.Check(ctx, engine.PermissionRequest{
+	decision, err := handler.Check(ctx, permission.PermissionRequest{
 		DecisionID: "decision-cancelled",
 		ToolName:   "Lifecycle",
 		Input:      map[string]any{"value": "x"},
@@ -166,7 +166,7 @@ func TestContextCancellationIsNotReportedAsExplicitRejection(t *testing.T) {
 	deadlineCtx, deadlineCancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer deadlineCancel()
 	<-deadlineCtx.Done()
-	decision, err = handler.Check(deadlineCtx, engine.PermissionRequest{
+	decision, err = handler.Check(deadlineCtx, permission.PermissionRequest{
 		DecisionID: "decision-timeout",
 		ToolName:   "Lifecycle",
 		Input:      map[string]any{"value": "x"},
@@ -179,12 +179,12 @@ func TestContextCancellationIsNotReportedAsExplicitRejection(t *testing.T) {
 	rejectingChecker.SetStructuredPromptFunc(func(_ context.Context, _ permissions.PromptRequest) permissions.PromptResponse {
 		return permissions.PromptResponse{Decision: permissions.DecisionDeny, Outcome: permissions.PromptOutcomeRejected}
 	})
-	decision, err = permissions.NewCLIPermissionHandler(rejectingChecker).Check(context.Background(), engine.PermissionRequest{
+	decision, err = permissions.NewCLIPermissionHandler(rejectingChecker).Check(context.Background(), permission.PermissionRequest{
 		DecisionID: "decision-rejected",
 		ToolName:   "Lifecycle",
 		Input:      map[string]any{"value": "x"},
 	})
-	if err != nil || decision != engine.PermissionDeny {
+	if err != nil || decision != permission.PermissionDeny {
 		t.Fatalf("explicit rejection = (%v, %v), want (PermissionDeny, nil)", decision, err)
 	}
 }

@@ -53,13 +53,13 @@ func TestOpenAIChatDeveloperSkillCatalogSnapshotSerialized(t *testing.T) {
 	}
 }
 
-func TestOpenAIChatDeveloperCompatibilityFallback(t *testing.T) {
+func TestOpenAIChatDialectDeveloperLowering(t *testing.T) {
 	tests := []struct {
 		name   string
 		config Config
 	}{
 		{
-			name: "legacy OpenAI model",
+			name: "OpenAI chat model",
 			config: Config{
 				ProviderName: "openai",
 				Model:        "gpt-4o",
@@ -290,13 +290,19 @@ func TestOpenAIChatDeveloperDeltaPreservesSerializedPrefixAndTools(t *testing.T)
 	if !reflect.DeepEqual(first["tools"], second["tools"]) {
 		t.Fatalf("catalog delta changed tools\nfirst:  %#v\nsecond: %#v", first["tools"], second["tools"])
 	}
+	var cacheKey any
 	for _, request := range []map[string]any{first, second} {
 		if request["model"] != "o3" || request["tool_choice"] != "auto" {
 			t.Fatalf("stable request fields changed: %#v", request)
 		}
-		if got := request["prompt_cache_key"]; got != "session-stable" {
-			t.Fatalf("Chat Completions prompt_cache_key = %#v, want stable cache lineage", got)
+		got := request["prompt_cache_key"]
+		if got == nil || got == "session-stable" {
+			t.Fatalf("Chat Completions prompt_cache_key = %#v, want opaque credential-scoped route", got)
 		}
+		if cacheKey != nil && got != cacheKey {
+			t.Fatalf("Chat Completions cache route changed: %#v != %#v", got, cacheKey)
+		}
+		cacheKey = got
 	}
 }
 
@@ -319,7 +325,7 @@ func TestOpenAIChatDeveloperOrdinaryTurnUnchanged(t *testing.T) {
 
 func captureOpenAIChatRequestTask10(t *testing.T, config Config, params Params) map[string]any {
 	t.Helper()
-	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope, false)
+	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope)
 	simulateOfficialOpenAI := CanonicalProviderName(config.ProviderName) == "openai" && !isCustomOpenAIBaseURL(config.BaseURL)
 	var captured map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

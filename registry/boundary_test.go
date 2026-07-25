@@ -11,7 +11,7 @@ import (
 type errorTool struct{}
 
 func (t *errorTool) Name() string        { return "error_tool" }
-func (t *errorTool) Description() string  { return "always errors" }
+func (t *errorTool) Description() string { return "always errors" }
 func (t *errorTool) Schema() types.JSONSchema {
 	return types.JSONSchema{Type: "object"}
 }

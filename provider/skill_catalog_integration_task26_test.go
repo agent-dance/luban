@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/agent-dance/luban/internal/messagecontrol"
-	loopapi "github.com/agent-dance/luban/loop"
+	loopapi "github.com/agent-dance/luban/internal/runtime/loop"
 	"github.com/agent-dance/luban/prompt"
 	providerapi "github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/skills"
@@ -112,7 +112,7 @@ func TestSkillCatalogIntegrationProviderRequestShapeParity(t *testing.T) {
 		}
 	})
 
-	t.Run("responses incremental input", func(t *testing.T) {
+	t.Run("responses compatible endpoint full input", func(t *testing.T) {
 		firstParams := base
 		firstParams.Messages = plans.first
 		first := task26CaptureResponses(t, firstParams)
@@ -131,17 +131,26 @@ func TestSkillCatalogIntegrationProviderRequestShapeParity(t *testing.T) {
 			{role: "developer", content: plans.snapshotText},
 			{role: "user", content: "first user"},
 		})
-		// With an unchanged catalog and a valid response chain, Responses sends
-		// literally no catalog item: only the new user suffix crosses the wire.
+		// A custom HTTP-compatible endpoint receives the complete history because
+		// response IDs returned by it do not imply HTTP chaining support.
 		task26AssertProviderItems(t, task26RoleContentItems(t, noChange, "input"), []task26ProviderItem{
+			{role: "developer", content: plans.snapshotText},
+			{role: "user", content: "first user"},
+			{role: "assistant", content: "first assistant"},
 			{role: "user", content: "no-change user"},
 		})
 		task26AssertProviderItems(t, task26RoleContentItems(t, changed, "input"), []task26ProviderItem{
+			{role: "developer", content: plans.snapshotText},
+			{role: "user", content: "first user"},
+			{role: "assistant", content: "first assistant"},
 			{role: "developer", content: plans.deltaText},
 			{role: "user", content: "changed user"},
 		})
-		if noChange["previous_response_id"] != "resp_task26_previous" || changed["previous_response_id"] != "resp_task26_previous" {
-			t.Fatalf("Responses chain IDs = %#v / %#v", noChange["previous_response_id"], changed["previous_response_id"])
+		if _, ok := noChange["previous_response_id"]; ok {
+			t.Fatalf("custom Responses request unexpectedly chained: %#v", noChange)
+		}
+		if _, ok := changed["previous_response_id"]; ok {
+			t.Fatalf("custom Responses request unexpectedly chained: %#v", changed)
 		}
 		for _, key := range []string{"model", "instructions", "tools", "parallel_tool_calls", "prompt_cache_key"} {
 			if !reflect.DeepEqual(first[key], changed[key]) {
@@ -330,7 +339,7 @@ func task26CaptureProviderRequest(
 	respond func(http.ResponseWriter),
 ) map[string]any {
 	t.Helper()
-	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope, false)
+	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope)
 	var captured map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		body, err := io.ReadAll(request.Body)

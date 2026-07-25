@@ -19,8 +19,6 @@ const (
 	KeyAuxCompactNothingBefore     Key = "aux.compact.nothing_before"
 	KeyAuxCompactNothingAfter      Key = "aux.compact.nothing_after"
 	KeyAuxCompactPreserveNone      Key = "aux.compact.preserve_none"
-	KeyAuxCompactImageRemoved      Key = "aux.compact.image_removed"
-	KeyAuxCompactDocumentRemoved   Key = "aux.compact.document_removed"
 
 	KeyAuxClipboardUnsupported       Key = "aux.clipboard.unsupported"
 	KeyAuxClipboardCreateTemp        Key = "aux.clipboard.create_temp_failed"
@@ -56,9 +54,6 @@ const (
 	KeyAuxSwarmInvalidName   Key = "aux.swarm.invalid_name"
 	KeyAuxSwarmMailboxFailed Key = "aux.swarm.mailbox_failed"
 	KeyAuxSwarmFailed        Key = "aux.swarm.failed"
-	KeyAuxSwarmPaneTitle     Key = "aux.swarm.debug.pane_title"
-	KeyAuxSwarmPaneBorder    Key = "aux.swarm.debug.pane_border"
-	KeyAuxSwarmLayout        Key = "aux.swarm.debug.layout"
 
 	KeyAuxSkillNotFound         Key = "aux.skills.not_found"
 	KeyAuxSkillRevisionConflict Key = "aux.skills.revision_conflict"
@@ -67,8 +62,6 @@ const (
 	KeyAuxSkillInvalidSession   Key = "aux.skills.invalid_session"
 	KeyAuxSkillFailed           Key = "aux.skills.failed"
 	KeyAuxMCPPromptDescription  Key = "aux.skills.mcp_prompt_description"
-
-	KeyAuxMCPToolError Key = "aux.mcp.tool_error"
 )
 
 func init() {
@@ -90,8 +83,6 @@ func init() {
 	addAux(KeyAuxCompactNothingBefore, "There are no messages before the selected message to summarize.", "所选消息之前没有可摘要的内容。", "Vor der ausgewählten Nachricht gibt es nichts zusammenzufassen.", "選択したメッセージより前に要約する内容がありません。", "선택한 메시지 앞에 요약할 내용이 없습니다.", "До выбранного сообщения нет данных для сводки.")
 	addAux(KeyAuxCompactNothingAfter, "There are no messages after the selected message to summarize.", "所选消息之后没有可摘要的内容。", "Nach der ausgewählten Nachricht gibt es nichts zusammenzufassen.", "選択したメッセージより後に要約する内容がありません。", "선택한 메시지 뒤에 요약할 내용이 없습니다.", "После выбранного сообщения нет данных для сводки.")
 	addAux(KeyAuxCompactPreserveNone, "Partial compaction would preserve no messages.", "部分压缩将不会保留任何消息。", "Bei der partiellen Komprimierung würden keine Nachrichten erhalten bleiben.", "部分圧縮ではメッセージが1件も保持されません。", "부분 압축 시 보존되는 메시지가 없습니다.", "При частичном сжатии не останется ни одного сообщения.")
-	addAux(KeyAuxCompactImageRemoved, "[image removed: media exceeded provider size limit]", "[图片已移除：媒体超过 Provider 大小限制]", "[Bild entfernt: Medium überschritt das Größenlimit des Providers]", "[画像を削除しました: メディアが Provider のサイズ上限を超えています]", "[이미지 제거됨: 미디어가 Provider 크기 제한을 초과함]", "[изображение удалено: размер медиа превышает лимит Provider]")
-	addAux(KeyAuxCompactDocumentRemoved, "[document removed: media exceeded provider size limit]", "[文档已移除：媒体超过 Provider 大小限制]", "[Dokument entfernt: Medium überschritt das Größenlimit des Providers]", "[ドキュメントを削除しました: メディアが Provider のサイズ上限を超えています]", "[문서 제거됨: 미디어가 Provider 크기 제한을 초과함]", "[документ удалён: размер медиа превышает лимит Provider]")
 
 	addAux(KeyAuxClipboardUnsupported, "Clipboard image paste is not supported on %s.", "%s 暂不支持粘贴剪贴板图片。", "Das Einfügen von Bildern aus der Zwischenablage wird unter %s nicht unterstützt.", "%s ではクリップボード画像の貼り付けに対応していません。", "%s에서는 클립보드 이미지 붙여넣기를 지원하지 않습니다.", "Вставка изображений из буфера обмена не поддерживается в %s.")
 	addAux(KeyAuxClipboardCreateTemp, "Could not create a temporary clipboard file: %v", "无法创建剪贴板临时文件：%v", "Temporäre Zwischenablagedatei konnte nicht erstellt werden: %v", "クリップボード用の一時ファイルを作成できませんでした: %v", "클립보드 임시 파일을 만들 수 없습니다: %v", "Не удалось создать временный файл буфера обмена: %v")
@@ -127,9 +118,6 @@ func init() {
 	addAux(KeyAuxSwarmInvalidName, "The team or agent name is invalid. Use letters, numbers, underscores, or hyphens.", "团队或 Agent 名称无效。请使用字母、数字、下划线或连字符。", "Der Team- oder Agentenname ist ungültig. Verwende Buchstaben, Zahlen, Unterstriche oder Bindestriche.", "チーム名または Agent 名が無効です。英数字、アンダースコア、ハイフンを使用してください。", "팀 또는 Agent 이름이 올바르지 않습니다. 문자, 숫자, 밑줄 또는 하이픈을 사용하세요.", "Недопустимое имя команды или Agent. Используйте буквы, цифры, подчёркивания и дефисы.")
 	addAux(KeyAuxSwarmMailboxFailed, "The team mailbox operation failed.", "团队邮箱操作失败。", "Der Team-Postfachvorgang ist fehlgeschlagen.", "チームのメールボックス操作に失敗しました。", "팀 메일함 작업에 실패했습니다.", "Операция с почтовым ящиком команды завершилась ошибкой.")
 	addAux(KeyAuxSwarmFailed, "The team operation failed.", "团队操作失败。", "Der Teamvorgang ist fehlgeschlagen.", "チーム操作に失敗しました。", "팀 작업에 실패했습니다.", "Операция с командой завершилась ошибкой.")
-	addAux(KeyAuxSwarmPaneTitle, "Could not set the tmux pane title; continuing", "无法设置 tmux pane 标题；将继续执行", "Der Titel des tmux-Panes konnte nicht gesetzt werden; Vorgang wird fortgesetzt", "tmux pane のタイトルを設定できませんでした。処理を続行します", "tmux pane 제목을 설정할 수 없습니다. 계속 진행합니다", "Не удалось задать заголовок панели tmux; работа продолжена")
-	addAux(KeyAuxSwarmPaneBorder, "Could not set the tmux pane border color; continuing", "无法设置 tmux pane 边框颜色；将继续执行", "Die Rahmenfarbe des tmux-Panes konnte nicht gesetzt werden; Vorgang wird fortgesetzt", "tmux pane の枠色を設定できませんでした。処理を続行します", "tmux pane 테두리 색상을 설정할 수 없습니다. 계속 진행합니다", "Не удалось задать цвет рамки панели tmux; работа продолжена")
-	addAux(KeyAuxSwarmLayout, "Could not select the tmux layout; continuing", "无法选择 tmux 布局；将继续执行", "Das tmux-Layout konnte nicht ausgewählt werden; Vorgang wird fortgesetzt", "tmux レイアウトを選択できませんでした。処理を続行します", "tmux 레이아웃을 선택할 수 없습니다. 계속 진행합니다", "Не удалось выбрать раскладку tmux; работа продолжена")
 
 	addAux(KeyAuxSkillNotFound, "The requested skill was not found.", "未找到请求的 skill。", "Der angeforderte Skill wurde nicht gefunden.", "指定された skill が見つかりません。", "요청한 skill을 찾을 수 없습니다.", "Запрошенный skill не найден.")
 	addAux(KeyAuxSkillRevisionConflict, "Skill settings changed elsewhere. Refresh and try again.", "Skill 设置已在其他位置发生更改。请刷新后重试。", "Die Skill-Einstellungen wurden anderweitig geändert. Aktualisiere und versuche es erneut.", "Skill 設定が別の場所で変更されました。更新してから再試行してください。", "Skill 설정이 다른 곳에서 변경되었습니다. 새로고침한 후 다시 시도하세요.", "Настройки skill были изменены в другом месте. Обновите данные и повторите попытку.")
@@ -139,7 +127,6 @@ func init() {
 	addAux(KeyAuxSkillFailed, "The skill operation failed.", "Skill 操作失败。", "Der Skill-Vorgang ist fehlgeschlagen.", "Skill 操作に失敗しました。", "Skill 작업에 실패했습니다.", "Операция skill завершилась ошибкой.")
 	addAux(KeyAuxMCPPromptDescription, "MCP prompt: %s", "MCP prompt：%s", "MCP-Prompt: %s", "MCP prompt: %s", "MCP prompt: %s", "MCP prompt: %s")
 
-	addAux(KeyAuxMCPToolError, "MCP error: %s", "MCP 工具错误：%s", "MCP-Tool-Fehler: %s", "MCP ツールエラー: %s", "MCP 도구 오류: %s", "Ошибка инструмента MCP: %s")
 }
 
 func addAux(key Key, en, zh, de, ja, ko, ru string) {

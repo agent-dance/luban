@@ -20,6 +20,10 @@ import (
 
 const Version = "v0.1.0"
 
+// maxPipedPromptBytes bounds implicit print-mode input before any provider or
+// session runtime is initialized.
+const maxPipedPromptBytes int64 = 4 << 20
+
 // ErrHelp is returned by ParseArgs when --help / -h is passed.
 var ErrHelp = errors.New("help requested")
 
@@ -59,7 +63,6 @@ type Options struct {
 	NoColor         bool     // --no-color (disable ANSI color output)
 	OutputFormat    string   // --output-format: "text" (default) | "json" | "stream-json"
 	Quiet           bool     // --quiet / -q (only output final assistant text)
-	TUI             bool     // --tui (deprecated no-op; TUI is now default)
 	ScreenReader    bool     // --screen-reader (append-only accessible interactive mode)
 	Agents          string   // --agents JSON object defining additional agents
 	PromptDump      bool     // --prompt-dump
@@ -102,7 +105,6 @@ func newFlagSet(opts *Options, dirs *multiString, lang i18n.Language) *flag.Flag
 	fs.StringVar(&opts.OutputFormat, "output-format", "text", i18n.Text(lang, i18n.KeyCLIFlagOutputFormat))
 	fs.BoolVar(&opts.Quiet, "quiet", false, i18n.Text(lang, i18n.KeyCLIFlagQuiet))
 	fs.BoolVar(&opts.Quiet, "q", false, i18n.Text(lang, i18n.KeyCLIFlagQuiet))
-	fs.BoolVar(&opts.TUI, "tui", false, i18n.Text(lang, i18n.KeyCLIFlagTUI))
 	fs.BoolVar(&opts.ScreenReader, "screen-reader", false, i18n.Text(lang, i18n.KeyCLIFlagScreenReader))
 	fs.StringVar(&opts.Agents, "agents", "", i18n.Text(lang, i18n.KeyCLIFlagAgents))
 	fs.BoolVar(&opts.PromptDump, "prompt-dump", false, i18n.Text(lang, i18n.KeyCLIFlagPromptDump))
@@ -114,17 +116,20 @@ func newFlagSet(opts *Options, dirs *multiString, lang i18n.Language) *flag.Flag
 	return fs
 }
 
-// setUsage attaches the standard usage printer to fs (writes to stdout).
-func setUsage(fs *flag.FlagSet, lang i18n.Language) {
+// setUsage attaches the standard usage printer to fs.
+func setUsage(fs *flag.FlagSet, lang i18n.Language, output io.Writer) {
+	if output == nil {
+		output = io.Discard
+	}
 	fs.Usage = func() {
-		fmt.Fprint(os.Stdout, i18n.Format(lang, i18n.KeyCLIUsage, brand.CommandName))
-		fmt.Fprint(os.Stdout, i18n.Text(lang, i18n.KeyCLIOptions))
-		printFlagDefaults(os.Stdout, fs, lang)
-		fmt.Fprint(os.Stdout, i18n.Text(lang, i18n.KeyCLIExamples))
-		fmt.Fprint(os.Stdout, i18n.Format(lang, i18n.KeyCLIExampleInteractive, brand.CommandName))
-		fmt.Fprint(os.Stdout, i18n.Format(lang, i18n.KeyCLIExamplePrint, brand.CommandName))
-		fmt.Fprint(os.Stdout, i18n.Format(lang, i18n.KeyCLIExampleModel, brand.CommandName, brand.DeepSeekDefaultModel))
-		fmt.Fprint(os.Stdout, i18n.Format(lang, i18n.KeyCLIExampleAllowedDir, brand.CommandName))
+		fmt.Fprint(output, i18n.Format(lang, i18n.KeyCLIUsage, brand.CommandName))
+		fmt.Fprint(output, i18n.Text(lang, i18n.KeyCLIOptions))
+		printFlagDefaults(output, fs, lang)
+		fmt.Fprint(output, i18n.Text(lang, i18n.KeyCLIExamples))
+		fmt.Fprint(output, i18n.Format(lang, i18n.KeyCLIExampleInteractive, brand.CommandName))
+		fmt.Fprint(output, i18n.Format(lang, i18n.KeyCLIExamplePrint, brand.CommandName))
+		fmt.Fprint(output, i18n.Format(lang, i18n.KeyCLIExampleModel, brand.CommandName, brand.DeepSeekDefaultModel))
+		fmt.Fprint(output, i18n.Format(lang, i18n.KeyCLIExampleAllowedDir, brand.CommandName))
 	}
 }
 
@@ -143,13 +148,12 @@ func printFlagDefaults(w io.Writer, fs *flag.FlagSet, lang i18n.Language) {
 	})
 }
 
-// PrintHelp prints the usage text to stdout. Called by main when ErrHelp is returned.
-func PrintHelp() {
+func printHelp(output io.Writer) {
 	lang := i18n.DetectOrLoadLanguage()
 	var opts Options
 	var dirs multiString
 	fs := newFlagSet(&opts, &dirs, lang)
-	setUsage(fs, lang)
+	setUsage(fs, lang, output)
 	fs.Usage()
 }
 
@@ -165,7 +169,7 @@ func ParseArgs(args []string) (Options, error) {
 	fs := newFlagSet(&opts, &dirs, lang)
 	// Suppress the default error+usage output from flag so callers control output.
 	fs.SetOutput(io.Discard)
-	setUsage(fs, lang)
+	setUsage(fs, lang, io.Discard)
 
 	// Intercept -h / --help before flag.Parse so we control exit.
 	for _, arg := range args {
@@ -208,6 +212,9 @@ func ParseArgs(args []string) (Options, error) {
 // terminal stdin instead of a pipe carrying a print or SDK payload.
 func ValidateInputMode(opts Options, stdinTerminal bool) error {
 	lang := i18n.DetectOrLoadLanguage()
+	if opts.SDK && opts.Print {
+		return i18n.NewError(i18n.KeyCLIInputModeSDKPrint)
+	}
 	if !opts.ScreenReader {
 		return nil
 	}
@@ -226,37 +233,93 @@ func ValidateInputMode(opts Options, stdinTerminal bool) error {
 	return nil
 }
 
-// Parse parses os.Args[1:] and returns the populated Options.
-// On --help / -h it prints usage and exits 0.
-// On --version / -v it prints the version string and exits 0.
-// On parse errors it prints to stderr and exits 2.
-func Parse() Options {
-	if len(os.Args) > 1 && os.Args[1] == "mcp" {
-		os.Exit(RunMCPCLI(os.Args[2:], os.Stdout, os.Stderr))
+// EarlyAction identifies a CLI request that completes before application
+// runtime initialization. The command package owns no process-exit behavior;
+// callers execute the action and decide what to do with its return code.
+type EarlyAction uint8
+
+const (
+	EarlyActionNone EarlyAction = iota
+	EarlyActionHelp
+	EarlyActionVersion
+	EarlyActionMCP
+	EarlyActionPromptDump
+)
+
+// Invocation is the canonical result of parsing one process invocation.
+type Invocation struct {
+	Options    Options
+	Action     EarlyAction
+	ActionArgs []string
+}
+
+// ParseInvocation parses a complete command invocation without printing or
+// terminating the process. MCP remains a first-position subcommand, matching
+// the established command-line contract.
+func ParseInvocation(args []string) (Invocation, error) {
+	if len(args) > 0 && args[0] == "mcp" {
+		return Invocation{Action: EarlyActionMCP, ActionArgs: append([]string(nil), args[1:]...)}, nil
 	}
-	opts, err := ParseArgs(os.Args[1:])
+	opts, err := ParseArgs(args)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrHelp):
-			PrintHelp()
-			os.Exit(0)
+			return Invocation{Options: opts, Action: EarlyActionHelp}, nil
 		case errors.Is(err, ErrVersion):
-			// i18n:allow display-literal identifier -- command and semantic version are stable product identifiers.
-			fmt.Printf("%s %s\n", brand.CommandName, Version)
-			os.Exit(0)
+			return Invocation{Options: opts, Action: EarlyActionVersion}, nil
 		default:
-			fmt.Fprint(os.Stderr, i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyCLIError, err))
-			os.Exit(2)
+			return Invocation{}, err
 		}
 	}
 	if opts.PromptDump || opts.PromptDumpJSON {
-		if err := DumpPrompt(opts); err != nil {
-			fmt.Fprint(os.Stderr, i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyCLIError, err))
-			os.Exit(1)
-		}
-		os.Exit(0)
+		return Invocation{Options: opts, Action: EarlyActionPromptDump}, nil
 	}
-	return opts
+	return Invocation{Options: opts}, nil
+}
+
+// RunEarlyAction writes an early action to the supplied process streams and
+// returns its exit code. It is a no-op for a normal runtime invocation.
+func RunEarlyAction(invocation Invocation, stdout, stderr io.Writer) int {
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	switch invocation.Action {
+	case EarlyActionNone:
+		return 0
+	case EarlyActionHelp:
+		printHelp(stdout)
+		return 0
+	case EarlyActionVersion:
+		fmt.Fprintf(stdout, "%s %s\n", brand.CommandName, Version)
+		return 0
+	case EarlyActionMCP:
+		return RunMCPCLI(invocation.ActionArgs, stdout, stderr)
+	case EarlyActionPromptDump:
+		if err := dumpPrompt(invocation.Options, stdout); err != nil {
+			fmt.Fprint(stderr, i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyCLIError, err))
+			return 1
+		}
+		return 0
+	default:
+		return 2
+	}
+}
+
+// ReadPipedPrompt reads the complete prompt for implicit print mode while
+// enforcing a fixed memory bound. Explicit positional queries and SDK input do
+// not enter this path.
+func ReadPipedPrompt(input io.Reader) (string, error) {
+	data, err := io.ReadAll(io.LimitReader(input, maxPipedPromptBytes+1))
+	if err != nil {
+		return "", i18n.WrapError(i18n.KeyCLIStdinReadFailure, err)
+	}
+	if int64(len(data)) > maxPipedPromptBytes {
+		return "", i18n.NewError(i18n.KeyCLIStdinTooLarge, maxPipedPromptBytes)
+	}
+	return string(data), nil
 }
 
 // RunMCPCLI executes the non-interactive `luban-code mcp ...` management
@@ -291,17 +354,17 @@ func RunMCPCLI(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// DumpPrompt writes the rendered prompt construction snapshot requested by
+// dumpPrompt writes the rendered prompt construction snapshot requested by
 // --prompt-dump or --prompt-dump-json. It intentionally does not initialize a
 // provider or make API calls.
-func DumpPrompt(opts Options) error {
+func dumpPrompt(opts Options, output io.Writer) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("%s", i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyCLIWorkingDirectoryError, err))
 	}
 	systemCtx := prompt.SystemContextBuilder{GitStatus: prompt.LoadGitContext(cwd)}.Build()
 	userCtx := prompt.UserContextBuilder{Date: time.Now()}.
-		FromConfig(prompt.Config{CustomInstructions: prompt.DiscoverClaudeMD(cwd)}).
+		FromConfig(prompt.Config{CustomInstructions: prompt.DiscoverInstructions(cwd)}).
 		Build()
 
 	var blocks prompt.SystemPrompt
@@ -319,7 +382,7 @@ func DumpPrompt(opts Options) error {
 	blocks = prompt.ApplyCacheScopes(blocks, prompt.CacheScopeOptions{GlobalSafe: true})
 	dump := prompt.BuildPromptDump(blocks, userCtx, systemCtx)
 	if opts.PromptDumpJSON {
-		return prompt.WritePromptDumpJSON(os.Stdout, dump)
+		return prompt.WritePromptDumpJSON(output, dump)
 	}
-	return prompt.WritePromptDumpText(os.Stdout, dump)
+	return prompt.WritePromptDumpText(output, dump)
 }

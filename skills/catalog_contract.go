@@ -71,8 +71,7 @@ func (id SkillID) Source() (SkillSource, bool) {
 // Validate reports whether source is a supported owner of skill content.
 func (source SkillSource) Validate() error {
 	switch source {
-	case SourceProject, SourceUser, SourceManaged, SourcePlugin, SourceMCP,
-		SourceBundled, SourceCommandsLegacy:
+	case SourceProject, SourceUser, SourceManaged, SourcePlugin, SourceMCP, SourceBundled:
 		return nil
 	default:
 		return fmt.Errorf("unknown skill source %q", source)
@@ -194,11 +193,6 @@ func (scope SkillScope) Validate() error {
 // VisibilityOverride is the persisted or session-local value for one stable
 // skill at one scope. LastNonOff is valid only while Visibility is off and lets
 // a binary toggle restore name-only or manual-only rather than losing intent.
-//
-// JSON decoding accepts the legacy scalar form (for example, "off") as well
-// as the structured form. Stores that use map keys for ID and scope attach
-// those fields after decoding the scalar; MarshalJSON always emits the
-// structured representation so LastNonOff can be preserved.
 type VisibilityOverride struct {
 	SkillID    SkillID     `json:"skill_id,omitempty"`
 	Scope      SkillScope  `json:"scope,omitempty"`
@@ -227,7 +221,6 @@ func (override VisibilityOverride) Validate() error {
 }
 
 // RestoreVisibility returns the state a binary enable action should restore.
-// Old scalar off records have no remembered state and therefore restore auto.
 func (override VisibilityOverride) RestoreVisibility() Visibility {
 	if override.Visibility == VisibilityOff && override.LastNonOff != nil && override.LastNonOff.IsNonOff() {
 		return *override.LastNonOff
@@ -235,18 +228,10 @@ func (override VisibilityOverride) RestoreVisibility() Visibility {
 	return VisibilityAuto
 }
 
-// UnmarshalJSON accepts both legacy scalar and structured override records.
+// UnmarshalJSON validates a structured override record.
 func (override *VisibilityOverride) UnmarshalJSON(data []byte) error {
 	if override == nil {
 		return errors.New("nil visibility override")
-	}
-	var scalar Visibility
-	if err := json.Unmarshal(data, &scalar); err == nil {
-		if err := scalar.Validate(); err != nil {
-			return err
-		}
-		*override = VisibilityOverride{Visibility: scalar}
-		return nil
 	}
 	type wire VisibilityOverride
 	var decoded wire
@@ -343,6 +328,13 @@ func (skill EffectiveSkill) Validate() error {
 	}
 	if !skill.Mutable && strings.TrimSpace(skill.ReadOnlyReason) == "" {
 		return errors.New("immutable skill requires a read-only reason")
+	}
+	if reason := CatalogPolicyReason(strings.TrimSpace(skill.ReadOnlyReason)); reason != "" {
+		switch reason {
+		case CatalogPolicyReasonManagedReadOnly, CatalogPolicyReasonManagedDeny:
+		default:
+			return fmt.Errorf("invalid read-only reason %q", reason)
+		}
 	}
 	return nil
 }
@@ -655,12 +647,6 @@ type ProjectVisibilityToggleResult struct {
 	CurrentRevision  CatalogRevision                `json:"current_revision"`
 	Skill            *EffectiveSkill                `json:"skill,omitempty"`
 	Snapshot         CatalogSnapshot                `json:"snapshot"`
-}
-
-// RefreshRequired reports whether the result is explicitly degraded and must
-// not be presented as rolled back or committed.
-func (result ProjectVisibilityToggleResult) RefreshRequired() bool {
-	return result.Outcome == ProjectVisibilityToggleDegraded
 }
 
 // Validate checks result consistency without inventing success for a partial

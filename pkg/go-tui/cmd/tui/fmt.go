@@ -159,9 +159,9 @@ func runFmtStdout(fmtr *formatter.Formatter, files []string) error {
 // Returns an error if any file is not formatted.
 func runFmtCheck(fmtr *formatter.Formatter, files []string) error {
 	type result struct {
-		path       string
+		path         string
 		notFormatted bool
-		err        error
+		err          error
 	}
 
 	results := make(chan result, len(files))

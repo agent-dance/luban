@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/agent-dance/luban/session"
+	"github.com/agent-dance/luban/internal/store/session"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -69,22 +69,22 @@ func TestDeveloperMessageSessionPersistenceRoundTrip(t *testing.T) {
 	}
 }
 
-func TestMessageLegacyJSONRemainsReadable(t *testing.T) {
-	legacy := []byte(`{"role":"assistant","content":[{"type":"text","text":"legacy"}]}`)
+func TestAssistantMessageJSONDoesNotRequireDeveloperMetadata(t *testing.T) {
+	encoded := []byte(`{"role":"assistant","content":[{"type":"text","text":"assistant"}]}`)
 
 	var message types.Message
-	if err := json.Unmarshal(legacy, &message); err != nil {
-		t.Fatalf("Unmarshal legacy message: %v", err)
+	if err := json.Unmarshal(encoded, &message); err != nil {
+		t.Fatalf("Unmarshal assistant message: %v", err)
 	}
-	if message.Role != types.RoleAssistant || message.GetText() != "legacy" {
-		t.Fatalf("legacy message = %#v", message)
+	if message.Role != types.RoleAssistant || message.GetText() != "assistant" {
+		t.Fatalf("assistant message = %#v", message)
 	}
 	if message.DeveloperMetadata != nil {
-		t.Fatalf("legacy developer metadata = %#v, want nil", message.DeveloperMetadata)
+		t.Fatalf("assistant developer metadata = %#v, want nil", message.DeveloperMetadata)
 	}
 }
 
-func TestMessageExistingEncodingsRemainByteCompatible(t *testing.T) {
+func TestOrdinaryMessageJSONOmitsOptionalMetadata(t *testing.T) {
 	tests := []struct {
 		name    string
 		message types.Message

@@ -2,11 +2,9 @@ package commands
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/agent-dance/luban/i18n"
@@ -23,85 +21,42 @@ type InteractiveSkillsBackend interface {
 	ToggleProjectVisibility(sessionID string, id skills.SkillID, expected skills.CatalogRevision) (skills.ProjectVisibilityToggleResult, error)
 }
 
-// FormatInteractiveSkillsToggleResult maps the Manager's typed transaction
-// truth to localized copy. Interactive surfaces must not infer outcomes from
-// error strings or retain optimistic state after this receipt is returned.
-func FormatInteractiveSkillsToggleResult(lang i18n.Language, result skills.ProjectVisibilityToggleResult) string {
-	if err := result.Validate(); err != nil {
-		return i18n.Format(lang, i18n.KeyCommandSkillsOperationFailed, i18n.Text(lang, i18n.KeyAuxSkillFailed))
-	}
-	id := string(result.RequestedSkillID)
-	name, readOnlyReason := id, ""
-	if result.Skill != nil {
-		if strings.TrimSpace(result.Skill.Name) != "" {
-			name = result.Skill.Name
-		}
-		readOnlyReason = result.Skill.ReadOnlyReason
-	}
-	readOnlyReason = skillReadOnlyReason(lang, readOnlyReason)
-
-	if result.Outcome == skills.ProjectVisibilityToggleCommitted {
-		return i18n.Format(lang, i18n.KeyCommandSkillsToggleCommitted,
-			name, id, i18n.RuntimeSkillVisibilityLabel(lang, string(result.Skill.Visibility)))
-	}
-	switch result.Reason {
-	case skills.ProjectVisibilityToggleReasonStaleRevision:
-		return i18n.Format(lang, i18n.KeyCommandSkillsToggleStale, id)
-	case skills.ProjectVisibilityToggleReasonUnknownSkill:
-		return i18n.Format(lang, i18n.KeyCommandSkillsToggleUnknown, id)
-	case skills.ProjectVisibilityToggleReasonReadOnly:
-		return i18n.Format(lang, i18n.KeyCommandSkillsToggleReadOnly, name, id, readOnlyReason)
-	case skills.ProjectVisibilityToggleReasonSessionOverride:
-		return i18n.Format(lang, i18n.KeyCommandSkillsToggleSession, name, id, id)
-	case skills.ProjectVisibilityToggleReasonPersistenceFailed:
-		return i18n.Format(lang, i18n.KeyCommandSkillsTogglePersistFailed, name, id)
-	case skills.ProjectVisibilityToggleReasonLiveApplyRolledBack:
-		return i18n.Format(lang, i18n.KeyCommandSkillsToggleRolledBack, name, id)
-	case skills.ProjectVisibilityToggleReasonRollbackFailed:
-		return i18n.Format(lang, i18n.KeyCommandSkillsToggleDegraded, name, id)
-	case skills.ProjectVisibilityToggleReasonAuthoritativeRefresh:
-		return i18n.Format(lang, i18n.KeyCommandSkillsToggleRefreshFailed, name, id)
-	default:
-		return i18n.Format(lang, i18n.KeyCommandSkillsOperationFailed,
-			i18n.Text(lang, i18n.KeyAuxSkillFailed))
-	}
-}
-
 // SkillsBackend is the live catalog surface needed by /skills. The runtime
 // injects the same Manager used by SkillTool and the query-loop catalog.
 type SkillsBackend interface {
 	InteractiveSkillsBackend
-	Resolve(sessionID, stableIDOrName string) (skills.ResolvedSkill, bool, error)
+	SnapshotBinding(sessionID string) (skills.CatalogBinding, error)
+	ResolveLatest(request skills.SkillResolveRequest, consume func(skills.ResolvedSkill) error) (skills.SkillResolveResult, error)
 	SetVisibility(sessionID string, override skills.VisibilityOverride) (skills.CatalogSnapshot, error)
 	ResetVisibility(sessionID string, scope skills.SkillScope, id skills.SkillID) (skills.CatalogSnapshot, error)
 	RefreshSnapshot(sessionID string) (skills.CatalogSnapshot, error)
-
-	// These adapters preserve the original current-session enable/disable/all
-	// command semantics while callers migrate to scoped four-state operations.
-	SetEnabled(sessionID, name string, enabled bool) (changed, found bool)
-	SetAllEnabled(sessionID string, enabled bool) int
 }
 
 // SkillInvocationRequest is the surface-neutral explicit invocation contract.
 // Arguments is a pointer so an omitted argument remains distinct from an
-// explicitly supplied empty string. ExpectedRevision zero requests the latest
-// effective state.
+// explicitly supplied empty string. Project generation pins the workspace
+// authority; ExpectedRevision pins the selected catalog row.
 type SkillInvocationRequest struct {
-	SessionID        string
-	Selector         string
-	ExpectedRevision skills.SkillRevision
-	Arguments        *string
-	Origin           skills.InvocationOrigin
+	SessionID                 string
+	Selector                  string
+	ExpectedRevision          skills.SkillRevision
+	ExpectedProjectGeneration skills.ProjectSourceGeneration
+	Arguments                 *string
+	Origin                    skills.InvocationOrigin
 }
 
-// Validate applies the same selector, revision, and origin rules as the
-// authoritative Manager execution boundary.
+// Validate applies the same selector, revision, project-authority, and origin
+// rules as the authoritative Manager execution boundary.
 func (request SkillInvocationRequest) Validate() error {
+	if err := request.ExpectedProjectGeneration.Validate(); err != nil {
+		return err
+	}
 	return (skills.SkillResolveRequest{
-		SessionID:        request.SessionID,
-		Selector:         request.Selector,
-		ExpectedRevision: request.ExpectedRevision,
-		Origin:           request.Origin,
+		SessionID:                 request.SessionID,
+		Selector:                  request.Selector,
+		ExpectedRevision:          request.ExpectedRevision,
+		ExpectedProjectGeneration: request.ExpectedProjectGeneration,
+		Origin:                    request.Origin,
 	}).Validate()
 }
 
@@ -115,23 +70,17 @@ type SkillInvoker interface {
 type SkillInvokerFunc func(context.Context, SkillInvocationRequest) (types.ToolResult, error)
 
 func (invoke SkillInvokerFunc) InvokeSkill(ctx context.Context, request SkillInvocationRequest) (types.ToolResult, error) {
-	if invoke == nil {
-		return types.ToolResult{}, i18n.NewError(i18n.KeyCommandSkillInvokerNotConfigured)
-	}
 	if err := request.Validate(); err != nil {
 		return types.ToolResult{}, err
 	}
 	return invoke(ctx, request)
 }
 
-type skillsCmd struct {
-	backend SkillsBackend
-}
+type skillsCmd struct{}
 
 // NewSkillsCommand creates the /skills catalog and visibility command.
-// Passing nil defers backend resolution to commands.Context at execution time.
-func NewSkillsCommand(backend SkillsBackend) Command {
-	return &skillsCmd{backend: backend}
+func NewSkillsCommand() Command {
+	return &skillsCmd{}
 }
 
 func (c *skillsCmd) Name() string      { return "skills" }
@@ -145,10 +94,7 @@ func (c *skillsCmd) Execute(ctx *Context, args string) error {
 	if ctx == nil {
 		ctx = &Context{}
 	}
-	backend := c.backend
-	if backend == nil {
-		backend = ctx.SkillManager
-	}
+	backend := ctx.SkillManager
 	if backend == nil {
 		return fmt.Errorf("%s", i18n.Text(ctx.Language, i18n.KeyCommandSkillsUnavailable))
 	}
@@ -159,7 +105,7 @@ func (c *skillsCmd) Execute(ctx *Context, args string) error {
 		verb = strings.ToLower(fields[0])
 	}
 	switch verb {
-	case "", "list", "status":
+	case "list":
 		if len(fields) > 1 {
 			return skillsUsageFailure(ctx)
 		}
@@ -170,7 +116,7 @@ func (c *skillsCmd) Execute(ctx *Context, args string) error {
 		emitSkills(ctx, formatSkillsList(ctx.Language, snapshot, ctx.SessionID))
 		reportCommandSucceeded(ctx)
 		return nil
-	case "show", "get", "info":
+	case "show":
 		if len(fields) != 2 {
 			emitSkills(ctx, i18n.Text(ctx.Language, i18n.KeyCommandSkillsShowUsage))
 			reportCommandFailed(ctx)
@@ -193,14 +139,7 @@ func (c *skillsCmd) Execute(ctx *Context, args string) error {
 			return nil
 		}
 		return resetSkillVisibility(ctx, backend, selector, scope)
-	case "enable", "disable":
-		if len(fields) != 2 {
-			emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsToggleUsage, verb))
-			reportCommandFailed(ctx)
-			return nil
-		}
-		return toggleSkills(ctx, backend, fields[1], verb == "enable")
-	case "refresh", "reload":
+	case "refresh":
 		if len(fields) != 1 {
 			emitSkills(ctx, i18n.Text(ctx.Language, i18n.KeyCommandSkillsRefreshUsage))
 			reportCommandFailed(ctx)
@@ -215,38 +154,56 @@ func (c *skillsCmd) Execute(ctx *Context, args string) error {
 		emitSkills(ctx, i18n.Text(ctx.Language, i18n.KeyCommandSkillsRefreshed)+formatSkillsList(ctx.Language, snapshot, ctx.SessionID))
 		reportCommandSucceeded(ctx)
 		return nil
-	case "help", "-h", "--help":
-		emitSkills(ctx, skillsUsage(ctx.Language))
-		reportCommandSucceeded(ctx)
-		return nil
 	default:
 		return skillsUsageFailure(ctx)
 	}
 }
 
 func showSkill(ctx *Context, backend SkillsBackend, selector string) error {
-	snapshot, ok := readSkillsSnapshot(ctx, backend)
+	binding, ok := readSkillsBinding(ctx, backend)
 	if !ok {
 		return nil
 	}
-	row, ok := selectSkill(ctx, snapshot, selector)
+	row, ok := selectSkill(ctx, binding.Snapshot, selector)
 	if !ok {
 		return nil
 	}
-	resolved, found, err := backend.Resolve(ctx.SessionID, string(row.ID))
+	result, err := backend.ResolveLatest(skills.SkillResolveRequest{
+		SessionID:                 ctx.SessionID,
+		Selector:                  string(row.ID),
+		ExpectedRevision:          row.Revision,
+		ExpectedProjectGeneration: binding.ProjectGeneration,
+		Origin:                    skills.InvocationOriginUser,
+	}, nil)
 	if err != nil {
 		emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsOperationFailed, skills.UserFacingError(ctx.Language, err)))
 		reportCommandFailed(ctx)
 		return nil
 	}
-	if !found || resolved.Skill == nil {
+	if result.Outcome == skills.SkillResolveStale {
+		emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsOperationFailed,
+			skills.UserFacingError(ctx.Language, skills.ErrInvalidSkillRevision)))
+		reportCommandFailed(ctx)
+		return nil
+	}
+	if result.Resolved == nil || result.Resolved.Skill == nil {
 		emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsNotFound, selector))
 		reportCommandFailed(ctx)
 		return nil
 	}
-	emitSkills(ctx, formatSkillDetails(ctx.Language, resolved, ctx.SessionID, snapshot.Revision))
+	emitSkills(ctx, formatSkillDetails(ctx.Language, *result.Resolved, ctx.SessionID, result.CatalogRevision))
 	reportCommandSucceeded(ctx)
 	return nil
+}
+
+func readSkillsBinding(ctx *Context, backend SkillsBackend) (skills.CatalogBinding, bool) {
+	binding, err := backend.SnapshotBinding(ctx.SessionID)
+	if err != nil {
+		emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsOperationFailed, skills.UserFacingError(ctx.Language, err)))
+		reportCommandFailed(ctx)
+		return skills.CatalogBinding{}, false
+	}
+	return binding, true
 }
 
 func setSkillVisibility(ctx *Context, backend SkillsBackend, selector string, visibility skills.Visibility, scope skills.SkillScope) error {
@@ -311,89 +268,8 @@ func resetSkillVisibility(ctx *Context, backend SkillsBackend, selector string, 
 	return nil
 }
 
-func toggleSkills(ctx *Context, backend SkillsBackend, target string, enabled bool) error {
-	target = strings.TrimSpace(target)
-	action := i18n.Text(ctx.Language, i18n.KeyCommandSkillsStatusDisabled)
-	state := action
-	if enabled {
-		action = i18n.Text(ctx.Language, i18n.KeyCommandSkillsStatusEnabled)
-		state = action
-	}
-	if strings.EqualFold(target, "all") {
-		changed := backend.SetAllEnabled(ctx.SessionID, enabled)
-		emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsAllToggled,
-			sentenceStart(action), changed, skillSessionLabel(ctx.Language, ctx.SessionID)))
-		reportCommandSucceeded(ctx)
-		return nil
-	}
-
-	snapshot, ok := readSkillsSnapshot(ctx, backend)
-	if !ok {
-		return nil
-	}
-	row, ok := selectSkill(ctx, snapshot, target)
-	if !ok || !requireMutableSkill(ctx, row) {
-		return nil
-	}
-	already := enabled && row.Visibility != skills.VisibilityOff || !enabled && row.Visibility == skills.VisibilityOff
-	visibility := skills.VisibilityOff
-	if enabled {
-		visibility = skills.VisibilityAuto
-	}
-	if already {
-		emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsAlreadyToggled,
-			row.Name, state, skillSessionLabel(ctx.Language, ctx.SessionID))+
-			i18n.Format(ctx.Language, i18n.KeyCommandSkillsEffectiveState,
-				i18n.RuntimeSkillVisibilityLabel(ctx.Language, string(row.Visibility)),
-				i18n.RuntimeSkillScopeLabel(ctx.Language, string(row.VisibilitySource))))
-		reportCommandSucceeded(ctx)
-		return nil
-	}
-
-	next, err := backend.SetVisibility(ctx.SessionID, skills.VisibilityOverride{
-		SkillID: row.ID, Scope: skills.SkillScopeSession, Visibility: visibility,
-	})
-	if errors.Is(err, skills.ErrSkillOverrideStoreMissing) && row.ShadowedBy == "" {
-		changed, found := backend.SetEnabled(ctx.SessionID, row.Name, enabled)
-		if !found {
-			emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsNotFound, target))
-			reportCommandFailed(ctx)
-			return nil
-		}
-		if !changed {
-			emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsAlreadyToggled,
-				row.Name, state, skillSessionLabel(ctx.Language, ctx.SessionID))+
-				i18n.Format(ctx.Language, i18n.KeyCommandSkillsEffectiveState,
-					i18n.RuntimeSkillVisibilityLabel(ctx.Language, string(row.Visibility)),
-					i18n.RuntimeSkillScopeLabel(ctx.Language, string(row.VisibilitySource))))
-			reportCommandSucceeded(ctx)
-			return nil
-		}
-		err = nil
-		next, err = backend.Snapshot(ctx.SessionID)
-	}
-	if err != nil {
-		emitSkills(ctx, i18n.Format(ctx.Language, i18n.KeyCommandSkillsOperationFailed, skills.UserFacingError(ctx.Language, err)))
-		reportCommandFailed(ctx)
-		return nil
-	}
-	output := i18n.Format(ctx.Language, i18n.KeyCommandSkillsToggled,
-		sentenceStart(action), row.Name, skillSessionLabel(ctx.Language, ctx.SessionID))
-	if updated, found := next.Find(row.ID); found {
-		output += i18n.Format(ctx.Language, i18n.KeyCommandSkillsSetResult,
-			updated.Name, updated.ID,
-			i18n.RuntimeSkillVisibilityLabel(ctx.Language, string(visibility)),
-			i18n.RuntimeSkillScopeLabel(ctx.Language, string(skills.SkillScopeSession)),
-			i18n.RuntimeSkillVisibilityLabel(ctx.Language, string(updated.Visibility)),
-			i18n.RuntimeSkillScopeLabel(ctx.Language, string(updated.VisibilitySource)))
-	}
-	emitSkills(ctx, output)
-	reportCommandSucceeded(ctx)
-	return nil
-}
-
 func parseSkillSet(fields []string) (string, skills.Visibility, skills.SkillScope, bool) {
-	if len(fields) != 4 && len(fields) != 5 {
+	if len(fields) != 5 {
 		return "", "", "", false
 	}
 	visibility := skills.Visibility(strings.ToLower(fields[2]))
@@ -405,7 +281,7 @@ func parseSkillSet(fields []string) (string, skills.Visibility, skills.SkillScop
 }
 
 func parseSkillReset(fields []string) (string, skills.SkillScope, bool) {
-	if len(fields) != 3 && len(fields) != 4 {
+	if len(fields) != 4 {
 		return "", "", false
 	}
 	scope, ok := parseSkillScope(fields[2:])
@@ -413,16 +289,10 @@ func parseSkillReset(fields []string) (string, skills.SkillScope, bool) {
 }
 
 func parseSkillScope(fields []string) (skills.SkillScope, bool) {
-	var value string
-	switch {
-	case len(fields) == 2 && fields[0] == "--scope":
-		value = fields[1]
-	case len(fields) == 1 && strings.HasPrefix(fields[0], "--scope="):
-		value = strings.TrimPrefix(fields[0], "--scope=")
-	default:
+	if len(fields) != 2 || fields[0] != "--scope" {
 		return "", false
 	}
-	scope := skills.SkillScope(strings.ToLower(value))
+	scope := skills.SkillScope(strings.ToLower(fields[1]))
 	switch scope {
 	case skills.SkillScopeSession, skills.SkillScopeProject, skills.SkillScopeUser:
 		return scope, true
@@ -494,14 +364,6 @@ func requireMutableSkill(ctx *Context, row skills.EffectiveSkill) bool {
 	return false
 }
 
-func sentenceStart(value string) string {
-	first, size := utf8.DecodeRuneInString(value)
-	if first == utf8.RuneError && size == 0 {
-		return value
-	}
-	return string(unicode.ToUpper(first)) + value[size:]
-}
-
 func formatSkillsList(lang i18n.Language, snapshot skills.CatalogSnapshot, sessionID string) string {
 	enabled := 0
 	for _, row := range snapshot.Skills {
@@ -558,9 +420,6 @@ func formatSkillDetails(lang i18n.Language, resolved skills.ResolvedSkill, sessi
 		out.WriteString(i18n.Format(lang, i18n.KeyCommandSkillsListShadowed, row.ShadowedBy))
 	}
 	skill := resolved.Skill
-	if skill == nil {
-		return out.String()
-	}
 	out.WriteString(i18n.Format(lang, i18n.KeyCommandSkillsDetailPath, skillDisplayPath(lang, skill.FilePath)))
 	out.WriteString(i18n.Format(lang, i18n.KeyCommandSkillsDetailDirectory, skillDisplayPath(lang, skill.SkillDir)))
 	modelInvocation := i18n.Text(lang, i18n.KeyCommandSkillsStatusEnabled)
@@ -588,9 +447,6 @@ func formatSkillDetails(lang i18n.Language, resolved skills.ResolvedSkill, sessi
 	}
 	if len(skill.AllowedTools) > 0 {
 		out.WriteString(i18n.Format(lang, i18n.KeyCommandSkillsDetailTools, strings.Join(skill.AllowedTools, ", ")))
-	}
-	if len(skill.Aliases) > 0 {
-		out.WriteString(i18n.Format(lang, i18n.KeyCommandSkillsDetailAliases, strings.Join(skill.Aliases, ", ")))
 	}
 	return out.String()
 }
@@ -633,9 +489,7 @@ func skillReadOnlyReason(lang i18n.Language, reason string) string {
 	case skills.CatalogPolicyReasonManagedDeny:
 		return i18n.Text(lang, i18n.KeyCommandSkillsReadOnlyDenied)
 	default:
-		// Non-policy producers may supply an already presentable explanation.
-		// Only the frozen CatalogPolicyReason codes are semantic UI tokens.
-		return reason
+		return i18n.Text(lang, i18n.KeyCommandSkillsNoneValue)
 	}
 }
 

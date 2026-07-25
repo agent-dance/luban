@@ -146,8 +146,8 @@ func applyOpenAIPromptCachePolicy(body map[string]any, model string) openAIPromp
 	return policy
 }
 
-// openAIStaticSystemContent preserves the legacy joined prompt text while
-// adding one explicit breakpoint after the leading cache-eligible blocks.
+// openAIStaticSystemContent preserves the joined prompt text while adding one
+// explicit breakpoint after the leading cache-eligible blocks.
 func openAIStaticSystemContent(blocks []prompt.SystemPromptBlock, contentType string) ([]map[string]any, bool) {
 	filtered := make([]prompt.SystemPromptBlock, 0, len(blocks))
 	for _, block := range blocks {

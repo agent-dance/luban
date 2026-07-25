@@ -4,8 +4,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/agent-dance/luban/compact"
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/runtime/compact"
 	"github.com/agent-dance/luban/provider"
 )
 
@@ -43,45 +43,30 @@ func (c *contextCmd) Execute(ctx *Context, _ string) error {
 	maxCtx := provider.LookupMaxContext(model)
 	currentContextTokens := 0
 	warningState := compact.TokenWarningState{}
-	measurement := compact.ContextUsageUnknown
-	estimateComplete := false
 	usageKnown := false
-	source := i18n.Text(ctx.Language, i18n.KeyCommandContextLocalEstimator)
+	source := i18n.Text(ctx.Language, i18n.KeyCommandContextLoopTracker)
+	measurement := compact.ContextUsageUnknown
 	if detailProvider, ok := ctx.QueryLoop.(contextUsageDetailProvider); ok {
 		maxTokens, usage := detailProvider.ContextUsageDetail()
-		if maxTokens > 0 {
+		if maxTokens > 0 && usage.Measurement != compact.ContextUsageUnknown {
 			maxCtx = maxTokens
 			currentContextTokens = usage.UsedTokens
+			usageKnown = true
 			measurement = usage.Measurement
-			estimateComplete = usage.EstimateComplete
-			usageKnown = usage.Measurement != compact.ContextUsageUnknown
-			source = i18n.Text(ctx.Language, i18n.KeyCommandContextLoopTracker)
 		}
 	} else if maxTokens, usedTokens := ctx.QueryLoop.ContextUsage(); maxTokens > 0 {
 		maxCtx = maxTokens
 		currentContextTokens = usedTokens
-		measurement = compact.ContextUsageProviderReported
-		estimateComplete = true
 		usageKnown = true
-		source = i18n.Text(ctx.Language, i18n.KeyCommandContextLoopTracker)
+		measurement = compact.ContextUsageProviderReported
 	}
-	if warningProvider, ok := ctx.QueryLoop.(contextWarningProvider); ok {
-		if state := warningProvider.ContextWarningState(); state.EffectiveInputWindowTokens > 0 {
-			warningState = state
-			if !usageKnown {
-				currentContextTokens = state.UsedTokens
-				source = i18n.Text(ctx.Language, i18n.KeyCommandContextWarningTracker)
+	if usageKnown {
+		if warningProvider, ok := ctx.QueryLoop.(contextWarningProvider); ok {
+			state := warningProvider.ContextWarningState()
+			if state.UsedTokens == currentContextTokens {
+				warningState = state
 			}
 		}
-	}
-	if !usageKnown && len(messages) > 0 {
-		cw := compact.NewContextWindow(maxCtx)
-		estimate := cw.EstimateMessagesDetailed(messages, compact.ModelContextOverhead{})
-		currentContextTokens = estimate.KnownTotalTokens
-		measurement = compact.ContextUsageLocalEstimate
-		estimateComplete = estimate.Complete
-		usageKnown = true
-		warningState = cw.TokenWarningState(currentContextTokens, compact.ShouldUseAutoCompact())
 	}
 	if !usageKnown {
 		maxCtx = 0
@@ -104,15 +89,22 @@ func (c *contextCmd) Execute(ctx *Context, _ string) error {
 			remaining = 0
 		}
 		usageKey := i18n.KeyCommandContextUsageExact
-		if measurement == compact.ContextUsageLocalEstimate {
-			usageKey = i18n.KeyCommandContextUsageEstimate
-			if !estimateComplete {
-				usageKey = i18n.KeyCommandContextUsageLowerBound
-			}
+		remainingKey := i18n.KeyCommandContextRemaining
+		switch measurement {
+		case compact.ContextUsageLocalEstimate:
+			usageKey = i18n.KeyCommandContextUsageEstimated
+			remainingKey = i18n.KeyCommandContextRemainingEstimated
+			source = i18n.Text(ctx.Language, i18n.KeyCommandContextSourceEstimate)
+		case compact.ContextUsageLocalLowerBound:
+			usageKey = i18n.KeyCommandContextUsageLowerBound
+			remainingKey = i18n.KeyCommandContextRemainingUpperBound
+			source = i18n.Text(ctx.Language, i18n.KeyCommandContextSourceLowerBound)
+		default:
+			source = i18n.Text(ctx.Language, i18n.KeyCommandContextSourceProvider)
 		}
 		sb.WriteString(i18n.Format(ctx.Language, usageKey, formatTokens(currentContextTokens), formatTokens(maxCtx), pct))
 		remainingPercent := int(math.Round(float64(remaining) / float64(maxCtx) * 100))
-		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyCommandContextRemaining, remainingPercent, formatTokens(remaining)))
+		sb.WriteString(i18n.Format(ctx.Language, remainingKey, remainingPercent, formatTokens(remaining)))
 		if warningState.IsAboveAutoCompactThreshold {
 			sb.WriteString(i18n.Text(ctx.Language, i18n.KeyCommandContextAutoCompact))
 		} else if warningState.IsAtBlockingLimit {

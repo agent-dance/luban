@@ -56,19 +56,18 @@ func TestCompactLoopRuntimeErrorsLocalizeAndPreserveCauses(t *testing.T) {
 	}
 }
 
-func TestCompactLoopErrorEnglishCompatibility(t *testing.T) {
+func TestCompactLoopErrorEnglishContract(t *testing.T) {
 	checks := map[string]string{
-		Format(LangEN, KeyCompactSummaryAPICallFailed, "cause"):        "compaction API call failed: cause",
-		Format(LangEN, KeyCompactSummaryStreamFailed, "cause"):         "compaction stream error: cause",
-		Format(LangEN, KeyCompactSummaryFailed, "cause"):               "compact summary failed: cause",
-		Format(LangEN, KeyCompactHookBlocked, "PreCompact", "reason"):  "PreCompact hook blocked compaction: reason",
-		Text(LangEN, KeyLoopCompactionResultRejected):                  "Compaction returned a result that cannot be installed safely; history was left unchanged.",
-		Format(LangEN, KeyLoopPostCompactResetTrackingFailed, "cause"): "reset session-memory compaction tracking: cause",
-		Text(LangEN, KeyLoopPostCompactSkillCatalogEpochChanged):       "The Skill catalog changed while restoring post-compaction state.",
-		Text(LangEN, KeyLoopPostCompactSkillCatalogMissing):            "The current Skill catalog snapshot is missing from the post-compaction history.",
-		Text(LangEN, KeyLoopPostCompactSkillBodyEpochMissing):          "The post-compaction Skill body message is missing a valid context epoch.",
-		Text(LangEN, KeyLoopPostCompactSkillEnvelopeTrailing):          "skill invocation envelope contains trailing JSON",
-		Text(LangEN, KeyLoopPostCompactSkillEnvelopeNoBody):            "skill invocation envelope does not carry a body",
+		Format(LangEN, KeyCompactSummaryAPICallFailed, "cause"):       "compaction API call failed: cause",
+		Format(LangEN, KeyCompactSummaryStreamFailed, "cause"):        "compaction stream error: cause",
+		Format(LangEN, KeyCompactSummaryFailed, "cause"):              "compact summary failed: cause",
+		Format(LangEN, KeyCompactHookBlocked, "PreCompact", "reason"): "PreCompact hook blocked compaction: reason",
+		Text(LangEN, KeyLoopCompactionResultRejected):                 "Compaction returned a result that cannot be installed safely; history was left unchanged.",
+		Text(LangEN, KeyLoopPostCompactSkillCatalogEpochChanged):      "The Skill catalog changed while restoring post-compaction state.",
+		Text(LangEN, KeyLoopPostCompactSkillCatalogMissing):           "The current Skill catalog snapshot is missing from the post-compaction history.",
+		Text(LangEN, KeyLoopPostCompactSkillBodyEpochMissing):         "The post-compaction Skill body message is missing a valid context epoch.",
+		Text(LangEN, KeyLoopPostCompactSkillEnvelopeTrailing):         "skill invocation envelope contains trailing JSON",
+		Text(LangEN, KeyLoopPostCompactSkillEnvelopeNoBody):           "skill invocation envelope does not carry a body",
 	}
 	for got, want := range checks {
 		if got != want {

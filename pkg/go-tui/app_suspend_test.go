@@ -7,6 +7,26 @@ import (
 	"testing"
 )
 
+func (a *App) suspendTerminal() {
+	if a.onSuspend != nil {
+		a.onSuspend()
+	}
+	a.terminalMu.Lock()
+	_ = a.suspendTerminalChecked()
+	a.terminalMu.Unlock()
+}
+
+func (a *App) resumeTerminal() {
+	a.terminalSuspended.Store(true)
+	if !a.legacyKeyboard {
+		a.kittyKeyboard = true
+	}
+	a.terminalMu.Lock()
+	err := a.resumeTerminalChecked()
+	a.terminalMu.Unlock()
+	a.finishSuspendResume(err)
+}
+
 // recordingTerminal wraps MockTerminal and records method calls in order.
 type recordingTerminal struct {
 	*MockTerminal
@@ -306,12 +326,12 @@ func TestSuspendSequence_DynamicAltScreen(t *testing.T) {
 	term.cursorHidden = true
 
 	app := &App{
-		terminal:          term,
-		inAlternateScreen: true,
-		savedInlineHeight: 5,
+		terminal:            term,
+		inAlternateScreen:   true,
+		savedInlineHeight:   5,
 		savedInlineStartRow: 19,
-		stopCh:            make(chan struct{}),
-		buffer:            NewBuffer(80, 24),
+		stopCh:              make(chan struct{}),
+		buffer:              NewBuffer(80, 24),
 	}
 
 	app.suspendTerminal()

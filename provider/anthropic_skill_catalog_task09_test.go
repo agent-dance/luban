@@ -25,7 +25,7 @@ func TestAnthropicSkillCatalogDeveloperMessageOrder(t *testing.T) {
 	messages := convertToAnthropicMessagesForParams(Params{Messages: []types.Message{
 		developer,
 		types.UserMessage("real user input"),
-	}}.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope, false))
+	}}.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope))
 	if len(messages) != 1 {
 		t.Fatalf("messages = %d, want one merged user turn", len(messages))
 	}
@@ -70,7 +70,7 @@ func TestAnthropicDeveloperMessageDeltaPreservesHistoryOrder(t *testing.T) {
 		types.AssistantMessage("old assistant"),
 		delta,
 		types.UserMessage("current user"),
-	}}.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope, false))
+	}}.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope))
 	if len(messages) != 3 {
 		t.Fatalf("messages = %d, want delta merged into current user turn", len(messages))
 	}
@@ -95,7 +95,7 @@ func TestAnthropicDeveloperMessageDeltaPreservesHistoryOrder(t *testing.T) {
 	}
 }
 
-// convertToAnthropicMessages is the shared projection used by the direct
+// convertToAnthropicMessagesForParams is the shared projection used by the direct
 // Anthropic, Bedrock, and Vertex providers.
 func TestAnthropicCompatibleDeveloperMessagePreservesToolResultPairing(t *testing.T) {
 	delta := trustedDeveloperMessageForTest("catalog delta after tools", types.DeveloperMessageMetadata{
@@ -116,7 +116,7 @@ func TestAnthropicCompatibleDeveloperMessagePreservesToolResultPairing(t *testin
 			types.ToolResultBlock{ToolUseID: "tool_1", Content: "done one"},
 			types.ToolResultBlock{ToolUseID: "tool_2", Content: "done two"},
 		),
-	}}.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope, false))
+	}}.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope))
 	if len(messages) != 3 {
 		t.Fatalf("messages = %d, want 3 so no reminder splits tool_use/tool_result", len(messages))
 	}

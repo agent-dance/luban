@@ -72,16 +72,6 @@ func WithEventQueueSize(size int) AppOption {
 	}
 }
 
-// WithGlobalKeyHandler sets a handler that runs before dispatching to focused element.
-// If the handler returns true, the event is consumed and not dispatched further.
-// Use this for app-level key bindings like quit.
-func WithGlobalKeyHandler(fn func(KeyEvent) bool) AppOption {
-	return func(a *App) error {
-		a.globalKeyHandler = fn
-		return nil
-	}
-}
-
 // WithInternalErrorHandler observes private app diagnostics. The handler must
 // not write directly to the active terminal; terminal presentation remains
 // owned by App.
