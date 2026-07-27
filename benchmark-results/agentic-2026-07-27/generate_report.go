@@ -679,7 +679,7 @@ func compileReport(options options, language i18n.Language) (reportData, error) 
 				run.FilesChanged = summary.Patch.FilesChanged
 				run.TimedOut = summary.TimedOut
 				run.ExitCode = summary.ExitCode
-				run.BinaryPath = summary.Binary.Path
+				run.BinaryPath = portableReportPath(options.repoRootPath, summary.Binary.Path)
 				run.BinarySHA256 = summary.Binary.SHA256
 				aggregate.RunsObserved++
 				data.RunSlotsObserved++
@@ -696,7 +696,7 @@ func compileReport(options options, language i18n.Language) (reportData, error) 
 				aggregate.RunnerEstimatedCost += summary.EstimatedCostUSD
 				aggregate.ToolCalls += summary.ToolCalls
 				if aggregate.BinarySHA256 == "" {
-					aggregate.BinaryPath = summary.Binary.Path
+					aggregate.BinaryPath = portableReportPath(options.repoRootPath, summary.Binary.Path)
 					aggregate.BinarySHA256 = summary.Binary.SHA256
 				}
 				for name, count := range summary.ToolCallsByType {
@@ -978,7 +978,7 @@ func buildOptimizationEvidence(options options, before legacyAggregate, after ag
 	notAvailable := "N/A"
 	inspectBefore := before.ToolCallsByType["Read"] + before.ToolCallsByType["Grep"] + before.ToolCallsByType["Glob"] + before.ToolCallsByType["ToolSearch"]
 	rows := []optimizationEvidenceRow{
-		{CopyKey: string(i18n.KeyAgenticLocal5OptimizationInspectIntegration), Before: integerValue(inspectBefore), After: integerValue(after.ToolTypesCount("Inspect")), Change: percentDelta(float64(inspectBefore), float64(after.ToolTypesCount("Inspect"))), ScopeKey: string(i18n.KeyAgenticLocal5ScopeTrajectoryDiagnostic), Sources: link("benchmark-results/agentic-2026-07-26/results.json", "benchmark-results/agentic-local5-2026-07-27/raw")},
+		{CopyKey: string(i18n.KeyAgenticLocal5OptimizationInspectIntegration), Before: integerValue(inspectBefore), After: integerValue(after.ToolTypesCount("Inspect")), Change: percentDelta(float64(inspectBefore), float64(after.ToolTypesCount("Inspect"))), ScopeKey: string(i18n.KeyAgenticLocal5ScopeTrajectoryDiagnostic), Sources: link("benchmark-results/agentic-2026-07-26/results.json", "benchmark-results/agentic-2026-07-27/raw")},
 		{CopyKey: string(i18n.KeyAgenticLocal5OptimizationApplyPatchAtomic), Before: integerValue(before.ToolCallsByType["Edit"] + before.ToolCallsByType["Write"]), After: integerValue(after.ToolTypesCount("ApplyPatch")), Change: percentDelta(float64(before.ToolCallsByType["Edit"]+before.ToolCallsByType["Write"]), float64(after.ToolTypesCount("ApplyPatch"))), ScopeKey: string(i18n.KeyAgenticLocal5ScopeTrajectoryDiagnostic), Sources: link("internal/tools/file/apply_patch.go")},
 		{CopyKey: string(i18n.KeyAgenticLocal5OptimizationRunVerification), Before: integerValue(before.ToolCallsByType["Bash"]), After: integerValue(after.ToolTypesCount("Run")), Change: percentDelta(float64(before.ToolCallsByType["Bash"]), float64(after.ToolTypesCount("Run"))), ScopeKey: string(i18n.KeyAgenticLocal5ScopeTrajectoryDiagnostic), Sources: link("internal/tools/shell/run.go")},
 		{CopyKey: string(i18n.KeyAgenticLocal5OptimizationThreeToolCatalog), Before: "9924 B / ~2481 tokens", After: "3284 B / ~821 tokens", Change: "-66.9%", ScopeKey: string(i18n.KeyAgenticLocal5ScopeUnitFixture), Sources: link("prompt/agentic_v2_test.go")},
@@ -1323,7 +1323,7 @@ func optimizationCards(options options) []optimizationCard {
 		{i18n.KeyAgenticLocal5OptimizationThreeToolCatalog, []string{"registry/visible_snapshot.go", "internal/app/registry_setup.go", "prompt/static_sections.go"}},
 		{i18n.KeyAgenticLocal5OptimizationContinuationCacheLineage, []string{"provider/responses_continuation.go", "provider/prompt_cache_scope.go", "internal/runtime/loop/revision_fusion.go"}},
 		{i18n.KeyAgenticLocal5OptimizationUnifiedAttemptRetry, []string{"provider/attempt_controller.go", "provider/stream_watchdog.go", "internal/runtime/loop/flight_controller.go"}},
-		{i18n.KeyAgenticLocal5OptimizationPreciseTelemetry, []string{"internal/runtime/loop/tool_operation_metrics.go", "benchmark/agentic/harness/evidence.go", "benchmark-results/agentic-local5-2026-07-27/run_benchmark.py"}},
+		{i18n.KeyAgenticLocal5OptimizationPreciseTelemetry, []string{"internal/runtime/loop/tool_operation_metrics.go", "benchmark/agentic/harness/evidence.go", "benchmark-results/agentic-2026-07-27/run_benchmark.py"}},
 		{i18n.KeyAgenticLocal5OptimizationPrintSessionQuartet, []string{"internal/app/printmode.go", "internal/app/main.go", "internal/app/printmode_session_test.go"}},
 		{i18n.KeyAgenticLocal5OptimizationInspectCursorCompatibility, []string{"internal/agentic/inspect/execute.go", "internal/agentic/inspect/cursor_wire_test.go"}},
 	}
@@ -1428,9 +1428,42 @@ func sortedCounts(values map[string]int) []namedCount {
 func relativeHref(base, target string) string {
 	relative, err := filepath.Rel(base, target)
 	if err != nil {
-		return filepath.ToSlash(target)
+		return filepath.ToSlash(filepath.Base(target))
 	}
 	return filepath.ToSlash(relative)
+}
+
+func portableReportPath(repositoryRoot, value string) string {
+	trimmed := strings.TrimSpace(value)
+	normalized := strings.ReplaceAll(trimmed, "\\", "/")
+	cleaned := filepath.Clean(trimmed)
+	if cleaned == "." {
+		return ""
+	}
+	if !filepath.IsAbs(cleaned) {
+		foreignAbsolute := strings.HasPrefix(normalized, "/") ||
+			(len(normalized) >= 3 && normalized[1] == ':' && normalized[2] == '/')
+		if foreignAbsolute {
+			return portablePathBase(normalized)
+		}
+		return filepath.ToSlash(cleaned)
+	}
+	repository, err := filepath.Abs(repositoryRoot)
+	if err == nil {
+		relative, relativeErr := filepath.Rel(repository, cleaned)
+		if relativeErr == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return filepath.ToSlash(relative)
+		}
+	}
+	return filepath.Base(cleaned)
+}
+
+func portablePathBase(value string) string {
+	trimmed := strings.TrimRight(value, "/")
+	if separator := strings.LastIndexByte(trimmed, '/'); separator >= 0 {
+		return trimmed[separator+1:]
+	}
+	return trimmed
 }
 
 func equalStrings(left, right []string) bool {

@@ -50,7 +50,7 @@ func TestAgenticLocal5CriticalDefinitionsRemainExplicit(t *testing.T) {
 		KeyAgenticLocal5OptimizationPrintSessionQuartet:        {"session ID", "project root", "root-denied", "zero"},
 		KeyAgenticLocal5OptimizationInspectCursorCompatibility: {"requests:[]", "max_*", "two-call", "zero"},
 		KeyAgenticLocal5ConclusionNoComprehensiveSuperiority:   {"not demonstrated", "comprehensive superiority"},
-		KeyAgenticLocal5ConclusionMeasured:                     {"strict raw", "POSTs", "wall time", "estimated cost"},
+		KeyAgenticLocal5ConclusionMeasured:                     {"strict raw", "POSTs", "task duration", "estimated cost"},
 		KeyAgenticLocal5EfficiencyPrimaryConclusion:            {"Tool wrappers", "end-to-end efficiency"},
 		KeyAgenticLocal5EfficiencyCompletionTail:               {"upper-bound", "cannot be assumed wholly wasted"},
 		KeyAgenticLocal5EfficiencyFlightProof:                  {"write-effect", "proof obligation", "5/43", "37/43"},

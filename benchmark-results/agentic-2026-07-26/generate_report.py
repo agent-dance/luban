@@ -280,7 +280,7 @@ def metric_rows() -> str:
 def aggregate_table() -> str:
     fields = [
         ("官方严格分", lambda value: f'{value["resolved"]}/{value["total_tasks"]} ({pct(value["resolved"] / value["total_tasks"])})'),
-        ("Agent 总耗时", lambda value: sec(value["elapsed_seconds"])),
+        ("任务耗时", lambda value: sec(value["elapsed_seconds"])),
         ("平均 / 中位耗时", lambda value: f'{sec(value["mean_seconds"])} / {sec(value["median_seconds"])}'),
         ("估算模型费用", lambda value: usd(value["estimated_cost_usd"])),
         ("工具调用", lambda value: n(value["tool_calls"])),
@@ -439,7 +439,7 @@ table {{ border-collapse:collapse; width:100%; min-width:760px; background:#0d13
 
 <section id="runs">
   <h2>10 次正式 Agent 运行</h2>
-  <p class="muted">时间是 Agent CLI 自身墙钟时间；“评测”是后续官方容器重建/测试时间，不计入 Agent 速度。reasoning token 对 Luban 为供应事件未提供，而非 0。点击链接可审计原始事件、补丁和测试输出。</p>
+  <p class="muted">“任务耗时”是 Agent CLI 从启动到退出的实际经过时间；“评测”是后续官方容器重建/测试时间，不计入任务耗时。reasoning token 对 Luban 为供应事件未提供，而非 0。点击链接可审计原始事件、补丁和测试输出。</p>
   <div class="table-wrap"><table class="full-table"><thead><tr><th>题目</th><th>Agent</th><th>结果</th><th>耗时</th><th>估算费用</th><th>输入</th><th>输出</th><th>工具调用</th><th>补丁</th><th>证据</th></tr></thead><tbody>{metric_rows()}</tbody></table></div>
 </section>
 

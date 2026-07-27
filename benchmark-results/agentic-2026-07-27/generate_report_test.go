@@ -39,6 +39,7 @@ func TestGenerateReportRendersPartialEvidenceWithoutImputation(t *testing.T) {
 		"本机5题初步非官方评估",
 		"exact_POST_/responses",
 		"HTTP POST /responses",
+		"任务耗时",
 		"1/10",
 		"不适用",
 		"2.45x",
@@ -50,7 +51,7 @@ func TestGenerateReportRendersPartialEvidenceWithoutImputation(t *testing.T) {
 			t.Errorf("report is missing %q", fragment)
 		}
 	}
-	for _, forbidden := range []string{"<script", "<link ", " src=", "https://", "http://"} {
+	for _, forbidden := range []string{"<script", "<link ", " src=", "https://", "http://", "/tmp/codex"} {
 		if strings.Contains(strings.ToLower(html), forbidden) {
 			t.Errorf("report contains external-runtime marker %q", forbidden)
 		}
@@ -67,7 +68,7 @@ func TestGenerateReportRendersPartialEvidenceWithoutImputation(t *testing.T) {
 		t.Fatalf("partial shared-pass comparison = %#v", data.SharedPass)
 	}
 	if got := data.LubanChanges[1].After; got != i18n.Text(i18n.LangZH, i18n.KeyAgenticReportNotApplicable) {
-		t.Fatalf("partial Luban wall-time after = %q", got)
+		t.Fatalf("partial Luban task-duration after = %q", got)
 	}
 }
 
@@ -273,7 +274,7 @@ func TestComparableCostChargesEachInputClassOnce(t *testing.T) {
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 	root := t.TempDir()
-	current := filepath.Join(root, "agentic-local5-2026-07-27")
+	current := filepath.Join(root, "agentic-2026-07-27")
 	baselinePath := filepath.Join(root, "agentic-2026-07-26", "results.json")
 	repository := filepath.Join(root, "repo")
 	output := filepath.Join(current, "report.html")
@@ -354,6 +355,29 @@ func writeRunPair(t *testing.T, value fixture, taskID, agentID string, resolved 
 		t.Fatal(err)
 	}
 	writeJSON(t, filepath.Join(value.options.rootPath, "raw", "evaluation", taskID, agentID, "report.json"), sampleEvaluation(taskID, agentID, resolved))
+}
+
+func TestPortableReportPath(t *testing.T) {
+	repository := t.TempDir()
+	inside := filepath.Join(repository, "artifacts", "luban")
+	outside := filepath.Join(t.TempDir(), "codex")
+
+	for _, test := range []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{name: "repository relative", value: inside, want: "artifacts/luban"},
+		{name: "external binary", value: outside, want: "codex"},
+		{name: "foreign Windows binary", value: `C:\tools\codex.exe`, want: "codex.exe"},
+		{name: "already relative", value: filepath.Join("artifacts", "codex"), want: "artifacts/codex"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := portableReportPath(repository, test.value); got != test.want {
+				t.Fatalf("portableReportPath(%q, %q) = %q, want %q", repository, test.value, got, test.want)
+			}
+		})
+	}
 }
 
 func sampleEvaluation(taskID, agentID string, resolved bool) evaluationData {

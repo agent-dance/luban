@@ -86,3 +86,17 @@ func TestAgenticReportProviderCostUnavailableCopy(t *testing.T) {
 		}
 	}
 }
+
+func TestAgenticReportUsesTaskDurationTerminology(t *testing.T) {
+	if got := Text(LangZH, KeyAgenticReportHeaderWallTime); got != "任务耗时" {
+		t.Fatalf("task duration header = %q, want 任务耗时", got)
+	}
+	if got := Text(LangZH, KeyAgenticReportMetricWallTimeSeconds); got != "任务耗时" {
+		t.Fatalf("task duration metric = %q, want 任务耗时", got)
+	}
+	for _, language := range AllLanguages() {
+		if got := strings.ToLower(Text(language, KeyAgenticReportHeaderWallTime)); strings.Contains(got, "wall time") {
+			t.Errorf("task duration header still uses wall-time terminology for %s: %q", language.Code(), got)
+		}
+	}
+}

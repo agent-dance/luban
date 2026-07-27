@@ -211,12 +211,12 @@ var agenticLocal5Copy = [...]agenticLocal5CopyEntry{
 		"Luban has not demonstrated comprehensive superiority over Codex.", "Luban 尚未证明全面超越 Codex。", "Luban hat keine umfassende Überlegenheit gegenüber Codex nachgewiesen.", "Luban が Codex を全面的に上回ることは実証されていません。", "Luban이 Codex를 전면적으로 능가한다는 점은 입증되지 않았습니다.", "Всестороннее превосходство Luban над Codex не доказано.",
 	}},
 	{KeyAgenticLocal5ConclusionMeasured, [6]string{
-		"Strict raw local projection: Luban %d/%d versus Codex %d/%d; meter-recorded POSTs %d versus %d (%s), wall time %s, and comparable estimated cost %s.",
-		"本机严格原始投影：Luban %d/%d，Codex %d/%d；meter 已记录 POST 为 %d 对 %d（%s），墙钟耗时 %s，可比估算费用 %s。",
-		"Strikte lokale Rohprojektion: Luban %d/%d gegenüber Codex %d/%d; aufgezeichnete POSTs %d gegenüber %d (%s), Wandzeit %s und vergleichbare geschätzte Kosten %s.",
-		"厳密なローカル生投影：Luban %d/%d、Codex %d/%d。記録済み POST は %d 対 %d（%s）、実時間は %s、比較用推定費用は %s です。",
-		"엄격한 로컬 원시 투영: Luban %d/%d, Codex %d/%d; 기록된 POST는 %d 대 %d(%s), 경과 시간은 %s, 비교 추정 비용은 %s입니다.",
-		"Строгая локальная сырая проекция: Luban %d/%d против Codex %d/%d; записанные POST — %d против %d (%s), время — %s, сопоставимая оценка стоимости — %s.",
+		"Strict raw local projection: Luban %d/%d versus Codex %d/%d; meter-recorded POSTs %d versus %d (%s), task duration %s, and comparable estimated cost %s.",
+		"本机严格原始投影：Luban %d/%d，Codex %d/%d；meter 已记录 POST 为 %d 对 %d（%s），任务耗时 %s，可比估算费用 %s。",
+		"Strikte lokale Rohprojektion: Luban %d/%d gegenüber Codex %d/%d; aufgezeichnete POSTs %d gegenüber %d (%s), Aufgabendauer %s und vergleichbare geschätzte Kosten %s.",
+		"厳密なローカル生投影：Luban %d/%d、Codex %d/%d。記録済み POST は %d 対 %d（%s）、タスク所要時間は %s、比較用推定費用は %s です。",
+		"엄격한 로컬 원시 투영: Luban %d/%d, Codex %d/%d; 기록된 POST는 %d 대 %d(%s), 작업 소요 시간은 %s, 비교 추정 비용은 %s입니다.",
+		"Строгая локальная сырая проекция: Luban %d/%d против Codex %d/%d; записанные POST — %d против %d (%s), время выполнения задачи — %s, сопоставимая оценка стоимости — %s.",
 	}},
 	{KeyAgenticLocal5ConclusionCacheContext, [6]string{
 		"Cache ratio is %s in Luban's favor, but cached-token volume is also higher (%d versus %d) because Luban sends substantially more input; this is not an efficiency win by itself.",
@@ -236,12 +236,12 @@ var agenticLocal5Copy = [...]agenticLocal5CopyEntry{
 	}},
 
 	{KeyAgenticLocal5EfficiencyPrimaryConclusion, [6]string{
-		"Tool wrappers fell, but model rounds, output, wall time, and cost rose. The new harness improved packaging, not end-to-end efficiency in this pilot.",
-		"工具 wrapper 数下降了，但模型轮次、输出、墙钟耗时与费用均上升；本 pilot 改善的是包装层，而不是端到端效率。",
-		"Die Tool-Wrapper nahmen ab, Modellrunden, Output, Wandzeit und Kosten jedoch zu. In diesem Pilot verbesserte das neue Harness die Verpackung, nicht die Ende-zu-Ende-Effizienz.",
-		"ツール wrapper 数は減りましたが、モデル回数、出力、実時間、費用は増えました。この pilot で改善したのは包装層であり、end-to-end 効率ではありません。",
-		"tool wrapper 수는 줄었지만 모델 라운드, 출력, 경과 시간, 비용은 늘었습니다. 이 pilot에서 새 harness는 포장 계층만 개선했고 end-to-end 효율은 개선하지 못했습니다.",
-		"Число wrapper инструментов снизилось, но выросли раунды модели, вывод, время и стоимость. В этом пилоте улучшилась упаковка, а не сквозная эффективность.",
+		"Tool wrappers fell, but model rounds, output, task duration, and cost rose. The new harness improved packaging, not end-to-end efficiency in this pilot.",
+		"工具 wrapper 数下降了，但模型轮次、输出、任务耗时与费用均上升；本 pilot 改善的是包装层，而不是端到端效率。",
+		"Die Tool-Wrapper nahmen ab, Modellrunden, Output, Aufgabendauer und Kosten jedoch zu. In diesem Pilot verbesserte das neue Harness die Verpackung, nicht die Ende-zu-Ende-Effizienz.",
+		"ツール wrapper 数は減りましたが、モデル回数、出力、タスク所要時間、費用は増えました。この pilot で改善したのは包装層であり、end-to-end 効率ではありません。",
+		"tool wrapper 수는 줄었지만 모델 라운드, 출력, 작업 소요 시간, 비용은 늘었습니다. 이 pilot에서 새 harness는 포장 계층만 개선했고 end-to-end 효율은 개선하지 못했습니다.",
+		"Число wrapper инструментов снизилось, но выросли раунды модели, вывод, время выполнения задачи и стоимость. В этом пилоте улучшилась упаковка, а не сквозная эффективность.",
 	}},
 	{KeyAgenticLocal5EfficiencyCompletionTail, [6]string{
 		"Upper-bound completion-shaped tail: %d calls, %.0f seconds, $%.4f, with %d completion rejections. This segment is correlated with rejected completion candidates, but cannot be assumed wholly wasted.",
