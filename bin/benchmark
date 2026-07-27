@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+benchmark_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$benchmark_root"
+exec go run ./benchmark/agentic/cmd/benchmark "$@"

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="{{.HTMLLanguage}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{tr "benchmark.local.report.title"}}</title>
+<style>
+:root{--bg:#eef2f6;--paper:#fff;--ink:#15212d;--muted:#5b6978;--line:#d8e0e8;--brand:#075985;--brand-soft:#e0f2fe;--good:#166534;--good-soft:#dcfce7;--bad:#991b1b;--bad-soft:#fee2e2;--warn:#92400e;--warn-soft:#fef3c7;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#091018;--paper:#111b25;--ink:#e7eef5;--muted:#9dabb9;--line:#2b3a48;--brand:#7dd3fc;--brand-soft:#123348;--good:#86efac;--good-soft:#12351f;--bad:#fca5a5;--bad-soft:#421b1b;--warn:#fcd34d;--warn-soft:#402f0d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans)}main{width:min(1440px,calc(100% - 32px));margin:24px auto 60px}.hero,.section{position:relative;overflow:hidden;margin:0 0 18px;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--paper);box-shadow:0 8px 28px rgba(15,23,42,.04)}.hero{padding:36px}.eyebrow{color:var(--brand);font-weight:800;letter-spacing:.09em;text-transform:uppercase}.hero h1{max-width:920px;margin:8px 0 12px;font-size:clamp(28px,4.4vw,54px);line-height:1.05}.subtitle{max-width:1000px;color:var(--muted);font-size:17px}.watermark{position:absolute;right:-86px;top:44px;width:420px;transform:rotate(28deg);padding:8px 34px;border:2px solid currentColor;color:var(--warn);font-size:11px;font-weight:900;letter-spacing:.05em;text-align:center;opacity:.72}.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}.pill{display:inline-flex;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg);font-size:12px;font-weight:700}.pill.good{border-color:var(--good);color:var(--good)}.pill.warn{border-color:var(--warn);color:var(--warn)}h2{margin:0 0 14px;font-size:24px}h3{margin:22px 0 10px;font-size:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}.stat{padding:14px;border:1px solid var(--line);border-radius:11px;background:color-mix(in srgb,var(--paper) 94%,var(--bg))}.stat strong{display:block;margin-top:4px;font-size:22px;font-variant-numeric:tabular-nums}.note{color:var(--muted);font-size:12px}.callout{margin:12px 0;padding:12px 14px;border-left:4px solid var(--brand);background:var(--brand-soft)}.callout.warn{border-color:var(--warn);background:var(--warn-soft)}.table-wrap{overflow-x:auto;margin:10px 0 18px}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font-size:12px}th.num,td.num{text-align:right;white-space:nowrap}.status{font-weight:800}.good{color:var(--good)}.bad{color:var(--bad)}.unknown{color:var(--warn)}code{font:12px/1.5 var(--mono);overflow-wrap:anywhere}.links{display:flex;flex-wrap:wrap;gap:5px}.links a{padding:2px 6px;border:1px solid var(--line);border-radius:5px;text-decoration:none;color:var(--brand)}footer{padding:18px;color:var(--muted);text-align:center}
+@media(max-width:760px){main{width:min(100% - 14px,1440px);margin-top:7px}.hero,.section{padding:16px;border-radius:10px}.hero{padding-top:54px}.watermark{right:-118px;top:28px}.grid{grid-template-columns:1fr}}
+@media print{body{background:#fff;color:#111;font-size:9pt}main{width:100%;margin:0}.hero,.section{margin:0 0 8mm;border:1px solid #bbb;box-shadow:none}a{color:#111;text-decoration:none}}
+</style>
+</head>
+<body><main>
+<header class="hero">
+  <div class="eyebrow">{{tr "agentic.report.eyebrow"}}</div>
+  <h1>{{tr "benchmark.local.report.title"}}</h1>
+  <p class="subtitle">{{tf "benchmark.local.report.subtitle" (len .Result.Tasks)}}</p>
+  <div class="watermark">{{tr "benchmark.local.report.watermark"}}</div>
+  <div class="meta">
+    <span class="pill"><code>{{.Result.Model}}</code> · <code>{{.Result.ReasoningEffort}}</code></span>
+    <span class="pill"><code>{{.Result.Dataset}}@{{.Result.DatasetRevision}}</code></span>
+    <span class="pill"><code>{{.Result.GatewayOrigin}}</code></span>
+    <span class="pill"><code>{{.Result.EvaluatorEngine}}</code></span>
+    <span class="pill"><code>tasks={{len .Result.Tasks}}</code></span>
+    <span class="pill"><code>run_id={{.Result.RunID}}</code></span>
+    <span class="pill"><code>{{timeValue .Result.StartedAt}}</code></span>
+    <span class="pill {{if .Complete}}good{{else}}warn{{end}}">{{if .Complete}}{{tr "agentic.report.coverage.complete"}}{{else}}{{tr "agentic.report.coverage.partial"}}{{end}}</span>
+  </div>
+  <div class="callout warn">{{tr "benchmark.local.report.selection"}}</div>
+  {{if not .Complete}}<div class="callout warn">{{tr "benchmark.local.report.partial_caveat"}}</div>{{end}}
+</header>
+
+<section class="section">
+  <h2>{{tr "benchmark.local.report.conclusion"}}</h2>
+  {{if .Complete}}<div class="callout"><strong>{{tf "benchmark.local.report.measured" .Codex.Resolved .Codex.TasksSelected .Luban.Resolved .Luban.TasksSelected .Codex.LLMCalls .Luban.LLMCalls (seconds .Codex.TaskDurationSeconds) (seconds .Luban.TaskDurationSeconds) (cost .Codex.EstimatedCostUSD) (cost .Luban.EstimatedCostUSD)}}</strong></div>{{else}}<div class="callout warn">{{tr "benchmark.local.report.partial_caveat"}}</div>{{end}}
+  <div class="callout">{{tr "benchmark.local.report.llm_definition"}}</div>
+</section>
+
+<section class="section">
+  <h2>{{tr "agentic.report.section.aggregate_results"}}</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{tr "agentic.report.header.agent"}}</th><th class="num">{{tr "agentic.report.header.coverage"}}</th><th class="num">{{tr "agentic.report.metric.pass_rate"}}</th><th class="num">{{tr "agentic.report.metric.wall_time_seconds"}}</th><th class="num">{{tr "agentic.report.metric.llm_calls_started"}}</th><th class="num"><code>I / C / W / O</code></th><th class="num">{{tr "agentic.report.metric.token_weighted_cache_hit"}}</th><th class="num">{{tr "agentic.report.metric.catalog_cost"}}</th><th>{{tr "agentic.report.section.tool_analysis"}}</th></tr></thead>
+    <tbody>{{range .Result.Aggregates}}<tr><td><strong>{{.Agent}}</strong></td><td class="num"><code>run={{.RunsObserved}}/{{.TasksSelected}};eval={{.EvaluationsObserved}}/{{.TasksSelected}}</code></td><td class="num">{{if gt .EvaluationsObserved 0}}{{score .Resolved .EvaluationsObserved}}{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>{{if gt .RunsObserved 0}}<td class="num">{{seconds .TaskDurationSeconds}}<br><code>provider={{seconds .ProviderRequestSeconds}}</code></td><td class="num"><strong>{{.LLMCalls}}</strong><br><code>2xx={{.LLMSuccessfulCalls}};non_2xx={{.LLMFailedCalls}}</code></td><td class="num"><code>{{.InputTokens}} / {{.CachedInputTokens}} / {{.CacheWriteInputTokens}} / {{.OutputTokens}}</code></td><td class="num">{{percent .CacheHitRatio}}</td><td class="num">{{cost .EstimatedCostUSD}}</td><td><code>{{toolSummary .ToolEventsByType}}</code><br><span class="note">{{tr "benchmark.local.report.tool_diagnostic"}}</span></td>{{else}}<td colspan="6" class="num">{{tr "agentic.report.not_applicable"}}</td>{{end}}</tr>{{end}}</tbody>
+  </table></div>
+</section>
+
+<section class="section">
+  <h2>{{tr "agentic.report.section.task_results"}}</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{tr "agentic.report.header.task"}} / {{tr "agentic.report.header.agent"}}</th><th>{{tr "agentic.report.header.result"}}</th><th class="num">{{tr "agentic.report.metric.wall_time_seconds"}}</th><th class="num">{{tr "agentic.report.metric.llm_calls_started"}}</th><th class="num"><code>I / C / W / O</code></th><th class="num">{{tr "agentic.report.metric.token_weighted_cache_hit"}}</th><th class="num">{{tr "agentic.report.header.cost"}}</th><th>{{tr "agentic.report.header.evidence"}}</th></tr></thead>
+    <tbody>{{range .Tasks}}{{$task := .}}{{range .Runs}}<tr><td><code>{{$task.Task.InstanceID}}</code><br><strong>{{.Agent}}</strong> · <code>{{$task.Task.Language}}</code></td><td>{{if .Evaluation}}<span class="status {{statusClass .Evaluation.Resolved}}">{{status .Evaluation.Resolved}}</span>{{else}}<span class="unknown">{{tr "agentic.report.not_applicable"}}</span>{{end}}</td>{{if .Run}}<td class="num">{{seconds .Run.ElapsedSeconds}}<br><code>provider={{seconds .Run.ProviderRequestSeconds}}</code></td><td class="num"><strong>{{.Run.LLMCalls}}</strong><br><code>2xx={{.Run.LLMSuccessfulCalls}};non_2xx={{.Run.LLMFailedCalls}}</code></td><td class="num"><code>{{.Run.Usage.InputTokens}} / {{.Run.Usage.CachedInputTokens}} / {{.Run.Usage.CacheCreationInputTokens}} / {{.Run.Usage.OutputTokens}}</code></td><td class="num">{{percent .CacheHitRatio}}</td><td class="num">{{cost .Run.EstimatedCostUSD}}</td>{{else}}<td colspan="5" class="num">{{tr "agentic.report.not_applicable"}}</td>{{end}}<td><div class="links">{{range .Links}}<a href="{{.Href}}"><code>{{.Label}}</code></a>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</div></td></tr>{{end}}{{end}}</tbody>
+  </table></div>
+</section>
+
+<section class="section">
+  <h2>{{tr "benchmark.local.report.section.shared"}}</h2>
+  {{if .HasSharedPass}}<div class="callout">{{tf "benchmark.local.report.shared_pass" .SharedTaskCount}}</div><div class="table-wrap"><table><thead><tr><th>{{tr "agentic.report.header.agent"}}</th><th class="num">{{tr "agentic.report.metric.llm_calls_started"}}</th><th class="num">{{tr "agentic.report.metric.wall_time_seconds"}}</th><th class="num"><code>provider_seconds</code></th><th class="num"><code>I / C / W / O</code></th><th class="num">{{tr "agentic.report.metric.token_weighted_cache_hit"}}</th><th class="num">{{tr "agentic.report.metric.catalog_cost"}}</th></tr></thead><tbody>{{range $value := (list .SharedCodex .SharedLuban)}}<tr><td><strong>{{$value.Agent}}</strong></td><td class="num">{{$value.LLMCalls}}</td><td class="num">{{seconds $value.TaskDurationSeconds}}</td><td class="num">{{seconds $value.ProviderRequestSeconds}}</td><td class="num"><code>{{$value.InputTokens}} / {{$value.CachedInputTokens}} / {{$value.CacheWriteInputTokens}} / {{$value.OutputTokens}}</code></td><td class="num">{{percent $value.CacheHitRatio}}</td><td class="num">{{cost $value.EstimatedCostUSD}}</td></tr>{{end}}</tbody></table></div>{{else}}<div class="callout warn">{{tr "benchmark.local.report.no_shared_pass"}}</div>{{end}}
+</section>
+
+{{if .Result.Failures}}<section class="section"><h2>{{tr "agentic.report.section.failures"}}</h2><div class="table-wrap"><table><thead><tr><th><code>stage</code></th><th>{{tr "agentic.report.header.task"}}</th><th>{{tr "agentic.report.header.agent"}}</th><th><code>code</code></th><th>{{tr "agentic.report.header.evidence"}}</th></tr></thead><tbody>{{range .Result.Failures}}<tr><td><code>{{.Stage}}</code></td><td><code>{{.InstanceID}}</code></td><td><code>{{.Agent}}</code></td><td><code>{{.Code}}</code></td><td>{{if .EvidencePath}}<a href="{{.EvidencePath}}"><code>{{.EvidencePath}}</code></a>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td></tr>{{end}}</tbody></table></div></section>{{end}}
+
+<section class="section">
+  <h2>{{tr "agentic.report.section.methodology"}}</h2>
+  <ul><li>{{tr "benchmark.local.report.selection"}}</li><li>{{tr "benchmark.local.report.llm_definition"}}</li><li>{{tr "benchmark.local.report.cost_definition"}}</li><li>{{tr "benchmark.local.report.tool_diagnostic"}}</li><li>{{tr "benchmark.local.report.concurrency"}}</li></ul>
+  <div class="table-wrap"><table><thead><tr><th>{{tr "agentic.report.header.agent"}}</th><th>{{tr "agentic.report.header.binary_sha"}}</th></tr></thead><tbody>{{range .Result.Binaries}}<tr><td><code>{{.Name}}</code></td><td><code>{{.SHA256}}</code></td></tr>{{end}}</tbody></table></div>
+  <p><code>benchmark --task-size={{len .Result.Tasks}}</code></p>
+  <p class="note">{{tf "benchmark.local.report.generated_from" .EvidencePath}}</p>
+</section>
+<footer>{{tr "agentic.report.footer"}}</footer>
+</main></body></html>

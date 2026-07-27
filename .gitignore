@@ -38,3 +38,4 @@ debug.test*
 /benchmark-results/**/report.partial.html
 /benchmark-results/**/diagnostic-report.html
 /benchmark-results/**/*.log*
+/benchmark-results/**/.runtime/

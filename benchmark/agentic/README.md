@@ -1,6 +1,48 @@
 # Agentic Coding Benchmark Harness v2
 
-本目录实现 Luban 与 Codex 的可复现、配对 Agentic Coding 测评。正式目标是 DeepSWE v1.1 的 113 题公开语料；5 题 pilot 只用于优化迭代，不能作为公开总分。该设施独立于仓库根目录下已有的 `benchmark-results/`，不会读取或改写它。
+本目录实现 Luban 与 Codex 的可复现、配对 Agentic Coding 测评。正式目标是 DeepSWE v1.1 的 113 题公开语料；5 题 pilot 只用于优化迭代，不能作为公开总分。下述正式设施独立于仓库根目录下已有的 `benchmark-results/`；快速本机入口则会把每次新报告写入该目录。
+
+## 一键本机测评与 HTML 报告
+
+安装一次仓库内命令后，可直接选择固化代表题集的规模：
+
+```bash
+go install ./benchmark/agentic/cmd/benchmark
+benchmark --task-size=5
+```
+
+不安装时也可在仓库内执行：
+
+```bash
+./bin/benchmark --task-size=5
+```
+
+当前代表题库包含 5 道预注册的 SWE-bench-Live MultiLang 题目，因此
+`task-size` 接受 `1..5`；扩充固化 catalog 后，该上限会随之扩大。题目始终按
+预注册顺序选择前 N 道，不在运行时随机抽样。
+
+每次执行都会创建一个不覆盖旧数据的新目录：
+
+```text
+benchmark-results/agentic-YYYY-MM-DD/run-YYYYMMDD-HHMMSS-nN/
+├── benchmark.json
+├── report.html
+└── raw/
+```
+
+`benchmark.json` 是结构化事实源。生成器会重新读取它，并套用
+`benchmark/agentic/localbench/report.html.tmpl` 生成 `report.html`，不会在 HTML
+生成代码中手填分数；报告内的工件链接全部是相对路径。
+
+本机入口会构建当前 Luban 源码、从 `PATH` 定位 Codex、从 Codex 的
+`config.toml` 与 `auth.json` 读取同一网关及凭据、按实际 Responses HTTP POST
+统计 LLM 调用、并发运行每道题的 Codex/Luban 配对，然后执行公开任务评测容器。
+评测器优先使用本机 Docker daemon；若不可用，则自动使用正在运行的
+`agentic-deepswe-amd64` Lima VM 内的 Docker。运行前需要上述任一容器入口、
+Git、Python 3.11+、Codex 以及有效的 Codex 配置。
+
+该入口用于快速、非官方的本机对比；正式公开分数协议仍由下文的 v2 harness
+承担。
 
 当前协议固定：
 
