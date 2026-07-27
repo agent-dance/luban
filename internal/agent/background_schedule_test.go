@@ -11,8 +11,14 @@ import (
 	"time"
 
 	agentcontract "github.com/agent-dance/luban/internal/contracts/agent"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	runtimestore "github.com/agent-dance/luban/internal/store/runtime"
 )
+
+func scheduledTestStore(root string) *runtimestore.RuntimeTaskStore {
+	runtimeRoot := storepaths.RuntimeServiceDir(root, "scheduled-tasks")
+	return runtimestore.NewRuntimeTaskStoreAt(root, runtimeRoot)
+}
 
 func TestStartScheduledAgentTaskIsDurablyIdempotent(t *testing.T) {
 	root := t.TempDir()
@@ -71,7 +77,7 @@ func TestStartScheduledAgentTaskIsDurablyIdempotent(t *testing.T) {
 	if snapshot, status := manager.Wait(wantID, 5*time.Second); status != "success" || snapshot.Status != "completed" {
 		t.Fatalf("Wait = status %q snapshot %#v", status, snapshot)
 	}
-	record, ok := runtimestore.NewRuntimeTaskStore(root).Get(wantID)
+	record, ok := scheduledTestStore(root).Get(wantID)
 	if !ok || record.BatchID != scheduledDeliveryBatchPrefix+"job-1:2026-07-25T00:00:00Z" {
 		t.Fatalf("stable delivery claim was not persisted: %#v", record)
 	}
@@ -82,7 +88,7 @@ func TestResumeScheduledAgentTasksRestartsOnlyInterruptedDelivery(t *testing.T) 
 	deliveryID := "job-2:2026-07-25T01:00:00Z"
 	taskID := scheduledTaskID(root, deliveryID)
 	input := agentcontract.Input{Description: "scheduled resume", Prompt: "resume the work", CWD: root}
-	if err := runtimestore.NewRuntimeTaskStore(root).Save(runtimestore.RuntimeTaskRecord{
+	if err := scheduledTestStore(root).Save(runtimestore.RuntimeTaskRecord{
 		ID: taskID, Type: agentcontract.TaskTypeLocalAgent, Status: "running",
 		StartedAt: time.Now().Add(-time.Minute).UTC(), OwnerPID: 1<<31 - 1,
 		AgentAlias: "schedule-agent", AgentInput: &input,
@@ -160,7 +166,7 @@ func TestScheduledAgentTaskResumesAfterManagerShutdown(t *testing.T) {
 	}
 	<-started
 	_ = first.Shutdown(context.Background())
-	record, ok := runtimestore.NewRuntimeTaskStore(root).Get(snapshot.ID)
+	record, ok := scheduledTestStore(root).Get(snapshot.ID)
 	if !ok || record.TerminalReason != interruptedAgentTerminalReason {
 		t.Fatalf("shutdown delivery is not resumable: %#v", record)
 	}
@@ -186,7 +192,11 @@ func TestStartScheduledAgentTaskDoesNotRunBeforeDurableClaim(t *testing.T) {
 	root := t.TempDir()
 	manager := NewBackgroundTaskManager(root)
 	t.Cleanup(func() { _ = manager.Shutdown(context.Background()) })
-	runtimeDir := filepath.Join(root, ".luban-code", "runtime-tasks")
+	runtimeRoot := storepaths.RuntimeServiceDir(root, "scheduled-tasks")
+	if err := os.MkdirAll(runtimeRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runtimeDir := filepath.Join(runtimeRoot, "runtime-tasks")
 	if err := os.RemoveAll(runtimeDir); err != nil {
 		t.Fatalf("remove runtime directory: %v", err)
 	}

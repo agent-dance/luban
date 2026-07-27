@@ -96,14 +96,15 @@ func TestOpenAICompatibleCacheControlRequiresEnabledNonEmptyLineage(t *testing.T
 	}
 }
 
-func TestUserScopedCacheRoutingReusesWarmRouteAcrossIndependentSessions(t *testing.T) {
+func TestCacheRoutingIsolationAcrossIndependentSessions(t *testing.T) {
 	for _, test := range []struct {
 		name         string
 		providerName string
 		wantField    string
+		wantShared   bool
 	}{
 		{name: "OpenAI", providerName: "openai", wantField: "prompt_cache_key"},
-		{name: "DeepSeek", providerName: "deepseek", wantField: "user_id"},
+		{name: "DeepSeek", providerName: "deepseek", wantField: "user_id", wantShared: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			config := Config{
@@ -126,8 +127,8 @@ func TestUserScopedCacheRoutingReusesWarmRouteAcrossIndependentSessions(t *testi
 
 			firstKey, _ := first[test.wantField].(string)
 			secondKey, _ := second[test.wantField].(string)
-			if firstKey == "" || firstKey != secondKey {
-				t.Fatalf("independent sessions used different %s values: %q != %q", test.wantField, firstKey, secondKey)
+			if firstKey == "" || (firstKey == secondKey) != test.wantShared {
+				t.Fatalf("independent sessions used unexpected %s sharing: %q, %q; want shared=%v", test.wantField, firstKey, secondKey, test.wantShared)
 			}
 			if firstKey == "session-a" || firstKey == "session-b" || firstKey == config.APIKey {
 				t.Fatalf("%s leaked conversation or credential identity: %q", test.wantField, firstKey)

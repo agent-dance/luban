@@ -40,15 +40,49 @@ func allowedDirsForSession(cwd string, extra []string) []string {
 	return append([]string{cwd}, extra...)
 }
 
-func buildSystemPromptForCWD(override string, reg *registry.Registry, cwd string) string {
-	if strings.TrimSpace(override) != "" {
-		return override
-	}
+type workspacePrompt struct {
+	system       string
+	systemBlocks prompt.SystemPrompt
+	userContext  prompt.UserContext
+	toolSnapshot registry.VisibleToolSnapshot
+	promptConfig prompt.Config
+	generated    bool
+	catalogErr   error
+}
+
+func buildWorkspacePrompt(override string, reg *registry.Registry, cwd string) workspacePrompt {
 	instructions := prompt.DiscoverInstructions(cwd)
-	return prompt.BuildSystemPrompt(reg.All(), prompt.Config{
-		CustomInstructions: instructions,
-		CWD:                cwd,
-	})
+	userContext := prompt.UserContextBuilder{}.
+		FromConfig(prompt.Config{CustomInstructions: instructions}).
+		Build()
+
+	promptConfig := prompt.Config{CWD: cwd}
+	var blocks prompt.SystemPrompt
+	var toolSnapshot registry.VisibleToolSnapshot
+	var catalogErr error
+	generated := false
+	if reg != nil && reg.ModelToolProfile() == registry.ModelToolProfileAgenticV2 {
+		toolSnapshot, catalogErr = reg.SnapshotVisibleTools(nil)
+	}
+	if text := strings.TrimSpace(override); text != "" {
+		blocks = prompt.SystemPrompt{{Text: text, Source: "override", Name: "override"}}
+	} else if toolSnapshot.Valid() {
+		if catalogErr == nil {
+			blocks = prompt.BuildSystemPromptBlocksForDefinitions(toolSnapshot.Definitions(), promptConfig)
+			generated = true
+		}
+	} else {
+		blocks = prompt.BuildSystemPromptBlocks(reg.All(), promptConfig)
+	}
+	return workspacePrompt{
+		system:       blocks.JoinedText(),
+		systemBlocks: blocks,
+		userContext:  userContext,
+		toolSnapshot: toolSnapshot,
+		promptConfig: promptConfig,
+		generated:    generated,
+		catalogErr:   catalogErr,
+	}
 }
 
 func commitPreparedRuntimeResume(ctx context.Context, prepared engine.PreparedRuntimeContextResume) error {
@@ -132,12 +166,20 @@ func (s *sessionSwitcher) switchTo(ctx context.Context, entry commands.SessionLi
 		return rootRuntimeError(i18n.KeyRootSessionPreparedMismatch, targetCWD)
 	}
 	targetAllowedDirs := allowedDirsForSession(targetCWD, s.extraAllowedDirs)
-	targetSystemPrompt := buildSystemPromptForCWD(s.systemPromptOverride, s.deps.Registry, targetCWD)
+	targetPrompt := buildWorkspacePrompt(s.systemPromptOverride, s.deps.Registry, targetCWD)
+	if targetPrompt.catalogErr != nil {
+		return i18n.WrapInternalError(i18n.KeyRootVisibleToolCatalogInvalid, targetPrompt.catalogErr)
+	}
 	targetRuntime := engine.RuntimeContext{
-		SystemPrompt: targetSystemPrompt,
-		HookRunner:   targetHooks,
-		ProjectRoot:  targetCWD,
-		CWD:          targetCWD,
+		SystemPrompt:        targetPrompt.system,
+		SystemPromptBlocks:  targetPrompt.systemBlocks,
+		UserContext:         targetPrompt.userContext,
+		HookRunner:          targetHooks,
+		ProjectRoot:         targetCWD,
+		CWD:                 targetCWD,
+		VisibleTools:        targetPrompt.toolSnapshot,
+		ToolPromptConfig:    targetPrompt.promptConfig,
+		GeneratedToolPrompt: targetPrompt.generated,
 	}
 	preparer, ok := s.eng.(engine.RuntimeContextResumePreparer)
 	if !ok {
@@ -161,7 +203,7 @@ func (s *sessionSwitcher) switchTo(ctx context.Context, entry commands.SessionLi
 	}
 	defer targetDir.Close()
 	if err := s.deps.commitPreparedSessionRuntimeWithAfter(
-		entry.ID, targetCWD, targetAllowedDirs, targetSystemPrompt, targetHooks, preparedRegistry,
+		entry.ID, targetCWD, targetAllowedDirs, targetPrompt.system, targetHooks, preparedRegistry,
 		func() error {
 			if err := commitPreparedRuntimeResume(ctx, prepared); err != nil {
 				return rootRuntimeWrap(i18n.KeyRootSessionConversationCommit, err)

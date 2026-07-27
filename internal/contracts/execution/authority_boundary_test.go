@@ -29,7 +29,7 @@ func TestAuthorityIssuanceIsOwnedByRuntimeLoop(t *testing.T) {
 			return err
 		}
 		if entry.IsDir() {
-			if relative == ".git" || strings.HasPrefix(relative, ".luban-code") || relative == "internal/contracts/execution" {
+			if relative == ".git" || relative == ".tmp" || relative == "benchmark-results" || strings.HasPrefix(relative, ".luban-code") || relative == "internal/contracts/execution" {
 				return filepath.SkipDir
 			}
 			return nil
@@ -96,7 +96,7 @@ func TestExecutionContextHasNoRuntimeWrappersOrAliases(t *testing.T) {
 			return err
 		}
 		if entry.IsDir() {
-			if relative == ".git" || strings.HasPrefix(relative, ".luban-code") || relative == "internal/contracts/execution" {
+			if relative == ".git" || relative == ".tmp" || relative == "benchmark-results" || strings.HasPrefix(relative, ".luban-code") || relative == "internal/contracts/execution" {
 				return filepath.SkipDir
 			}
 			return nil

@@ -1,0 +1,442 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/agent-dance/luban/benchmark/agentic/schema/manifest.schema.json",
+  "title": "Luban Agentic Coding Benchmark Manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "experiment", "dataset", "evaluator", "agents",
+    "selection", "scheduling", "scoring", "provider_endpoint", "environment", "timeouts", "resources",
+    "pricing", "artifacts", "oracle"
+  ],
+  "properties": {
+    "schema_version": { "const": "agentic-bench/v2" },
+    "experiment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "description": { "type": "string" }
+      }
+    },
+    "dataset": { "$ref": "#/$defs/sourcePin" },
+    "evaluator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "repository", "commit", "root", "tree_sha256", "manifest_sha256", "protocol", "minimum_version", "binary_sha256"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "commit": { "$ref": "#/$defs/commit" },
+        "root": { "$ref": "#/$defs/relativePath" },
+        "tree_sha256": { "$ref": "#/$defs/sha256" },
+        "manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "protocol": { "const": "pier-harbor-separate-verifier" },
+        "minimum_version": { "type": "string", "minLength": 1 },
+        "binary_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/agent" }
+    },
+    "selection": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "expected_task_count"],
+          "properties": {
+            "mode": { "const": "full" },
+            "expected_task_count": { "type": "integer", "minimum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "task_ids", "expected_task_count"],
+          "properties": {
+            "mode": { "const": "tasks" },
+            "task_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+            "expected_task_count": { "type": "integer", "minimum": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "sample_count", "sample_seed", "expected_task_count"],
+          "properties": {
+            "mode": { "const": "sample" },
+            "sample_count": { "type": "integer", "minimum": 1 },
+            "sample_seed": { "type": "integer", "minimum": 0 },
+            "expected_task_count": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "scheduling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pair_agents", "seed", "repetitions", "max_parallel_pairs"],
+      "properties": {
+        "pair_agents": { "const": true },
+        "seed": { "type": "integer", "minimum": 0 },
+        "repetitions": { "type": "integer", "enum": [1, 4] },
+        "max_parallel_pairs": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "baseline_agent_id", "challenger_agent_id"],
+      "properties": {
+        "profile": { "const": "deepswe-v1.1-public-ci" },
+        "baseline_agent_id": { "$ref": "#/$defs/id" },
+        "challenger_agent_id": { "$ref": "#/$defs/id" }
+      }
+    },
+    "provider_endpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approved_origin", "semantics", "semantics_sha256"],
+      "properties": {
+        "approved_origin": { "const": "https://sub.blurooo.com" },
+        "semantics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema_version", "api_protocol", "observation_authority", "provider_identity_attested", "tls_required", "websocket_allowed"],
+          "properties": {
+            "schema_version": { "const": "agentic-bench/provider-endpoint-semantics-v1" },
+            "api_protocol": { "const": "openai-responses" },
+            "observation_authority": { "const": "configured-gateway" },
+            "provider_identity_attested": { "const": false },
+            "tls_required": { "const": true },
+            "websocket_allowed": { "const": true }
+          }
+        },
+        "semantics_sha256": { "const": "80bdbbb0289e7290fb96a62bd02ee85610d0e9e804a4364215f7d7a4274c1233" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host_env_allowlist", "agent_egress_hosts", "task_network_mode", "verifier_network_mode"],
+      "properties": {
+        "host_env_allowlist": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" } },
+        "agent_egress_hosts": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Za-z0-9.-]+$" } },
+        "task_network_mode": { "const": "no-network" },
+        "verifier_network_mode": { "const": "no-network" }
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setup_seconds", "agent_seconds", "verifier_seconds", "teardown_seconds"],
+      "properties": {
+        "setup_seconds": { "type": "integer", "minimum": 1 },
+        "agent_seconds": { "type": "integer", "minimum": 1 },
+        "verifier_seconds": { "type": "integer", "minimum": 1 },
+        "teardown_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpus", "memory_mb", "storage_mb", "gpus", "host_storage_guard", "guest_storage_guard"],
+      "properties": {
+        "cpus": { "type": "integer", "minimum": 1 },
+        "memory_mb": { "type": "integer", "minimum": 1 },
+        "storage_mb": { "const": 20480 },
+        "gpus": { "type": "integer", "minimum": 0 },
+        "host_storage_guard": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema_version", "admission_minimum_available_bytes", "runtime_warning_below_available_bytes", "runtime_hard_floor_available_bytes", "poll_interval_ms", "monitoring_gap_threshold_ms", "measurement"],
+          "properties": {
+            "schema_version": { "const": "agentic-bench/host-storage-guard-v1" },
+            "admission_minimum_available_bytes": { "const": 107374182400 },
+            "runtime_warning_below_available_bytes": { "const": 53687091200 },
+            "runtime_hard_floor_available_bytes": { "const": 32212254720 },
+            "poll_interval_ms": { "const": 1000 },
+            "monitoring_gap_threshold_ms": { "const": 2500 },
+            "measurement": { "const": "statfs_bavail_times_block_size" }
+          }
+        },
+        "guest_storage_guard": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schema_version", "start_minimum_available_bytes", "runtime_abort_below_available_bytes", "poll_interval_ms", "monitoring_gap_threshold_ms", "measurement"],
+          "properties": {
+            "schema_version": { "const": "agentic-bench/guest-storage-guard-v1" },
+            "start_minimum_available_bytes": { "const": 30064771072 },
+            "runtime_abort_below_available_bytes": { "const": 8589934592 },
+            "poll_interval_ms": { "const": 1000 },
+            "monitoring_gap_threshold_ms": { "const": 2500 },
+            "measurement": { "const": "statfs_bavail_times_block_size" }
+          }
+        }
+      }
+    },
+    "pricing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "unit_tokens", "effective_at", "observed_at", "source_url", "rates"],
+      "properties": {
+        "currency": { "type": "string", "minLength": 1 },
+        "unit_tokens": { "type": "integer", "minimum": 1 },
+        "effective_at": { "type": "string", "format": "date-time" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "source_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "rates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["provider", "model", "input", "cached_input", "output", "cache_write_input_multiplier", "request_tiers"],
+            "properties": {
+              "provider": { "type": "string", "minLength": 1 },
+              "model": { "type": "string", "minLength": 1 },
+              "input": { "type": "number", "minimum": 0 },
+              "cached_input": { "type": "number", "minimum": 0 },
+              "output": { "type": "number", "minimum": 0 },
+              "cache_write_input_multiplier": { "type": "number", "minimum": 1 },
+              "request_tiers": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["name", "threshold_input_tokens", "input_multiplier", "cached_input_multiplier", "output_multiplier"],
+                  "properties": {
+                    "name": { "type": "string", "minLength": 1 },
+                    "threshold_input_tokens": { "type": "integer", "minimum": 0 },
+                    "input_multiplier": { "type": "number", "exclusiveMinimum": 0 },
+                    "cached_input_multiplier": { "type": "number", "exclusiveMinimum": 0 },
+                    "output_multiplier": { "type": "number", "exclusiveMinimum": 0 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "ledger_relative_path", "state_relative_path", "capture_binary_diff", "capture_untracked"],
+      "properties": {
+        "root": { "$ref": "#/$defs/relativePath" },
+        "ledger_relative_path": { "$ref": "#/$defs/relativePath" },
+        "state_relative_path": { "$ref": "#/$defs/relativePath" },
+        "capture_binary_diff": { "const": true },
+        "capture_untracked": { "const": true }
+      }
+    },
+    "oracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "separate_environment", "solution_root"],
+      "properties": {
+        "required": { "const": true },
+        "separate_environment": { "const": true },
+        "solution_root": { "$ref": "#/$defs/relativePath" }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "relativePath": { "type": "string", "minLength": 1, "not": { "pattern": "^(?:/|\\.\\.?/|.*(?:^|/)\\.\\.(?:/|$))" } },
+    "sourcePin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "repository", "commit", "root", "tree_sha256", "manifest_sha256", "inventory_lock_file_sha256"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "commit": { "$ref": "#/$defs/commit" },
+        "root": { "$ref": "#/$defs/relativePath" },
+        "tree_sha256": { "$ref": "#/$defs/sha256" },
+        "manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "inventory_lock_file_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "binary", "binary_sha256", "command", "model", "execution_canary", "request_evidence"],
+      "properties": {
+        "id": { "enum": ["codex", "luban"] },
+        "binary": { "type": "string", "pattern": "^/" },
+        "binary_sha256": { "$ref": "#/$defs/sha256" },
+        "source_snapshot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["worktree", "base_commit", "tree_oid", "patch_sha256", "archive_sha256", "path_policy", "path_policy_sha256", "exclusion_receipt_sha256", "build_receipt", "build_receipt_sha256"],
+          "properties": {
+            "worktree": { "type": "string", "pattern": "^/" },
+            "base_commit": { "$ref": "#/$defs/commit" },
+            "tree_oid": { "$ref": "#/$defs/commit" },
+            "patch_sha256": { "$ref": "#/$defs/sha256" },
+            "archive_sha256": { "$ref": "#/$defs/sha256" },
+            "path_policy": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["schema_version", "excluded_prefixes"],
+              "properties": {
+                "schema_version": { "const": "agentic-bench/source-path-policy-v1" },
+                "excluded_prefixes": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true }
+              }
+            },
+            "path_policy_sha256": { "$ref": "#/$defs/sha256" },
+            "exclusion_receipt_sha256": { "$ref": "#/$defs/sha256" },
+            "build_receipt": { "type": "string", "pattern": "^/" },
+            "build_receipt_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "command": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["argv", "required_env"],
+          "properties": {
+            "argv": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "required_env": { "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[A-Z_][A-Z0-9_]*$" } }
+          }
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "model", "reasoning_effort", "service_tier", "service_tier_request_encoding", "transport_requirement", "tool_catalog"],
+          "properties": {
+            "provider": { "type": "string", "minLength": 1 },
+            "model": { "type": "string", "minLength": 1 },
+            "reasoning_effort": { "type": "string", "minLength": 1 },
+            "service_tier": { "const": "default" },
+            "service_tier_request_encoding": { "enum": ["explicit_default", "client_canonicalized_default"] },
+            "transport_requirement": { "const": "http_inference_required" },
+            "tool_catalog": { "$ref": "#/$defs/toolCatalog" }
+          }
+        },
+        "execution_canary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["generation", "receipt_sha256"],
+          "properties": {
+            "generation": { "const": "v8" },
+            "receipt_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "request_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["relative_path", "required"],
+          "properties": {
+            "relative_path": { "$ref": "#/$defs/relativePath" },
+            "required": { "const": true }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "id": { "const": "codex" } }, "required": ["id"] },
+          "then": {
+            "properties": {
+              "model": {
+                "properties": {
+                  "service_tier_request_encoding": { "const": "client_canonicalized_default" },
+                  "tool_catalog": { "$ref": "#/$defs/codexToolCatalog" }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "id": { "const": "luban" } }, "required": ["id"] },
+          "then": {
+            "properties": {
+              "model": {
+                "properties": {
+                  "service_tier_request_encoding": { "const": "explicit_default" },
+                  "tool_catalog": { "$ref": "#/$defs/lubanToolCatalog" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "toolCatalog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "semantic_sha256", "tools"],
+      "properties": {
+        "schema_version": { "const": "agentic-bench/formal-tool-catalog-v1" },
+        "semantic_sha256": { "$ref": "#/$defs/sha256" },
+        "tools": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/toolIdentity" }
+        }
+      }
+    },
+    "toolIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "definition_sha256"],
+      "properties": {
+        "type": { "enum": ["custom", "function"] },
+        "name": { "type": "string", "minLength": 1 },
+        "definition_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "codexToolCatalog": {
+      "properties": {
+        "tools": {
+          "prefixItems": [
+            { "$ref": "#/$defs/codexExecTool" },
+            { "$ref": "#/$defs/codexWaitTool" },
+            { "$ref": "#/$defs/codexRequestUserInputTool" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "lubanToolCatalog": {
+      "properties": {
+        "tools": {
+          "prefixItems": [
+            { "$ref": "#/$defs/lubanInspectTool" },
+            { "$ref": "#/$defs/lubanApplyPatchTool" },
+            { "$ref": "#/$defs/lubanRunTool" }
+          ],
+          "items": false
+        }
+      }
+    },
+    "codexExecTool": {
+      "properties": { "type": { "const": "custom" }, "name": { "const": "exec" } }
+    },
+    "codexWaitTool": {
+      "properties": { "type": { "const": "function" }, "name": { "const": "wait" } }
+    },
+    "codexRequestUserInputTool": {
+      "properties": { "type": { "const": "function" }, "name": { "const": "request_user_input" } }
+    },
+    "lubanInspectTool": {
+      "properties": { "type": { "const": "function" }, "name": { "const": "Inspect" } }
+    },
+    "lubanApplyPatchTool": {
+      "properties": { "type": { "const": "function" }, "name": { "const": "ApplyPatch" } }
+    },
+    "lubanRunTool": {
+      "properties": { "type": { "const": "function" }, "name": { "const": "Run" } }
+    }
+  }
+}

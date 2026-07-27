@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -12,6 +15,7 @@ import (
 
 	"github.com/agent-dance/luban/hooks"
 	"github.com/agent-dance/luban/internal/contracts/stream"
+	"github.com/agent-dance/luban/internal/contracts/workspacerevision"
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/types"
@@ -182,6 +186,12 @@ func streamingTestUse(id, name string) types.ToolUseBlock {
 	}
 }
 
+func streamingRevisionDependentRun(id string) types.ToolUseBlock {
+	tool := streamingTestUse(id, "Run")
+	tool.Input["requires_patch_commit"] = true
+	return tool
+}
+
 func newStreamingTestExecutor(ctx context.Context, reg *registry.Registry) *StreamingToolExecutor {
 	return NewStreamingToolExecutor(ctx, reg, nil, nil, "session", executioncontract.ToolExecutionContext{
 		Messages:  []types.Message{types.UserMessage("run tools")},
@@ -221,6 +231,9 @@ func TestStreamingToolExecutorConcurrentSafeToolsStartTogetherAndDrainInOrder(t 
 	if len(events) != 2 || events[0].Type != streamingToolEventResult || events[1].Type != streamingToolEventResult {
 		t.Fatalf("events = %+v, want two result events", events)
 	}
+	if metrics := results.Metrics; metrics.PhysicalChildOperations != 2 || metrics.PeakFanout != 2 || metrics.BatchCount != 1 || metrics.ErrorCount != 0 {
+		t.Fatalf("streaming metrics = %+v, want physical=2 fanout=2 batches=1 errors=0", metrics)
+	}
 }
 
 func TestStreamingToolExecutorReturnsInfrastructureErrorAfterPublishingResult(t *testing.T) {
@@ -236,6 +249,65 @@ func TestStreamingToolExecutorReturnsInfrastructureErrorAfterPublishingResult(t 
 	}
 	if len(results.Results) != 1 || results.Results[0].Outcome != types.ToolOutcomeTimedOut || len(events) != 1 || events[0].Result == nil {
 		t.Fatalf("streaming infra terminal evidence missing: results=%#v events=%#v", results, events)
+	}
+	if results.Metrics.PhysicalChildOperations != 1 || results.Metrics.PeakFanout != 1 || results.Metrics.ErrorCount != 1 {
+		t.Fatalf("streaming failure metrics = %+v", results.Metrics)
+	}
+}
+
+func TestStreamingRevisionFusionPreservesDependencyAndMetrics(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := workspacerevision.NewLedger()
+	var mutationExecuted atomic.Int32
+	var verificationExecuted atomic.Int32
+	var verified atomic.Bool
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: path, executed: &mutationExecuted})
+	reg.Register(&fusionVerificationTool{ledger: ledger, path: path, executed: &verificationExecuted, verified: &verified})
+	executor := newStreamingTestExecutor(context.Background(), reg)
+	assistant := types.Message{Role: types.RoleAssistant}
+	executor.AddTool(streamingTestUse("stream-patch", "ApplyPatch"), assistant)
+	executor.AddTool(streamingRevisionDependentRun("stream-run"), assistant)
+
+	results, _, err := executor.RemainingResults(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutationExecuted.Load() != 1 || verificationExecuted.Load() != 1 || !verified.Load() {
+		t.Fatalf("stream fusion mutation=%d verification=%d verified=%t", mutationExecuted.Load(), verificationExecuted.Load(), verified.Load())
+	}
+	metrics := results.Metrics
+	if metrics.PhysicalChildOperations != 2 || metrics.RevisionFusionCount != 1 || metrics.RevisionBarrierSkips != 0 || metrics.RevisionMismatchCount != 0 || metrics.ErrorCount != 0 {
+		t.Fatalf("stream fusion metrics = %+v", metrics)
+	}
+}
+
+func TestStreamingRevisionFusionSkipsRunAfterPatchFailure(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: path, fail: true})
+	reg.Register(&writeFusionVerificationTool{fusionVerificationTool: &fusionVerificationTool{ledger: ledger, path: path, executed: &verificationExecuted}})
+	executor := newStreamingTestExecutor(context.Background(), reg)
+	assistant := types.Message{Role: types.RoleAssistant}
+	executor.AddTool(streamingTestUse("stream-patch-failed", "ApplyPatch"), assistant)
+	executor.AddTool(streamingRevisionDependentRun("stream-run-skipped"), assistant)
+
+	results, _, err := executor.RemainingResults(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verificationExecuted.Load() != 0 || len(results.Results) != 2 || results.Results[1].Metadata["schedule.status"] != "skipped" {
+		t.Fatalf("stream skip execution=%d results=%#v", verificationExecuted.Load(), results.Results)
+	}
+	if metrics := results.Metrics; metrics.PhysicalChildOperations != 1 || metrics.RevisionFusionCount != 1 || metrics.RevisionBarrierSkips != 1 || metrics.ErrorCount != 2 {
+		t.Fatalf("stream skip metrics = %+v", metrics)
 	}
 }
 

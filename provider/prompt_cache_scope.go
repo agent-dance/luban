@@ -11,7 +11,9 @@ import (
 	"github.com/agent-dance/luban/prompt"
 )
 
-const defaultPromptCacheRoutingShards = 1
+// A zero shard count keeps each conversation lineage on its own cache route.
+// Positive values deliberately coalesce lineages into a bounded set of routes.
+const defaultPromptCacheRoutingShards = 0
 
 // promptCacheUserNamespace derives an opaque, stable cache identity from the
 // configured provider account. Session IDs must not be used here: DeepSeek
@@ -46,10 +48,12 @@ func headerValue(headers map[string]string, name string) string {
 	return ""
 }
 
-// promptCacheRoutingShardCount defaults to one so independently-created
-// sessions reuse the same warm route. High-volume OpenAI users may explicitly
-// partition traffic; DeepSeek always keeps one credential-level user_id because
-// that field is a privacy boundary rather than merely a routing hint.
+// promptCacheRoutingShardCount defaults OpenAI to per-lineage isolation. This
+// prevents an independent session, agent, task, or benchmark repetition from
+// inheriting another run's warm cache state. High-volume OpenAI users may
+// explicitly coalesce traffic into a bounded number of stable routes. DeepSeek
+// always keeps one credential-level user_id because that field is a privacy
+// boundary rather than merely a routing hint.
 func promptCacheRoutingShardCount(providerName string) int {
 	if canonical := CanonicalProviderName(providerName); canonical != "" && canonical != "openai" {
 		return 1
@@ -66,20 +70,23 @@ func promptCacheRoutingShardCount(providerName string) int {
 }
 
 // scopedPromptCacheKey lowers a conversation lineage into a credential- and
-// model-scoped routing key. With the default single shard, independent sessions
-// share the same key. An explicit multi-shard configuration keeps descendants
-// with the same lineage on the same route.
+// model-scoped routing key. The default includes an opaque lineage digest, so
+// independent sessions cannot warm each other while resumes and descendants
+// that inherit a lineage retain affinity. A positive shard count deliberately
+// coalesces lineages into that many stable routes.
 func scopedPromptCacheKey(userNamespace, lineage, model string, shards int) string {
 	lineage = strings.TrimSpace(lineage)
 	if lineage == "" || userNamespace == "" {
 		return lineage
 	}
-	if shards <= 0 {
-		shards = defaultPromptCacheRoutingShards
-	}
 	lineageDigest := sha256.Sum256([]byte(lineage))
-	shard := (int(lineageDigest[0])<<8 | int(lineageDigest[1])) % shards
 	modelDigest := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(model))))
+	if shards <= 0 {
+		// Keep the public OpenAI field within its 64-character limit while
+		// retaining 96 bits of collision resistance for the lineage component.
+		return fmt.Sprintf("%s_m%x_l%x", userNamespace, modelDigest[:4], lineageDigest[:12])
+	}
+	shard := (int(lineageDigest[0])<<8 | int(lineageDigest[1])) % shards
 	return fmt.Sprintf("%s_m%x_s%d", userNamespace, modelDigest[:4], shard)
 }
 

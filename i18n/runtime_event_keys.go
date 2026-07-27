@@ -114,8 +114,8 @@ func init() {
 		"Transient API error (attempt %d/%d); retrying", "临时 API 错误（第 %d/%d 次尝试）；正在重试", "Vorübergehender API-Fehler (Versuch %d/%d); erneuter Versuch",
 		"一時的な API エラー（試行 %d/%d）。再試行します", "일시적인 API 오류(시도 %d/%d). 다시 시도합니다", "Временная ошибка API (попытка %d/%d); повтор")
 	add(KeyRuntimeStreamInterruptedPartial,
-		"Stream interrupted; continuing with %d partial blocks", "stream 已中断；将使用 %d 个部分 block 继续", "Stream unterbrochen; Fortsetzung mit %d Teilblöcken",
-		"stream が中断されました。%d 個の部分 block で続行します", "stream이 중단되었습니다. 부분 block %d개로 계속합니다", "Stream прерван; продолжение с %d частичными блоками")
+		"Stream interrupted; discarding %d uncommitted blocks", "stream 已中断；正在丢弃 %d 个未提交 block", "Stream unterbrochen; %d nicht bestätigte Blöcke werden verworfen",
+		"stream が中断されました。%d 個の未コミット block を破棄します", "stream이 중단되었습니다. 커밋되지 않은 block %d개를 폐기합니다", "Поток прерван; неподтверждённые блоки (%d) отброшены")
 	add(KeyRuntimeStreamRetryFullHistory,
 		"Stream failed; clearing the response chain and retrying with full message history", "stream 失败；正在清除 response chain，并使用完整消息历史重试", "Stream fehlgeschlagen; Response-Chain wird gelöscht und mit vollständigem Nachrichtenverlauf erneut versucht",
 		"stream に失敗しました。response chain を消去し、完全なメッセージ履歴で再試行します", "stream 실패. response chain을 지우고 전체 메시지 기록으로 다시 시도합니다", "Ошибка stream; цепочка ответов очищена, повтор с полной историей сообщений")

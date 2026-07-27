@@ -92,14 +92,20 @@ func TestQueryLoop_PreviousResponseFallbackPreservesPromptCache(t *testing.T) {
 	if prov.calls[1].PromptCacheKey != "session-123" || !prov.calls[1].UsePromptCache {
 		t.Fatalf("fallback should preserve prompt cache affinity, got key=%q enabled=%v", prov.calls[1].PromptCacheKey, prov.calls[1].UsePromptCache)
 	}
-	if !q.disableResponseChain {
-		t.Fatal("disableResponseChain = false, want true after fallback")
+	if q.disableResponseChain {
+		t.Fatal("disableResponseChain = true after a fresh response ID committed")
 	}
-	if got := q.previousResponseIDForRequest(envelopeFingerprint(prov.calls[1])); got != "" {
-		t.Fatalf("previousResponseIDForRequest() = %q, want empty after fallback", got)
+	if got := q.previousResponseIDForRequest(envelopeFingerprint(prov.calls[1])); got != "resp_new" {
+		t.Fatalf("previousResponseIDForRequest() = %q, want repaired chain parent", got)
 	}
 	if q.lastResponseID != "resp_new" {
 		t.Fatalf("lastResponseID = %q, want %q", q.lastResponseID, "resp_new")
+	}
+	if err := q.Run(context.Background(), "follow-up", func(stream.Event) {}); err != nil {
+		t.Fatalf("follow-up after chain repair: %v", err)
+	}
+	if len(prov.calls) != 3 || prov.calls[2].PreviousResponseID != "resp_new" {
+		t.Fatalf("follow-up did not resume repaired chain: calls=%d previous=%q", len(prov.calls), prov.calls[len(prov.calls)-1].PreviousResponseID)
 	}
 	// The fallback should be silent — no warning events emitted.
 	var errorEvents []stream.Event
@@ -342,7 +348,7 @@ func TestEnvelopeFingerprintIncludesCompleteToolDefinitions(t *testing.T) {
 }
 
 func TestIsPreviousResponseNotFound_DetectsProviderError(t *testing.T) {
-	err := &types.APIError{Type: "invalid_request_error", Message: "Previous response with id resp_deadbeef not found"}
+	err := &types.APIError{Type: "invalid_request_error", Code: "previous_response_not_found", Message: "Previous response with id resp_deadbeef not found"}
 	if !isPreviousResponseNotFound(err) {
 		t.Fatal("expected previous_response_id rejection to be detected")
 	}

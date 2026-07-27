@@ -118,6 +118,21 @@ func TestAnthropicServerToolWireOrderIsCanonicalAndDoesNotMutateInputs(t *testin
 	}
 }
 
+func TestAgenticToolWireOrderMatchesInspectMutateVerifyWorkflow(t *testing.T) {
+	definitions := []types.ToolDefinition{
+		{Name: "Run", InputSchema: types.StrictObjectSchema(map[string]any{})},
+		{Name: "Inspect", InputSchema: types.StrictObjectSchema(map[string]any{})},
+		{Name: "ApplyPatch", InputSchema: types.StrictObjectSchema(map[string]any{})},
+	}
+	ordered := canonicalToolDefinitions(definitions)
+	if got := toolDefinitionNames(ordered); !reflect.DeepEqual(got, []string{"Inspect", "ApplyPatch", "Run"}) {
+		t.Fatalf("agentic wire order = %v", got)
+	}
+	if got := toolDefinitionNames(definitions); !reflect.DeepEqual(got, []string{"Run", "Inspect", "ApplyPatch"}) {
+		t.Fatalf("caller definitions were mutated: %v", got)
+	}
+}
+
 func mustMarshalToolWire(t *testing.T, value any) []byte {
 	t.Helper()
 	raw, err := json.Marshal(value)

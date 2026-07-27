@@ -8,22 +8,70 @@ import (
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 	"testing"
 	"time"
 
 	agentcontract "github.com/agent-dance/luban/internal/contracts/agent"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 )
+
+func TestDefaultRuntimeStorageLeavesProjectUntouchedAndIsolatesSessions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	project := filepath.Join(t.TempDir(), "repo")
+	if err := os.Mkdir(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tracked := filepath.Join(project, "tracked.txt")
+	if err := os.WriteFile(tracked, []byte("unchanged"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sessionA := NewRuntimeLifecycleForSession(project, "session-a")
+	sessionB := NewRuntimeLifecycleForSession(project, "session-b")
+	if sessionA.StorageRoot() == sessionB.StorageRoot() {
+		t.Fatalf("sessions share storage root %q", sessionA.StorageRoot())
+	}
+	for _, lifecycle := range []*RuntimeLifecycle{sessionA, sessionB} {
+		if err := lifecycle.Publish(context.Background(), RuntimeLifecycleEvent{Type: LifecycleTaskCreated, EntityID: "task"}); err != nil {
+			t.Fatal(err)
+		}
+		if !filepath.IsAbs(lifecycle.StorageRoot()) || filepath.Clean(lifecycle.Root()) != filepath.Clean(project) {
+			t.Fatalf("logical/external roots = %q / %q", lifecycle.Root(), lifecycle.StorageRoot())
+		}
+		if wantPrefix := storepaths.RuntimeProjectDir(project); !pathWithin(lifecycle.StorageRoot(), wantPrefix) {
+			t.Fatalf("storage root %q is outside %q", lifecycle.StorageRoot(), wantPrefix)
+		}
+		assertPrivateMode(t, lifecycle.StorageRoot(), 0o700)
+		assertPrivateMode(t, lifecycle.path, 0o600)
+		assertPrivateMode(t, lifecycle.lockPath(), 0o600)
+	}
+
+	if body, err := os.ReadFile(tracked); err != nil || string(body) != "unchanged" {
+		t.Fatalf("project file changed: body=%q err=%v", body, err)
+	}
+	if _, err := os.Lstat(filepath.Join(project, ".luban-code")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("runtime created project-local state: %v", err)
+	}
+}
+
+func pathWithin(path, root string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
 
 func TestPrivateStoresTightenRuntimeState(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("POSIX permission bits are not enforced on Windows")
 	}
 	root := t.TempDir()
-	storeDir := filepath.Join(root, ".luban-code", "runtime-tasks")
+	storageRoot := filepath.Join(t.TempDir(), "session-runtime")
+	storeDir := filepath.Join(storageRoot, "runtime-tasks")
 	if err := os.MkdirAll(storeDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	store := NewRuntimeTaskStore(root)
+	store := NewRuntimeTaskStoreAt(root, storageRoot)
 	assertPrivateMode(t, storeDir, 0o700)
 	record := RuntimeTaskRecord{ID: "private-agent", Type: agentcontract.TaskTypeLocalAgent, Status: "completed", StartedAt: time.Now().UTC()}
 	body, err := json.Marshal(record)
@@ -39,7 +87,7 @@ func TestPrivateStoresTightenRuntimeState(t *testing.T) {
 	assertPrivateMode(t, store.path(record.ID), 0o600)
 	assertPrivateMode(t, store.lockPath(record.ID), 0o600)
 
-	lifecycle := NewRuntimeLifecycle(root)
+	lifecycle := NewRuntimeLifecycleAt(root, storageRoot)
 	if err := lifecycle.Publish(context.Background(), RuntimeLifecycleEvent{Type: LifecycleTaskCreated, EntityID: "private-task"}); err != nil {
 		t.Fatal(err)
 	}
@@ -55,7 +103,7 @@ func TestPrivateStoresRejectLinkedAndNonRegularPaths(t *testing.T) {
 
 	t.Run("task record and lock symlinks", func(t *testing.T) {
 		root := t.TempDir()
-		store := NewRuntimeTaskStore(root)
+		store := NewRuntimeTaskStoreAt(root, filepath.Join(t.TempDir(), "runtime"))
 		outside := filepath.Join(t.TempDir(), "outside")
 		if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
 			t.Fatal(err)
@@ -82,7 +130,7 @@ func TestPrivateStoresRejectLinkedAndNonRegularPaths(t *testing.T) {
 
 	t.Run("hard linked record", func(t *testing.T) {
 		root := t.TempDir()
-		store := NewRuntimeTaskStore(root)
+		store := NewRuntimeTaskStoreAt(root, filepath.Join(t.TempDir(), "runtime"))
 		outside := filepath.Join(t.TempDir(), "outside")
 		if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
 			t.Fatal(err)
@@ -101,14 +149,15 @@ func TestPrivateStoresRejectLinkedAndNonRegularPaths(t *testing.T) {
 
 	t.Run("managed directory symlink", func(t *testing.T) {
 		root := t.TempDir()
+		storageRoot := filepath.Join(t.TempDir(), "runtime")
 		outside := t.TempDir()
-		if err := os.Mkdir(filepath.Join(root, ".luban-code"), 0o700); err != nil {
+		if err := os.Mkdir(storageRoot, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(outside, filepath.Join(root, ".luban-code", "runtime-tasks")); err != nil {
+		if err := os.Symlink(outside, filepath.Join(storageRoot, "runtime-tasks")); err != nil {
 			t.Fatal(err)
 		}
-		store := NewRuntimeTaskStore(root)
+		store := NewRuntimeTaskStoreAt(root, storageRoot)
 		if err := store.Save(RuntimeTaskRecord{ID: "escape", Type: agentcontract.TaskTypeLocalAgent}); !errors.Is(err, fs.ErrInvalid) {
 			t.Fatalf("symlink directory error = %v, want fs.ErrInvalid", err)
 		}
@@ -123,10 +172,11 @@ func TestPrivateStoresRejectLinkedAndNonRegularPaths(t *testing.T) {
 		if err := os.Mkdir(filepath.Join(outside, "runtime-tasks"), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Symlink(outside, filepath.Join(root, ".luban-code")); err != nil {
+		storageRoot := filepath.Join(t.TempDir(), "runtime-link")
+		if err := os.Symlink(outside, storageRoot); err != nil {
 			t.Fatal(err)
 		}
-		store := NewRuntimeTaskStore(root)
+		store := NewRuntimeTaskStoreAt(root, storageRoot)
 		if err := store.Save(RuntimeTaskRecord{ID: "escape", Type: agentcontract.TaskTypeLocalAgent}); !errors.Is(err, fs.ErrInvalid) {
 			t.Fatalf("ancestor symlink error = %v, want fs.ErrInvalid", err)
 		}
@@ -137,11 +187,12 @@ func TestPrivateStoresRejectLinkedAndNonRegularPaths(t *testing.T) {
 
 	t.Run("lifecycle symlink", func(t *testing.T) {
 		root := t.TempDir()
+		storageRoot := filepath.Join(t.TempDir(), "runtime")
 		outside := filepath.Join(t.TempDir(), "outside")
 		if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		lifecycle := NewRuntimeLifecycle(root)
+		lifecycle := NewRuntimeLifecycleAt(root, storageRoot)
 		if err := os.Symlink(outside, lifecycle.path); err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +203,7 @@ func TestPrivateStoresRejectLinkedAndNonRegularPaths(t *testing.T) {
 	})
 
 	t.Run("non regular record", func(t *testing.T) {
-		store := NewRuntimeTaskStore(t.TempDir())
+		store := NewRuntimeTaskStoreAt(t.TempDir(), filepath.Join(t.TempDir(), "runtime"))
 		if err := os.Mkdir(store.path("directory"), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +218,7 @@ func TestPrivateStoresRejectLinkedAndNonRegularPaths(t *testing.T) {
 
 func TestTaskStoreRejectsTraversalAndNormalizesOutputPath(t *testing.T) {
 	root := t.TempDir()
-	store := NewRuntimeTaskStore(root)
+	store := NewRuntimeTaskStoreAt(root, filepath.Join(t.TempDir(), "runtime"))
 	for _, id := range []string{"../outside", "nested/task", `nested\task`, ".", "..", " leading", "trailing ", "bad\nline"} {
 		if err := store.Save(RuntimeTaskRecord{ID: id, Type: agentcontract.TaskTypeLocalAgent}); !errors.Is(err, fs.ErrInvalid) {
 			t.Errorf("Save(%q) error = %v, want fs.ErrInvalid", id, err)

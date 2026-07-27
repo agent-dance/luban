@@ -451,6 +451,9 @@ func rewriteForkArtifactPaths(messages []types.Message, source, target string, c
 	out := make([]types.Message, len(messages))
 	for i, message := range messages {
 		wasTrusted := message.HasInternalControlProvenance()
+		// A fork is a new provider/context lineage. Provider-native replay state
+		// and signatures are not valid after path rewriting and must not cross it.
+		message.ClearProviderContinuation()
 		message.Content = rewriteForkContent(message.Content, source, target, controlScope)
 		if wasTrusted {
 			message = message.WithInternalControlProvenance(messagecontrol.Runtime(), controlScope)
@@ -469,7 +472,25 @@ func rewriteForkContent(content []types.ContentBlock, source, target string, con
 			out[i] = value
 		case types.ThinkingBlock:
 			value.Thinking = strings.ReplaceAll(value.Thinking, source, target)
+			value.Signature = ""
+			value.SignatureKind = ""
+			value.SignatureModel = ""
+			value.ProviderItemID = ""
+			value.ProviderStatus = ""
 			out[i] = value
+		case *types.ThinkingBlock:
+			if value == nil {
+				out[i] = value
+				break
+			}
+			clone := *value
+			clone.Thinking = strings.ReplaceAll(clone.Thinking, source, target)
+			clone.Signature = ""
+			clone.SignatureKind = ""
+			clone.SignatureModel = ""
+			clone.ProviderItemID = ""
+			clone.ProviderStatus = ""
+			out[i] = &clone
 		case types.ToolUseBlock:
 			value.Input = rewriteForkStringMap(value.Input, source, target)
 			out[i] = value

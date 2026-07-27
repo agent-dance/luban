@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	"github.com/agent-dance/luban/internal/store/secureio"
 )
 
@@ -65,8 +66,9 @@ type RuntimeLifecycleSink interface {
 // sinks. A process crash can therefore reconstruct state from disk without
 // relying on an in-memory callback having completed.
 type RuntimeLifecycle struct {
-	root string
-	path string
+	root        string
+	storageRoot string
+	path        string
 
 	mu    sync.RWMutex
 	sinks []RuntimeLifecycleSink
@@ -80,23 +82,50 @@ func (l *RuntimeLifecycle) Root() string {
 	return l.root
 }
 
+// StorageRoot returns the external, private persistence directory. Root()
+// remains the logical project identity used in lifecycle payloads and routing.
+func (l *RuntimeLifecycle) StorageRoot() string {
+	if l == nil {
+		return ""
+	}
+	return l.storageRoot
+}
+
 func NewRuntimeLifecycle(projectRoot string) *RuntimeLifecycle {
+	return NewRuntimeLifecycleAt(projectRoot, storepaths.RuntimeServiceDir(projectRoot, "lifecycle"))
+}
+
+// NewRuntimeLifecycleForSession creates a lifecycle journal isolated to one
+// conversation. An empty session ID selects the process-private namespace.
+func NewRuntimeLifecycleForSession(projectRoot, sessionID string) *RuntimeLifecycle {
+	return NewRuntimeLifecycleAt(projectRoot, storepaths.RuntimeSessionDir(projectRoot, sessionID))
+}
+
+// NewRuntimeLifecycleAt creates a journal with an explicitly injected storage
+// root. This is the only constructor tests need: projectRoot remains logical
+// while all persistence stays under the supplied temporary directory.
+func NewRuntimeLifecycleAt(projectRoot, storageRoot string) *RuntimeLifecycle {
 	root := strings.TrimSpace(projectRoot)
 	if root == "" {
 		root = "."
 	}
 	root = filepath.Clean(root)
-	lifecycle := &RuntimeLifecycle{root: root, path: runtimeLifecyclePath(root)}
+	storage := strings.TrimSpace(storageRoot)
+	if storage == "" {
+		storage = storepaths.RuntimeSessionDir(root, "")
+	}
+	storage = filepath.Clean(storage)
+	lifecycle := &RuntimeLifecycle{
+		root:        root,
+		storageRoot: storage,
+		path:        runtimeLifecyclePath(storage),
+	}
 	_ = secureio.EnsurePrivateRuntimeDirectory(filepath.Dir(lifecycle.path))
 	return lifecycle
 }
 
-func runtimeLifecyclePath(projectRoot string) string {
-	root := strings.TrimSpace(projectRoot)
-	if root == "" {
-		root = "."
-	}
-	return filepath.Join(root, ".luban-code", "runtime-state", "lifecycle.json")
+func runtimeLifecyclePath(storageRoot string) string {
+	return filepath.Join(filepath.Clean(storageRoot), "runtime-state", "lifecycle.json")
 }
 
 func (l *RuntimeLifecycle) lockPath() string {

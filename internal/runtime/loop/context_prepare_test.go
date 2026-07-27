@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agent-dance/luban/internal/contracts/compactproof"
 	"github.com/agent-dance/luban/internal/contracts/stream"
 	"github.com/agent-dance/luban/internal/runtime/compact"
 	"github.com/agent-dance/luban/registry"
@@ -26,6 +27,12 @@ type prepareCountingCompactor struct {
 type charBasedCounterForTest struct{}
 
 func (*charBasedCounterForTest) Count(text string) int { return len(text) / 4 }
+
+type prepareV2CompactProof struct {
+	proof compactproof.Proof
+}
+
+func (p prepareV2CompactProof) CompactionProof() compactproof.Proof { return p.proof }
 
 func (c *prepareCountingCompactor) Compact(ctx context.Context, messages []types.Message, keepRecent int) (*compact.CompactionResult, error) {
 	return c.CompactWithTrigger(ctx, messages, keepRecent, "auto")
@@ -449,6 +456,80 @@ func TestPrepareMessagesForQueryIdleMainMicrocompactNotifiesCacheBreakDetector(t
 	}
 	if detector.hasBaseline {
 		t.Fatal("time-based microcompact should reset cache-break baseline")
+	}
+}
+
+func TestPrepareMessagesForQueryAgenticV2ProofResetsContinuationButKeepsCacheLineage(t *testing.T) {
+	cfg := compact.DefaultMicrocompactConfig()
+	cfg.QuerySource = compact.MicrocompactSourceMain
+	cfg.LastActivity = time.Now().Add(-2 * time.Hour)
+	cfg.KeepRecent = 1
+	oldAssistant := types.Message{Role: types.RoleAssistant, Content: []types.ContentBlock{
+		types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "old-run", Name: "Run", Input: map[string]any{}},
+	}}
+	oldAssistant.AttachProviderContinuation(&types.ProviderContinuation{
+		Protocol: "openai", RequestedModel: "same-build", ServedModel: "same-build",
+		Items: []types.ProviderContinuationItem{types.NewProviderContinuationItem(0, []byte(`{"type":"reasoning"}`))},
+	})
+	messages := []types.Message{
+		types.UserMessage("start"),
+		oldAssistant,
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "old-run",
+			Content: strings.Repeat("old verification output ", 1_000), Outcome: types.ToolOutcomeFailed, IsError: true,
+			Data: prepareV2CompactProof{proof: compactproof.Proof{Run: &compactproof.RunProof{
+				LogicalExecutionCommitted: true, TotalDurationMS: 11,
+				Steps: []compactproof.RunStepProof{{Ordinal: 0, Status: "failed", ExitCode: 1, DurationMS: 11, Invoked: true}},
+			}}},
+		}),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "new-inspect", Name: "Inspect", Input: map[string]any{}},
+		}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "new-inspect",
+			Content: strings.Repeat("new evidence ", 1_000), Outcome: types.ToolOutcomeSucceeded,
+			Data: prepareV2CompactProof{proof: compactproof.Proof{Inspect: &compactproof.InspectProof{Items: 1}}},
+		}),
+	}
+	cacheState := compact.NewCachedMicrocompactState()
+	cacheState.RegisteredTools["old-run"] = struct{}{}
+	ql := &QueryLoop{
+		config:                  Config{CacheLineageID: "stable-cache-lineage"},
+		contentReplacementState: compact.NewContentReplacementState(),
+		microcompactCfg:         cfg,
+		cachedMicrocompactState: cacheState,
+		continuationEpoch:       9,
+		continuationSentAt:      9,
+		lastResponseID:          "response-before-proof-compact",
+		lastEnvelopeFingerprint: "envelope-before-proof-compact",
+	}
+	state := newQueryState(messages)
+	prepared, err := ql.prepareMessagesForQuery(context.Background(), state, 1, 0, false, func(stream.Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content := findToolResultContent(prepared.Messages, "old-run"); !strings.Contains(content, compactproof.SchemaVersion) || strings.Contains(content, "old verification output") {
+		t.Fatalf("old Run proof projection = %q", content)
+	}
+	if ql.lastResponseID != "" || ql.lastEnvelopeFingerprint != "" || ql.continuationEpoch != 10 || ql.continuationSentAt != 9 {
+		t.Fatalf("continuation fence = id:%q fingerprint:%q epoch:%d sent:%d", ql.lastResponseID, ql.lastEnvelopeFingerprint, ql.continuationEpoch, ql.continuationSentAt)
+	}
+	if ql.config.CacheLineageID != "stable-cache-lineage" {
+		t.Fatalf("cache lineage changed to %q", ql.config.CacheLineageID)
+	}
+	if len(cacheState.RegisteredTools) != 0 || len(cacheState.PinnedEdits) != 0 {
+		t.Fatalf("time microcompact retained stale cached state: %#v", cacheState)
+	}
+	continuationPreserved := false
+	for _, message := range prepared.Messages {
+		for _, use := range message.GetToolUses() {
+			if use.ID == "old-run" {
+				_, continuationPreserved = message.ValidatedProviderContinuation()
+			}
+		}
+	}
+	if !continuationPreserved {
+		t.Fatal("proof projection modified the assistant message's validated continuation payload")
 	}
 }
 

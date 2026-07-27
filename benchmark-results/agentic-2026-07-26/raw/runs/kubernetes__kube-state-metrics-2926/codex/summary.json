@@ -1,0 +1,42 @@
+{
+  "instance_id": "kubernetes__kube-state-metrics-2926",
+  "language": "go",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785021341.768199,
+  "elapsed_seconds": 228.672,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 468619,
+    "cached_input_tokens": 417280,
+    "output_tokens": 7169,
+    "reasoning_output_tokens": 3359,
+    "cache_read_input_tokens": 417280,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 0.680405,
+  "tool_calls": 32,
+  "tool_calls_by_type": {
+    "command_execution": 31,
+    "file_change": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "pkg/options/options.go",
+      "pkg/options/options_test.go"
+    ],
+    "additions": 17,
+    "deletions": 3
+  },
+  "final_text": "Restored `custom_resource_config_file` YAML support in [options.go](/private/tmp/luban-agent-benchmark-work/repos/kubernetes__kube-state-metrics-2926/codex/pkg/options/options.go:53), making it equivalent to `--custom-resource-state-config-file` again.\n\nAdded regression coverage in [options_test.go](/private/tmp/luban-agent-benchmark-work/repos/kubernetes__kube-state-metrics-2926/codex/pkg/options/options_test.go:25).\n\nValidation:\n\n- `gofmt` and `git diff --check` pass.\n- Focused tests could not run because dependencies were unavailable inside the repository-only sandbox; no network access was attempted.",
+  "command_public": {
+    "executable": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

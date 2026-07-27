@@ -29,9 +29,17 @@ func NewErrorEvent(identity types.RuntimeIdentity, message string, apiError *typ
 	} else if message != "" {
 		cause = errors.New(message)
 	}
+	diagnosticCode := "runtime.operation_failed"
+	// context_length_exceeded is an allowlisted provider protocol identifier,
+	// not diagnostic prose. Preserving this one semantic code lets machine
+	// consumers distinguish a scored context exhaustion without exposing the
+	// provider message, metadata, request identity, or arbitrary error types.
+	if apiError != nil && apiError.Type == "context_length_exceeded" {
+		diagnosticCode = "context_length_exceeded"
+	}
 	event := types.NewRuntimeEvent(
 		types.RuntimeEventKindError, identity, types.ToolOutcomeFailed,
-		i18n.KeyRuntimeErrorPublicSummary, nil, "runtime.operation_failed", cause,
+		i18n.KeyRuntimeErrorPublicSummary, nil, diagnosticCode, cause,
 	)
 	event.PrivateMetadata = privateMetadata
 	event.EvidenceRef = &types.RuntimeEvidenceRef{ID: event.EventID}

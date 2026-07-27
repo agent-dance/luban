@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,6 +17,7 @@ import (
 	"github.com/agent-dance/luban/hooks"
 	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/internal/contracts/stream"
+	"github.com/agent-dance/luban/internal/contracts/workspacerevision"
 	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/types"
 )
@@ -63,6 +66,123 @@ func (t *orderedBatchTool) ToolMetadata(map[string]any) types.ToolMetadata {
 
 type inputAwareBatchTool struct {
 	orderedBatchTool
+}
+
+type fusionMutationData struct {
+	receipt workspacerevision.Receipt
+}
+
+func (d fusionMutationData) WorkspaceRevisionReceipt() (workspacerevision.Receipt, bool) {
+	return d.receipt, d.receipt.Valid()
+}
+
+type fusionMutationTool struct {
+	ledger          *workspacerevision.Ledger
+	root            string
+	path            string
+	fail            bool
+	outcome         types.ToolOutcome
+	infraErr        error
+	mutateAfterSeal bool
+	executed        *atomic.Int32
+}
+
+func (t *fusionMutationTool) Name() string        { return "ApplyPatch" }
+func (t *fusionMutationTool) Description() string { return "test mutation" }
+func (t *fusionMutationTool) Schema() types.JSONSchema {
+	return types.JSONSchema{Type: "object"}
+}
+func (t *fusionMutationTool) ToolMetadata(map[string]any) types.ToolMetadata {
+	return types.ToolMetadata{Write: true}
+}
+func (t *fusionMutationTool) ProvidesWorkspaceRevisionBarrier() bool { return t.ledger != nil }
+func (t *fusionMutationTool) Execute(context.Context, map[string]any) (types.ToolResult, error) {
+	if t.executed != nil {
+		t.executed.Store(1)
+	}
+	if t.infraErr != nil {
+		return types.ToolResult{}, t.infraErr
+	}
+	if t.fail {
+		return types.ToolResult{Content: "patch failed", IsError: true, Outcome: types.ToolOutcomeFailed}, nil
+	}
+	if t.outcome != "" && t.outcome != types.ToolOutcomeSucceeded {
+		return types.ToolResult{Content: "patch did not commit", IsError: true, Outcome: t.outcome}, nil
+	}
+	if err := os.WriteFile(t.path, []byte("patched\n"), 0o600); err != nil {
+		return types.ToolResult{}, err
+	}
+	receipt, err := t.ledger.Commit(t.root, []string{t.path})
+	if err != nil {
+		return types.ToolResult{}, err
+	}
+	if t.mutateAfterSeal {
+		if err := os.WriteFile(t.path, []byte("intervening\n"), 0o600); err != nil {
+			return types.ToolResult{}, err
+		}
+	}
+	return types.ToolResult{Content: "patch committed", Data: fusionMutationData{receipt: receipt}, Outcome: types.ToolOutcomeSucceeded}, nil
+}
+
+type fusionVerificationTool struct {
+	ledger   *workspacerevision.Ledger
+	path     string
+	executed *atomic.Int32
+	verified *atomic.Bool
+}
+
+type deniedFusionMutationTool struct {
+	*fusionMutationTool
+}
+
+type writeFusionVerificationTool struct {
+	*fusionVerificationTool
+}
+
+func (t *writeFusionVerificationTool) ToolMetadata(map[string]any) types.ToolMetadata {
+	return types.ToolMetadata{Write: true}
+}
+
+func (t *deniedFusionMutationTool) CheckPermissions(context.Context, map[string]any, types.ToolPermissionRequest) (types.ToolPermissionResult, error) {
+	return types.ToolPermissionResult{Behavior: types.PermissionBehaviorDeny, Message: "denied for test", Required: true}, nil
+}
+
+func (t *fusionVerificationTool) Name() string        { return "Run" }
+func (t *fusionVerificationTool) Description() string { return "test verification" }
+func (t *fusionVerificationTool) Schema() types.JSONSchema {
+	return types.JSONSchema{Type: "object"}
+}
+func (t *fusionVerificationTool) ToolMetadata(map[string]any) types.ToolMetadata {
+	return types.ToolMetadata{ReadOnly: true, ConcurrencySafe: true}
+}
+func (t *fusionVerificationTool) ConsumesWorkspaceRevisionBarrier() bool { return t.ledger != nil }
+func (t *fusionVerificationTool) RequiresPatchCommit(input map[string]any) bool {
+	required, _ := input["requires_patch_commit"].(bool)
+	return required
+}
+func (t *fusionVerificationTool) Execute(ctx context.Context, _ map[string]any) (types.ToolResult, error) {
+	if t.executed != nil {
+		t.executed.Add(1)
+	}
+	receipt, ok := workspacerevision.FromContext(ctx)
+	if !ok || t.ledger.Validate(receipt) != nil {
+		return types.ToolResult{
+			Content: "revision mismatch", IsError: true, Outcome: types.ToolOutcomeFailed,
+			Metadata: map[string]string{"verification.status": "revision_mismatch"},
+		}, nil
+	}
+	content, err := os.ReadFile(t.path)
+	if err != nil || string(content) != "patched\n" {
+		return types.ToolResult{Content: "stale", IsError: true, Outcome: types.ToolOutcomeFailed}, err
+	}
+	if t.verified != nil {
+		t.verified.Store(true)
+	}
+	return types.ToolResult{Content: "verified", Outcome: types.ToolOutcomeSucceeded, Metadata: map[string]string{
+		"verification.status":        "revision_bound",
+		"verification.kind":          "targeted_test",
+		"verification.config_digest": string(digestFlightValues("fusion-verification-config")),
+	}}, nil
 }
 
 func (t *inputAwareBatchTool) ToolMetadata(input map[string]any) types.ToolMetadata {
@@ -243,6 +363,260 @@ func TestExecuteToolsConcurrently(t *testing.T) {
 		if r.Content == "" {
 			t.Errorf("result %d has empty content", i)
 		}
+	}
+}
+
+func TestToolExecutionMetricsCountSchedulerFanoutLatencyAndErrors(t *testing.T) {
+	reg := registry.New()
+	for _, name := range []string{"SafeMetricsA", "SafeMetricsB"} {
+		name := name
+		reg.Register(&orderedBatchTool{name: name, concurrent: true, execute: func(context.Context, map[string]any) (types.ToolResult, error) {
+			time.Sleep(15 * time.Millisecond)
+			return types.ToolResult{Content: name}, nil
+		}})
+	}
+	reg.Register(&orderedBatchTool{name: "FailMetrics", concurrent: false, execute: func(context.Context, map[string]any) (types.ToolResult, error) {
+		return types.ToolResult{Content: "failed", IsError: true, Outcome: types.ToolOutcomeFailed}, nil
+	}})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{
+			{Type: types.ContentTypeToolUse, ID: "metrics-a", Name: "SafeMetricsA", Input: map[string]any{}},
+			{Type: types.ContentTypeToolUse, ID: "metrics-b", Name: "SafeMetricsB", Input: map[string]any{}},
+			{Type: types.ContentTypeToolUse, ID: "metrics-fail", Name: "FailMetrics", Input: map[string]any{}},
+		}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metrics := detailed.Metrics
+	if metrics.PhysicalChildOperations != 3 || metrics.PeakFanout != 2 || metrics.BatchCount != 2 || metrics.ErrorCount != 1 {
+		t.Fatalf("metrics = %+v, want physical=3 fanout=2 batches=2 errors=1", metrics)
+	}
+	if metrics.QueueDuration < 10*time.Millisecond || metrics.CriticalPathDuration < 10*time.Millisecond || metrics.TotalChildLatency < 20*time.Millisecond {
+		t.Fatalf("metrics omitted measured scheduling latency: %+v", metrics)
+	}
+}
+
+func TestRevisionFusionRunsVerificationAfterCommittedMutation(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := workspacerevision.NewLedger()
+	var mutationExecuted atomic.Int32
+	var verificationExecuted atomic.Int32
+	var verified atomic.Bool
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: path, executed: &mutationExecuted})
+	reg.Register(&fusionVerificationTool{ledger: ledger, path: path, executed: &verificationExecuted, verified: &verified})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{
+			{ID: "patch", Name: "ApplyPatch", Input: map[string]any{}},
+			{ID: "verify", Name: "Run", Input: map[string]any{"requires_patch_commit": true}},
+		}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutationExecuted.Load() != 1 || verificationExecuted.Load() != 1 || !verified.Load() {
+		t.Fatalf("execution mutation=%d verification=%d verified=%t", mutationExecuted.Load(), verificationExecuted.Load(), verified.Load())
+	}
+	if len(detailed.Results) != 2 || detailed.Results[0].Outcome != types.ToolOutcomeSucceeded || detailed.Results[1].Outcome != types.ToolOutcomeSucceeded {
+		t.Fatalf("results = %#v", detailed.Results)
+	}
+	metrics := detailed.Metrics
+	if metrics.PhysicalChildOperations != 2 || metrics.BatchCount != 2 || metrics.RevisionFusionCount != 1 || metrics.RevisionBarrierSkips != 0 || metrics.RevisionMismatchCount != 0 || metrics.ErrorCount != 0 {
+		t.Fatalf("fusion metrics = %+v", metrics)
+	}
+}
+
+func TestRevisionFusionSkipsRunAfterPatchBusinessFailure(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: path, fail: true})
+	reg.Register(&fusionVerificationTool{ledger: ledger, path: path, executed: &verificationExecuted})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{{ID: "patch-failed", Name: "ApplyPatch", Input: map[string]any{}}, {ID: "verify-skipped", Name: "Run", Input: map[string]any{"requires_patch_commit": true}}}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verificationExecuted.Load() != 0 {
+		t.Fatalf("Run executed %d times after failed patch", verificationExecuted.Load())
+	}
+	if len(detailed.Results) != 2 || detailed.Results[1].Metadata["schedule.status"] != "skipped" || detailed.Results[1].Outcome != types.ToolOutcomeFailed {
+		t.Fatalf("skipped result = %#v", detailed.Results)
+	}
+	if _, ok := detailed.Results[1].Data.(revisionBarrierSkip); !ok {
+		t.Fatalf("skipped Run Data = %T", detailed.Results[1].Data)
+	}
+	metrics := detailed.Metrics
+	if metrics.PhysicalChildOperations != 1 || metrics.RevisionFusionCount != 1 || metrics.RevisionBarrierSkips != 1 || metrics.ErrorCount != 2 {
+		t.Fatalf("failed fusion metrics = %+v", metrics)
+	}
+}
+
+func TestRevisionDependencySkipsRunAfterPartialPatch(t *testing.T) {
+	root := t.TempDir()
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{
+		ledger: ledger, root: root, path: filepath.Join(root, "source.txt"), outcome: types.ToolOutcomePartial,
+	})
+	reg.Register(&fusionVerificationTool{ledger: ledger, executed: &verificationExecuted})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{
+			{ID: "patch-partial", Name: "ApplyPatch", Input: map[string]any{}},
+			{ID: "run-after-partial", Name: "Run", Input: map[string]any{"requires_patch_commit": true}},
+		}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verificationExecuted.Load() != 0 || len(detailed.Results) != 2 || detailed.Results[1].Metadata["schedule.status"] != "skipped" {
+		t.Fatalf("partial dependency execution=%d results=%#v", verificationExecuted.Load(), detailed.Results)
+	}
+	if detailed.Metrics.PhysicalChildOperations != 1 || detailed.Metrics.RevisionFusionCount != 1 || detailed.Metrics.RevisionBarrierSkips != 1 {
+		t.Fatalf("partial dependency metrics=%+v", detailed.Metrics)
+	}
+}
+
+func TestRevisionFusionMismatchCannotBecomeVerification(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	var verified atomic.Bool
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: path, mutateAfterSeal: true})
+	reg.Register(&fusionVerificationTool{ledger: ledger, path: path, executed: &verificationExecuted, verified: &verified})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{{ID: "patch", Name: "ApplyPatch", Input: map[string]any{}}, {ID: "verify", Name: "Run", Input: map[string]any{"requires_patch_commit": true}}}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verificationExecuted.Load() != 1 || verified.Load() {
+		t.Fatalf("verification executed=%d verified=%t", verificationExecuted.Load(), verified.Load())
+	}
+	if detailed.Results[1].Metadata["verification.status"] != "revision_mismatch" || detailed.Results[1].Outcome != types.ToolOutcomeFailed {
+		t.Fatalf("mismatch result = %#v", detailed.Results[1])
+	}
+	if detailed.Metrics.RevisionMismatchCount != 1 || detailed.Metrics.ErrorCount != 1 {
+		t.Fatalf("mismatch metrics = %+v", detailed.Metrics)
+	}
+}
+
+func TestRevisionDependencyFlagKeepsIndependentRunUnbound(t *testing.T) {
+	root := t.TempDir()
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: filepath.Join(root, "source.txt"), fail: true})
+	reg.Register(&fusionVerificationTool{ledger: ledger, executed: &verificationExecuted})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{{ID: "failed-patch", Name: "ApplyPatch", Input: map[string]any{}}, {ID: "independent-run", Name: "Run", Input: map[string]any{"requires_patch_commit": false}}}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verificationExecuted.Load() != 1 {
+		t.Fatalf("independent Run executed %d times, want 1", verificationExecuted.Load())
+	}
+	if detailed.Metrics.RevisionFusionCount != 0 || detailed.Metrics.RevisionBarrierSkips != 0 || detailed.Metrics.PhysicalChildOperations != 2 {
+		t.Fatalf("independent metrics = %+v", detailed.Metrics)
+	}
+}
+
+func TestRevisionDependencySkipsMutatingRunAfterPatchFailure(t *testing.T) {
+	root := t.TempDir()
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: filepath.Join(root, "source.txt"), fail: true})
+	reg.Register(&writeFusionVerificationTool{fusionVerificationTool: &fusionVerificationTool{ledger: ledger, executed: &verificationExecuted}})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{{ID: "failed-patch", Name: "ApplyPatch", Input: map[string]any{}}, {ID: "mutating-run", Name: "Run", Input: map[string]any{"requires_patch_commit": true}}}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verificationExecuted.Load() != 0 || detailed.Metrics.RevisionFusionCount != 1 || detailed.Metrics.RevisionBarrierSkips != 1 || detailed.Metrics.PhysicalChildOperations != 1 {
+		t.Fatalf("mutating Run execution=%d metrics=%+v", verificationExecuted.Load(), detailed.Metrics)
+	}
+	if len(detailed.Results) != 2 || detailed.Results[1].Metadata["schedule.status"] != "skipped" {
+		t.Fatalf("mutating Run skip result=%#v", detailed.Results)
+	}
+}
+
+func TestRevisionFusionReturnsTypedSkipAfterCancelledPatch(t *testing.T) {
+	root := t.TempDir()
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: filepath.Join(root, "source.txt"), infraErr: context.Canceled})
+	reg.Register(&fusionVerificationTool{ledger: ledger, executed: &verificationExecuted})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{{ID: "cancelled-patch", Name: "ApplyPatch", Input: map[string]any{}}, {ID: "skipped-run", Name: "Run", Input: map[string]any{"requires_patch_commit": true}}}, nil,
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("execution error = %v, want context canceled", err)
+	}
+	if verificationExecuted.Load() != 0 || len(detailed.Results) != 2 || detailed.Results[1].Metadata["schedule.status"] != "skipped" {
+		t.Fatalf("cancelled fusion execution=%d results=%#v", verificationExecuted.Load(), detailed.Results)
+	}
+	if detailed.Metrics.RevisionBarrierSkips != 1 || detailed.Metrics.PhysicalChildOperations != 1 {
+		t.Fatalf("cancelled fusion metrics = %+v", detailed.Metrics)
+	}
+}
+
+func TestRevisionFusionSkipsRunAfterDeniedPatch(t *testing.T) {
+	root := t.TempDir()
+	ledger := workspacerevision.NewLedger()
+	var mutationExecuted atomic.Int32
+	var verificationExecuted atomic.Int32
+	reg := registry.New()
+	reg.Register(&deniedFusionMutationTool{fusionMutationTool: &fusionMutationTool{
+		ledger: ledger, root: root, path: filepath.Join(root, "source.txt"), executed: &mutationExecuted,
+	}})
+	reg.Register(&fusionVerificationTool{ledger: ledger, executed: &verificationExecuted})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{{ID: "denied-patch", Name: "ApplyPatch", Input: map[string]any{}}, {ID: "skipped-run", Name: "Run", Input: map[string]any{"requires_patch_commit": true}}}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mutationExecuted.Load() != 0 || verificationExecuted.Load() != 0 || detailed.Results[0].Outcome != types.ToolOutcomeDenied || detailed.Results[1].Metadata["schedule.status"] != "skipped" {
+		t.Fatalf("denied fusion mutation=%d verification=%d results=%#v", mutationExecuted.Load(), verificationExecuted.Load(), detailed.Results)
+	}
+	if detailed.Metrics.RevisionBarrierSkips != 1 || detailed.Metrics.PhysicalChildOperations != 1 || detailed.Metrics.ErrorCount != 2 {
+		t.Fatalf("denied fusion metrics = %+v", detailed.Metrics)
 	}
 }
 

@@ -72,7 +72,7 @@ func (r mcpCallRuntime) execute(ctx context.Context, input map[string]any) (type
 
 		raw, err := r.callRawOnce(ctx, state.Client, input)
 		if err == nil {
-			result := renderMCPCallToolResult(raw, r.server, r.tool)
+			result := renderMCPCallToolResultAt(raw, r.server, r.tool, mcpToolResultsDirForContext(ctx))
 			if result.IsError {
 				if result.Metadata == nil {
 					result.Metadata = map[string]string{}

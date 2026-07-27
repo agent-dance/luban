@@ -1,0 +1,123 @@
+diff --git a/packages/agents-core/src/run.ts b/packages/agents-core/src/run.ts
+index 987fded..7cea08c 100644
+--- a/packages/agents-core/src/run.ts
++++ b/packages/agents-core/src/run.ts
+@@ -796,6 +796,7 @@ export class Runner extends RunHooks<any, AgentOutputType<unknown>> {
+ 
+           result.state._lastTurnResponse = finalResponse;
+           result.state._modelResponses.push(result.state._lastTurnResponse);
++          result.state._context.usage.add(result.state._lastTurnResponse.usage);
+ 
+           const processedResponse = processModelResponse(
+             result.state._lastTurnResponse,
+@@ -832,6 +833,17 @@ export class Runner extends RunHooks<any, AgentOutputType<unknown>> {
+             result.state,
+             result.state._currentStep.output,
+           );
++          this.emit(
++            'agent_end',
++            result.state._context,
++            result.state._currentAgent,
++            result.state._currentStep.output,
++          );
++          result.state._currentAgent.emit(
++            'agent_end',
++            result.state._context,
++            result.state._currentStep.output,
++          );
+           return;
+         } else if (
+           result.state._currentStep.type === 'next_step_interruption'
+diff --git a/packages/agents-core/test/run.stream.test.ts b/packages/agents-core/test/run.stream.test.ts
+index f7b29f8..e92d0f1 100644
+--- a/packages/agents-core/test/run.stream.test.ts
++++ b/packages/agents-core/test/run.stream.test.ts
+@@ -1,4 +1,4 @@
+-import { describe, it, expect, beforeAll } from 'vitest';
++import { describe, it, expect, beforeAll, vi } from 'vitest';
+ import {
+   Agent,
+   run,
+@@ -11,6 +11,7 @@ import {
+   Model,
+   ModelRequest,
+   ModelResponse,
++  Runner,
+   StreamEvent,
+   FunctionCallItem,
+ } from '../src';
+@@ -53,6 +54,74 @@ describe('Runner.run (streaming)', () => {
+     expect((result.error as Error).message).toBe('Not implemented');
+   });
+ 
++  it('emits agent_end with accumulated usage when the run completes', async () => {
++    const usageData = {
++      requests: 1,
++      inputTokens: 2,
++      outputTokens: 3,
++      totalTokens: 5,
++    };
++    const response: ModelResponse = {
++      output: [fakeModelMessage('done')],
++      usage: new Usage(usageData),
++    };
++    let finishResponse!: () => void;
++    const responseReady = new Promise<void>((resolve) => {
++      finishResponse = resolve;
++    });
++
++    class SimpleStreamingModel implements Model {
++      async getResponse(_req: ModelRequest): Promise<ModelResponse> {
++        return response;
++      }
++      async *getStreamedResponse(): AsyncIterable<StreamEvent> {
++        await responseReady;
++        yield {
++          type: 'response_done',
++          response: {
++            id: 'r',
++            usage: usageData,
++            output: response.output,
++          },
++        } as any;
++      }
++    }
++
++    const agent = new Agent({
++      name: 'Lifecycle',
++      model: new SimpleStreamingModel(),
++    });
++    const runner = new Runner({ tracingDisabled: true });
++    const agentEnd = vi.fn();
++    const runnerEnd = vi.fn();
++    let totalTokensAtAgentEnd: number | undefined;
++
++    const result = await runner.run(agent, 'hi', { stream: true });
++    agent.on('agent_end', (context, output) => {
++      totalTokensAtAgentEnd = context.usage.totalTokens;
++      agentEnd(context, output);
++    });
++    runner.on('agent_end', runnerEnd);
++    finishResponse();
++    await result.completed;
++
++    expect(agentEnd).toHaveBeenCalledTimes(1);
++    expect(agentEnd).toHaveBeenCalledWith(result.state._context, 'done');
++    expect(totalTokensAtAgentEnd).toBe(5);
++    expect(runnerEnd).toHaveBeenCalledTimes(1);
++    expect(runnerEnd).toHaveBeenCalledWith(
++      result.state._context,
++      agent,
++      'done',
++    );
++    expect(result.state._context.usage).toMatchObject({
++      requests: 1,
++      inputTokens: 2,
++      outputTokens: 3,
++      totalTokens: 5,
++    });
++  });
++
+   it('emits agent_updated_stream_event with new agent on handoff', async () => {
+     class SimpleStreamingModel implements Model {
+       constructor(private resp: ModelResponse) {}

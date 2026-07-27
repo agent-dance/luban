@@ -1,9 +1,11 @@
 package i18n
 
 const (
-	KeyProviderOpenAIStreamChunkParseFailed  Key = "provider.openai.stream_chunk_parse_failed"
-	KeyProviderResponsesCompletedParseFailed Key = "provider.responses.completed_parse_failed"
-	KeyProviderResponsesFailedParseFailed    Key = "provider.responses.failed_parse_failed"
+	KeyProviderOpenAIStreamChunkParseFailed   Key = "provider.openai.stream_chunk_parse_failed"
+	KeyProviderResponsesCompletedParseFailed  Key = "provider.responses.completed_parse_failed"
+	KeyProviderResponsesFailedParseFailed     Key = "provider.responses.failed_parse_failed"
+	KeyProviderResponsesContinuationInvalid   Key = "provider.responses.continuation_invalid"
+	KeyProviderResponsesCustomToolCallInvalid Key = "provider.responses.custom_tool_call_invalid"
 )
 
 func init() {
@@ -34,4 +36,18 @@ func init() {
 		"response.failed の解析に失敗しました: %v",
 		"response.failed 파싱에 실패했습니다: %v",
 		"Не удалось разобрать response.failed: %v")
+	add(KeyProviderResponsesContinuationInvalid,
+		"The Responses continuation state is invalid.",
+		"Responses 延续状态无效。",
+		"Der Responses-Fortsetzungsstatus ist ungültig.",
+		"Responses の継続状態が無効です。",
+		"Responses 연속 상태가 올바르지 않습니다.",
+		"Состояние продолжения Responses недействительно.")
+	add(KeyProviderResponsesCustomToolCallInvalid,
+		"The Responses custom tool call was incomplete or violated the declared protocol.",
+		"Responses custom 工具调用不完整，或违反了声明的协议。",
+		"Der Responses-Custom-Tool-Aufruf war unvollständig oder verletzte das deklarierte Protokoll.",
+		"Responses custom ツール呼び出しが不完全か、宣言されたプロトコルに違反しています。",
+		"Responses custom 도구 호출이 불완전하거나 선언된 프로토콜을 위반했습니다.",
+		"Вызов custom-инструмента Responses был неполным или нарушил заявленный протокол.")
 }

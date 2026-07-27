@@ -18,6 +18,7 @@ const (
 	KeyLoopQueryAPICallFailed                 Key = "loop.query.api_call_failed"
 	KeyLoopQueryStreamNotEstablished          Key = "loop.query.stream_not_established"
 	KeyLoopQueryStreamMissingAfterAttempts    Key = "loop.query.stream_missing_after_attempts"
+	KeyLoopQueryPinnedModelFallback           Key = "loop.query.pinned_model_fallback"
 	KeyLoopQueryStreamFallbackFailed          Key = "loop.query.stream_fallback_failed"
 	KeyLoopQueryStreamAfterModelFallback      Key = "loop.query.stream_after_model_fallback"
 	KeyLoopQueryStreamAfterRetry              Key = "loop.query.stream_after_retry"
@@ -46,6 +47,7 @@ const (
 	KeyLoopToolIdentityReused                 Key = "loop.tool_identity.reused"
 	KeyLoopToolIdentityAtIndex                Key = "loop.tool_identity.at_index"
 	KeyLoopPartialStreamInterrupted           Key = "loop.stream.partial_interrupted"
+	KeyLoopStreamClosedBeforeCommit           Key = "loop.stream.closed_before_commit"
 	KeyLoopMaxTurnsExceeded                   Key = "loop.max_turns.exceeded"
 )
 
@@ -64,6 +66,7 @@ var loopQueryErrorKeys = [...]Key{
 	KeyLoopQueryAPICallFailed,
 	KeyLoopQueryStreamNotEstablished,
 	KeyLoopQueryStreamMissingAfterAttempts,
+	KeyLoopQueryPinnedModelFallback,
 	KeyLoopQueryStreamFallbackFailed,
 	KeyLoopQueryStreamAfterModelFallback,
 	KeyLoopQueryStreamAfterRetry,
@@ -92,6 +95,7 @@ var loopQueryErrorKeys = [...]Key{
 	KeyLoopToolIdentityReused,
 	KeyLoopToolIdentityAtIndex,
 	KeyLoopPartialStreamInterrupted,
+	KeyLoopStreamClosedBeforeCommit,
 	KeyLoopMaxTurnsExceeded,
 }
 
@@ -196,6 +200,10 @@ func init() {
 		KeyLoopQueryStreamMissingAfterAttempts: {
 			"API call failed: no response stream after %d attempts", "API 调用失败：尝试 %d 次后仍未建立响应 stream", "API-Aufruf fehlgeschlagen: Nach %d Versuchen wurde kein Antwort-Stream aufgebaut",
 			"API 呼び出しに失敗しました: %d 回試行してもレスポンス stream を確立できませんでした", "API 호출에 실패했습니다. %d번 시도한 후에도 응답 stream을 연결하지 못했습니다", "Вызов API завершился ошибкой: поток ответа не установлен после %d попыток",
+		},
+		KeyLoopQueryPinnedModelFallback: {
+			"The model contract pinned %s; the provider requested fallback to %s.", "模型契约已固定为 %s；provider 请求 fallback 到 %s。", "Der Modellvertrag hat %s festgelegt; der Provider hat einen Fallback auf %s angefordert.",
+			"モデル契約では %s に固定されていますが、provider が %s への fallback を要求しました。", "모델 계약은 %s(으)로 고정되었지만 provider가 %s(으)로 fallback을 요청했습니다.", "Контракт модели закрепляет %s, но провайдер запросил переключение на %s.",
 		},
 		KeyLoopQueryStreamFallbackFailed: {
 			"Stream processing failed; fallback also failed: %v", "处理 stream 失败，fallback 也失败：%v", "Stream-Verarbeitung fehlgeschlagen; auch der Fallback ist fehlgeschlagen: %v",
@@ -314,8 +322,12 @@ func init() {
 			"%[3]s の index %[2]d にある tool use identity が無効です: %[1]s", "%[3]s의 index %[2]d에 있는 tool use identity가 잘못되었습니다: %[1]s", "Недопустимая идентичность tool use: %s по индексу %d для %s",
 		},
 		KeyLoopPartialStreamInterrupted: {
-			"stream interrupted after %d block(s): %v", "%d 个内容块后 stream 中断：%v", "Stream nach %d Block/Blöcken unterbrochen: %v",
-			"%d 個のブロック後に stream が中断されました: %v", "%d개 블록 후 stream이 중단되었습니다: %v", "Поток прерван после блоков (%d): %v",
+			"stream interrupted with %d uncommitted block(s): %v", "stream 中断，%d 个未提交内容块已作废：%v", "Stream mit %d nicht bestätigten Block/Blöcken unterbrochen: %v",
+			"stream が中断され、%d 個の未コミット block が破棄されました: %v", "stream이 중단되어 커밋되지 않은 block %d개가 폐기되었습니다: %v", "Поток прерван; неподтверждённых блоков: %d: %v",
+		},
+		KeyLoopStreamClosedBeforeCommit: {
+			"provider stream closed before the response commit event", "provider stream 在响应提交事件前关闭", "Provider-Stream wurde vor dem Commit-Ereignis der Antwort geschlossen",
+			"provider stream が応答のコミットイベント前に閉じられました", "provider stream이 응답 커밋 이벤트 전에 닫혔습니다", "Поток провайдера закрылся до события подтверждения ответа",
 		},
 		KeyLoopMaxTurnsExceeded: {
 			"max turns (%d) exceeded", "已超过最大轮次（%d）", "Maximale Anzahl an Runden (%d) überschritten",

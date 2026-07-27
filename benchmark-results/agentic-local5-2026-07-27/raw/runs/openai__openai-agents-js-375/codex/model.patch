@@ -1,0 +1,276 @@
+diff --git a/packages/agents-core/src/run.ts b/packages/agents-core/src/run.ts
+index 987fded..7cea08c 100644
+--- a/packages/agents-core/src/run.ts
++++ b/packages/agents-core/src/run.ts
+@@ -796,6 +796,7 @@ export class Runner extends RunHooks<any, AgentOutputType<unknown>> {
+ 
+           result.state._lastTurnResponse = finalResponse;
+           result.state._modelResponses.push(result.state._lastTurnResponse);
++          result.state._context.usage.add(result.state._lastTurnResponse.usage);
+ 
+           const processedResponse = processModelResponse(
+             result.state._lastTurnResponse,
+@@ -832,6 +833,17 @@ export class Runner extends RunHooks<any, AgentOutputType<unknown>> {
+             result.state,
+             result.state._currentStep.output,
+           );
++          this.emit(
++            'agent_end',
++            result.state._context,
++            result.state._currentAgent,
++            result.state._currentStep.output,
++          );
++          result.state._currentAgent.emit(
++            'agent_end',
++            result.state._context,
++            result.state._currentStep.output,
++          );
+           return;
+         } else if (
+           result.state._currentStep.type === 'next_step_interruption'
+diff --git a/packages/agents-core/src/runImplementation.ts b/packages/agents-core/src/runImplementation.ts
+index 3acff6d..72bc5c2 100644
+--- a/packages/agents-core/src/runImplementation.ts
++++ b/packages/agents-core/src/runImplementation.ts
+@@ -377,14 +377,6 @@ export async function executeInterruptedToolsAndSideEffects<TContext>(
+   });
+ 
+   if (checkToolOutput.isFinalOutput) {
+-    runner.emit(
+-      'agent_end',
+-      state._context,
+-      agent,
+-      checkToolOutput.finalOutput,
+-    );
+-    agent.emit('agent_end', state._context, checkToolOutput.finalOutput);
+-
+     return new SingleStepResult(
+       originalInput,
+       newResponse,
+@@ -526,14 +518,6 @@ export async function executeToolsAndSideEffects<TContext>(
+   );
+ 
+   if (checkToolOutput.isFinalOutput) {
+-    runner.emit(
+-      'agent_end',
+-      state._context,
+-      agent,
+-      checkToolOutput.finalOutput,
+-    );
+-    agent.emit('agent_end', state._context, checkToolOutput.finalOutput);
+-
+     return new SingleStepResult(
+       originalInput,
+       newResponse,
+diff --git a/packages/agents-core/test/run.stream.test.ts b/packages/agents-core/test/run.stream.test.ts
+index f7b29f8..32d0552 100644
+--- a/packages/agents-core/test/run.stream.test.ts
++++ b/packages/agents-core/test/run.stream.test.ts
+@@ -1,6 +1,7 @@
+-import { describe, it, expect, beforeAll } from 'vitest';
++import { describe, it, expect, beforeAll, vi } from 'vitest';
+ import {
+   Agent,
++  Runner,
+   run,
+   setDefaultModelProvider,
+   setTracingDisabled,
+@@ -14,7 +15,36 @@ import {
+   StreamEvent,
+   FunctionCallItem,
+ } from '../src';
+-import { FakeModel, FakeModelProvider, fakeModelMessage } from './stubs';
++import {
++  FakeModel,
++  FakeModelProvider,
++  fakeModelMessage,
++  TEST_TOOL,
++} from './stubs';
++
++class SimpleStreamingModel implements Model {
++  constructor(private resp: ModelResponse) {}
++
++  async getResponse(_req: ModelRequest): Promise<ModelResponse> {
++    return this.resp;
++  }
++
++  async *getStreamedResponse(): AsyncIterable<StreamEvent> {
++    yield {
++      type: 'response_done',
++      response: {
++        id: 'r',
++        usage: {
++          requests: this.resp.usage.requests,
++          inputTokens: this.resp.usage.inputTokens,
++          outputTokens: this.resp.usage.outputTokens,
++          totalTokens: this.resp.usage.totalTokens,
++        },
++        output: this.resp.output,
++      },
++    } as any;
++  }
++}
+ 
+ // Test for unhandled rejection when stream loop throws
+ 
+@@ -53,29 +83,94 @@ describe('Runner.run (streaming)', () => {
+     expect((result.error as Error).message).toBe('Not implemented');
+   });
+ 
+-  it('emits agent_updated_stream_event with new agent on handoff', async () => {
+-    class SimpleStreamingModel implements Model {
+-      constructor(private resp: ModelResponse) {}
+-      async getResponse(_req: ModelRequest): Promise<ModelResponse> {
+-        return this.resp;
+-      }
+-      async *getStreamedResponse(): AsyncIterable<StreamEvent> {
+-        yield {
+-          type: 'response_done',
+-          response: {
+-            id: 'r',
+-            usage: {
+-              requests: 1,
+-              inputTokens: 0,
+-              outputTokens: 0,
+-              totalTokens: 0,
+-            },
+-            output: this.resp.output,
++  it('emits agent_end with accumulated usage when the stream completes', async () => {
++    const agent = new Agent({
++      name: 'StreamLifecycle',
++      model: new SimpleStreamingModel({
++        output: [fakeModelMessage('done')],
++        usage: new Usage({
++          requests: 1,
++          inputTokens: 2,
++          outputTokens: 3,
++          totalTokens: 5,
++        }),
++      }),
++    });
++    const runner = new Runner();
++    const agentEnd = vi.fn();
++    const runnerEnd = vi.fn();
++    let usageAtAgentEnd:
++      | {
++          requests: number;
++          inputTokens: number;
++          outputTokens: number;
++          totalTokens: number;
++        }
++      | undefined;
++    agent.on('agent_end', (context, output) => {
++      usageAtAgentEnd = {
++        requests: context.usage.requests,
++        inputTokens: context.usage.inputTokens,
++        outputTokens: context.usage.outputTokens,
++        totalTokens: context.usage.totalTokens,
++      };
++      agentEnd(context, output);
++    });
++    runner.on('agent_end', runnerEnd);
++
++    const result = await runner.run(agent, 'hi', { stream: true });
++    await result.completed;
++
++    expect(agentEnd).toHaveBeenCalledTimes(1);
++    expect(agentEnd).toHaveBeenCalledWith(result.state._context, 'done');
++    expect(runnerEnd).toHaveBeenCalledTimes(1);
++    expect(runnerEnd).toHaveBeenCalledWith(
++      result.state._context,
++      agent,
++      'done',
++    );
++    expect(usageAtAgentEnd).toMatchObject({
++      requests: 1,
++      inputTokens: 2,
++      outputTokens: 3,
++      totalTokens: 5,
++    });
++  });
++
++  it('emits agent_end once when a tool output ends the stream', async () => {
++    const agent = new Agent({
++      name: 'StreamToolLifecycle',
++      model: new SimpleStreamingModel({
++        output: [
++          {
++            id: 'tool-call',
++            type: 'function_call',
++            name: 'test',
++            callId: 'call-id',
++            status: 'completed',
++            arguments: '{"test":"value"}',
+           },
+-        } as any;
+-      }
+-    }
++        ],
++        usage: new Usage(),
++      }),
++      tools: [TEST_TOOL],
++      toolUseBehavior: 'stop_on_first_tool',
++    });
++    const agentEnd = vi.fn();
++    agent.on('agent_end', agentEnd);
++
++    const result = await run(agent, 'hi', { stream: true });
++    await result.completed;
++
++    expect(result.finalOutput).toBe('Hello World');
++    expect(agentEnd).toHaveBeenCalledTimes(1);
++    expect(agentEnd).toHaveBeenCalledWith(
++      result.state._context,
++      'Hello World',
++    );
++  });
+ 
++  it('emits agent_updated_stream_event with new agent on handoff', async () => {
+     const agentB = new Agent({
+       name: 'B',
+       model: new SimpleStreamingModel({
+diff --git a/packages/agents-core/test/run.test.ts b/packages/agents-core/test/run.test.ts
+index 7cdd1a5..18791af 100644
+--- a/packages/agents-core/test/run.test.ts
++++ b/packages/agents-core/test/run.test.ts
+@@ -52,6 +52,40 @@ describe('Runner.run', () => {
+       expectTypeOf(result.finalOutput).toEqualTypeOf<string | undefined>();
+     });
+ 
++    it('emits agent_end once when a tool output ends the run', async () => {
++      const agent = new Agent({
++        name: 'ToolLifecycle',
++        model: new FakeModel([
++          {
++            output: [
++              {
++                id: 'tool-call',
++                type: 'function_call',
++                name: 'test',
++                callId: 'call-id',
++                status: 'completed',
++                arguments: '{"test":"value"}',
++              },
++            ],
++            usage: new Usage(),
++          },
++        ]),
++        tools: [TEST_TOOL],
++        toolUseBehavior: 'stop_on_first_tool',
++      });
++      const agentEnd = vi.fn();
++      agent.on('agent_end', agentEnd);
++
++      const result = await run(agent, 'hi');
++
++      expect(result.finalOutput).toBe('Hello World');
++      expect(agentEnd).toHaveBeenCalledTimes(1);
++      expect(agentEnd).toHaveBeenCalledWith(
++        result.state._context,
++        'Hello World',
++      );
++    });
++
+     it('sholuld handle structured output', async () => {
+       const fakeModel = new FakeModel([
+         {

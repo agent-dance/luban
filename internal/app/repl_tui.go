@@ -63,9 +63,10 @@ type TUIREPLConfig struct {
 	BuildDiagnostic     func(string) buildinfo.Diagnostic
 
 	// Provider support (Phase 4)
-	ProviderRef      *provider.ProviderRef
-	ProviderRegistry *provider.ProviderRegistry
-	CredentialStore  *provider.CredentialStore
+	ProviderRef              *provider.ProviderRef
+	ProviderRegistry         *provider.ProviderRegistry
+	CredentialStore          *provider.CredentialStore
+	ProviderRuntimeOverrides provider.RuntimeOverrides
 
 	// Mode switching support (Shift+Tab)
 	PermChecker         *permissions.Checker
@@ -2297,9 +2298,10 @@ func handleTUIInputSubmission(
 				return persistSettledTUISessionLifecycleForApp(cfg, tuiApp)
 			},
 			// Provider support (Phase 4)
-			CurrentProvider:  cfg.Engine.Provider().Name(),
-			ProviderRegistry: cfg.ProviderRegistry,
-			CredentialStore:  cfg.CredentialStore,
+			CurrentProvider:          cfg.Engine.Provider().Name(),
+			ProviderRegistry:         cfg.ProviderRegistry,
+			CredentialStore:          cfg.CredentialStore,
+			ProviderRuntimeOverrides: cfg.ProviderRuntimeOverrides,
 			SwitchLanguage: func(code string) string {
 				return switchTUILanguage(tuiApp, code)
 			},
@@ -3156,6 +3158,10 @@ func buildCascadingPicker(
 						r.Error(i18n.Format(lang, i18n.KeyREPLTUIProviderCredsFailed, err))
 						return
 					}
+					if strings.TrimSpace(cfg.ProviderRuntimeOverrides.APIFormat) != "" {
+						providerCfg.APIFormat = cfg.ProviderRuntimeOverrides.APIFormat
+					}
+					providerCfg.ResponsesWebSocket = cfg.ProviderRuntimeOverrides.ResponsesWebSocket
 					newProvider, err := cfg.ProviderRegistry.Create(
 						entry.Provider,
 						providerCfg,
@@ -3680,10 +3686,11 @@ func connectCommandContext(cfg TUIREPLConfig, r *tui.TuiRenderer, languages ...i
 		lang = languages[0]
 	}
 	return &commands.Context{
-		Language:         lang,
-		OnEvent:          r.Info,
-		ProviderRegistry: cfg.ProviderRegistry,
-		CredentialStore:  cfg.CredentialStore,
+		Language:                 lang,
+		OnEvent:                  r.Info,
+		ProviderRegistry:         cfg.ProviderRegistry,
+		CredentialStore:          cfg.CredentialStore,
+		ProviderRuntimeOverrides: cfg.ProviderRuntimeOverrides,
 	}
 }
 

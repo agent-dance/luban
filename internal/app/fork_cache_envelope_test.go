@@ -50,10 +50,10 @@ func TestForkCacheEnvelopeHelper(t *testing.T) {
 		t.Fatal(err)
 	}
 	deps.BindSessionIdentity(sessionID)
-	system := buildSystemPromptForCWD("", deps.Registry, root)
-	deps.AgentTool.System = system
+	workspacePrompt := buildWorkspacePrompt("", deps.Registry, root)
+	deps.AgentTool.System = workspacePrompt.system
 	payload, err := json.Marshal(forkCacheEnvelopeSnapshot{
-		System: system,
+		System: workspacePrompt.system,
 		Tools:  deps.Registry.VisibleDefinitions(map[string]struct{}{}),
 	})
 	if err != nil {

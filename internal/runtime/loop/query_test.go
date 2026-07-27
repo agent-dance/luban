@@ -2,6 +2,7 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -16,6 +17,43 @@ func makeStreamChan(events ...types.StreamEvent) <-chan types.StreamEvent {
 	}
 	close(ch)
 	return ch
+}
+
+type testVisibleReadEvidenceReceipt struct {
+	commits []string
+}
+
+func (r *testVisibleReadEvidenceReceipt) CommitVisibleReadEvidence(content string) bool {
+	r.commits = append(r.commits, content)
+	return true
+}
+
+func TestVisibleReadEvidenceCommitsOnlyForExactPersistedToolResult(t *testing.T) {
+	receipt := &testVisibleReadEvidenceReceipt{}
+	expected := types.ToolResultBlock{
+		Type: types.ContentTypeToolResult, ToolUseID: "inspect-1",
+		Content: `{"requests":[]}`, Data: receipt,
+	}
+	commitVisibleReadEvidenceReceipts(nil, []types.ToolResultBlock{expected})
+	commitVisibleReadEvidenceReceipts([]types.Message{types.ToolResultMessage(types.ToolResultBlock{
+		Type: types.ContentTypeToolResult, ToolUseID: expected.ToolUseID,
+		Content: expected.Content + "truncated", Data: receipt,
+	})}, []types.ToolResultBlock{expected})
+	commitVisibleReadEvidenceReceipts([]types.Message{types.ToolResultMessage(types.ToolResultBlock{
+		Type: types.ContentTypeToolResult, ToolUseID: "other",
+		Content: expected.Content, Data: receipt,
+	})}, []types.ToolResultBlock{expected})
+	if len(receipt.commits) != 0 {
+		t.Fatalf("non-visible receipt committed: %#v", receipt.commits)
+	}
+
+	commitVisibleReadEvidenceReceipts([]types.Message{types.ToolResultMessage(types.ToolResultBlock{
+		Type: types.ContentTypeToolResult, ToolUseID: expected.ToolUseID,
+		Content: expected.Content, Data: receipt,
+	})}, []types.ToolResultBlock{expected})
+	if len(receipt.commits) != 1 || receipt.commits[0] != expected.Content {
+		t.Fatalf("exact visible receipt commits = %#v", receipt.commits)
+	}
 }
 
 func TestProcessStreamTextOnly(t *testing.T) {
@@ -255,11 +293,15 @@ func TestProcessStreamEmptyStream(t *testing.T) {
 	stream := makeStreamChan() // empty, immediately closed
 
 	msg, _, _, err := ql.processStream(context.Background(), stream, 1, onEvent)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected an uncommitted-response error")
 	}
-	if len(msg.Content) != 0 {
-		t.Errorf("expected 0 content blocks, got %d", len(msg.Content))
+	if msg != nil {
+		t.Fatalf("uncommitted empty stream returned message: %#v", msg)
+	}
+	var partial *PartialStreamError
+	if !errors.As(err, &partial) || !partial.SafeToReplay() || partial.PartialBlocks != 0 {
+		t.Fatalf("error = %#v, want replay-safe empty PartialStreamError", err)
 	}
 }
 

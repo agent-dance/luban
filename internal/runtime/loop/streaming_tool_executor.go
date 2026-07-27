@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	executioncontract "github.com/agent-dance/luban/internal/contracts/execution"
 
 	"github.com/agent-dance/luban/hooks"
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/internal/contracts/permission"
+	"github.com/agent-dance/luban/internal/contracts/workspacerevision"
 	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/types"
 )
@@ -54,6 +56,11 @@ type trackedStreamingTool struct {
 	result            *streamingToolResult
 	cancel            context.CancelFunc
 	completionNoticed bool
+	queuedAt          time.Time
+	startedAt         time.Time
+	revisionUpstream  *trackedStreamingTool
+	revisionReceipt   workspacerevision.Receipt
+	revisionPrepared  bool
 }
 
 type StreamingToolExecutor struct {
@@ -73,6 +80,9 @@ type StreamingToolExecutor struct {
 	bashErrored    bool
 	erroredTool    string
 	remainingLimit int
+	roundStarted   time.Time
+	metrics        toolExecutionMetrics
+	activeChildren int
 }
 
 func NewStreamingToolExecutor(ctx context.Context, reg *registry.Registry, runner *hooks.Runner, permHandler permission.PermissionHandler, sessionID string, execContext executioncontract.ToolExecutionContext) *StreamingToolExecutor {
@@ -105,6 +115,20 @@ func (e *StreamingToolExecutor) AddTool(tool types.ToolUseBlock, assistantMessag
 		assistantMessage: assistantMessage,
 		status:           streamingToolQueued,
 		concurrencySafe:  isConcurrentSafe(e.reg, tool.Name, tool.Input),
+		queuedAt:         time.Now(),
+	}
+	if len(e.tools) > 0 {
+		upstream := e.tools[len(e.tools)-1]
+		if isAdjacentRevisionFusion(e.reg, upstream.tool, tool) {
+			tracked.revisionUpstream = upstream
+			e.metrics.RevisionFusionCount++
+		}
+	}
+	if e.roundStarted.IsZero() {
+		e.roundStarted = tracked.queuedAt
+	}
+	if len(e.tools) == 0 || !tracked.concurrencySafe || !e.tools[len(e.tools)-1].concurrencySafe {
+		e.metrics.BatchCount++
 	}
 	e.tools = append(e.tools, tracked)
 	e.processQueueLocked()
@@ -147,11 +171,13 @@ func (e *StreamingToolExecutor) RemainingResults(ctx context.Context) (toolExecu
 		combined.PreventContinuation = combined.PreventContinuation || chunk.PreventContinuation
 		events = append(events, chunkEvents...)
 		if infraErr != nil {
+			combined.Metrics = e.metricsSnapshotLocked()
 			e.mu.Unlock()
 			e.Discard()
 			return combined, events, infraErr
 		}
 		if !e.hasUnfinishedLocked() {
+			combined.Metrics = e.metricsSnapshotLocked()
 			e.mu.Unlock()
 			return combined, events, nil
 		}
@@ -256,6 +282,25 @@ func (e *StreamingToolExecutor) processQueueLocked() {
 		if tool.status != streamingToolQueued {
 			continue
 		}
+		if tool.revisionUpstream != nil && !tool.revisionPrepared {
+			upstream := tool.revisionUpstream
+			if upstream.status == streamingToolQueued || upstream.status == streamingToolExecuting {
+				break
+			}
+			tool.revisionPrepared = true
+			if upstream.result == nil {
+				break
+			}
+			boundContext, skipped := revisionBarrierExecutionContext(e.ctx, upstream.result.result, tool.tool)
+			if skipped != nil {
+				tool.status = streamingToolCompleted
+				tool.result = &streamingToolResult{result: *skipped}
+				e.metrics.RevisionBarrierSkips++
+				e.signalLocked()
+				continue
+			}
+			tool.revisionReceipt, _ = workspacerevision.FromContext(boundContext)
+		}
 		if !e.canExecuteLocked(tool.concurrencySafe) {
 			if !tool.concurrencySafe {
 				break
@@ -268,7 +313,16 @@ func (e *StreamingToolExecutor) processQueueLocked() {
 
 func (e *StreamingToolExecutor) startToolLocked(tool *trackedStreamingTool) {
 	tool.status = streamingToolExecuting
+	tool.startedAt = time.Now()
+	e.metrics.QueueDuration += tool.startedAt.Sub(tool.queuedAt)
+	e.activeChildren++
+	if e.activeChildren > e.metrics.PeakFanout {
+		e.metrics.PeakFanout = e.activeChildren
+	}
 	toolCtx, cancel := context.WithCancel(e.ctx)
+	if tool.revisionReceipt.Valid() {
+		toolCtx = workspacerevision.WithReceipt(toolCtx, tool.revisionReceipt)
+	}
 	tool.cancel = cancel
 	go e.executeTool(toolCtx, tool)
 }
@@ -344,8 +398,34 @@ func (e *StreamingToolExecutor) completeTool(tool *trackedStreamingTool, result 
 		preventContinuation: preventContinuation,
 		err:                 err,
 	}
+	if isRevisionMismatchResult(result) {
+		e.metrics.RevisionMismatchCount++
+	}
+	if !tool.startedAt.IsZero() {
+		elapsed := time.Since(tool.startedAt)
+		physicalOperations, physicalLatency := measuredToolOperationFacts(e.reg, tool.tool.Name, result, elapsed)
+		e.metrics.PhysicalChildOperations += physicalOperations
+		e.metrics.TotalChildLatency += physicalLatency
+		if e.activeChildren > 0 {
+			e.activeChildren--
+		}
+	}
 	tool.status = streamingToolCompleted
 	e.signalLocked()
+}
+
+func (e *StreamingToolExecutor) metricsSnapshotLocked() toolExecutionMetrics {
+	metrics := e.metrics
+	if !e.roundStarted.IsZero() {
+		metrics.CriticalPathDuration = time.Since(e.roundStarted)
+	}
+	for _, tool := range e.tools {
+		if tool.result == nil {
+			continue
+		}
+		metrics.ErrorCount += countToolResultErrors([]types.ToolResultBlock{tool.result.result})
+	}
+	return metrics
 }
 
 func (e *StreamingToolExecutor) isSiblingError() bool {
@@ -358,6 +438,7 @@ func streamingFallbackToolResult(tool types.ToolUseBlock) types.ToolResultBlock 
 	return types.ToolResultBlock{
 		Type:      types.ContentTypeToolResult,
 		ToolUseID: tool.ID,
+		ToolType:  tool.ToolType,
 		Content:   i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeStreamingToolDiscarded),
 		IsError:   true,
 		Outcome:   types.ToolOutcomeCancelled,
@@ -373,6 +454,7 @@ func siblingCancelledToolResult(tool types.ToolUseBlock, erroredTool string) typ
 	return types.ToolResultBlock{
 		Type:      types.ContentTypeToolResult,
 		ToolUseID: tool.ID,
+		ToolType:  tool.ToolType,
 		Content:   msg,
 		IsError:   true,
 		Outcome:   types.ToolOutcomeCancelled,

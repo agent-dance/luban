@@ -6,6 +6,7 @@ func TestProviderRuntimeErrorKeysCoverEveryLanguage(t *testing.T) {
 	keys := []Key{
 		KeyProviderUnconfigured, KeyProviderUnconfiguredAction, KeyProviderDisconnected,
 		KeyProviderDisconnectedAction, KeyProviderThinkingUnsupported,
+		KeyProviderCustomToolsUnsupported, KeyProviderCustomToolDefinitionInvalid,
 		KeyProviderRetryExceededWithoutCause, KeyProviderUnknown, KeyProviderBedrockInvalidBaseURL,
 		KeyProviderVertexProjectRequired, KeyProviderVertexAPIKeyRequired, KeyProviderVertexBaseURLRequired,
 		KeyProviderVertexEndpointInvalid, KeyCredentialHomeFailed, KeyCredentialReadFailed,

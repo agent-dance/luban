@@ -1,0 +1,20 @@
+diff --git a/iwyu.cc b/iwyu.cc
+index ab2eef7..6bf4a18 100644
+--- a/iwyu.cc
++++ b/iwyu.cc
+@@ -5165,6 +5165,15 @@ class IwyuAstConsumer
+   bool VisitFunctionDecl(FunctionDecl* decl) {
+     if (CanIgnoreCurrentASTNode())
+       return true;
++
++    // An explicit function template specialization requires the primary
++    // template declaration to be visible.
++    if (decl->getTemplateSpecializationKind() ==
++        clang::TSK_ExplicitSpecialization) {
++      if (const FunctionTemplateDecl* primary = decl->getPrimaryTemplate())
++        ReportDeclUse(CurrentLoc(), primary);
++    }
++
+     // If a function declaration specifies default arguments but not for
+     // the last parameters, like this:
+     // void Fn(int = 0, int);

@@ -1,0 +1,29 @@
+{
+  "instance_id": "opendataloader-project__opendataloader-pdf-383",
+  "language": "java",
+  "agent": "gold",
+  "resolved": false,
+  "elapsed_seconds": 176.142,
+  "image": "starryzhang/sweb.eval.x86_64.opendataloader-project_1776_opendataloader-pdf-383",
+  "image_pull_exit_code": 0,
+  "test_patch_apply_exit_code": 0,
+  "solution_patch_apply_exit_code": 0,
+  "rebuild_exit_code": 1,
+  "test_exit_code": 1,
+  "print_exit_code": 0,
+  "parsed_tests": 436,
+  "FAIL_TO_PASS": {
+    "expected": 1,
+    "passed": [],
+    "failed": [],
+    "missing": [
+      "org.opendataloader.pdf.processors.TextLineProcessorTest::testProcessTextLinesPreservesSpaceFromWhitespaceChunk"
+    ]
+  },
+  "PASS_TO_PASS": {
+    "expected": 496,
+    "passed_count": 436,
+    "failed": [],
+    "missing_count": 60
+  }
+}

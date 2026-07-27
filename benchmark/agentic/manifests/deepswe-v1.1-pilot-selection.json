@@ -1,0 +1,11 @@
+{
+  "mode": "tasks",
+  "task_ids": [
+    "abs-module-cache-flags",
+    "adaptix-name-mapping-aliases",
+    "cliffy-config-file-parsing",
+    "wasmi-trap-coredumps",
+    "yjs-map-conflict-detection"
+  ],
+  "expected_task_count": 113
+}

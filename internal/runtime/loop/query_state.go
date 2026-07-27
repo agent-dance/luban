@@ -10,6 +10,7 @@ import (
 	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/prompt"
 	"github.com/agent-dance/luban/provider"
+	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/skills"
 	"github.com/agent-dance/luban/types"
 )
@@ -110,6 +111,7 @@ const (
 	QueryTransitionStopHookBlocking        QueryTransition = "stop_hook_blocking"
 	QueryTransitionGoalContinuation        QueryTransition = "goal_continuation"
 	QueryTransitionTokenBudgetContinuation QueryTransition = "token_budget_continuation"
+	QueryTransitionFlightVerification      QueryTransition = "flight_verification"
 	QueryTransitionPlanModeContextRestart  QueryTransition = "plan_mode_context_restart"
 )
 
@@ -130,6 +132,9 @@ type QueryConfigSnapshot struct {
 	System                 string
 	UserContext            prompt.UserContext
 	SystemContext          prompt.SystemContext
+	VisibleTools           registry.VisibleToolSnapshot
+	ToolPromptConfig       prompt.Config
+	GeneratedToolPrompt    bool
 	GoalRuntime            GoalRuntime
 	GoalEvaluator          GoalEvaluator
 	SystemBlocks           []prompt.SystemPromptBlock
@@ -152,6 +157,8 @@ type QueryConfigSnapshot struct {
 	AgentType              string
 	AgentTranscriptPath    string
 	ReasoningEffort        string
+	ServiceTier            provider.ServiceTier
+	PinnedModel            bool
 	StreamingToolExecution bool
 	PermissionHandler      permission.PermissionHandler
 	SkillManager           *skills.Manager
@@ -185,6 +192,9 @@ func newQueryConfigSnapshot(cfg Config, thinking *provider.ThinkingConfig) Query
 		System:                 cfg.System,
 		UserContext:            cfg.UserContext,
 		SystemContext:          cfg.SystemContext,
+		VisibleTools:           cfg.VisibleTools,
+		ToolPromptConfig:       cfg.ToolPromptConfig,
+		GeneratedToolPrompt:    cfg.GeneratedToolPrompt,
 		GoalRuntime:            cfg.GoalRuntime,
 		GoalEvaluator:          goalEvaluator,
 		SystemBlocks:           systemBlocks,
@@ -207,6 +217,8 @@ func newQueryConfigSnapshot(cfg Config, thinking *provider.ThinkingConfig) Query
 		AgentType:              cfg.AgentType,
 		AgentTranscriptPath:    cfg.AgentTranscriptPath,
 		ReasoningEffort:        cfg.ReasoningEffort,
+		ServiceTier:            cfg.ServiceTier,
+		PinnedModel:            cfg.PinnedModel,
 		StreamingToolExecution: cfg.StreamingToolExecution,
 		PermissionHandler:      cfg.PermissionHandler,
 		SkillManager:           cfg.SkillManager,

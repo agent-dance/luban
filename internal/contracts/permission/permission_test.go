@@ -58,7 +58,7 @@ func TestPermissionContractIsTheOnlyInternalAuthority(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if relative == ".git" || strings.HasPrefix(relative, ".luban-code") || relative == "sdk" || relative == "internal/contracts/permission" {
+			if relative == ".git" || relative == ".tmp" || relative == "benchmark-results" || strings.HasPrefix(relative, ".luban-code") || relative == "sdk" || relative == "internal/contracts/permission" {
 				return filepath.SkipDir
 			}
 			return nil

@@ -67,6 +67,24 @@ func TestModelContextEstimateFailsVisibleWhenToolPayloadCannotBeEncoded(t *testi
 	}
 }
 
+func TestModelContextEstimateCountsCustomRawInputWithoutJSONEscaping(t *testing.T) {
+	zero := 0
+	cw := &ContextWindow{Counter: &charBasedCounterForTest{}}
+	raw := "*** Begin Patch\n+slash \\ quote \"\n*** End Patch"
+	estimate := cw.EstimateMessagesDetailed([]types.Message{{
+		Role: types.RoleAssistant,
+		Content: []types.ContentBlock{types.ToolUseBlock{
+			Type: types.ContentTypeToolUse, Name: "ApplyPatch",
+			ToolType: types.ToolDefinitionTypeCustom, RawInput: raw,
+			Input: map[string]any{"patch": raw},
+		}},
+	}}, ModelContextOverhead{SystemPromptTokens: &zero, ToolSchemaTokens: &zero})
+	want := cw.Counter.Count("ApplyPatch") + cw.Counter.Count(raw)
+	if estimate.ToolPayloadTokens != want || !estimate.Complete {
+		t.Fatalf("custom payload estimate = %+v, want payload tokens %d", estimate, want)
+	}
+}
+
 func TestProviderRequestEstimateAccountsForSystemToolsMediaAndProtocol(t *testing.T) {
 	cw := &ContextWindow{Counter: &charBasedCounterForTest{}}
 	estimate := cw.EstimateProviderRequest(provider.Params{

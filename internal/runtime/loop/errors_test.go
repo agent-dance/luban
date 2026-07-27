@@ -3,6 +3,8 @@ package loop
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -139,18 +141,22 @@ func TestIsTransientAPIErrorOther(t *testing.T) {
 }
 
 func TestIsTransientNetworkErrors(t *testing.T) {
-	cases := []string{
-		"connection refused",
-		"connection reset by peer",
-		"dial tcp: timeout",
-		"EOF",
-		"temporary failure in name resolution",
-		"request timeout",
+	cases := []error{
+		io.EOF,
+		io.ErrUnexpectedEOF,
+		&net.DNSError{Err: "temporary resolver failure", IsTemporary: true},
+		&net.DNSError{Err: "resolver timeout", IsTimeout: true},
 	}
-	for _, msg := range cases {
-		if !IsTransient(errors.New(msg)) {
-			t.Errorf("expected %q to be transient", msg)
+	for _, err := range cases {
+		if !IsTransient(err) {
+			t.Errorf("expected typed transport error %T to be transient", err)
 		}
+	}
+}
+
+func TestIsTransientAmbiguousApplicationTimeoutFailsFast(t *testing.T) {
+	if IsTransient(errors.New("request timeout")) {
+		t.Error("untyped application timeout should not trigger blind replay")
 	}
 }
 
@@ -165,25 +171,6 @@ func TestIsTransientPermanentErrors(t *testing.T) {
 		if IsTransient(errors.New(msg)) {
 			t.Errorf("expected %q NOT to be transient", msg)
 		}
-	}
-}
-
-// ---- retryDelay -------------------------------------------------------------
-
-func TestRetryDelay(t *testing.T) {
-	base := retryBaseDelay
-	if retryDelay(0) != 1*base {
-		t.Errorf("attempt 0: expected 1× base, got %v", retryDelay(0))
-	}
-	if retryDelay(1) != 2*base {
-		t.Errorf("attempt 1: expected 2× base, got %v", retryDelay(1))
-	}
-	if retryDelay(2) != 4*base {
-		t.Errorf("attempt 2: expected 4× base, got %v", retryDelay(2))
-	}
-	// Beyond the sixth delay: capped at 32× base.
-	if retryDelay(10) != 32*base {
-		t.Errorf("attempt 10: expected 32× base, got %v", retryDelay(10))
 	}
 }
 
@@ -236,7 +223,7 @@ func TestLLMRequestLifecycleReportsRetryStartFirstTokenAndEnd(t *testing.T) {
 		response:  textEvents("hello"),
 	}
 	cfg := provider.RetryConfig{
-		MaxRetries: 5, BaseDelay: time.Millisecond, MaxDelay: 16 * time.Millisecond, Max529Retries: 5,
+		MaxAttempts: 3, BaseDelay: time.Millisecond, MaxDelay: 16 * time.Millisecond,
 	}
 	ql := New(provider.NewRetryProvider(raw, cfg), registry.New(), Config{MaxTurns: 5, MaxTokens: 1024})
 
@@ -260,16 +247,109 @@ func TestLLMRequestLifecycleReportsRetryStartFirstTokenAndEnd(t *testing.T) {
 		}
 	}
 	retry := lifecycle[0].RequestStatus
-	if retry.Attempt != 1 || retry.MaxRetries != 5 || retry.RetryDelayMilliseconds != 1 || retry.Error == "" {
+	if retry.Attempt != 1 || retry.MaxRetries != 2 || retry.RetryCount != 1 || retry.RetryDelayMilliseconds < 0 || retry.RetryDelayMilliseconds > 1 || retry.Error == "" || retry.StartedAt == "" {
 		t.Fatalf("retry status = %+v", retry)
 	}
 	requestID := lifecycle[1].RequestStatus.RequestID
 	if requestID == "" || lifecycle[2].RequestStatus.RequestID != requestID || lifecycle[3].RequestStatus.RequestID != requestID {
 		t.Fatalf("request lifecycle identity was not stable: %+v", lifecycle)
 	}
+	if lifecycle[1].RequestStatus.Attempt != 2 || lifecycle[3].RequestStatus.EndedAt == "" {
+		t.Fatalf("request lifecycle omitted final attempt/timestamp: %+v", lifecycle)
+	}
 }
 
-func TestTransientProviderRetriesTenTimesWithExponentialDelays(t *testing.T) {
+func TestLLMRequestEndTelemetryIncludesTokenAndCacheUsage(t *testing.T) {
+	usage := types.Usage{
+		InputTokens: 900, CacheReadInputTokens: 700,
+		CacheCreationInputTokens: 100, OutputTokens: 80,
+	}
+	prov := newParityFakeProvider([]parityProviderTurn{{
+		Events: providerUsageTextEvents("done", usage, types.StopReasonEndTurn),
+	}})
+	ql := New(prov, registry.New(), Config{MaxTurns: 1, MaxTokens: 1024})
+	var ended *stream.RequestStatusEvent
+	if err := ql.Run(context.Background(), "hi", func(event stream.Event) {
+		if event.Type == stream.EventRequestEnd && event.RequestStatus != nil {
+			copyStatus := *event.RequestStatus
+			ended = &copyStatus
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if ended == nil || ended.RequestID == "" || ended.StartedAt == "" || ended.EndedAt == "" {
+		t.Fatalf("request end identity/timestamps = %+v", ended)
+	}
+	if ended.InputTokens != 900 || ended.CacheReadInputTokens != 700 || ended.CacheWriteInputTokens != 100 || ended.OutputTokens != 80 {
+		t.Fatalf("request end usage = %+v", ended)
+	}
+}
+
+func TestCreateStreamFailureAlwaysEmitsTerminalRequestMetric(t *testing.T) {
+	providerErr := &types.APIError{Type: "invalid_request_error", Message: "private upstream detail"}
+	prov := &failNProvider{failUntil: 1, failErr: providerErr}
+	ql := New(prov, registry.New(), Config{MaxTurns: 1, MaxTokens: 1024})
+	var failed []*stream.RequestStatusEvent
+	err := ql.Run(context.Background(), "hi", func(event stream.Event) {
+		if event.Type == stream.EventRequestFailed && event.RequestStatus != nil {
+			copyStatus := *event.RequestStatus
+			failed = append(failed, &copyStatus)
+		}
+	})
+	if err == nil {
+		t.Fatal("expected provider failure")
+	}
+	if len(failed) != 1 || failed[0].RequestID == "" || failed[0].StartedAt == "" || failed[0].EndedAt == "" {
+		t.Fatalf("failed request telemetry = %+v", failed)
+	}
+}
+
+func TestContextFailurePreservesTypedTerminalEventAcrossProviderBoundaries(t *testing.T) {
+	const privateMessage = "private provider context diagnostic"
+	for _, test := range []struct {
+		name     string
+		provider func(*types.APIError) provider.Provider
+	}{
+		{
+			name: "before stream",
+			provider: func(apiErr *types.APIError) provider.Provider {
+				return &alwaysFailProvider{err: apiErr}
+			},
+		},
+		{
+			name: "structured stream event",
+			provider: func(apiErr *types.APIError) provider.Provider {
+				return newParityFakeProvider([]parityProviderTurn{{Events: []types.StreamEvent{{
+					Type: types.EventError, Error: apiErr,
+				}}}})
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			apiErr := &types.APIError{
+				Type: "context_length_exceeded", Message: privateMessage, Status: 400,
+			}
+			ql := New(test.provider(apiErr), registry.New(), Config{MaxTurns: 1, MaxTokens: 1024})
+			var terminalEvents []stream.Event
+			err := ql.Run(context.Background(), "hi", func(event stream.Event) {
+				if event.Type == stream.EventError {
+					terminalEvents = append(terminalEvents, event)
+				}
+			})
+			if err == nil {
+				t.Fatal("expected context failure")
+			}
+			if len(terminalEvents) != 1 {
+				t.Fatalf("terminal errors = %#v, want exactly one", terminalEvents)
+			}
+			if terminalEvents[0].Error != apiErr || terminalEvents[0].Error.Type != "context_length_exceeded" {
+				t.Fatalf("typed context error was lost: %#v", terminalEvents[0])
+			}
+		})
+	}
+}
+
+func TestTransientProviderStopsAtThreeRawAttempts(t *testing.T) {
 	p := &failNProvider{
 		failUntil: 99,
 		failErr:   &types.APIError{Type: "overloaded_error", Message: "overloaded"},
@@ -285,22 +365,22 @@ func TestTransientProviderRetriesTenTimesWithExponentialDelays(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected exhausted provider error")
 	}
-	if calls := p.calls.Load(); calls != 11 {
-		t.Fatalf("provider calls = %d, want initial call plus ten retries", calls)
+	if calls := p.calls.Load(); calls != 3 {
+		t.Fatalf("provider calls = %d, want total generation budget of three", calls)
 	}
-	wantDelays := []int64{1, 2, 4, 8, 16, 32, 32, 32, 32, 32}
-	if len(retries) != len(wantDelays) {
+	if len(retries) != 2 {
 		t.Fatalf("retry events = %+v", retries)
 	}
-	for index, wantDelay := range wantDelays {
-		if retries[index].Attempt != index+1 || retries[index].MaxRetries != 10 || retries[index].RetryDelayMilliseconds != wantDelay {
-			t.Fatalf("retry[%d] = %+v, want delay %dms", index, retries[index], wantDelay)
+	for index := range retries {
+		maxDelay := int64(1 << index)
+		if retries[index].Attempt != index+1 || retries[index].MaxRetries != 2 || retries[index].RetryDelayMilliseconds < 0 || retries[index].RetryDelayMilliseconds > maxDelay {
+			t.Fatalf("retry[%d] = %+v, want full jitter within [0,%d]ms", index, retries[index], maxDelay)
 		}
 	}
 }
 
 func TestTransientRetryExhausted(t *testing.T) {
-	// Always fails with a transient error and should give up after ten retries.
+	// Always fails with a transient error and should give up after three total attempts.
 	p := &alwaysFailProvider{
 		err: &types.APIError{Type: "overloaded_error", Message: "overloaded"},
 	}
@@ -433,49 +513,122 @@ func TestEmptyResponseBothEmptyFails(t *testing.T) {
 	}
 }
 
-// ---- Recovery path 4: partial stream error ----------------------------------
+// ---- Recovery path 4: uncommitted stream error ------------------------------
 
-func TestPartialStreamContinuesWithBlocks(t *testing.T) {
-	// Stream delivers one text block then an error event.
+func TestPartialStreamIsTombstonedAndFullGenerationIsReplayed(t *testing.T) {
+	// A stopped content block remains provisional until MessageStop commits the
+	// complete provider response.
 	interruptErr := &types.APIError{Type: "server_error", Message: "upstream reset"}
+	discardedUsage := types.Usage{InputTokens: 120, OutputTokens: 3, CacheReadInputTokens: 90}
 	p := &mockProvider{
 		responses: [][]types.StreamEvent{
 			{
-				// First block arrives normally
+				{Type: types.EventMessageStart, Usage: &types.Usage{
+					InputTokens: discardedUsage.InputTokens, CacheReadInputTokens: discardedUsage.CacheReadInputTokens,
+				}},
 				{Type: types.EventContentBlockStart, Index: 0,
 					ContentBlock: &types.ContentDelta{Type: types.ContentTypeText}},
 				{Type: types.EventContentBlockDelta, Index: 0,
 					Delta: &types.ContentDelta{Type: "text_delta", Text: "partial text"}},
 				{Type: types.EventContentBlockStop, Index: 0},
-				// Stream then errors
-				{Type: types.EventError, Error: interruptErr},
+				{Type: types.EventError, Usage: &types.Usage{OutputTokens: discardedUsage.OutputTokens}, Error: interruptErr},
 			},
-			// Second turn: model responds normally (turn ends)
+			// The second provider request is a replay of the same generation.
 			textEvents("continued"),
 		},
 	}
 	reg := registry.New()
 	ql := New(p, reg, Config{MaxTurns: 5, MaxTokens: 1024})
 
-	var warnings, texts []string
+	var warnings []string
+	var tombstones, discardedAttempts []stream.Event
 	err := ql.Run(context.Background(), "hi", func(e stream.Event) {
 		switch e.Type {
 		case stream.EventSystemWarning:
 			warnings = append(warnings, projectedSystemWarningText(e))
-		case stream.EventText:
-			texts = append(texts, e.Text)
+		case stream.EventTombstone:
+			tombstones = append(tombstones, e)
+		case stream.EventProviderUsage:
+			discardedAttempts = append(discardedAttempts, e)
 		}
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Should have emitted a warning about the interruption
 	if len(warnings) == 0 {
 		t.Error("expected stream-interrupted warning event")
 	}
-	// Both partial and continued text should have been collected
-	if len(texts) == 0 {
-		t.Error("expected text events from partial + continued response")
+	if len(tombstones) != 1 || tombstones[0].Tombstone == nil || tombstones[0].Tombstone.Reason != uncommittedProviderResponseReason {
+		t.Fatalf("tombstones = %+v, want one uncommitted-response tombstone", tombstones)
+	}
+	if tombstones[0].Metadata["partial_blocks"] != 1 || tombstones[0].Metadata["open_blocks"] != 0 || tombstones[0].Metadata["safe_to_replay"] != true {
+		t.Fatalf("tombstone metadata = %+v", tombstones[0].Metadata)
+	}
+	if len(discardedAttempts) != 1 || discardedAttempts[0].Usage == nil || *discardedAttempts[0].Usage != discardedUsage {
+		t.Fatalf("discarded attempt accounting = %+v, want %+v", discardedAttempts, discardedUsage)
+	}
+	if p.turnIndex != 2 {
+		t.Fatalf("provider calls = %d, want one failed attempt plus one replay", p.turnIndex)
+	}
+	for _, message := range ql.Messages() {
+		if strings.Contains(messageTextForTest(message), "partial text") {
+			t.Fatalf("uncommitted text persisted as a successful turn: %+v", ql.Messages())
+		}
+	}
+	if !strings.Contains(joinMessagesForTest(ql.Messages()), "continued") {
+		t.Fatalf("replayed response was not committed: %+v", ql.Messages())
+	}
+}
+
+func TestInterruptedSecondToolJSONNeverExecutesCommittedSiblingTwice(t *testing.T) {
+	interruptErr := &types.APIError{Type: "stream_interrupted", Message: "connection reset before response commit"}
+	toolStart := func(index int, id string) types.StreamEvent {
+		return types.StreamEvent{Type: types.EventContentBlockStart, Index: index, ContentBlock: &types.ContentDelta{
+			Type: types.ContentTypeToolUse, ID: id, Name: "Mutate",
+		}}
+	}
+	p := &mockProvider{responses: [][]types.StreamEvent{
+		{
+			toolStart(0, "mutation_once"),
+			{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: `{"value":1}`}},
+			{Type: types.EventContentBlockStop, Index: 0},
+			toolStart(1, "mutation_interrupted"),
+			{Type: types.EventContentBlockDelta, Index: 1, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: `{"value":`}},
+			{Type: types.EventError, Error: interruptErr},
+		},
+		{
+			toolStart(0, "mutation_once"),
+			{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: `{"value":1}`}},
+			{Type: types.EventContentBlockStop, Index: 0},
+			{Type: types.EventMessageStop},
+		},
+		textEvents("done"),
+	}}
+
+	var executions atomic.Int32
+	reg := registry.New()
+	reg.Register(&orderedBatchTool{name: "Mutate", execute: func(context.Context, map[string]any) (types.ToolResult, error) {
+		executions.Add(1)
+		return types.ToolResult{Content: "mutated"}, nil
+	}})
+	ql := New(p, reg, Config{MaxTurns: 3, MaxTokens: 1024})
+	var tombstone *stream.TombstoneEvent
+	if err := ql.Run(context.Background(), "hi", func(event stream.Event) {
+		if event.Type == stream.EventTombstone {
+			tombstone = event.Tombstone
+		}
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if executions.Load() != 1 {
+		t.Fatalf("mutation side effects = %d, want exactly one after committed replay", executions.Load())
+	}
+	if p.turnIndex != 3 {
+		t.Fatalf("provider calls = %d, want failed attempt, replay, and final response", p.turnIndex)
+	}
+	if tombstone == nil || tombstone.Reason != uncommittedProviderResponseReason || tombstone.Metadata["partial_blocks"] != 2 || tombstone.Metadata["open_blocks"] != 1 {
+		t.Fatalf("tombstone = %+v, want two observed blocks with one open", tombstone)
 	}
 }
 
@@ -498,6 +651,25 @@ func TestPartialStreamNoBlocksReturnsError(t *testing.T) {
 	}
 }
 
+func TestGenericResponseAPIErrorDoesNotReplayFromDiagnosticMessage(t *testing.T) {
+	p := &mockProvider{responses: [][]types.StreamEvent{
+		{{Type: types.EventError, Error: &types.APIError{
+			Type: "api_error", Message: "upstream websocket closed; attacker-controlled diagnostic",
+		}}},
+		textEvents("must not be reached"),
+	}}
+	ql := New(p, registry.New(), Config{MaxTurns: 1, MaxTokens: 1024})
+	if err := ql.Run(context.Background(), "hi", func(stream.Event) {}); err == nil {
+		t.Fatal("generic api_error unexpectedly replayed and succeeded")
+	}
+	p.mu.Lock()
+	calls := p.turnIndex
+	p.mu.Unlock()
+	if calls != 1 {
+		t.Fatalf("provider calls = %d, want one permanent generic api_error attempt", calls)
+	}
+}
+
 // ---- isResponseFailedRetryable ----------------------------------------------
 
 func TestIsResponseFailedRetryableNil(t *testing.T) {
@@ -515,7 +687,7 @@ func TestIsResponseFailedRetryableTypes(t *testing.T) {
 		{
 			"api_error type",
 			&types.APIError{Type: "api_error", Message: "Upstream websocket closed"},
-			true,
+			false,
 		},
 		{
 			"server_error type",
@@ -587,27 +759,27 @@ func TestIsStreamInterruptedTypes(t *testing.T) {
 		{
 			"upstream websocket closed",
 			&types.APIError{Type: "api_error", Message: "Upstream websocket closed before response.completed (close_code=1000)"},
-			true,
+			false,
 		},
 		{
 			"upstream disconnected",
 			&types.APIError{Type: "api_error", Message: "Upstream disconnected unexpectedly"},
-			true,
+			false,
 		},
 		{
 			"connection reset in message",
 			&types.APIError{Type: "api_error", Message: "connection reset during streaming"},
-			true,
+			false,
 		},
 		{
 			"plain error with stream interrupted",
 			errors.New("stream interrupted after 2 block(s)"),
-			true,
+			false,
 		},
 		{
 			"plain error with upstream closed",
 			errors.New("upstream websocket closed"),
-			true,
+			false,
 		},
 		{
 			"unrelated api_error",
@@ -649,13 +821,31 @@ type alwaysStreamInterruptProvider struct {
 	calls atomic.Int32
 }
 
+type preflightThenStreamInterruptProvider struct {
+	calls atomic.Int32
+}
+
+func (p *preflightThenStreamInterruptProvider) Name() string    { return "layeredFailure" }
+func (p *preflightThenStreamInterruptProvider) ModelID() string { return "mock" }
+func (p *preflightThenStreamInterruptProvider) CreateStream(_ context.Context, _ provider.Params) (<-chan types.StreamEvent, error) {
+	if p.calls.Add(1) == 1 {
+		return nil, &types.APIError{Status: 503, Type: "server_error", Message: "temporarily unavailable"}
+	}
+	ch := make(chan types.StreamEvent, 1)
+	ch <- types.StreamEvent{Type: types.EventError, Error: &types.APIError{
+		Type: "stream_interrupted", Message: "upstream connection closed",
+	}}
+	close(ch)
+	return ch, nil
+}
+
 func (p *alwaysStreamInterruptProvider) Name() string    { return "alwaysStreamInterrupt" }
 func (p *alwaysStreamInterruptProvider) ModelID() string { return "mock" }
 func (p *alwaysStreamInterruptProvider) CreateStream(_ context.Context, _ provider.Params) (<-chan types.StreamEvent, error) {
 	p.calls.Add(1)
 	ch := make(chan types.StreamEvent, 1)
 	ch <- types.StreamEvent{Type: types.EventError, Error: &types.APIError{
-		Type: "api_error", Message: "upstream websocket closed",
+		Type: "stream_interrupted", Message: "upstream websocket closed",
 	}}
 	close(ch)
 	return ch, nil
@@ -672,7 +862,7 @@ func (p *streamInterruptProvider) CreateStream(_ context.Context, _ provider.Par
 		ch <- types.StreamEvent{
 			Type: types.EventError,
 			Error: &types.APIError{
-				Type:    "api_error",
+				Type:    "stream_interrupted",
 				Message: p.errMsg,
 			},
 		}
@@ -728,7 +918,7 @@ func TestStreamInterruptRetrySucceeds(t *testing.T) {
 	}
 }
 
-func TestStreamInterruptRetriesTenTimesWithExponentialDelays(t *testing.T) {
+func TestStreamInterruptStopsAtThreeRawAttempts(t *testing.T) {
 	p := &alwaysStreamInterruptProvider{}
 	ql := New(p, registry.New(), Config{MaxTurns: 5, MaxTokens: 1024})
 	var retries []*stream.RequestStatusEvent
@@ -741,17 +931,33 @@ func TestStreamInterruptRetriesTenTimesWithExponentialDelays(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected exhausted stream error")
 	}
-	if calls := p.calls.Load(); calls != 11 {
-		t.Fatalf("stream calls = %d, want initial call plus ten retries", calls)
+	if calls := p.calls.Load(); calls != 3 {
+		t.Fatalf("stream calls = %d, want total generation budget of three", calls)
 	}
-	wantDelays := []int64{1, 2, 4, 8, 16, 32, 32, 32, 32, 32}
-	if len(retries) != len(wantDelays) {
+	if len(retries) != 2 {
 		t.Fatalf("stream retry events = %+v", retries)
 	}
-	for index, wantDelay := range wantDelays {
-		if retries[index].Attempt != index+1 || retries[index].MaxRetries != 10 || retries[index].RetryDelayMilliseconds != wantDelay {
-			t.Fatalf("stream retry[%d] = %+v, want delay %dms", index, retries[index], wantDelay)
+	for index := range retries {
+		maxDelay := int64(1 << index)
+		if retries[index].Attempt != index+1 || retries[index].MaxRetries != 2 || retries[index].RetryDelayMilliseconds < 0 || retries[index].RetryDelayMilliseconds > maxDelay {
+			t.Fatalf("stream retry[%d] = %+v, want full jitter within [0,%d]ms", index, retries[index], maxDelay)
 		}
+	}
+}
+
+func TestProviderAndStreamRetryLayersShareThreeAttemptBudget(t *testing.T) {
+	raw := &preflightThenStreamInterruptProvider{}
+	retrying := provider.NewRetryProvider(raw, provider.RetryConfig{
+		MaxAttempts: 3,
+		BaseDelay:   time.Millisecond,
+		MaxDelay:    2 * time.Millisecond,
+	})
+	ql := New(retrying, registry.New(), Config{MaxTurns: 5, MaxTokens: 1024})
+	if err := ql.Run(context.Background(), "hi", func(stream.Event) {}); err == nil {
+		t.Fatal("expected the layered transient failures to exhaust the generation")
+	}
+	if calls := raw.calls.Load(); calls != 3 {
+		t.Fatalf("provider + loop composed raw calls = %d, want hard cap of 3", calls)
 	}
 }
 
@@ -776,7 +982,7 @@ func TestStreamInterruptClearsPreviousResponseID(t *testing.T) {
 			// Turn 2, attempt 1: upstream disconnect
 			{
 				{Type: types.EventError, Error: &types.APIError{
-					Type:    "api_error",
+					Type:    "stream_interrupted",
 					Message: "Upstream websocket closed before response.completed (close_code=1000)",
 				}},
 			},

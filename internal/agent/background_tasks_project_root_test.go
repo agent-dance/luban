@@ -18,6 +18,7 @@ import (
 	executioncontract "github.com/agent-dance/luban/internal/contracts/execution"
 
 	"github.com/agent-dance/luban/internal/runtime/loop"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/types"
@@ -397,9 +398,9 @@ func TestBackgroundTasksKeepOriginDuringConcurrentProjectRootSwitches(t *testing
 		waitForBackgroundTaskDoneForTest(t, manager, snapshot.ID)
 		ownerRoot := rootA
 		otherRoot := rootB
-		if filepath.Clean(filepath.Dir(snapshot.OutputPath)) == filepath.Join(rootB, ".luban-code", "task-output") {
+		if filepath.Clean(filepath.Dir(snapshot.OutputPath)) == filepath.Join(storepaths.RuntimeSessionDir(rootB, ""), "task-output") {
 			ownerRoot, otherRoot = rootB, rootA
-		} else if filepath.Clean(filepath.Dir(snapshot.OutputPath)) != filepath.Join(rootA, ".luban-code", "task-output") {
+		} else if filepath.Clean(filepath.Dir(snapshot.OutputPath)) != filepath.Join(storepaths.RuntimeSessionDir(rootA, ""), "task-output") {
 			t.Fatalf("task %s has output outside either project root: %q", snapshot.ID, snapshot.OutputPath)
 		}
 		assertTaskOwnedByRoot(t, snapshot.ID, completed.OutputPath, ownerRoot, otherRoot)
@@ -431,7 +432,7 @@ func waitForTaskDoneChannelForTest(t *testing.T, task *BackgroundTask, taskID st
 
 func assertTaskOwnedByRoot(t *testing.T, taskID, outputPath, ownerRoot, otherRoot string) {
 	t.Helper()
-	wantOutputDir := filepath.Join(ownerRoot, ".luban-code", "task-output")
+	wantOutputDir := filepath.Join(storepaths.RuntimeSessionDir(ownerRoot, ""), "task-output")
 	if filepath.Clean(filepath.Dir(outputPath)) != filepath.Clean(wantOutputDir) {
 		t.Fatalf("task %s output path %q is not owned by %q", taskID, outputPath, ownerRoot)
 	}

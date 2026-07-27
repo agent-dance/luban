@@ -1,0 +1,11 @@
+instance_id,language,agent,resolved,elapsed_seconds,evaluation_seconds,estimated_cost_usd,input_tokens,cached_input_tokens,output_tokens,reasoning_output_tokens,tool_calls,tool_calls_by_type,files_changed,additions,deletions,fail_to_pass_passed,fail_to_pass_expected,pass_to_pass_passed,pass_to_pass_expected
+danielmiessler__Fabric-2098,Go,codex,True,202.579,416.971,0.756866,510952,447232,7155,3940,12,"{""command_execution"": 11, ""file_change"": 1}",2,94,4,1,1,841,841
+danielmiessler__Fabric-2098,Go,luban,True,234.738,419.614,0.65684,459226,407040,6413,,31,"{""Glob"": 5, ""Grep"": 7, ""ToolSearch"": 1, ""Read"": 9, ""Edit"": 2, ""Bash"": 7}",2,46,3,1,1,841,841
+openai__openai-agents-js-375,TypeScript,codex,True,408.06,208.518,1.527975,1360023,1260800,13382,5625,22,"{""command_execution"": 19, ""file_change"": 3}",3,139,21,1,1,366,366
+openai__openai-agents-js-375,TypeScript,luban,True,703.577,204.044,1.713626,1482892,1403392,20481,,70,"{""ToolSearch"": 1, ""Glob"": 5, ""Grep"": 14, ""Read"": 25, ""Edit"": 17, ""Bash"": 8}",2,84,3,1,1,366,366
+kubernetes__kube-state-metrics-2926,Go,codex,False,228.672,276.725,0.680405,468619,417280,7169,3359,32,"{""command_execution"": 31, ""file_change"": 1}",2,17,3,0,15,211,211
+kubernetes__kube-state-metrics-2926,Go,luban,False,273.537,263.448,0.596689,351347,309248,7719,,42,"{""ToolSearch"": 1, ""Glob"": 3, ""Grep"": 11, ""Read"": 13, ""Bash"": 11, ""Edit"": 3}",2,19,3,0,15,211,211
+skim-rs__skim-1044,Rust,codex,False,724.323,139.373,2.860038,3594012,3466496,16307,9448,40,"{""command_execution"": 34, ""file_change"": 6}",11,54,22,0,1,0,587
+skim-rs__skim-1044,Rust,luban,False,1282.237,93.316,3.524634,3533958,3401728,38754,,128,"{""ToolSearch"": 1, ""Grep"": 46, ""Glob"": 3, ""Read"": 42, ""Edit"": 19, ""Bash"": 17}",13,79,20,0,1,0,587
+include-what-you-use__include-what-you-use-1991,C++,codex,False,659.878,421.984,2.463001,2782427,2653952,16455,9643,37,"{""command_execution"": 33, ""file_change"": 4}",1,13,1,0,1,228,228
+include-what-you-use__include-what-you-use-1991,C++,luban,False,546.079,409.922,1.349134,1117130,1041408,14994,,80,"{""ToolSearch"": 1, ""Glob"": 8, ""Grep"": 15, ""Read"": 38, ""Bash"": 6, ""Edit"": 9, ""Write"": 3}",1,10,1,0,1,228,228

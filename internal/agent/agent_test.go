@@ -24,6 +24,7 @@ import (
 	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/internal/gitutil"
 	"github.com/agent-dance/luban/internal/runtime/loop"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	toolfile "github.com/agent-dance/luban/internal/tools/file"
 	toolsearch "github.com/agent-dance/luban/internal/tools/search"
 	"github.com/agent-dance/luban/provider"
@@ -2505,10 +2506,14 @@ func TestAgentMCPRequirementsValidateAvailableTools(t *testing.T) {
 
 func TestAgentMemoryPromptLoadsEntrypoint(t *testing.T) {
 	base := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LUBAN_CODE_DISABLE_AUTO_MEMORY", "")
 	t.Setenv("LUBAN_CODE_REMOTE", "")
 	t.Setenv("LUBAN_CODE_SIMPLE", "")
-	memoryDir := filepath.Join(base, brand.ConfigDirName, "agent-memory", "reviewer")
+	memoryDir, err := agentMemoryDir("reviewer", "project", base)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(memoryDir, 0o755); err != nil {
 		t.Fatalf("mkdir memory dir: %v", err)
 	}
@@ -2520,6 +2525,21 @@ func TestAgentMemoryPromptLoadsEntrypoint(t *testing.T) {
 		if !strings.Contains(prompt, expected) {
 			t.Fatalf("expected memory prompt to contain %q, got: %s", expected, prompt)
 		}
+	}
+	for path, want := range map[string]os.FileMode{
+		memoryDir:                             0o700,
+		filepath.Join(memoryDir, "MEMORY.md"): 0o600,
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Fatalf("mode(%s) = %04o, want %04o", path, got, want)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(base, brand.ConfigDirName)); !os.IsNotExist(err) {
+		t.Fatalf("agent memory dirtied project: %v", err)
 	}
 }
 
@@ -2534,9 +2554,13 @@ func TestAgentMemoryPromptHonorsAutoMemoryDisable(t *testing.T) {
 
 func TestAgentMemoryPromptIncludesExtraGuidelinesAndTruncatesEntrypoint(t *testing.T) {
 	base := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LUBAN_CODE_DISABLE_AUTO_MEMORY", "")
 	t.Setenv("LUBAN_COWORK_MEMORY_EXTRA_GUIDELINES", "Never save incident IDs in memory.")
-	memoryDir := filepath.Join(base, brand.ConfigDirName, "agent-memory", "reviewer")
+	memoryDir, err := agentMemoryDir("reviewer", "project", base)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(memoryDir, 0o755); err != nil {
 		t.Fatalf("mkdir memory dir: %v", err)
 	}
@@ -2561,10 +2585,11 @@ func TestAgentMemoryPromptIncludesExtraGuidelinesAndTruncatesEntrypoint(t *testi
 
 func TestAgentMemoryPromptInitializesFromSnapshot(t *testing.T) {
 	base := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("LUBAN_CODE_DISABLE_AUTO_MEMORY", "")
 	t.Setenv("LUBAN_CODE_REMOTE", "")
 	t.Setenv("LUBAN_CODE_SIMPLE", "")
-	snapshotDir := filepath.Join(base, brand.ConfigDirName, "agent-memory-snapshots", "reviewer")
+	snapshotDir := agentMemorySnapshotDir("reviewer", base)
 	if err := os.MkdirAll(snapshotDir, 0o755); err != nil {
 		t.Fatalf("mkdir snapshot: %v", err)
 	}
@@ -2579,7 +2604,10 @@ func TestAgentMemoryPromptInitializesFromSnapshot(t *testing.T) {
 	}
 
 	prompt := buildAgentSystemPrompt("", agentProfile{Name: "reviewer", Memory: "project"}, "", base)
-	memoryDir := filepath.Join(base, brand.ConfigDirName, "agent-memory", "reviewer")
+	memoryDir, err := agentMemoryDir("reviewer", "project", base)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, expected := range []string{"seeded from snapshot", memoryDir} {
 		if !strings.Contains(prompt, expected) {
 			t.Fatalf("expected memory prompt to contain %q, got: %s", expected, prompt)
@@ -3993,8 +4021,9 @@ func TestAgentToolWorktreeIsolationCreatesGitWorktree(t *testing.T) {
 	if _, err := os.Stat(bundle.Metadata.WorktreePath); err != nil {
 		t.Fatalf("expected worktree path to exist: %v", err)
 	}
-	if !strings.Contains(bundle.Metadata.WorktreePath, filepath.Join(brand.ConfigDirName, "worktrees", "agent-test-worktree")) {
-		t.Fatalf("expected agent worktree under %s/worktrees, got %q", brand.ConfigDirName, bundle.Metadata.WorktreePath)
+	wantWorktreeRoot := filepath.Join(storepaths.RuntimeServiceDir(repo, "worktrees"), "agents")
+	if !strings.HasPrefix(bundle.Metadata.WorktreePath, wantWorktreeRoot+string(filepath.Separator)) {
+		t.Fatalf("expected agent worktree under %s, got %q", wantWorktreeRoot, bundle.Metadata.WorktreePath)
 	}
 	if !strings.HasPrefix(bundle.Metadata.WorktreeBranch, "luban-agent-") {
 		t.Fatalf("expected PRC agent branch prefix, got %q", bundle.Metadata.WorktreeBranch)
@@ -4168,7 +4197,7 @@ func TestAgentToolWorktreeCleanupClearsCleanForegroundMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("runSubAgent: %v", err)
 	}
-	expectedPath := filepath.Join(repo, ".luban-code", "worktrees", "agent-clean-run")
+	expectedPath := filepath.Join(storepaths.RuntimeServiceDir(repo, "worktrees"), "agents", "agent-clean-run")
 	expectedBranch := "agent-agent-clean-run"
 	t.Cleanup(func() {
 		_, _ = gitutil.Run(repo, "worktree", "remove", expectedPath, "--force")
@@ -4236,7 +4265,7 @@ func TestAgentToolWorktreeCleanupClearsBackgroundSessionMetadata(t *testing.T) {
 	if record.AgentMetadata.WorktreePath != "" || record.AgentMetadata.WorktreeBranch != "" || record.AgentMetadata.CWD != "" {
 		t.Fatalf("expected persisted metadata to clear deleted worktree, got %#v", record.AgentMetadata)
 	}
-	expectedPath := filepath.Join(repo, ".luban-code", "worktrees", "agent-bg-clean")
+	expectedPath := filepath.Join(storepaths.RuntimeServiceDir(repo, "worktrees"), "agents", "agent-bg-clean")
 	if _, err := os.Stat(expectedPath); !os.IsNotExist(err) {
 		t.Fatalf("expected clean background worktree to be removed, stat err=%v", err)
 	}

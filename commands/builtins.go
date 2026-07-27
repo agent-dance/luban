@@ -446,6 +446,10 @@ func (c *modelCmd) switchModel(ctx *Context, args string) error {
 	if cfg.APIKey == "" && pInfo.EnvKey != "" {
 		cfg.APIKey = os.Getenv(pInfo.EnvKey)
 	}
+	if strings.TrimSpace(ctx.ProviderRuntimeOverrides.APIFormat) != "" {
+		cfg.APIFormat = ctx.ProviderRuntimeOverrides.APIFormat
+	}
+	cfg.ResponsesWebSocket = ctx.ProviderRuntimeOverrides.ResponsesWebSocket
 
 	// Create the new provider via the registry factory.
 	newP, err := ctx.ProviderRegistry.Create(providerName, cfg, modelName)

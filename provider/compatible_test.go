@@ -47,7 +47,7 @@ func TestDiscoverCompatibleModelsReusesNormalizedBuiltinMetadata(t *testing.T) {
 		if request.Header.Get("Authorization") != "Bearer test-key" {
 			t.Fatalf("authorization = %q", request.Header.Get("Authorization"))
 		}
-		fmt.Fprint(w, `{"data":[{"id":"GPT_5.4"}]}`)
+		fmt.Fprint(w, `{"data":[{"id":"GPT_5.6"}]}`)
 	}))
 	defer server.Close()
 
@@ -64,13 +64,13 @@ func TestDiscoverCompatibleModelsReusesNormalizedBuiltinMetadata(t *testing.T) {
 		t.Fatalf("models = %d, want 1", len(models))
 	}
 	model := models[0]
-	if model.ID != "GPT_5.4" || model.Provider != "custom-gateway" {
+	if model.ID != "GPT_5.6" || model.Provider != "custom-gateway" {
 		t.Fatalf("identity = %q/%q", model.Provider, model.ID)
 	}
 	if model.ContextWindow == 0 || !model.CanReason || model.CostPer1MIn == 0 {
 		t.Fatalf("built-in metadata was not reused: %+v", model)
 	}
-	if model.APIFormat != "chat-completions" {
+	if model.APIFormat != "responses" {
 		t.Fatalf("APIFormat = %q", model.APIFormat)
 	}
 }
@@ -230,7 +230,7 @@ func TestCredentialStoreRestoresAndDeletesUserCompatibleProvider(t *testing.T) {
 	}
 	entry := CredentialEntry{
 		Provider: "custom-example.com", AuthMethod: "api_key", APIKey: "key",
-		BaseURL: "https://example.com/v1", APIStyle: APIStyleAnthropic,
+		BaseURL: "https://example.com/v1", APIStyle: APIStyleAnthropic, APIFormat: "chat-completions",
 		DisplayName: "Example", UserDefined: true,
 		Models: []ModelInfo{{ID: "model-a", Provider: "custom-example.com", Name: "Model A", CostCurrency: "USD"}},
 	}
@@ -249,7 +249,7 @@ func TestCredentialStoreRestoresAndDeletesUserCompatibleProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveCredentialConfig: %v", err)
 	}
-	if resolved.APIStyle != entry.APIStyle || resolved.BaseURL != entry.BaseURL || resolved.APIKey != entry.APIKey {
+	if resolved.APIStyle != entry.APIStyle || resolved.APIFormat != entry.APIFormat || resolved.BaseURL != entry.BaseURL || resolved.APIKey != entry.APIKey {
 		t.Fatalf("restored config = %+v", resolved)
 	}
 	if !registry.UnregisterUserProvider(entry.Provider) {

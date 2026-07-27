@@ -98,24 +98,25 @@ func TestUserContextMetaMessageCarriesDateAndInstructions(t *testing.T) {
 
 func TestBuildSystemPromptWithTools(t *testing.T) {
 	tools := []types.Tool{
-		&mockTool{name: "Bash", desc: "Run commands"},
-		&mockTool{name: "Read", desc: "Read files"},
+		&mockTool{name: "Inspect", desc: "inspect-schema-description-sentinel"},
+		&mockTool{name: "ApplyPatch", desc: "patch-schema-description-sentinel"},
+		&mockTool{name: "Run", desc: "run-schema-description-sentinel"},
 	}
 	prompt := BuildSystemPrompt(tools, Config{})
 	if strings.Contains(prompt, "## Bash") {
 		t.Error("did not expect Bash schema description duplicated in system prompt")
 	}
-	if strings.Contains(prompt, "Run commands") || strings.Contains(prompt, "Read files") {
+	if strings.Contains(prompt, "schema-description-sentinel") {
 		t.Error("did not expect tool descriptions duplicated in system prompt")
 	}
 	if strings.Contains(prompt, "Available Tools") {
 		t.Error("did not expect Available Tools dump")
 	}
-	if !strings.Contains(prompt, "# Using your tools") {
+	if !strings.Contains(prompt, "# Coding contract") {
 		t.Error("expected global tool-use guidance")
 	}
-	if !strings.Contains(prompt, "To read files use Read instead of cat") {
-		t.Error("expected enabled Read guidance")
+	if !strings.Contains(prompt, "The complete visible catalog is Inspect, ApplyPatch, and Run") {
+		t.Error("expected coding-kernel guidance")
 	}
 }
 

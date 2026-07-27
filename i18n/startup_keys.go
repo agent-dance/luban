@@ -19,6 +19,7 @@ const (
 	KeyStartupShutdownBackground     Key = "startup.shutdown.background"
 	KeyStartupShutdownMCP            Key = "startup.shutdown.mcp"
 	KeyStartupShutdownLSP            Key = "startup.shutdown.lsp"
+	KeyStartupShutdownProvider       Key = "startup.shutdown.provider"
 	KeyStartupShutdownDebugFile      Key = "startup.shutdown.debug_file"
 	KeyStartupSDKError               Key = "startup.sdk.error"
 	KeyStartupResumeWarning          Key = "startup.session.resume_warning"
@@ -147,6 +148,14 @@ func init() {
 		"言語サーバープロセスを正常に停止できませんでした",
 		"언어 서버 프로세스가 정상적으로 종료되지 않았습니다",
 		"процессы языковых серверов не удалось корректно остановить",
+	)
+	semanticTranslations[KeyStartupShutdownProvider] = startupCopy(
+		"the provider transport did not close cleanly",
+		"Provider 传输未能正常关闭",
+		"Der Provider-Transport wurde nicht ordnungsgemäß geschlossen",
+		"Provider トランスポートを正常に閉じることができませんでした",
+		"Provider 전송이 정상적으로 닫히지 않았습니다",
+		"транспорт провайдера не удалось корректно закрыть",
 	)
 	semanticTranslations[KeyStartupShutdownDebugFile] = startupCopy(
 		"the debug output file did not close cleanly",

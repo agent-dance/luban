@@ -7,17 +7,17 @@ import (
 
 func TestCLISemanticCopyCoversEveryLanguage(t *testing.T) {
 	keys := []Key{
-		KeyCLIUsage, KeyCLIOptions, KeyCLIExamples, KeyCLIExampleInteractive,
+		KeyCLIUsage, KeyCLIHelpCodingSurface, KeyCLIOptions, KeyCLIExamples, KeyCLIExampleInteractive,
 		KeyCLIExamplePrint, KeyCLIExampleModel, KeyCLIExampleAllowedDir,
 		KeyCLIFlagDefault, KeyCLIError, KeyCLIParseFailure,
 		KeyCLIInvalidSessionChars, KeyCLIInvalidSessionParent,
 		KeyCLIInputModeSDKPrint, KeyCLIStdinReadFailure, KeyCLIStdinTooLarge,
 		KeyCLIScreenReaderSDK, KeyCLIScreenReaderPrint, KeyCLIScreenReaderOutput,
 		KeyCLIScreenReaderTerminal, KeyCLIWorkingDirectoryError,
-		KeyCLIFlagModel, KeyCLIFlagProvider, KeyCLIFlagAPI, KeyCLIFlagPrint,
+		KeyCLIFlagModel, KeyCLIFlagProvider, KeyCLIFlagAPI, KeyCLIFlagReasoningEffort, KeyCLIFlagPinnedModel, KeyCLIFlagPrint,
 		KeyCLIFlagResume, KeyCLIFlagSessionID, KeyCLIFlagMaxTurns,
 		KeyCLIFlagSystemPrompt, KeyCLIFlagAllowedDir, KeyCLIFlagAllowAll,
-		KeyCLIFlagAllowedTools, KeyCLIFlagDisallowedTools, KeyCLIFlagSandbox,
+		KeyCLIFlagAllowedTools, KeyCLIFlagDisallowedTools, KeyCLIFlagSandbox, KeyCLIFlagForceSandboxTools,
 		KeyCLIFlagSDK, KeyCLIFlagVersion, KeyCLIFlagVerbose, KeyCLIFlagDebugFile,
 		KeyCLIFlagNoColor, KeyCLIFlagOutputFormat, KeyCLIFlagQuiet,
 		KeyCLIFlagScreenReader, KeyCLIFlagAgents, KeyCLIFlagPromptDump,

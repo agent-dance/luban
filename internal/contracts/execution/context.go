@@ -255,6 +255,11 @@ func CloneMessages(messages []types.Message) []types.Message {
 
 func cloneMessage(message types.Message) types.Message {
 	out := message
+	if continuation, ok := message.ValidatedProviderContinuation(); ok {
+		out.AttachProviderContinuation(continuation)
+	} else {
+		out.ClearProviderContinuation()
+	}
 	if message.DeveloperMetadata != nil {
 		metadata := *message.DeveloperMetadata
 		out.DeveloperMetadata = &metadata

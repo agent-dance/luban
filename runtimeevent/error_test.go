@@ -41,3 +41,29 @@ func TestNewErrorEventRetainsPrivateEvidenceUntilAudienceProjection(t *testing.T
 		}
 	}
 }
+
+func TestNewErrorEventProjectsOnlyAllowlistedContextFailureCode(t *testing.T) {
+	const privateMessage = "private context diagnostic"
+	event := NewErrorEvent(
+		types.RuntimeIdentity{SessionID: "private-session"},
+		privateMessage,
+		&types.APIError{Type: "context_length_exceeded", Message: privateMessage, Status: 400},
+		map[string]any{"private": privateMessage},
+	)
+	projection, err := NewAudienceProjector().Project(event, ProjectionOptions{
+		Audience: AudienceUser, Redaction: RedactionStrict,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Code != "context_length_exceeded" {
+		t.Fatalf("semantic context code = %q", projection.Code)
+	}
+	encoded, err := json.Marshal(projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), privateMessage) || strings.Contains(string(encoded), "private-session") {
+		t.Fatalf("context projection leaked private evidence: %s", encoded)
+	}
+}

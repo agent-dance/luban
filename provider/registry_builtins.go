@@ -145,6 +145,8 @@ func registerOpenAI(r *ProviderRegistry) {
 		}
 		providerCfg := Config{
 			ProviderName:           "openai",
+			ResponsesSemantics:     ResponsesSemanticsOpenAIPublic,
+			ResponsesWebSocket:     normalizeCapabilitySupport(cfg.ResponsesWebSocket),
 			APIKey:                 apiKey,
 			AuthToken:              authToken,
 			BaseURL:                firstNonEmpty(cfg.BaseURL, os.Getenv("OPENAI_BASE_URL")),
@@ -152,20 +154,32 @@ func registerOpenAI(r *ProviderRegistry) {
 			Headers:                cloneHeaders(cfg.Headers),
 			CacheRoutingPreference: cfg.CacheRoutingPreference,
 		}
-		providerCfg.DisableStrictTools = isCustomOpenAIBaseURL(providerCfg.BaseURL) &&
-			!isOpenAIChatGPTCodexBaseURL(providerCfg.BaseURL)
+		// Transport location is not a capability signal. A content-blind proxy
+		// for OpenAI public Responses must preserve the exact strict tool body;
+		// genuinely incompatible gateways opt into the compatible provider or an
+		// explicit DisableStrictTools setting.
+		providerCfg.DisableStrictTools = cfg.DisableStrictTools
 
 		// Keep API selection inside the OpenAI provider: explicit flags win,
 		// first-party models use their cataloged format, and cataloged Responses
 		// models negotiate that protocol on custom gateways with a chat fallback.
-		apiFormat := strings.ToLower(os.Getenv("OPENAI_API"))
+		apiFormat := normalizeOpenAIAPIFormat(firstNonEmpty(cfg.APIFormat, os.Getenv("OPENAI_API")))
 		useResponses := resolveOpenAIResponsesMode(
 			authToken,
 			apiFormat,
 			providerCfg.BaseURL,
 			model,
 		)
+		if providerCfg.ResponsesWebSocket == CapabilitySupported {
+			if (cfg.ResponsesSemantics != ResponsesSemanticsAuto && cfg.ResponsesSemantics != ResponsesSemanticsOpenAIPublic) ||
+				authToken != "" || isOpenAIChatGPTCodexBaseURL(providerCfg.BaseURL) || !useResponses {
+				return nil, responsesWebSocketProfileUnsupportedError()
+			}
+		}
 		if useResponses {
+			if authToken != "" {
+				providerCfg.ResponsesSemantics = ResponsesSemanticsOpenAICodex
+			}
 			raw := NewResponses(providerCfg)
 			retryCfg := DefaultRetryConfig()
 			if authToken != "" {
@@ -174,11 +188,7 @@ func registerOpenAI(r *ProviderRegistry) {
 			return NewRetryProvider(raw, retryCfg), nil
 		}
 		if shouldNegotiateOpenAIResponses(authToken, apiFormat, providerCfg.BaseURL, model) {
-			responses := NewResponses(providerCfg)
-			chatCfg := providerCfg
-			chatCfg.BaseURL = normalizeOpenAIChatBaseURL(chatCfg.BaseURL)
-			chat := NewOpenAI(chatCfg)
-			return NewRetryProvider(newOpenAIProtocolProvider(responses, chat), DefaultRetryConfig()), nil
+			return NewRetryProvider(newNegotiatingOpenAIProvider(providerCfg), DefaultRetryConfig()), nil
 		}
 		providerCfg.BaseURL = normalizeOpenAIChatBaseURL(providerCfg.BaseURL)
 		raw := NewOpenAI(providerCfg)
@@ -278,10 +288,9 @@ func registerOllama(r *ProviderRegistry) {
 		})
 		// Local inference: short retries, no need for long backoff.
 		localRetry := RetryConfig{
-			MaxRetries:    2,
-			BaseDelay:     100 * time.Millisecond,
-			MaxDelay:      1 * time.Second,
-			Max529Retries: 1,
+			MaxAttempts: 2,
+			BaseDelay:   100 * time.Millisecond,
+			MaxDelay:    1 * time.Second,
 		}
 		return NewRetryProvider(raw, localRetry), nil
 	})
@@ -414,6 +423,7 @@ func registerXAI(r *ProviderRegistry) {
 		}
 		raw := NewResponses(Config{
 			ProviderName:           "xai",
+			ResponsesSemantics:     ResponsesSemanticsCompatible,
 			APIKey:                 apiKey,
 			BaseURL:                normalizeOpenAIChatBaseURL(firstNonEmpty(cfg.BaseURL, envOrDefault("XAI_BASE_URL", "https://api.x.ai/v1"))),
 			Model:                  model,

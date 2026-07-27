@@ -115,7 +115,9 @@ func NewBedrock(ctx context.Context, cfg BedrockConfig) (*BedrockProvider, error
 		return nil, i18n.WrapError(i18n.KeyProviderBedrockAWSConfigFailed, err)
 	}
 
-	var opts []option.RequestOption
+	// RetryProvider/AttemptController owns the generation budget; disable the
+	// Anthropic SDK's independent two-retry loop.
+	opts := []option.RequestOption{option.WithMaxRetries(0)}
 	if cfg.Timeout > 0 {
 		opts = append(opts, option.WithRequestTimeout(time.Duration(cfg.Timeout)*time.Second))
 	}
@@ -207,6 +209,9 @@ func (p *BedrockProvider) Capabilities() ProviderCapabilities {
 
 // CreateStream uses the shared Anthropic stream implementation with our Bedrock client.
 func (p *BedrockProvider) CreateStream(ctx context.Context, params Params) (<-chan types.StreamEvent, error) {
+	if err := ValidateParams(p, params); err != nil {
+		return nil, err
+	}
 	if params.Model == "" {
 		params.Model = p.model
 	}

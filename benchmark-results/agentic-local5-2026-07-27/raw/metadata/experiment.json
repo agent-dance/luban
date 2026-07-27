@@ -1,0 +1,19 @@
+{
+  "dataset": "SWE-bench-Live/MultiLang",
+  "dataset_revision": "608f7ae9ab8ea1f9f0d030fe04562cf6bd1a0c8b",
+  "parquet_sha256": {
+    "cpp": "5afc7db10f28232cc9c13de316ecec146f2da4c76de3bb460b934f5e271b0ec0",
+    "go": "76d2b5dff0f3fac8303d30fa85495539e487d25974ad7c21cd21a545cb4756e2",
+    "java": "75c8d2f925a83c1a5b7a7b267ccdc9db41f1dc7dd80fe641073aac577d13ecc4",
+    "rust": "ea90be54a621c0c0280b77d5e2dee9650bc1d4ae087f9b9b06af821bcd8662d7",
+    "ts": "2095a180276ed76a6f3063f3ca8d2d8d5d0fdb721e683023ebe240aa70fdfed9"
+  },
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "pricing_assumption": {
+    "input_per_million_usd": 5.0,
+    "cached_input_per_million_usd": 0.5,
+    "output_per_million_usd": 30.0
+  },
+  "timeout_seconds": 1800
+}

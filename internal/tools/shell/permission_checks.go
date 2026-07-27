@@ -70,6 +70,20 @@ func (t *BashTool) CheckPermissions(_ context.Context, input map[string]any, req
 	}
 	policyContext := localScope.shellPolicyContext(request.Runtime, !request.AvoidPrompts)
 	policy, _ := analyzeBashCommandWithSedEvidencePolicy(command, policyContext)
+	return checkBashCommandPermissionsAtScope(localScope, command, policy, input, request), nil
+}
+
+// checkBashCommandPermissionsAtScope applies Bash's complete rule and approval
+// lifecycle to a command whose policy has already been analyzed. Run uses this
+// entry point to preflight every node in one immutable execution plan without
+// taking a different mutable execution-scope snapshot for each node.
+func checkBashCommandPermissionsAtScope(
+	localScope bashExecutionScope,
+	command string,
+	policy types.PolicyDecision,
+	input map[string]any,
+	request types.ToolPermissionRequest,
+) types.ToolPermissionResult {
 	observability.RecordShellPolicy(string(policy.Disposition), policy.Code)
 	executionPolicyCode := localScope.executionPolicyCode(policy.ExecutionBindingCode())
 	withExecutionPolicy := func(result types.ToolPermissionResult) types.ToolPermissionResult {
@@ -84,7 +98,7 @@ func (t *BashTool) CheckPermissions(_ context.Context, input map[string]any, req
 		return withExecutionPolicy(types.ToolPermissionResult{
 			Behavior: types.PermissionBehaviorDeny, Message: toolPermissionFormat(policy.PublicKey, policy.PublicArgs...),
 			Required: true, PolicyDecision: &policyCopy,
-		}), nil
+		})
 	}
 
 	permissionRules := append([]permissions.Rule(nil), localScope.permissionRules...)
@@ -105,28 +119,28 @@ func (t *BashTool) CheckPermissions(_ context.Context, input map[string]any, req
 			Behavior: types.PermissionBehaviorDeny,
 			Message:  toolPermissionText(i18n.KeyToolPermissionBashPlanMode),
 			Required: true,
-		}), nil
+		})
 	}
 	if matchedRule != nil && ruleDecision == permissions.DecisionDeny {
 		return withExecutionPolicy(types.ToolPermissionResult{
 			Behavior: types.PermissionBehaviorDeny,
 			Message:  toolPermissionText(i18n.KeyToolPermissionBashRuleDenied),
 			Required: true,
-		}), nil
+		})
 	}
 	if policy.Disposition == types.PolicyRequiredAsk {
 		result := bashAskDecision(command, toolPermissionFormat(policy.PublicKey, policy.PublicArgs...), true)
 		policyCopy := policy.Clone()
 		result.PolicyDecision = &policyCopy
-		return withExecutionPolicy(result), nil
+		return withExecutionPolicy(result)
 	}
 	if rulePartial || matchedRule != nil && ruleDecision == permissions.DecisionAsk {
-		return withExecutionPolicy(bashAskDecision(command, toolPermissionText(i18n.KeyToolPermissionBashRuleApproval), true)), nil
+		return withExecutionPolicy(bashAskDecision(command, toolPermissionText(i18n.KeyToolPermissionBashRuleApproval), true))
 	}
 	if matchedRule != nil {
 		switch ruleDecision {
 		case permissions.DecisionAllow, permissions.DecisionAllowOnce:
-			return withExecutionPolicy(types.ToolPermissionResult{Behavior: types.PermissionBehaviorAllow, UpdatedInput: input}), nil
+			return withExecutionPolicy(types.ToolPermissionResult{Behavior: types.PermissionBehaviorAllow, UpdatedInput: input})
 		}
 	}
 
@@ -135,25 +149,29 @@ func (t *BashTool) CheckPermissions(_ context.Context, input map[string]any, req
 	// rules. Keep mandatory/destructive checks above this branch so a semantic
 	// approval cannot bypass the safety floor.
 	if localScope.planState != nil && localScope.planState.AllowedPromptMatches("Bash", command) {
-		return withExecutionPolicy(types.ToolPermissionResult{Behavior: types.PermissionBehaviorAllow, UpdatedInput: input}), nil
+		return withExecutionPolicy(types.ToolPermissionResult{Behavior: types.PermissionBehaviorAllow, UpdatedInput: input})
 	}
 	if IsReadOnlyCommand(command, semantics) {
-		return withExecutionPolicy(types.ToolPermissionResult{Behavior: types.PermissionBehaviorAllow, UpdatedInput: input}), nil
+		return withExecutionPolicy(types.ToolPermissionResult{Behavior: types.PermissionBehaviorAllow, UpdatedInput: input})
 	}
 	decision := bashAskDecision(command, toolPermissionText(i18n.KeyToolPermissionBashGenericApproval), false)
 	decision.Behavior = types.PermissionBehaviorPassthrough
-	return withExecutionPolicy(decision), nil
+	return withExecutionPolicy(decision)
 }
 
 func (scope bashExecutionScope) executionPolicyCode(policyCode string) string {
 	localAuthority := struct {
-		Policy            types.PolicyContext `json:"policy"`
-		PermissionRules   []permissions.Rule  `json:"permissionRules,omitempty"`
-		SandboxCapability string              `json:"sandboxCapability,omitempty"`
+		Policy                 types.PolicyContext `json:"policy"`
+		PermissionRules        []permissions.Rule  `json:"permissionRules,omitempty"`
+		SandboxCapability      string              `json:"sandboxCapability,omitempty"`
+		EnvironmentPolicy      string              `json:"environmentPolicy"`
+		EnvironmentFingerprint string              `json:"environmentFingerprint"`
 	}{
-		Policy:            scope.shellPolicyContext(types.ToolRuntimeContext{}, false),
-		PermissionRules:   append([]permissions.Rule(nil), scope.permissionRules...),
-		SandboxCapability: scope.sandboxCapability,
+		Policy:                 scope.shellPolicyContext(types.ToolRuntimeContext{}, false),
+		PermissionRules:        append([]permissions.Rule(nil), scope.permissionRules...),
+		SandboxCapability:      scope.sandboxCapability,
+		EnvironmentPolicy:      scope.environmentPolicyFingerprint,
+		EnvironmentFingerprint: scope.environment.Fingerprint(),
 	}
 	encoded, err := json.Marshal(localAuthority)
 	if err != nil {

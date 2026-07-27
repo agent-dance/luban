@@ -1,0 +1,60 @@
+{
+  "schema_version": "agentic-bench/pier-inventory-v2",
+  "dataset_commit": "8cae5984d5dd0ee37445beff0e928dc10c331116",
+  "coverage": "tasks",
+  "universe_task_count": 113,
+  "task_ids": [
+    "abs-module-cache-flags",
+    "adaptix-name-mapping-aliases",
+    "cliffy-config-file-parsing",
+    "wasmi-trap-coredumps",
+    "yjs-map-conflict-detection"
+  ],
+  "tasks": [
+    {
+      "id": "abs-module-cache-flags",
+      "relative_path": "abs-module-cache-flags",
+      "base_commit": "cb1b3b671d0ee9fa9da9f7b02f86967953ffd10a",
+      "manifest_sha256": "91a3a08eb4de2787a018442b565b49c57f7f8da643dd4b3969bd6eefa4d9f83e",
+      "instruction_sha256": "cffcaa70386408363b090b563943fd63fdcc322ed44b8c76cc3e56cfd76b7ed8",
+      "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh75679ajj3b8dtd7se3h7z0a1833y6r-v1.1",
+      "image_digest": "sha256:3a4d47f5281269305343c83729836ac2f3172811aee72681e472a4196178eda1"
+    },
+    {
+      "id": "adaptix-name-mapping-aliases",
+      "relative_path": "adaptix-name-mapping-aliases",
+      "base_commit": "a691069fcadf9131e5f7a5a130a022dc678f3e1d",
+      "manifest_sha256": "c5303cf4bcd8a8855439a7f8dd5cea65fa728bb5a2c740c556bc6ba2ac36df77",
+      "instruction_sha256": "e8e4a39e65723ff56eb35bc9b9183fef4e09677159063abf8189f471cc1b2eac",
+      "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh73dq4n55jdxasppe6jjmth4183d47n-v1.1",
+      "image_digest": "sha256:528654670f3c591e6491fc6fa01a0b8905bc8dee1b0557c5e76231bcc206f8fe"
+    },
+    {
+      "id": "cliffy-config-file-parsing",
+      "relative_path": "cliffy-config-file-parsing",
+      "base_commit": "132a437c40cffbdfbe474ca808c8debde59e2633",
+      "manifest_sha256": "5e4e14389c84e613a39584869b684500ac088406af9d383c5e251f5b46846ff9",
+      "instruction_sha256": "39668d18670621b7760751128fc57ffbe519e3529601567ea9e11d31faaa2daf",
+      "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh72088pg9vkc6peacnkc35yy9832jff-v1.1",
+      "image_digest": "sha256:0a8dd8f1270ec4bb88efadad3021762e1d07274f686276c8a484d26a00bd91b5"
+    },
+    {
+      "id": "wasmi-trap-coredumps",
+      "relative_path": "wasmi-trap-coredumps",
+      "base_commit": "e1f76e285b9ad68a952b7cf5297bbb7ab91e6028",
+      "manifest_sha256": "6eb32f341a625ec78c8c838feabb4bfb2aba266e61d79e87b78d64db02542690",
+      "instruction_sha256": "119346d012f769e6a69d46ce176610fbf42a181122c2e85379d17abe56672888",
+      "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh70h37djmvc9ac48jeh25gwz582xgqv-v1.1",
+      "image_digest": "sha256:1bec57bc662b5c33289f88cb28cae2c4df07cb33cd96aff7840c77e2b0a96c10"
+    },
+    {
+      "id": "yjs-map-conflict-detection",
+      "relative_path": "yjs-map-conflict-detection",
+      "base_commit": "7795050a749bd1111cbbdd9d0219b27226a8e710",
+      "manifest_sha256": "5a58fa6c16ecccf9fd90954166c67f41cea48ccae0626b9a6450581abb001ed6",
+      "instruction_sha256": "ec6f54e53154aca614ead29fe45f2a85f876c4fe38aec5f3a0f20425e2611935",
+      "image": "public.ecr.aws/d3j8x8q7/swe-bench-202605:kh7fwz4nedevfex8ssk2p8xbt9836scp-v1.1",
+      "image_digest": "sha256:91b1986f864befaef716579fa641d57051257ea5484515f9befd30a4f5d800ef"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785087468.1025221,
+  "elapsed_seconds": 1607.007,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1965395,
+    "cached_input_tokens": 1870848,
+    "cache_read_input_tokens": 1870848,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 40535,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 2.624209,
+  "tool_calls": 34,
+  "tool_calls_by_type": {
+    "Inspect": 17,
+    "ApplyPatch": 2,
+    "Run": 15
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/plugins/ai/codex/codex.go",
+      "internal/plugins/ai/codex/codex_test.go"
+    ],
+    "additions": 81,
+    "deletions": 3
+  },
+  "final_text": "Implemented and reviewed the Codex empty-response fix.\n\n- Empty `response.completed` payloads no longer discard valid text.\n- Response precedence is:\n  1. Completed response output, preserving citations.\n  2. `response.output_text.done`.\n  3. Accumulated output-text deltas.\n- Stream errors continue to take precedence.\n- Added regression tests for both done-event and delta-event fallback paths.\n\nVerification on the final revision:\n\n- Codex package tests passed offline and uncached.\n- Focused regression tests passed.\n- Race-enabled Codex tests passed.\n- `go vet` passed offline.\n- Formatting and `git diff --check HEAD` passed.\n- The complete HEAD-relative diff was reviewed after testing.\n- Only `codex.go` and `codex_test.go` are modified.\n\nThe broader core suite was blocked by uncached transitive dependencies under the required no-network constraint. No live Codex request was made, and no commit was created.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-candidate-cursorfix-20260727",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 44,
+  "llm_successful_calls": 44,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1355.357556,
+  "binary": {
+    "path": "/private/tmp/luban-local5-candidate-cursorfix-20260727",
+    "sha256": "67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9"
+  }
+}

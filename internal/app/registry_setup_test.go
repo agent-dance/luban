@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"github.com/agent-dance/luban/commands"
-	toolfile "github.com/agent-dance/luban/internal/tools/file"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	toolinteraction "github.com/agent-dance/luban/internal/tools/interaction"
 	toollsp "github.com/agent-dance/luban/internal/tools/lsp"
+	toolshell "github.com/agent-dance/luban/internal/tools/shell"
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/sandbox"
 	"github.com/agent-dance/luban/types"
@@ -80,12 +81,13 @@ func hasRegisteredTool(deps *RegistryDeps, name string) bool {
 }
 
 func fileToolsUseSkillManager(deps *RegistryDeps) bool {
-	if deps == nil || deps.FileReadTool == nil || deps.FileEditTool == nil || deps.SkillManager == nil {
+	if deps == nil || deps.FileReadTool == nil || deps.FileEditTool == nil || deps.ApplyPatchTool == nil || deps.SkillManager == nil {
 		return false
 	}
 	readAdapter, readOK := deps.FileReadTool.SkillManager.(*fileSkillActivator)
 	editAdapter, editOK := deps.FileEditTool.SkillManager.(*fileSkillActivator)
-	return readOK && editOK && readAdapter == editAdapter && readAdapter.manager == deps.SkillManager
+	patchAdapter, patchOK := deps.ApplyPatchTool.SkillManager.(*fileSkillActivator)
+	return readOK && editOK && patchOK && readAdapter == editAdapter && editAdapter == patchAdapter && readAdapter.manager == deps.SkillManager
 }
 
 func TestSetupRegistryRegistersSendUserMessageOnce(t *testing.T) {
@@ -212,14 +214,13 @@ func TestSetupRegistry_GatesTriggerToolsWhenCronKillSwitchEnabled(t *testing.T) 
 	}
 }
 
-func TestSetupRegistry_RegistersPowerShellOnlyOnWindows(t *testing.T) {
+func TestSetupRegistryKeepsPowerShellPrivateOnEveryPlatform(t *testing.T) {
 	deps := SetupRegistry(provider.NewProviderRef(nil), t.TempDir(), nil, sandbox.NoopBackend{}, nil)
 	if deps.PowerShellTool == nil {
 		t.Fatalf("expected PowerShellTool dependency to be initialized")
 	}
-	registered := hasRegisteredTool(deps, "PowerShell")
-	if registered != (runtime.GOOS == "windows") {
-		t.Fatalf("PowerShell registered=%v on %s", registered, runtime.GOOS)
+	if hasRegisteredTool(deps, "PowerShell") {
+		t.Fatalf("PowerShell was registered on %s", runtime.GOOS)
 	}
 }
 
@@ -248,9 +249,10 @@ func TestSetupRegistry_AskUserQuestionSharesPlanState(t *testing.T) {
 }
 
 func TestPrepareSessionContextReportsInvalidPlanStateWithoutPublishingWorkspace(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	current := t.TempDir()
 	target := t.TempDir()
-	statePath := filepath.Join(target, ".luban-code", "plan-mode.json")
+	statePath := filepath.Join(storepaths.RuntimeServiceDir(target, "plan"), "plan-mode.json")
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -267,32 +269,25 @@ func TestPrepareSessionContextReportsInvalidPlanStateWithoutPublishingWorkspace(
 }
 
 func TestSetupRegistry_FileMutationToolsShareReadState(t *testing.T) {
+	t.Setenv("LUBAN_CODE_EXPERIMENTAL_APPLY_PATCH", "true")
 	deps := SetupRegistry(provider.NewProviderRef(nil), t.TempDir(), nil, sandbox.NoopBackend{}, nil)
-	if deps.BashTool == nil || deps.FileReadTool == nil || deps.FileEditTool == nil || deps.FileWriteTool == nil || deps.NotebookEditTool == nil {
-		t.Fatalf("missing file tools: bash=%p read=%p edit=%p write=%p notebook=%p", deps.BashTool, deps.FileReadTool, deps.FileEditTool, deps.FileWriteTool, deps.NotebookEditTool)
+	if deps.BashTool == nil || deps.FileReadTool == nil || deps.FileEditTool == nil || deps.ApplyPatchTool == nil || deps.FileWriteTool == nil || deps.NotebookEditTool == nil {
+		t.Fatalf("missing file tools: bash=%p read=%p edit=%p patch=%p write=%p notebook=%p", deps.BashTool, deps.FileReadTool, deps.FileEditTool, deps.ApplyPatchTool, deps.FileWriteTool, deps.NotebookEditTool)
 	}
 	shared := deps.FileReadTool.ReadState
-	if shared == nil || deps.BashTool.FileMutations == nil || deps.FileEditTool.ReadState != shared || deps.FileWriteTool.ReadState != shared || deps.NotebookEditTool.ReadState != shared {
-		t.Fatalf("file mutation dependencies are incomplete: coordinator=%T read=%p edit=%p write=%p notebook=%p", deps.BashTool.FileMutations, shared, deps.FileEditTool.ReadState, deps.FileWriteTool.ReadState, deps.NotebookEditTool.ReadState)
+	if shared == nil || deps.BashTool.FileMutations == nil || deps.FileEditTool.ReadState != shared || deps.ApplyPatchTool.ReadState != shared || deps.FileWriteTool.ReadState != shared || deps.NotebookEditTool.ReadState != shared {
+		t.Fatalf("file mutation dependencies are incomplete: coordinator=%T read=%p edit=%p patch=%p write=%p notebook=%p", deps.BashTool.FileMutations, shared, deps.FileEditTool.ReadState, deps.ApplyPatchTool.ReadState, deps.FileWriteTool.ReadState, deps.NotebookEditTool.ReadState)
 	}
-	if deps.FileReadTool.Runtime == nil || deps.FileEditTool.Runtime == nil || deps.FileWriteTool.Runtime == nil || deps.NotebookEditTool.Runtime == nil {
-		t.Fatalf("file tools must share the live runtime scope: read=%T edit=%T write=%T notebook=%T", deps.FileReadTool.Runtime, deps.FileEditTool.Runtime, deps.FileWriteTool.Runtime, deps.NotebookEditTool.Runtime)
+	if deps.FileReadTool.Runtime == nil || deps.FileEditTool.Runtime == nil || deps.ApplyPatchTool.Runtime == nil || deps.FileWriteTool.Runtime == nil || deps.NotebookEditTool.Runtime == nil {
+		t.Fatalf("file tools must share the live runtime scope: read=%T edit=%T patch=%T write=%T notebook=%T", deps.FileReadTool.Runtime, deps.FileEditTool.Runtime, deps.ApplyPatchTool.Runtime, deps.FileWriteTool.Runtime, deps.NotebookEditTool.Runtime)
 	}
-	registered := map[string]any{
-		"Read": deps.Registry.Get("Read"), "Edit": deps.Registry.Get("Edit"),
-		"Write": deps.Registry.Get("Write"), "NotebookEdit": deps.Registry.Get("NotebookEdit"),
+	for _, retired := range []string{"Read", "Edit", "Write"} {
+		if registered := deps.Registry.Get(retired); registered != nil {
+			t.Fatalf("retired coding tool %s remained registered as %T", retired, registered)
+		}
 	}
-	if _, ok := registered["Read"].(*toolfile.FileReadTool); !ok {
-		t.Fatalf("registered Read = %T, want file.FileReadTool", registered["Read"])
-	}
-	if _, ok := registered["Edit"].(*toolfile.FileEditTool); !ok {
-		t.Fatalf("registered Edit = %T, want file.FileEditTool", registered["Edit"])
-	}
-	if _, ok := registered["Write"].(*toolfile.FileWriteTool); !ok {
-		t.Fatalf("registered Write = %T, want file.FileWriteTool", registered["Write"])
-	}
-	if _, ok := registered["NotebookEdit"].(*toolfile.NotebookEditTool); !ok {
-		t.Fatalf("registered NotebookEdit = %T, want file.NotebookEditTool", registered["NotebookEdit"])
+	if registered := deps.Registry.Get("ApplyPatch"); registered != deps.ApplyPatchTool {
+		t.Fatalf("registered ApplyPatch = %T, want composed instance", registered)
 	}
 	if deps.SkillManager == nil || deps.SkillTool == nil || deps.SkillTool.Manager != deps.SkillManager ||
 		deps.AgentTool.SkillManager != deps.SkillManager {
@@ -301,6 +296,48 @@ func TestSetupRegistry_FileMutationToolsShareReadState(t *testing.T) {
 	}
 	if !fileToolsUseSkillManager(deps) {
 		t.Fatalf("registered Edit tool does not share the bootstrap skill manager: edit=%T shared=%T", deps.FileEditTool.SkillManager, deps.SkillManager)
+	}
+}
+
+func TestSetupRegistryAlwaysRegistersCodingApplyPatch(t *testing.T) {
+	for _, retiredValue := range []string{"", "false", "true"} {
+		t.Run(retiredValue, func(t *testing.T) {
+			t.Setenv("LUBAN_CODE_EXPERIMENTAL_APPLY_PATCH", retiredValue)
+			deps := SetupRegistry(provider.NewProviderRef(nil), t.TempDir(), nil, sandbox.NoopBackend{}, nil)
+			if deps.Registry.Get("ApplyPatch") != deps.ApplyPatchTool {
+				t.Fatalf("registered ApplyPatch = %T, want composed instance", deps.Registry.Get("ApplyPatch"))
+			}
+		})
+	}
+}
+
+func TestSetupRegistryUsesSingleCodingKernelByDefault(t *testing.T) {
+	deps := SetupRegistry(provider.NewProviderRef(nil), t.TempDir(), nil, sandbox.NoopBackend{}, nil)
+	registered, ok := deps.Registry.Get("Run").(*toolshell.RunTool)
+	if !ok || registered != deps.RunTool || registered.Bash != deps.BashTool {
+		t.Fatalf("registered Run = %T, composed=%p bash=%p", deps.Registry.Get("Run"), deps.RunTool, deps.BashTool)
+	}
+	if deps.Registry.Get("Inspect") != deps.InspectTool || deps.Registry.Get("ApplyPatch") != deps.ApplyPatchTool {
+		t.Fatalf("registered coding tools do not use composed instances: inspect=%T patch=%T", deps.Registry.Get("Inspect"), deps.Registry.Get("ApplyPatch"))
+	}
+	if !deps.ApplyPatchTool.ProvidesWorkspaceRevisionBarrier() || !deps.RunTool.ConsumesWorkspaceRevisionBarrier() {
+		t.Fatal("ApplyPatch and Run do not share the revision fusion barrier")
+	}
+	for _, name := range []string{"ToolSearch", "Bash", "PowerShell", "Read", "Write", "Edit", "Glob", "Grep"} {
+		if deps.Registry.Get(name) != nil {
+			t.Fatalf("coding kernel retained legacy tool %q", name)
+		}
+	}
+
+	core := make([]string, 0, 3)
+	for _, definition := range deps.Registry.VisibleDefinitions(nil) {
+		switch definition.Name {
+		case "Inspect", "ApplyPatch", "Run":
+			core = append(core, definition.Name)
+		}
+	}
+	if got := strings.Join(core, ","); got != "Inspect,ApplyPatch,Run" {
+		t.Fatalf("coding core order = %q, want Inspect,ApplyPatch,Run", got)
 	}
 }
 
@@ -330,18 +367,16 @@ func TestSetupRegistry_ReadUsesProviderPreciseTokenCounter(t *testing.T) {
 	}
 }
 
-func TestSetupRegistry_TaskToolsRemainVisibleAcrossInteractionModes(t *testing.T) {
-	t.Setenv("ENABLE_TOOL_SEARCH", "0")
-
+func TestSetupRegistryCodingSurfaceIsExactAcrossInteractionModes(t *testing.T) {
 	interactive := SetupRegistry(provider.NewProviderRef(nil), t.TempDir(), nil, sandbox.NoopBackend{}, nil, true)
 	interactiveNames := toolNamesByDefinition(interactive.Registry.VisibleDefinitions(nil))
-	if !interactiveNames["TaskCreate"] || !interactiveNames["TaskGet"] || !interactiveNames["TaskList"] || !interactiveNames["TaskUpdate"] {
+	if len(interactiveNames) != 3 || !interactiveNames["Inspect"] || !interactiveNames["ApplyPatch"] || !interactiveNames["Run"] {
 		t.Fatalf("interactive task visibility mismatch: %v", interactiveNames)
 	}
 
 	nonInteractive := SetupRegistry(provider.NewProviderRef(nil), t.TempDir(), nil, sandbox.NoopBackend{}, nil, false)
 	nonInteractiveNames := toolNamesByDefinition(nonInteractive.Registry.VisibleDefinitions(nil))
-	if !nonInteractiveNames["TaskCreate"] || !nonInteractiveNames["TaskGet"] || !nonInteractiveNames["TaskList"] || !nonInteractiveNames["TaskUpdate"] {
+	if len(nonInteractiveNames) != 3 || !nonInteractiveNames["Inspect"] || !nonInteractiveNames["ApplyPatch"] || !nonInteractiveNames["Run"] {
 		t.Fatalf("non-interactive task visibility mismatch: %v", nonInteractiveNames)
 	}
 }
@@ -360,8 +395,8 @@ func TestUpdateSessionContextRefreshesSearchAndPermissionScope(t *testing.T) {
 	if filepath.Clean(deps.BashTool.CurrentCWD()) != filepath.Clean(next) || len(allowed) != 1 || filepath.Clean(allowed[0]) != filepath.Clean(next) {
 		t.Fatalf("bash scope not refreshed: cwd=%q allowed=%v", deps.BashTool.CurrentCWD(), allowed)
 	}
-	if deps.Registry.Get("Glob") == nil || deps.Registry.Get("Grep") == nil {
-		t.Fatalf("search tools were not registered")
+	if deps.Registry.Get("Glob") != nil || deps.Registry.Get("Grep") != nil || deps.Registry.Get("ToolSearch") != nil {
+		t.Fatalf("legacy search tools were registered")
 	}
 }
 
@@ -403,116 +438,6 @@ func TestSessionSwitcherRejectsMalformedTargetMCPSettingsBeforeResume(t *testing
 	assertSessionSwitcherPreviousState(t, fixture)
 	if len(fixture.engine.resumeIDs) != 0 || fixture.engine.commits != 0 {
 		t.Fatalf("malformed MCP settings reached resume: resumes=%v commits=%d", fixture.engine.resumeIDs, fixture.engine.commits)
-	}
-}
-
-func TestGlobAllowedDirsAreIsolatedPerRegistry(t *testing.T) {
-	firstRoot := t.TempDir()
-	secondRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(firstRoot, "first.txt"), []byte("first"), 0o644); err != nil {
-		t.Fatalf("write first fixture: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(secondRoot, "second.txt"), []byte("second"), 0o644); err != nil {
-		t.Fatalf("write second fixture: %v", err)
-	}
-
-	first := SetupRegistry(provider.NewProviderRef(nil), firstRoot, []string{firstRoot}, sandbox.NoopBackend{}, nil)
-	second := SetupRegistry(provider.NewProviderRef(nil), secondRoot, []string{secondRoot}, sandbox.NoopBackend{}, nil)
-	t.Cleanup(func() {
-		stopScheduleForTest(t, first)
-		stopScheduleForTest(t, second)
-	})
-
-	firstResult := first.Registry.ExecuteTool(context.Background(), "Glob", map[string]any{"pattern": "*.txt"})
-	if firstResult.IsError || !strings.Contains(firstResult.Content, "first.txt") || strings.Contains(firstResult.Content, "second.txt") {
-		t.Fatalf("first registry Glob leaked process-global search state: error=%v content=%q", firstResult.IsError, firstResult.Content)
-	}
-	secondResult := second.Registry.ExecuteTool(context.Background(), "Glob", map[string]any{"pattern": "*.txt"})
-	if secondResult.IsError || !strings.Contains(secondResult.Content, "second.txt") || strings.Contains(secondResult.Content, "first.txt") {
-		t.Fatalf("second registry Glob leaked process-global search state: error=%v content=%q", secondResult.IsError, secondResult.Content)
-	}
-}
-
-func TestGlobUpdateSessionContextUsesScopedCwdWithoutChdir(t *testing.T) {
-	initial := t.TempDir()
-	next := t.TempDir()
-	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(next, "next.txt"), []byte("next"), 0o644); err != nil {
-		t.Fatalf("write next fixture: %v", err)
-	}
-
-	deps := SetupRegistry(provider.NewProviderRef(nil), initial, []string{initial}, sandbox.NoopBackend{}, nil)
-	t.Cleanup(func() {
-		stopScheduleForTest(t, deps)
-	})
-	deps.UpdateSessionContext(next, []string{next})
-
-	result := deps.Registry.ExecuteTool(context.Background(), "Glob", map[string]any{"pattern": "*.txt"})
-	if result.IsError || !strings.Contains(result.Content, "next.txt") {
-		t.Fatalf("updated scoped cwd was not used: error=%v content=%q", result.IsError, result.Content)
-	}
-	denied := deps.Registry.ExecuteTool(context.Background(), "Glob", map[string]any{
-		"pattern": filepath.Join(outside, "*.txt"),
-	})
-	if !denied.IsError || !strings.Contains(strings.ToLower(denied.Content), "outside the allowed working directories") {
-		t.Fatalf("absolute pattern outside updated allowedDirs must be denied: error=%v content=%q", denied.IsError, denied.Content)
-	}
-}
-
-func TestSetupRegistryGrepAllowedDirsAndSessionCwd(t *testing.T) {
-	initial := t.TempDir()
-	next := t.TempDir()
-	outside := t.TempDir()
-	if err := os.WriteFile(filepath.Join(initial, "initial.txt"), []byte("needle\n"), 0o644); err != nil {
-		t.Fatalf("write initial fixture: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(next, "next.txt"), []byte("needle\n"), 0o644); err != nil {
-		t.Fatalf("write next fixture: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(outside, "outside.txt"), []byte("needle\n"), 0o644); err != nil {
-		t.Fatalf("write outside fixture: %v", err)
-	}
-
-	deps := SetupRegistry(provider.NewProviderRef(nil), initial, []string{initial}, sandbox.NoopBackend{}, nil)
-	t.Cleanup(func() { stopScheduleForTest(t, deps) })
-	result := deps.Registry.ExecuteTool(context.Background(), "Grep", map[string]any{"pattern": "needle"})
-	if result.IsError || !strings.Contains(result.Content, "initial.txt") || strings.Contains(result.Content, "next.txt") {
-		t.Fatalf("initial scoped Grep mismatch: error=%v content=%q", result.IsError, result.Content)
-	}
-	denied := deps.Registry.ExecuteTool(context.Background(), "Grep", map[string]any{"pattern": "needle", "path": outside})
-	if !denied.IsError || !strings.Contains(strings.ToLower(denied.Content), "outside the allowed working directories") {
-		t.Fatalf("outside Grep path must take production permission denial: error=%v content=%q", denied.IsError, denied.Content)
-	}
-
-	deps.UpdateSessionContext(next, []string{next})
-	updated := deps.Registry.ExecuteTool(context.Background(), "Grep", map[string]any{"pattern": "needle"})
-	if updated.IsError || !strings.Contains(updated.Content, "next.txt") || strings.Contains(updated.Content, "initial.txt") {
-		t.Fatalf("updated scoped Grep mismatch: error=%v content=%q", updated.IsError, updated.Content)
-	}
-}
-
-func TestSetupRegistryGrepScopeIsIsolatedPerRegistry(t *testing.T) {
-	firstRoot := t.TempDir()
-	secondRoot := t.TempDir()
-	if err := os.WriteFile(filepath.Join(firstRoot, "first.txt"), []byte("needle\n"), 0o644); err != nil {
-		t.Fatalf("write first fixture: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(secondRoot, "second.txt"), []byte("needle\n"), 0o644); err != nil {
-		t.Fatalf("write second fixture: %v", err)
-	}
-	first := SetupRegistry(provider.NewProviderRef(nil), firstRoot, []string{firstRoot}, sandbox.NoopBackend{}, nil)
-	second := SetupRegistry(provider.NewProviderRef(nil), secondRoot, []string{secondRoot}, sandbox.NoopBackend{}, nil)
-	t.Cleanup(func() {
-		stopScheduleForTest(t, first)
-		stopScheduleForTest(t, second)
-	})
-	firstResult := first.Registry.ExecuteTool(context.Background(), "Grep", map[string]any{"pattern": "needle"})
-	secondResult := second.Registry.ExecuteTool(context.Background(), "Grep", map[string]any{"pattern": "needle"})
-	if firstResult.IsError || !strings.Contains(firstResult.Content, "first.txt") || strings.Contains(firstResult.Content, "second.txt") {
-		t.Fatalf("first registry Grep scope leaked: error=%v content=%q", firstResult.IsError, firstResult.Content)
-	}
-	if secondResult.IsError || !strings.Contains(secondResult.Content, "second.txt") || strings.Contains(secondResult.Content, "first.txt") {
-		t.Fatalf("second registry Grep scope leaked: error=%v content=%q", secondResult.IsError, secondResult.Content)
 	}
 }
 

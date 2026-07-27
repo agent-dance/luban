@@ -1,0 +1,21 @@
+diff --git a/iwyu.cc b/iwyu.cc
+index ab2eef7..2700bfd 100644
+--- a/iwyu.cc
++++ b/iwyu.cc
+@@ -1740,6 +1740,16 @@ class IwyuBaseAstVisitor : public BaseAstVisitor<Derived> {
+     if (CanIgnoreCurrentASTNode())
+       return true;
+ 
++    // An explicit specialization requires the primary template to have been
++    // declared before it. Keep the declaration (or the header providing it)
++    // available at the specialization site.
++    if (const FunctionTemplateDecl* primary = decl->getPrimaryTemplate()) {
++      if (decl->getTemplateSpecializationKind() ==
++          clang::TSK_ExplicitSpecialization) {
++        ReportDeclForwardDeclareUse(CurrentLoc(), primary);
++      }
++    }
++
+     if (decl->isThisDeclarationADefinition()) {
+       // For non-member function definitions, report use of all previously seen
+       // decls.

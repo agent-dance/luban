@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -37,7 +38,8 @@ func (s *recordingLifecycleSink) HandleLifecycleEvent(_ context.Context, event R
 
 func TestRuntimeLifecyclePersistsResumableActiveState(t *testing.T) {
 	root := t.TempDir()
-	store := NewRuntimeLifecycle(root)
+	storageRoot := filepath.Join(t.TempDir(), "runtime")
+	store := NewRuntimeLifecycleAt(root, storageRoot)
 
 	started := []RuntimeLifecycleEvent{
 		{Type: LifecycleToolStart, EntityID: "tool-1", ToolName: "Bash"},
@@ -51,7 +53,7 @@ func TestRuntimeLifecyclePersistsResumableActiveState(t *testing.T) {
 		}
 	}
 
-	resumed := NewRuntimeLifecycle(root)
+	resumed := NewRuntimeLifecycleAt(root, storageRoot)
 	active, err := resumed.ActiveState()
 	if err != nil {
 		t.Fatalf("ActiveState: %v", err)
@@ -71,7 +73,7 @@ func TestRuntimeLifecyclePersistsResumableActiveState(t *testing.T) {
 			t.Fatalf("Publish(%s): %v", event.Type, err)
 		}
 	}
-	active, err = NewRuntimeLifecycle(root).ActiveState()
+	active, err = NewRuntimeLifecycleAt(root, storageRoot).ActiveState()
 	if err != nil {
 		t.Fatalf("ActiveState after completion: %v", err)
 	}
@@ -82,7 +84,7 @@ func TestRuntimeLifecyclePersistsResumableActiveState(t *testing.T) {
 
 func TestRuntimeLifecyclePersistsBeforeUnifiedDispatch(t *testing.T) {
 	root := t.TempDir()
-	store := NewRuntimeLifecycle(root)
+	store := NewRuntimeLifecycleAt(root, filepath.Join(t.TempDir(), "runtime"))
 	sinkA := &recordingLifecycleSink{store: store}
 	sinkB := &recordingLifecycleSink{store: store}
 	store.Subscribe(sinkA)
@@ -104,7 +106,7 @@ func TestRuntimeLifecyclePersistsBeforeUnifiedDispatch(t *testing.T) {
 }
 
 func TestRuntimeLifecyclePublishIsIdempotentByEventID(t *testing.T) {
-	store := NewRuntimeLifecycle(t.TempDir())
+	store := NewRuntimeLifecycleAt(t.TempDir(), filepath.Join(t.TempDir(), "runtime"))
 	sink := &recordingLifecycleSink{store: store}
 	store.Subscribe(sink)
 	event := RuntimeLifecycleEvent{

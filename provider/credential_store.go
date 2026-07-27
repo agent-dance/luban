@@ -49,6 +49,9 @@ type CredentialEntry struct {
 	// APIStyle selects the compatibility protocol used for model discovery and
 	// inference. Empty entries predate compatible aggregate providers.
 	APIStyle APIStyle `json:"api_style,omitempty"`
+	// APIFormat is an explicit OpenAI-family wire override. It is deliberately
+	// separate from Models[].APIFormat, which is discovered catalog metadata.
+	APIFormat string `json:"api_format,omitempty"`
 
 	// DisplayName and UserDefined persist providers created through the generic
 	// gateway flow without requiring a second configuration file.

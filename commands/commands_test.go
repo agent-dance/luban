@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -15,6 +16,21 @@ import (
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/types"
 )
+
+type responsesWebSocketCommandProvider struct {
+	model string
+}
+
+func (*responsesWebSocketCommandProvider) Name() string      { return "openai" }
+func (p *responsesWebSocketCommandProvider) ModelID() string { return p.model }
+func (*responsesWebSocketCommandProvider) CreateStream(context.Context, provider.Params) (<-chan types.StreamEvent, error) {
+	stream := make(chan types.StreamEvent)
+	close(stream)
+	return stream, nil
+}
+func (*responsesWebSocketCommandProvider) Capabilities() provider.ProviderCapabilities {
+	return provider.ProviderCapabilities{ResponsesWebSocket: provider.CapabilitySupported}
+}
 
 // ---------------------------------------------------------------------------
 // Minimal stub implementations for testing
@@ -269,6 +285,35 @@ func TestModel_SwitchModel(t *testing.T) {
 	}
 	if ql.model != "new-model" {
 		t.Fatalf("expected new-model, got %q", ql.model)
+	}
+}
+
+func TestModelProviderSwitchRetainsResponsesWebSocketRuntimeOverride(t *testing.T) {
+	t.Setenv("LUBAN_TEST_OPENAI_KEY", "fake-key")
+	registry := provider.NewProviderRegistry()
+	var captured provider.Config
+	registry.Register(provider.ProviderInfo{Name: "openai", EnvKey: "LUBAN_TEST_OPENAI_KEY"}, func(cfg provider.Config, model string) (provider.Provider, error) {
+		captured = cfg
+		return &responsesWebSocketCommandProvider{model: model}, nil
+	})
+
+	ql := &stubQL{model: "old-model"}
+	ctx := newCtx(ql)
+	ctx.ProviderRegistry = registry
+	ctx.ProviderRuntimeOverrides = provider.RuntimeOverrides{
+		APIFormat:          "responses",
+		ResponsesWebSocket: provider.CapabilitySupported,
+	}
+	r := commands.NewRegistry()
+	commands.RegisterBuiltins(r)
+	if err := r.Find("model").Execute(ctx, "openai/gpt-5.6-sol"); err != nil {
+		t.Fatalf("model switch: %v", err)
+	}
+	if captured.APIFormat != "responses" || captured.ResponsesWebSocket != provider.CapabilitySupported {
+		t.Fatalf("provider reconstruction config = %#v", captured)
+	}
+	if ql.provider == nil || ql.model != "gpt-5.6-sol" {
+		t.Fatalf("query loop provider/model = %T/%q", ql.provider, ql.model)
 	}
 }
 

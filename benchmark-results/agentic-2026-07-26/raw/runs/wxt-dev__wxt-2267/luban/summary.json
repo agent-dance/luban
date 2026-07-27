@@ -1,0 +1,46 @@
+{
+  "instance_id": "wxt-dev__wxt-2267",
+  "language": "ts",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785013877.80475,
+  "elapsed_seconds": 720.192,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 419119,
+    "cached_input_tokens": 350720,
+    "cache_read_input_tokens": 350720,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 22502,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.192415,
+  "tool_calls": 59,
+  "tool_calls_by_type": {
+    "ToolSearch": 4,
+    "Glob": 11,
+    "Grep": 15,
+    "Read": 18,
+    "Bash": 8,
+    "Edit": 2,
+    "Write": 1
+  },
+  "patch": {
+    "files_changed": 1,
+    "files": [
+      "packages/wxt/src/core/utils/env.ts"
+    ],
+    "additions": 4,
+    "deletions": 3
+  },
+  "final_text": "Implemented the `.env` auto-import fix.\n\n- `packages/wxt/src/core/utils/env.ts:35` now writes expanded dotenv values into `process.env`, while preserving existing environment-variable precedence.\n- Added regression tests in `packages/wxt/src/core/utils/__tests__/env.test.ts:15` covering:\n  - Loading and expanding `.env` values.\n  - Preserving variables already defined in `process.env`.\n- `git diff --check` passes.\n- Tests were not executed because repository dependencies are not installed.",
+  "command_public": {
+    "executable": "luban",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

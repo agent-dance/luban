@@ -1,9 +1,9 @@
 {
   "schema_version": "1",
   "id": "tool_search_deferred_tool",
-  "title": "keeps deferred tools hidden until ToolSearch returns a tool reference",
+  "title": "keeps core tools eager while rare tools stay hidden until ToolSearch returns a tool reference",
   "status": "active",
-  "updated_at": "2026-07-10",
+  "updated_at": "2026-07-26",
   "source_tests": ["internal/runtime/loop/integration_test.go:TestIntegrationToolSearchLoadsDeferredToolsOnNextTurn"],
   "coverage_tags": ["tools.deferred_visibility", "tools.tool_search", "tools.tool_reference_blocks"],
   "parity_tasks": ["task_11", "task_12", "task_16"],
@@ -49,7 +49,7 @@
       {"type": "text", "text": "TaskCreate is now available"}
     ],
     "tool_visibility_turns": [
-      {"turn": 0, "has": ["ToolSearch"], "missing": ["Read", "TaskCreate"]},
+      {"turn": 0, "has": ["Read", "ToolSearch"], "missing": ["TaskCreate"]},
       {"turn": 1, "has": ["TaskCreate"], "missing": []}
     ]
   }

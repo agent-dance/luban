@@ -1,0 +1,172 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-dance.invalid/schemas/agentic-report-input-v1.json",
+  "title": "Agentic benchmark report input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "report", "statistics", "artifact_sources",
+    "diagnostic_experiments", "optimization_ledger", "public_references",
+    "failure_annotations", "reproduction", "limitations"
+  ],
+  "properties": {
+    "schema_version": { "const": "agentic-bench/report-input-v1" },
+    "report": { "$ref": "#/$defs/reportMeta" },
+    "statistics": { "$ref": "#/$defs/statistics" },
+    "artifact_sources": { "type": "array", "items": { "$ref": "#/$defs/artifactSource" } },
+    "diagnostic_experiments": { "type": "array", "items": { "$ref": "#/$defs/diagnosticExperiment" } },
+    "optimization_ledger": { "$ref": "#/$defs/fileReference" },
+    "public_references": { "type": "array", "items": { "$ref": "#/$defs/publicReference" } },
+    "failure_annotations": { "type": "array", "items": { "$ref": "#/$defs/failureAnnotation" } },
+    "reproduction": { "type": "array", "items": { "$ref": "#/$defs/reproduction" } },
+    "limitations": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "nonNegativeInteger": { "type": "integer", "minimum": 0 },
+    "nonNegativeNumber": { "type": "number", "minimum": 0 },
+    "ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+    "reportMeta": {
+      "type": "object", "additionalProperties": false,
+      "required": ["title", "subtitle", "benchmark", "benchmark_version", "benchmark_contract_id", "language", "baseline_agent_id", "contender_agent_id", "as_of"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "subtitle": { "type": "string" },
+        "benchmark": { "type": "string", "minLength": 1 },
+        "benchmark_version": { "type": "string", "minLength": 1 },
+        "benchmark_contract_id": { "enum": ["deepswe-v1.1-pilot5-development", "deepswe-v1.1-full113"] },
+        "language": { "enum": ["en", "zh-CN", "de", "ja", "ko", "ru"] },
+        "baseline_agent_id": { "$ref": "#/$defs/id" },
+        "contender_agent_id": { "$ref": "#/$defs/id" },
+        "as_of": { "type": "string", "format": "date-time" }
+      }
+    },
+    "statistics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["confidence_level", "method", "resamples", "seed"],
+      "properties": {
+        "confidence_level": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 },
+        "method": { "const": "paired-task-cluster-bootstrap-v1" },
+        "resamples": { "type": "integer", "minimum": 1000 },
+        "seed": { "type": "integer" }
+      }
+    },
+    "artifactSource": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "label", "class", "root", "ledger_file_sha256", "description"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "type": "string", "minLength": 1 },
+        "class": { "enum": ["pilot", "formal"] },
+        "root": { "type": "string", "minLength": 1 },
+        "ledger_file_sha256": { "$ref": "#/$defs/sha256" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fileReference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": { "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/sha256" } }
+    },
+    "diagnosticExperiment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "label", "class", "description", "source_note", "runs"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "label": { "type": "string", "minLength": 1 },
+        "class": { "const": "diagnostic_canary" },
+        "description": { "type": "string", "minLength": 1 },
+        "source_note": { "type": "string", "minLength": 1 },
+        "runs": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/diagnosticRun" } }
+      }
+    },
+    "diagnosticRun": {
+      "type": "object", "additionalProperties": false,
+      "required": ["task_id", "agent_id", "variant", "provider", "model", "reasoning_effort", "repetition", "metrics", "tools"],
+      "properties": {
+        "task_id": { "$ref": "#/$defs/id" }, "agent_id": { "$ref": "#/$defs/id" },
+        "variant": { "type": "string", "minLength": 1 }, "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 }, "reasoning_effort": { "type": "string", "minLength": 1 },
+        "repetition": { "$ref": "#/$defs/nonNegativeInteger" }, "passed": { "type": "boolean" },
+        "metrics": { "$ref": "#/$defs/optionalMetrics" },
+        "tools": { "type": "array", "items": { "$ref": "#/$defs/toolStat" } }
+      }
+    },
+    "optionalMetrics": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "wall_time_seconds": { "$ref": "#/$defs/nonNegativeNumber" },
+        "trial_duration_seconds": { "$ref": "#/$defs/nonNegativeNumber" },
+        "llm_calls_started": { "$ref": "#/$defs/nonNegativeInteger" },
+        "provider_rounds": { "$ref": "#/$defs/nonNegativeInteger" },
+        "provider_errors": { "$ref": "#/$defs/nonNegativeInteger" },
+        "tool_bearing_rounds": { "$ref": "#/$defs/nonNegativeInteger" },
+        "tool_invocations": { "$ref": "#/$defs/nonNegativeInteger" },
+        "physical_tool_operations": { "$ref": "#/$defs/nonNegativeInteger" },
+        "native_events": { "$ref": "#/$defs/nonNegativeInteger" },
+        "tool_errors": { "$ref": "#/$defs/nonNegativeInteger" },
+        "tool_critical_path_ms": { "$ref": "#/$defs/nonNegativeInteger" },
+        "tool_total_latency_ms": { "$ref": "#/$defs/nonNegativeInteger" },
+        "tool_queue_ms": { "$ref": "#/$defs/nonNegativeInteger" },
+        "input_tokens": { "$ref": "#/$defs/nonNegativeInteger" },
+		"cached_input_tokens": { "$ref": "#/$defs/nonNegativeInteger" },
+		"cache_write_input_tokens": { "$ref": "#/$defs/nonNegativeInteger" },
+		"output_tokens": { "$ref": "#/$defs/nonNegativeInteger" },
+        "reasoning_output_tokens": { "$ref": "#/$defs/nonNegativeInteger" },
+        "request_cache": { "$ref": "#/$defs/requestCache" },
+        "comparable_cost": { "$ref": "#/$defs/nonNegativeNumber" },
+        "comparable_cost_basis": { "enum": ["same_gateway_frozen_rate_card_all_transport", "development_non_billing_same_gateway_frozen_token_estimate"] },
+        "provider_reported_cost": { "$ref": "#/$defs/nonNegativeNumber" }
+      }
+    },
+    "requestCache": {
+      "type": "object", "additionalProperties": false, "required": ["hits", "observed"],
+      "properties": { "hits": { "$ref": "#/$defs/nonNegativeInteger" }, "observed": { "type": "integer", "minimum": 1 } }
+    },
+    "toolStat": {
+      "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 }, "calls": { "$ref": "#/$defs/nonNegativeInteger" },
+        "errors": { "$ref": "#/$defs/nonNegativeInteger" }, "duration_ms": { "$ref": "#/$defs/nonNegativeInteger" }
+      }
+    },
+    "publicReference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "benchmark", "version", "agent", "model", "reasoning_effort", "components", "source_url", "accessed_at", "notes"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "benchmark": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 }, "agent": { "type": "string", "minLength": 1 },
+        "model": { "type": "string", "minLength": 1 }, "reasoning_effort": { "type": "string" },
+        "computed_artifact": { "enum": ["deepswe-gpt-5.6-sol-xhigh-public-v1"] },
+        "score": false, "passed": false, "total": false, "cost_per_task": false,
+        "minutes_per_task": false, "turns_per_task": false, "tokens_per_task": false, "token_weighted_cache_hit": false,
+        "components": { "type": "array", "maxItems": 0 },
+        "source_url": { "type": "string", "format": "uri", "pattern": "^https://" },
+        "accessed_at": { "type": "string", "format": "date-time" }, "notes": { "type": "string", "minLength": 1 }
+      }
+    },
+    "referenceComponent": {
+      "type": "object", "additionalProperties": false, "required": ["name"],
+      "properties": { "name": { "type": "string", "minLength": 1 }, "score": { "$ref": "#/$defs/ratio" } }
+    },
+    "failureAnnotation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["experiment_id", "task_id", "agent_id", "repetition", "category", "summary", "evidence"],
+      "properties": {
+        "experiment_id": { "$ref": "#/$defs/id" }, "task_id": { "$ref": "#/$defs/id" }, "agent_id": { "$ref": "#/$defs/id" },
+        "repetition": { "$ref": "#/$defs/nonNegativeInteger" },
+        "category": { "enum": ["implementation", "incomplete", "regression", "validation", "timeout", "infrastructure", "protocol", "unknown"] },
+        "summary": { "type": "string", "minLength": 1 },
+        "evidence": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "reproduction": {
+      "type": "object", "additionalProperties": false, "required": ["label", "argv"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "argv": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "pattern": "^[^\\u0000\\r\\n]+$" } }
+      }
+    }
+  }
+}

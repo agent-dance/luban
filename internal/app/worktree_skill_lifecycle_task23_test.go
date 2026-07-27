@@ -15,6 +15,7 @@ import (
 	"github.com/agent-dance/luban/internal/runtime/engine"
 	"github.com/agent-dance/luban/internal/store/session"
 	"github.com/agent-dance/luban/provider"
+	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/sandbox"
 	"github.com/agent-dance/luban/skills"
 	"github.com/agent-dance/luban/types"
@@ -78,6 +79,10 @@ func TestWorktreeEnterExitRetargetsOneManagerAndKeepsExactSessionNamespace(t *te
 	}}
 	ref := providerpkgRef(provider)
 	deps := SetupRegistry(ref, rootA, []string{rootA}, sandbox.NoopBackend{}, nil)
+	// This fixture exercises the non-coding worktree lifecycle surface. The
+	// production coding profile is intentionally exact-three, so opt this
+	// integration-only registry into its broader embedding catalog explicitly.
+	deps.Registry.SetModelToolProfile(registry.ModelToolProfileLegacy)
 	t.Cleanup(func() {
 		stopScheduleForTest(t, deps)
 		deps.StopWebFetchCache()
@@ -207,6 +212,7 @@ func TestWorktreeEnterThenExitInOneRunKeepsCatalogFrozenAndReturnsToOrigin(t *te
 	}}
 	ref := providerpkgRef(provider)
 	deps := SetupRegistry(ref, rootA, []string{rootA}, sandbox.NoopBackend{}, nil)
+	deps.Registry.SetModelToolProfile(registry.ModelToolProfileLegacy)
 	t.Cleanup(func() {
 		stopScheduleForTest(t, deps)
 		deps.StopWebFetchCache()
@@ -299,6 +305,7 @@ func TestWorktreeEnterThenAgentAndTeamInOneRunFailBeforeRetargetedSkillRead(t *t
 	}}
 	ref := providerpkgRef(provider)
 	deps := SetupRegistry(ref, rootA, []string{rootA}, sandbox.NoopBackend{}, nil)
+	deps.Registry.SetModelToolProfile(registry.ModelToolProfileLegacy)
 	t.Cleanup(func() {
 		stopScheduleForTest(t, deps)
 		deps.StopWebFetchCache()

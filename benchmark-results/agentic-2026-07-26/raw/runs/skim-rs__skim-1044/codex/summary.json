@@ -1,0 +1,51 @@
+{
+  "instance_id": "skim-rs__skim-1044",
+  "language": "rust",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785027469.146692,
+  "elapsed_seconds": 724.323,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 3594012,
+    "cached_input_tokens": 3466496,
+    "output_tokens": 16307,
+    "reasoning_output_tokens": 9448,
+    "cache_read_input_tokens": 3466496,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 2.860038,
+  "tool_calls": 40,
+  "tool_calls_by_type": {
+    "command_execution": 34,
+    "file_change": 6
+  },
+  "patch": {
+    "files_changed": 11,
+    "files": [
+      "ARCHITECTURE.md",
+      "man/man1/sk.1",
+      "shell/completion.bash",
+      "shell/completion.fish",
+      "shell/completion.nu",
+      "shell/completion.zsh",
+      "src/options.rs",
+      "src/popup/tmux.rs",
+      "src/popup/zellij.rs",
+      "src/tui/mod.rs",
+      "tests/options.rs"
+    ],
+    "additions": 54,
+    "deletions": 22
+  },
+  "final_text": "Implemented fzf-compatible `--border=none`.\n\n- Normalizes `none` to the existing borderless state, including tmux/zellij popups.\n- Added a TUI snapshot regression test for `--border=none`.\n- Updated architecture docs, man page, and shell completions.\n- Passed focused border tests, formatting, and offline Clippy. Clippy reports five unrelated pre-existing warnings.",
+  "command_public": {
+    "executable": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

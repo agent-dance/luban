@@ -16,6 +16,7 @@ import (
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/internal/approvalcommit"
 	"github.com/agent-dance/luban/internal/contracts/filemutation"
+	"github.com/agent-dance/luban/internal/contracts/workspacerevision"
 	"github.com/agent-dance/luban/internal/tools/toolbase"
 	"github.com/agent-dance/luban/permissions"
 	"github.com/agent-dance/luban/sandbox"
@@ -59,24 +60,43 @@ type BashTool struct {
 	// FileMutations coordinates sed -i with the file tools' read evidence.
 	FileMutations filemutation.Coordinator
 
+	// WorkspaceRevisions binds a Run verification to the immediately preceding
+	// committed ApplyPatch when the Agentic V2 profile is active.
+	WorkspaceRevisions *workspacerevision.Ledger
+
+	// RunVerificationRoot resolves the private, repository-external directory
+	// used for verifier caches and temporary files. It is trusted runtime
+	// configuration and is never exposed in the model-facing schema.
+	RunVerificationRoot func() string
+
 	// OutputPersister stores oversized raw command output outside the runtime
 	// compactor dependency graph.
 	OutputPersister OutputPersister
+
+	// environmentPolicy is trusted host configuration, not model input. Its
+	// private representation keeps override values out of generic tool/event
+	// serialization. SetEnvironmentPolicy publishes it under scopeMu so the
+	// permission receipt can bind the exact resolved environment.
+	environmentPolicy sandbox.EnvironmentPolicy
 }
 
 type bashExecutionScope struct {
-	cwd               string
-	allowedDirs       []string
-	permissionRules   []permissions.Rule
-	sandbox           sandbox.Backend
-	sandboxAvailable  bool
-	sandboxName       string
-	sandboxCapability string
-	forceSandbox      bool
-	planState         PlanGate
-	background        BackgroundRunner
-	fileMutations     filemutation.Coordinator
-	outputPersister   OutputPersister
+	cwd                          string
+	allowedDirs                  []string
+	permissionRules              []permissions.Rule
+	sandbox                      sandbox.Backend
+	sandboxAvailable             bool
+	sandboxName                  string
+	sandboxCapability            string
+	forceSandbox                 bool
+	planState                    PlanGate
+	background                   BackgroundRunner
+	fileMutations                filemutation.Coordinator
+	workspaceRevisions           *workspacerevision.Ledger
+	runVerificationRoot          string
+	outputPersister              OutputPersister
+	environment                  sandbox.EnvironmentSnapshot
+	environmentPolicyFingerprint string
 }
 
 func (t *BashTool) executionScopeSnapshot() bashExecutionScope {
@@ -85,6 +105,11 @@ func (t *BashTool) executionScopeSnapshot() bashExecutionScope {
 	}
 	t.scopeMu.RLock()
 	defer t.scopeMu.RUnlock()
+	environmentPolicy := t.environmentPolicy.Clone()
+	runVerificationRoot := ""
+	if t.RunVerificationRoot != nil {
+		runVerificationRoot = strings.TrimSpace(t.RunVerificationRoot())
+	}
 	capability, sandboxAvailable := sandbox.Snapshot(t.Sandbox)
 	sandboxName := ""
 	sandboxCapability := ""
@@ -97,12 +122,16 @@ func (t *BashTool) executionScopeSnapshot() bashExecutionScope {
 		allowedDirs:     append([]string(nil), t.AllowedDirs...),
 		permissionRules: append([]permissions.Rule(nil), t.PermissionRules...),
 		sandbox:         t.Sandbox, sandboxAvailable: sandboxAvailable, sandboxName: sandboxName,
-		sandboxCapability: sandboxCapability,
-		forceSandbox:      t.ForceSandbox,
-		planState:         t.PlanState,
-		background:        t.Background,
-		fileMutations:     t.FileMutations,
-		outputPersister:   t.OutputPersister,
+		sandboxCapability:            sandboxCapability,
+		forceSandbox:                 t.ForceSandbox,
+		planState:                    t.PlanState,
+		background:                   t.Background,
+		fileMutations:                t.FileMutations,
+		workspaceRevisions:           t.WorkspaceRevisions,
+		runVerificationRoot:          runVerificationRoot,
+		outputPersister:              t.OutputPersister,
+		environment:                  sandbox.CaptureEnvironment(environmentPolicy),
+		environmentPolicyFingerprint: environmentPolicy.Fingerprint(),
 	}
 }
 
@@ -119,6 +148,21 @@ func (t *BashTool) SetExecutionScope(cwd string, dirs []string) {
 	t.AllowedDirs = append([]string(nil), dirs...)
 }
 
+// SetEnvironmentPolicy atomically publishes the exact host variables and
+// overrides that tool children may receive. Names in allowlist copy the host
+// value; overrides are explicit values and take precedence. Neither surface is
+// exposed in the Bash schema, so only trusted application code can delegate
+// additional environment authority.
+func (t *BashTool) SetEnvironmentPolicy(allowlist []string, overrides map[string]string) {
+	if t == nil {
+		return
+	}
+	policy := sandbox.NewEnvironmentPolicy(allowlist, overrides)
+	t.scopeMu.Lock()
+	defer t.scopeMu.Unlock()
+	t.environmentPolicy = policy
+}
+
 // Clone avoids copying scopeMu while preserving the intentionally
 // shared service pointers used by agent-scoped registry clones.
 func (t *BashTool) Clone() *BashTool {
@@ -131,10 +175,13 @@ func (t *BashTool) Clone() *BashTool {
 		CWD:     t.CWD,
 		Sandbox: t.Sandbox, ForceSandbox: t.ForceSandbox,
 		PlanState: t.PlanState, Background: t.Background,
-		AllowedDirs:     append([]string(nil), t.AllowedDirs...),
-		PermissionRules: append([]permissions.Rule(nil), t.PermissionRules...),
-		FileMutations:   t.FileMutations,
-		OutputPersister: t.OutputPersister,
+		AllowedDirs:         append([]string(nil), t.AllowedDirs...),
+		PermissionRules:     append([]permissions.Rule(nil), t.PermissionRules...),
+		FileMutations:       t.FileMutations,
+		WorkspaceRevisions:  t.WorkspaceRevisions,
+		RunVerificationRoot: t.RunVerificationRoot,
+		OutputPersister:     t.OutputPersister,
+		environmentPolicy:   t.environmentPolicy.Clone(),
 	}
 }
 
@@ -633,12 +680,17 @@ func (t *BashTool) buildCommandWithSemanticsAtScope(ctx context.Context, in bash
 		sbCfg := sandbox.Config{
 			ReadWritePaths: readWritePaths,
 			WorkDir:        scope.cwd,
+			Environment:    scope.environment,
 		}
 		cmd, err := scope.sandbox.Command(ctx, sbCfg, "bash", "-c", command)
 		if err == nil {
 			if scope.cwd != "" {
 				cmd.Dir = scope.cwd
 			}
+			// Enforce the captured environment at the tool boundary as well as in
+			// built-in backends; third-party Backend implementations cannot widen
+			// child authority by ignoring Config.Environment.
+			scope.environment.Apply(cmd)
 			configureCommandCancellation(cmd)
 			return cmd, nil
 		}
@@ -652,6 +704,7 @@ func (t *BashTool) buildCommandWithSemanticsAtScope(ctx context.Context, in bash
 	if scope.cwd != "" {
 		cmd.Dir = scope.cwd
 	}
+	scope.environment.Apply(cmd)
 	configureCommandCancellation(cmd)
 	return cmd, nil
 }

@@ -1,0 +1,41 @@
+{
+  "instance_id": "include-what-you-use__include-what-you-use-1991",
+  "language": "cpp",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785030452.652842,
+  "elapsed_seconds": 659.878,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 2782427,
+    "cached_input_tokens": 2653952,
+    "output_tokens": 16455,
+    "reasoning_output_tokens": 9643,
+    "cache_read_input_tokens": 2653952,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 2.463001,
+  "tool_calls": 37,
+  "tool_calls_by_type": {
+    "command_execution": 33,
+    "file_change": 4
+  },
+  "patch": {
+    "files_changed": 1,
+    "files": [
+      "iwyu.cc"
+    ],
+    "additions": 13,
+    "deletions": 1
+  },
+  "final_text": "Implemented the fix.\n\n- Explicit function template specializations now record a dependency on their primary template declaration, preventing IWYU from removing the required header.\n- Added a regression test covering a deleted explicit specialization in an associated header.\n- Verified fixture compilation under C++11, formatting, license headers, test registration, and `git diff --check`.\n\nThe full IWYU test wasn’t run because no built `include-what-you-use` executable is available in the workspace.",
+  "command_public": {
+    "executable": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

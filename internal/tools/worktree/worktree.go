@@ -80,7 +80,7 @@ func (s *WorktreeState) loadFromDisk(repoRoot string) bool {
 		return false
 	}
 	stateFile := worktreeStateFilePath(repoRoot, s.SessionID)
-	data, err := os.ReadFile(stateFile)
+	data, err := secureio.ReadPrivateRuntimeRegularFile(stateFile)
 	if err != nil {
 		return false
 	}
@@ -116,7 +116,7 @@ func (s *WorktreeState) saveToDiskLocked() error {
 	if strings.TrimSpace(s.StateFile) == "" {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(s.StateFile), 0755); err != nil {
+	if err := secureio.EnsurePrivateRuntimeDirectory(filepath.Dir(s.StateFile)); err != nil {
 		return err
 	}
 	body := persistedWorktreeState{
@@ -138,9 +138,11 @@ func (s *WorktreeState) saveToDiskLocked() error {
 	}
 	writeFile := s.writeFile
 	if writeFile == nil {
-		writeFile = secureio.AtomicWriteFile
+		writeFile = func(path string, data []byte, _ os.FileMode) error {
+			return secureio.AtomicWritePrivateRuntimeFile(path, data)
+		}
 	}
-	return writeFile(s.StateFile, append(data, '\n'), 0644)
+	return writeFile(s.StateFile, append(data, '\n'), 0600)
 }
 
 func (s *WorktreeState) clearLocked() {
@@ -156,9 +158,11 @@ func (s *WorktreeState) clearLocked() {
 		if err == nil {
 			writeFile := s.writeFile
 			if writeFile == nil {
-				writeFile = secureio.AtomicWriteFile
+				writeFile = func(path string, data []byte, _ os.FileMode) error {
+					return secureio.AtomicWritePrivateRuntimeFile(path, data)
+				}
 			}
-			_ = writeFile(stateFile, append(body, '\n'), 0o644)
+			_ = writeFile(stateFile, append(body, '\n'), 0o600)
 		}
 	}
 	s.Active = false

@@ -43,17 +43,24 @@ func GetStructuredCompactPrompt(customInstructions string) string {
 // request deliberately sends no tools and explicitly disables thinking so the
 // compact model can only produce a text summary.
 func NewLLMStructuredSummarizeFunc(p provider.Provider) MessageSummarizeFunc {
+	return NewLLMStructuredSummarizeFuncWithServiceTier(p, "")
+}
+
+// NewLLMStructuredSummarizeFuncWithServiceTier binds compaction generations
+// to the same provider scheduling class as the conversation they summarize.
+func NewLLMStructuredSummarizeFuncWithServiceTier(p provider.Provider, serviceTier provider.ServiceTier) MessageSummarizeFunc {
 	return func(ctx context.Context, messages []types.Message, customInstructions string) (string, error) {
 		ctx = provider.WithDebugCall(ctx, provider.DebugCallCompaction, nil)
 		requestMessages := cloneMessages(messages)
 		requestMessages = append(requestMessages, types.UserMessage(GetStructuredCompactPrompt(customInstructions)))
 
 		params := provider.Params{
-			System:    CompactSystemPrompt,
-			Messages:  requestMessages,
-			MaxTokens: CompactMaxOutputTokens,
-			Tools:     nil,
-			Thinking:  &provider.ThinkingConfig{Enabled: false},
+			System:      CompactSystemPrompt,
+			Messages:    requestMessages,
+			MaxTokens:   CompactMaxOutputTokens,
+			Tools:       nil,
+			Thinking:    &provider.ThinkingConfig{Enabled: false},
+			ServiceTier: serviceTier,
 		}
 
 		return streamCompactSummary(ctx, p, params)

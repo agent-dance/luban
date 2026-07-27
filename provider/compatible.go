@@ -126,15 +126,29 @@ func (r *ProviderRegistry) RegisterCompatibleProvider(def CompatibleProviderDefi
 			return NewRetryProvider(raw, DefaultRetryConfig()), nil
 		}
 
-		raw := NewOpenAI(Config{
+		providerCfg := Config{
 			ProviderName:           name,
+			APIFormat:              normalizeOpenAIAPIFormat(cfg.APIFormat),
+			ResponsesSemantics:     ResponsesSemanticsCompatible,
 			APIKey:                 apiKey,
-			BaseURL:                normalizeOpenAIChatBaseURL(baseURL),
+			BaseURL:                baseURL,
 			Model:                  model,
 			Headers:                cloneHeaders(cfg.Headers),
 			DisableStrictTools:     true,
 			CacheRoutingPreference: cfg.CacheRoutingPreference,
-		})
+		}
+		switch providerCfg.APIFormat {
+		case "responses":
+			return NewRetryProvider(NewResponses(providerCfg), DefaultRetryConfig()), nil
+		case "chat-completions":
+			providerCfg.BaseURL = normalizeOpenAIChatBaseURL(providerCfg.BaseURL)
+			return NewRetryProvider(NewOpenAI(providerCfg), DefaultRetryConfig()), nil
+		}
+		if compatibleOpenAIAPIFormat(r.catalog, name, model) == "responses" {
+			return NewRetryProvider(newNegotiatingOpenAIProvider(providerCfg), DefaultRetryConfig()), nil
+		}
+		providerCfg.BaseURL = normalizeOpenAIChatBaseURL(providerCfg.BaseURL)
+		raw := NewOpenAI(providerCfg)
 		return NewRetryProvider(raw, DefaultRetryConfig()), nil
 	})
 }
@@ -560,7 +574,7 @@ func enrichDiscoveredModel(catalog *ModelCatalog, providerName string, style API
 	}
 	if style == APIStyleAnthropic {
 		result.APIFormat = "messages"
-	} else {
+	} else if normalizeOpenAIAPIFormat(result.APIFormat) != "responses" {
 		result.APIFormat = "chat-completions"
 	}
 	return result

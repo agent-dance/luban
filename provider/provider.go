@@ -21,6 +21,13 @@ type Provider interface {
 	ModelID() string
 }
 
+// CloseProvider is an optional lifecycle implemented by providers that own
+// persistent transports. Callers must invoke it only after in-flight streams
+// have drained.
+type CloseProvider interface {
+	Close() error
+}
+
 // TokenCountingProvider is an optional precise text-token counter. Read uses
 // it only near configured limits and falls back to its local tokenizer when a
 // provider does not expose the API or the request fails.
@@ -47,6 +54,14 @@ type TaskBudget struct {
 	Total     int
 	Remaining *int
 }
+
+// ServiceTier is the provider scheduling class requested for one generation.
+// An empty value leaves scheduling unspecified. Contract-bound runs currently
+// admit only ServiceTierDefault so an endpoint cannot silently choose auto,
+// flex, or priority scheduling.
+type ServiceTier string
+
+const ServiceTierDefault ServiceTier = "default"
 
 // Params holds LLM-agnostic request parameters
 type Params struct {
@@ -76,6 +91,14 @@ type Params struct {
 	// default; "1h" requests the longest documented Anthropic-compatible TTL.
 	PromptCacheTTL  string
 	ReasoningEffort string // "low", "medium", "high" for reasoning models
+	ServiceTier     ServiceTier
+
+	// ContinuationLineage/Epoch are content-free stateless replay evidence.
+	// A higher epoch with ContinuationReset proves an intentional context
+	// replacement (for example compaction) without exposing message content.
+	ContinuationLineage string
+	ContinuationEpoch   uint64
+	ContinuationReset   bool
 
 	internalControlScope    messagecontrol.Scope
 	internalControlScopeSet bool
@@ -141,8 +164,23 @@ func (p Params) JoinedSystemPrompt() string {
 
 // Config holds provider-agnostic configuration
 type Config struct {
-	ProviderName           string
-	APIStyle               APIStyle
+	ProviderName string
+	APIStyle     APIStyle
+
+	// APIFormat is an explicit OpenAI-family wire override. Empty selects
+	// catalog-driven negotiation; supported values are responses and
+	// chat-completions.
+	APIFormat string
+	// ResponsesSemantics declares the upstream wire contract independently of
+	// the transport URL. This is required when the official OpenAI API is
+	// reached through a content-blind benchmark proxy: changing only URL/auth
+	// must not silently downgrade the request to generic-compatible semantics.
+	ResponsesSemantics ResponsesSemantics
+	// ResponsesWebSocket is an explicit endpoint capability assertion. Unknown
+	// and Unsupported keep the documented HTTP/SSE transport. Supported enables
+	// the production WebSocket transport only for the public Responses profile;
+	// it is never inferred from a hostname or model name.
+	ResponsesWebSocket     CapabilitySupport
 	APIKey                 string
 	AuthToken              string
 	BaseURL                string
@@ -153,6 +191,19 @@ type Config struct {
 	DisableStrictTools     bool
 	CacheRoutingPreference CacheRoutingPreference
 }
+
+// ResponsesSemantics is the capability profile for a Responses endpoint.
+// It deliberately does not infer authority from a hostname. Auto exists for
+// direct library compatibility; production provider factories set an explicit
+// profile.
+type ResponsesSemantics string
+
+const (
+	ResponsesSemanticsAuto         ResponsesSemantics = ""
+	ResponsesSemanticsOpenAIPublic ResponsesSemantics = "openai_public"
+	ResponsesSemanticsOpenAICodex  ResponsesSemantics = "openai_codex"
+	ResponsesSemanticsCompatible   ResponsesSemantics = "generic_compatible"
+)
 
 // CacheRoutingPreference is an operator override for request-level cache
 // routing fields. Auto uses the provider's documented or best-effort policy,
@@ -191,16 +242,30 @@ const (
 	CacheRoutingDeepSeekUserID           CacheRoutingMode = "deepseek_user_id"
 )
 
+// CapabilitySupport distinguishes an explicitly supported contract from an
+// unknown endpoint. Experimental wire formats must require Supported; Unknown
+// is deliberately fail-closed.
+type CapabilitySupport uint8
+
+const (
+	CapabilityUnknown CapabilitySupport = iota
+	CapabilityUnsupported
+	CapabilitySupported
+)
+
 // ProviderCapabilities describes the features a provider supports.
 // Zero values mean "not supported" or "unknown".
 type ProviderCapabilities struct {
-	Thinking     bool
-	ToolUse      bool
-	CacheControl bool
-	CacheRouting CacheRoutingMode
-	SystemParts  bool
-	Vision       bool
-	MaxContext   int // token limit; 0 = unknown
+	Thinking           bool
+	ToolUse            bool
+	CustomTools        CapabilitySupport
+	ResponsesWebSocket CapabilitySupport
+	ServiceTier        CapabilitySupport
+	CacheControl       bool
+	CacheRouting       CacheRoutingMode
+	SystemParts        bool
+	Vision             bool
+	MaxContext         int // token limit; 0 = unknown
 }
 
 // CapabilityProvider is an optional interface for providers that can report

@@ -93,7 +93,9 @@ func NewVertex(ctx context.Context, cfg VertexConfig) (*VertexProvider, error) {
 		return nil, fmt.Errorf("%s", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderVertexProjectRequired))
 	}
 
-	var opts []option.RequestOption
+	// RetryProvider/AttemptController owns the generation budget; disable the
+	// Anthropic SDK's independent two-retry loop.
+	opts := []option.RequestOption{option.WithMaxRetries(0)}
 	if cfg.Timeout > 0 {
 		opts = append(opts, option.WithRequestTimeout(time.Duration(cfg.Timeout)*time.Second))
 	}
@@ -147,6 +149,9 @@ func (p *VertexProvider) Capabilities() ProviderCapabilities {
 
 // CreateStream uses the shared Anthropic stream implementation with our Vertex client.
 func (p *VertexProvider) CreateStream(ctx context.Context, params Params) (<-chan types.StreamEvent, error) {
+	if err := ValidateParams(p, params); err != nil {
+		return nil, err
+	}
 	if params.Model == "" {
 		params.Model = p.model
 	}

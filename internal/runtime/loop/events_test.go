@@ -96,6 +96,32 @@ toolUseObserved:
 	}
 }
 
+func TestToolBearingTurnEmitsContentFreeRoundMetrics(t *testing.T) {
+	reg := registry.New()
+	reg.Register(parityTool{name: "Echo", content: "done", concurrentSafe: true})
+	prov := newParityFakeProvider([]parityProviderTurn{
+		{Events: parityToolUseEventsWithUsage("call-metrics", "Echo", `{}`, nil)},
+		{Events: parityTextEvents("finished")},
+	})
+	ql := New(prov, reg, Config{MaxTurns: 3, MaxTokens: 1024})
+	var metrics []*stream.ToolRoundMetricsEvent
+	if err := ql.Run(context.Background(), "run the tool", func(event stream.Event) {
+		if event.Type == stream.EventToolRoundMetrics && event.ToolRound != nil {
+			copyMetrics := *event.ToolRound
+			metrics = append(metrics, &copyMetrics)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(metrics) != 1 {
+		t.Fatalf("tool round metrics = %+v, want exactly one", metrics)
+	}
+	got := metrics[0]
+	if got.RoundID == "" || got.LogicalModelVisibleCalls != 1 || got.PhysicalChildOperations != 1 || got.Fanout != 1 || got.BatchCount != 1 || got.ErrorCount != 0 {
+		t.Fatalf("tool round metrics = %+v", got)
+	}
+}
+
 func TestEventExtendedFieldsAreOptionalAndStructured(t *testing.T) {
 	evt := stream.Event{
 		Type:           stream.EventTombstone,

@@ -57,17 +57,3 @@ func TestTask23RegistryDepsMCPTeardownOwnsInvalidatorExactlyOnce(t *testing.T) {
 		t.Fatal("MCP manager shut down before its observers were unregistered")
 	}
 }
-
-func TestMCPVisibilityStatesProjectsManagerSnapshot(t *testing.T) {
-	states := mcpVisibilityStatesFromSnapshot([]mcpmanager.MCPServerConnection{
-		{Name: "connected", Type: mcpmanager.MCPStateConnected},
-		{Name: "pending", Type: mcpmanager.MCPStatePending, ReconnectAttempt: 2, MaxReconnectAttempts: 5, Error: "retrying"},
-	})
-	if len(states) != 1 {
-		t.Fatalf("visibility states = %#v", states)
-	}
-	state := states[0]
-	if state.Name != "pending" || state.State != string(mcpmanager.MCPStatePending) || state.ReconnectAttempt != 2 || state.MaxReconnectAttempts != 5 || state.Error != "retrying" {
-		t.Fatalf("projected visibility state = %#v", state)
-	}
-}

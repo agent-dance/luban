@@ -1,0 +1,35 @@
+diff --git a/iwyu.cc b/iwyu.cc
+index ab2eef7..9a2db12 100644
+--- a/iwyu.cc
++++ b/iwyu.cc
+@@ -5165,6 +5165,17 @@ class IwyuAstConsumer
+   bool VisitFunctionDecl(FunctionDecl* decl) {
+     if (CanIgnoreCurrentASTNode())
+       return true;
++
++    // An explicit function template specialization requires a declaration of
++    // the primary template to be visible. Unlike class templates, function
++    // templates cannot be handled as forward-declare uses, so anchor the
++    // specialization to the primary template declaration instead.
++    if (decl->getTemplateSpecializationKind() ==
++        clang::TSK_ExplicitSpecialization) {
++      if (const FunctionTemplateDecl* primary = decl->getPrimaryTemplate())
++        ReportDeclUse(CurrentLoc(), primary, nullptr, UF_RedeclUse);
++    }
++
+     // If a function declaration specifies default arguments but not for
+     // the last parameters, like this:
+     // void Fn(int = 0, int);
+diff --git a/tests/bugs/1931/1931.cc b/tests/bugs/1931/1931.cc
+index a54c794..d62a2f3 100644
+--- a/tests/bugs/1931/1931.cc
++++ b/tests/bugs/1931/1931.cc
+@@ -7,8 +7,6 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
+-// IWYU_XFAIL
+-
+ #include "1931.h"
+ 
+ #include <iostream>

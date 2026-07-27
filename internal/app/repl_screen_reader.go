@@ -561,16 +561,17 @@ func runScreenReaderDiagnosticCommand(cfg TUIREPLConfig, renderer *ui.ScreenRead
 		OnCommandPresentation: func(presentation commands.CommandPresentation) {
 			renderScreenReaderCommandPresentation(renderer, presentation)
 		},
-		CWD:               currentCWD(cfg),
-		CurrentProjectDir: projectDir,
-		SessionID:         sessionID,
-		GoalRuntime:       newSessionGoalRuntime(cfg, sessionID, projectDir),
-		BuildDiagnostic:   currentBuildDiagnostic(cfg),
-		MCPBackend:        cfg.MCPBackend,
-		SkillManager:      cfg.SkillManager,
-		SkillInvoker:      cfg.SkillInvoker,
-		ProviderRegistry:  cfg.ProviderRegistry,
-		CredentialStore:   cfg.CredentialStore,
+		CWD:                      currentCWD(cfg),
+		CurrentProjectDir:        projectDir,
+		SessionID:                sessionID,
+		GoalRuntime:              newSessionGoalRuntime(cfg, sessionID, projectDir),
+		BuildDiagnostic:          currentBuildDiagnostic(cfg),
+		MCPBackend:               cfg.MCPBackend,
+		SkillManager:             cfg.SkillManager,
+		SkillInvoker:             cfg.SkillInvoker,
+		ProviderRegistry:         cfg.ProviderRegistry,
+		CredentialStore:          cfg.CredentialStore,
+		ProviderRuntimeOverrides: cfg.ProviderRuntimeOverrides,
 	}
 	if cfg.Repo != nil {
 		commandCtx.SessionStore = &sessionStoreAdapter{repo: cfg.Repo, currentProjectDir: func() string { return currentProjectDir(cfg) }}

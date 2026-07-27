@@ -206,6 +206,7 @@ func sdkEventFromStream(event stream.Event) sdk.Event {
 		ActorType: event.ActorType, WorkUnitID: event.WorkUnitID, ToolUseID: event.ToolUseID,
 		TerminalReason: event.TerminalReason, Metadata: cloneSDKMetadata(event.Metadata),
 		RequestStatus: sdkRequestStatus(event.Type, event.RequestStatus),
+		ToolRound:     sdkToolRoundMetrics(event.ToolRound),
 	}
 	if event.ToolUse != nil {
 		out.ToolUse = &sdk.ToolUse{ID: event.ToolUse.ID, Name: event.ToolUse.Name, Input: cloneSDKMetadata(event.ToolUse.Input)}
@@ -255,7 +256,9 @@ func sdkEventFromStream(event stream.Event) sdk.Event {
 	if event.Progress != nil {
 		out.Progress = &sdk.RuntimeProgressEvent{
 			Stage: event.Progress.Stage, Message: event.Progress.Message, Current: event.Progress.Current,
-			Total: event.Progress.Total, Metadata: cloneSDKMetadata(event.Progress.Metadata),
+			Total: event.Progress.Total, Disposition: event.Progress.Disposition, Blocker: event.Progress.Blocker,
+			MutationEpoch: event.Progress.MutationEpoch, VerifiedEpoch: event.Progress.VerifiedEpoch,
+			Metadata: cloneSDKMetadata(event.Progress.Metadata),
 		}
 	}
 	if event.Type == stream.EventSystemWarning {
@@ -288,6 +291,8 @@ func sdkRequestStatus(eventType stream.EventType, source *stream.RequestStatusEv
 		return out
 	}
 	out.RequestID = source.RequestID
+	out.StartedAt = source.StartedAt
+	out.EndedAt = source.EndedAt
 	if source.Attempt > 0 {
 		out.Attempt = source.Attempt
 	}
@@ -295,9 +300,14 @@ func sdkRequestStatus(eventType stream.EventType, source *stream.RequestStatusEv
 		out.MaxAttempts = source.MaxRetries + 1
 	}
 	out.RetryDelayMilliseconds = source.RetryDelayMilliseconds
+	out.RetryCount = source.RetryCount
 	out.RequestMilliseconds = source.RequestMilliseconds
 	out.FirstTokenMilliseconds = source.FirstTokenMilliseconds
 	out.TotalMilliseconds = source.TotalMilliseconds
+	out.InputTokens = source.InputTokens
+	out.CacheReadInputTokens = source.CacheReadInputTokens
+	out.CacheWriteInputTokens = source.CacheWriteInputTokens
+	out.OutputTokens = source.OutputTokens
 	if source.Error != "" {
 		switch eventType {
 		case stream.EventRequestRetry:
@@ -307,6 +317,26 @@ func sdkRequestStatus(eventType stream.EventType, source *stream.RequestStatusEv
 		}
 	}
 	return out
+}
+
+func sdkToolRoundMetrics(source *stream.ToolRoundMetricsEvent) *sdk.ToolRoundMetricsEvent {
+	if source == nil {
+		return nil
+	}
+	return &sdk.ToolRoundMetricsEvent{
+		RoundID:                       source.RoundID,
+		LogicalModelVisibleCalls:      source.LogicalModelVisibleCalls,
+		PhysicalChildOperations:       source.PhysicalChildOperations,
+		Fanout:                        source.Fanout,
+		BatchCount:                    source.BatchCount,
+		QueueMilliseconds:             source.QueueMilliseconds,
+		CriticalPathMilliseconds:      source.CriticalPathMilliseconds,
+		TotalChildLatencyMilliseconds: source.TotalChildLatencyMilliseconds,
+		ErrorCount:                    source.ErrorCount,
+		RevisionFusionCount:           source.RevisionFusionCount,
+		RevisionBarrierSkips:          source.RevisionBarrierSkips,
+		RevisionMismatchCount:         source.RevisionMismatchCount,
+	}
 }
 
 func sdkCompactBoundary(event *stream.CompactBoundaryEvent) *sdk.CompactBoundaryEvent {

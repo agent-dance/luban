@@ -42,33 +42,38 @@ func (m *multiString) Set(v string) error {
 
 // Options holds every parsed CLI option.
 type Options struct {
-	Model           string   // --model / -m
-	Provider        string   // --provider
-	API             string   // --api (e.g. "responses" for OpenAI Responses API)
-	Print           bool     // -p  (print mode: single query, no REPL)
-	Resume          bool     // --resume
-	SessionID       string   // --session-id
-	MaxTurns        int      // --max-turns  (default 100)
-	SystemPrompt    string   // --system-prompt
-	AllowedDirs     []string // --allowed-dir (repeatable)
-	AllowAll        bool     // --allow-all (skip interactive permission prompts)
-	Sandbox         bool     // --sandbox (enable OS-level sandboxing for shell commands)
-	AllowedTools    string   // --allowed-tools (comma-separated whitelist)
-	DisallowedTools string   // --disallowed-tools (comma-separated blacklist)
-	SDK             bool     // --sdk (stream-JSON / SDK transport mode)
-	Version         bool     // --version / -v
-	Help            bool     // --help / -h
-	Verbose         bool     // --verbose
-	DebugFile       string   // --debug-file (write developer-facing LLM runtime diagnostics)
-	NoColor         bool     // --no-color (disable ANSI color output)
-	OutputFormat    string   // --output-format: "text" (default) | "json" | "stream-json"
-	Quiet           bool     // --quiet / -q (only output final assistant text)
-	ScreenReader    bool     // --screen-reader (append-only accessible interactive mode)
-	Agents          string   // --agents JSON object defining additional agents
-	PromptDump      bool     // --prompt-dump
-	PromptDumpJSON  bool     // --prompt-dump-json
-	Language        string   // --language
-	OutputStyle     string   // --output-style
+	Model              string   // --model / -m
+	Provider           string   // --provider
+	API                string   // --api (e.g. "responses" for OpenAI Responses API)
+	ReasoningEffort    string   // --reasoning-effort (e.g. "xhigh")
+	ServiceTier        string   // --service-tier (currently "default")
+	ResponsesWebSocket bool     // --responses-websocket (explicit public Responses transport opt-in)
+	PinnedModel        bool     // --pinned-model / --no-model-fallback
+	Print              bool     // -p  (print mode: single query, no REPL)
+	Resume             bool     // --resume
+	SessionID          string   // --session-id
+	MaxTurns           int      // --max-turns  (default 100)
+	SystemPrompt       string   // --system-prompt
+	AllowedDirs        []string // --allowed-dir (repeatable)
+	AllowAll           bool     // --allow-all (skip interactive permission prompts)
+	Sandbox            bool     // --sandbox (enable OS-level sandboxing for shell commands)
+	ForceSandboxTools  bool     // --force-sandbox-tools (fail closed unless every shell execution is sandboxed)
+	AllowedTools       string   // --allowed-tools (comma-separated whitelist)
+	DisallowedTools    string   // --disallowed-tools (comma-separated blacklist)
+	SDK                bool     // --sdk (stream-JSON / SDK transport mode)
+	Version            bool     // --version / -v
+	Help               bool     // --help / -h
+	Verbose            bool     // --verbose
+	DebugFile          string   // --debug-file (write developer-facing LLM runtime diagnostics)
+	NoColor            bool     // --no-color (disable ANSI color output)
+	OutputFormat       string   // --output-format: "text" (default) | "json" | "stream-json"
+	Quiet              bool     // --quiet / -q (only output final assistant text)
+	ScreenReader       bool     // --screen-reader (append-only accessible interactive mode)
+	Agents             string   // --agents JSON object defining additional agents
+	PromptDump         bool     // --prompt-dump
+	PromptDumpJSON     bool     // --prompt-dump-json
+	Language           string   // --language
+	OutputStyle        string   // --output-style
 
 	// Task 7: domain restrictions for web tools
 	AllowedDomains    string // --allowed-domains (comma-separated, supports *.example.com)
@@ -85,6 +90,11 @@ func newFlagSet(opts *Options, dirs *multiString, lang i18n.Language) *flag.Flag
 	fs.StringVar(&opts.Model, "m", "", i18n.Text(lang, i18n.KeyCLIFlagModel))
 	fs.StringVar(&opts.Provider, "provider", "", i18n.Text(lang, i18n.KeyCLIFlagProvider))
 	fs.StringVar(&opts.API, "api", "", i18n.Text(lang, i18n.KeyCLIFlagAPI))
+	fs.StringVar(&opts.ReasoningEffort, "reasoning-effort", "", i18n.Text(lang, i18n.KeyCLIFlagReasoningEffort))
+	fs.StringVar(&opts.ServiceTier, "service-tier", "", i18n.Text(lang, i18n.KeyCLIFlagServiceTier))
+	fs.BoolVar(&opts.ResponsesWebSocket, "responses-websocket", false, i18n.Text(lang, i18n.KeyCLIFlagResponsesWebSocket))
+	fs.BoolVar(&opts.PinnedModel, "pinned-model", false, i18n.Text(lang, i18n.KeyCLIFlagPinnedModel))
+	fs.BoolVar(&opts.PinnedModel, "no-model-fallback", false, i18n.Text(lang, i18n.KeyCLIFlagPinnedModel))
 	fs.BoolVar(&opts.Print, "p", false, i18n.Text(lang, i18n.KeyCLIFlagPrint))
 	fs.BoolVar(&opts.Print, "print", false, i18n.Text(lang, i18n.KeyCLIFlagPrint))
 	fs.BoolVar(&opts.Resume, "resume", false, i18n.Text(lang, i18n.KeyCLIFlagResume))
@@ -96,6 +106,7 @@ func newFlagSet(opts *Options, dirs *multiString, lang i18n.Language) *flag.Flag
 	fs.StringVar(&opts.AllowedTools, "allowed-tools", "", i18n.Text(lang, i18n.KeyCLIFlagAllowedTools))
 	fs.StringVar(&opts.DisallowedTools, "disallowed-tools", "", i18n.Text(lang, i18n.KeyCLIFlagDisallowedTools))
 	fs.BoolVar(&opts.Sandbox, "sandbox", false, i18n.Text(lang, i18n.KeyCLIFlagSandbox))
+	fs.BoolVar(&opts.ForceSandboxTools, "force-sandbox-tools", false, i18n.Text(lang, i18n.KeyCLIFlagForceSandboxTools))
 	fs.BoolVar(&opts.SDK, "sdk", false, i18n.Text(lang, i18n.KeyCLIFlagSDK))
 	fs.BoolVar(&opts.Version, "version", false, i18n.Text(lang, i18n.KeyCLIFlagVersion))
 	fs.BoolVar(&opts.Version, "v", false, i18n.Text(lang, i18n.KeyCLIFlagVersion))
@@ -123,6 +134,7 @@ func setUsage(fs *flag.FlagSet, lang i18n.Language, output io.Writer) {
 	}
 	fs.Usage = func() {
 		fmt.Fprint(output, i18n.Format(lang, i18n.KeyCLIUsage, brand.CommandName))
+		fmt.Fprint(output, i18n.Text(lang, i18n.KeyCLIHelpCodingSurface))
 		fmt.Fprint(output, i18n.Text(lang, i18n.KeyCLIOptions))
 		printFlagDefaults(output, fs, lang)
 		fmt.Fprint(output, i18n.Text(lang, i18n.KeyCLIExamples))
@@ -185,6 +197,15 @@ func ParseArgs(args []string) (Options, error) {
 
 	if opts.Version {
 		return opts, ErrVersion
+	}
+	if opts.ForceSandboxTools {
+		opts.Sandbox = true
+	}
+	if opts.ServiceTier != "" && opts.ServiceTier != "default" {
+		return opts, fmt.Errorf("%s", i18n.Format(lang, i18n.KeyCLIServiceTierInvalid, opts.ServiceTier))
+	}
+	if opts.ResponsesWebSocket && strings.TrimSpace(opts.API) != "" && !strings.EqualFold(strings.TrimSpace(opts.API), "responses") {
+		return opts, i18n.NewError(i18n.KeyCLIResponsesWebSocketRequiresResponses)
 	}
 
 	opts.AllowedDirs = []string(dirs)

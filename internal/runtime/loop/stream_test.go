@@ -2,9 +2,11 @@ package loop
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/agent-dance/luban/internal/contracts/stream"
+	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -50,7 +52,7 @@ func TestProcessStreamThinkingBlock(t *testing.T) {
 	}
 }
 
-func TestProcessStreamFlushWithoutStop(t *testing.T) {
+func TestProcessStreamCommitFlushesTextWithoutContentBlockStop(t *testing.T) {
 	ql := &QueryLoop{}
 	onEvent := func(e stream.Event) {}
 
@@ -60,7 +62,8 @@ func TestProcessStreamFlushWithoutStop(t *testing.T) {
 			ContentBlock: &types.ContentDelta{Type: types.ContentTypeText}},
 		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0,
 			Delta: &types.ContentDelta{Type: "text_delta", Text: "orphan text"}},
-		// No ContentBlockStop — channel just closes
+		// A response commit is sufficient to authorize the final accumulator.
+		types.StreamEvent{Type: types.EventMessageStop},
 	)
 
 	msg, _, _, err := ql.processStream(context.Background(), stream, 1, onEvent)
@@ -72,7 +75,7 @@ func TestProcessStreamFlushWithoutStop(t *testing.T) {
 	}
 }
 
-func TestProcessStreamFlushToolWithoutStop(t *testing.T) {
+func TestProcessStreamCommitFlushesToolWithoutContentBlockStop(t *testing.T) {
 	ql := &QueryLoop{}
 	onEvent := func(e stream.Event) {}
 
@@ -83,7 +86,7 @@ func TestProcessStreamFlushToolWithoutStop(t *testing.T) {
 			}},
 		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0,
 			Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: `{"command":"ls"}`}},
-		// No stop — flushed
+		types.StreamEvent{Type: types.EventMessageStop},
 	)
 
 	msg, _, _, err := ql.processStream(context.Background(), stream, 1, onEvent)
@@ -99,7 +102,7 @@ func TestProcessStreamFlushToolWithoutStop(t *testing.T) {
 	}
 }
 
-func TestProcessStreamFlushThinkingWithoutStop(t *testing.T) {
+func TestProcessStreamCommitFlushesThinkingWithoutContentBlockStop(t *testing.T) {
 	ql := &QueryLoop{}
 	onEvent := func(e stream.Event) {}
 
@@ -109,7 +112,7 @@ func TestProcessStreamFlushThinkingWithoutStop(t *testing.T) {
 			ContentBlock: &types.ContentDelta{Type: types.ContentTypeThinking}},
 		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0,
 			Delta: &types.ContentDelta{Type: "thinking_delta", Thinking: "orphan thinking"}},
-		// No ContentBlockStop — channel just closes
+		types.StreamEvent{Type: types.EventMessageStop},
 	)
 
 	msg, _, _, err := ql.processStream(context.Background(), stream, 1, onEvent)
@@ -241,7 +244,72 @@ func TestProcessStreamErrorEvent(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error from stream error event")
 	}
-	if err.Error() != "upstream failed" {
-		t.Errorf("expected 'upstream failed', got '%s'", err.Error())
+	var partial *PartialStreamError
+	if !errors.As(err, &partial) || partial.PartialBlocks != 0 {
+		t.Fatalf("error = %#v, want zero-block PartialStreamError", err)
+	}
+	var apiErr *types.APIError
+	if !errors.As(err, &apiErr) || apiErr.Message != "upstream failed" {
+		t.Errorf("expected wrapped upstream failure, got %v", err)
+	}
+}
+
+func TestProcessStreamPartialTextAndToolBatchCannotCommit(t *testing.T) {
+	ql := &QueryLoop{}
+	providerStream := makeStreamChan(
+		types.StreamEvent{Type: types.EventContentBlockStart, Index: 0,
+			ContentBlock: &types.ContentDelta{Type: types.ContentTypeText}},
+		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0,
+			Delta: &types.ContentDelta{Type: "text_delta", Text: "provisional text"}},
+		types.StreamEvent{Type: types.EventContentBlockStop, Index: 0},
+		types.StreamEvent{Type: types.EventContentBlockStart, Index: 1,
+			ContentBlock: &types.ContentDelta{Type: types.ContentTypeToolUse, ID: "call_1", Name: "Run"}},
+		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 1,
+			Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: `{"command":"touch forbidden"}`}},
+		types.StreamEvent{Type: types.EventContentBlockStop, Index: 1},
+		types.StreamEvent{Type: types.EventError, Error: &types.APIError{
+			Type: "api_error", Message: "diagnostic prose must not imply replay",
+		}},
+	)
+
+	message, _, _, err := ql.processStream(context.Background(), providerStream, 1, func(stream.Event) {})
+	if err == nil {
+		t.Fatal("partial response unexpectedly succeeded")
+	}
+	if message != nil {
+		t.Fatalf("partial response returned a commit-capable message: %#v", message)
+	}
+	var partial *PartialStreamError
+	if !errors.As(err, &partial) || partial.PartialBlocks != 2 || partial.OpenBlocks != 0 {
+		t.Fatalf("partial contract = %#v, want two closed provisional blocks", err)
+	}
+	contract := provider.ClassifyAttemptError(err)
+	if contract.Class != types.ProviderErrorClassPermanent || contract.Retryable() {
+		t.Fatalf("generic response error contract = %+v, want permanent/no retry", contract)
+	}
+}
+
+func TestProcessStreamCommitSurvivesTrailingDisconnect(t *testing.T) {
+	ql := &QueryLoop{}
+	providerStream := makeStreamChan(
+		types.StreamEvent{Type: types.EventContentBlockStart, Index: 0,
+			ContentBlock: &types.ContentDelta{Type: types.ContentTypeText}},
+		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0,
+			Delta: &types.ContentDelta{Type: "text_delta", Text: "committed"}},
+		types.StreamEvent{Type: types.EventContentBlockStop, Index: 0},
+		types.StreamEvent{Type: types.EventMessageStop, ResponseID: "resp_committed"},
+		types.StreamEvent{Type: types.EventError,
+			Error: &types.APIError{Type: "stream_interrupted", Message: "connection closed after commit"}},
+	)
+
+	msg, _, _, err := ql.processStream(context.Background(), providerStream, 1, func(stream.Event) {})
+	if err != nil {
+		t.Fatalf("committed response was rolled back by trailing disconnect: %v", err)
+	}
+	if msg == nil || msg.GetText() != "committed" {
+		t.Fatalf("message = %#v, want committed text", msg)
+	}
+	if ql.lastResponseID != "resp_committed" {
+		t.Fatalf("lastResponseID = %q, want committed response id", ql.lastResponseID)
 	}
 }

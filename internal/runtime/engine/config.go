@@ -42,6 +42,15 @@ type Config struct {
 	// SystemPromptBlocks is the ordered block form used by providers with
 	// native multi-block system prompt support.
 	SystemPromptBlocks []prompt.SystemPromptBlock
+	// UserContext is prepended as model-visible meta context. It carries
+	// workspace instructions independently from the provider system envelope.
+	UserContext prompt.UserContext
+	// VisibleTools binds a generated system prompt to the exact immutable
+	// provider-facing catalog. The zero value preserves legacy dynamic catalog
+	// behavior for embedders and custom prompts.
+	VisibleTools        registry.VisibleToolSnapshot
+	ToolPromptConfig    prompt.Config
+	GeneratedToolPrompt bool
 
 	// Model overrides the provider's default model.
 	// If empty the provider's ModelID() is used.
@@ -62,6 +71,14 @@ type Config struct {
 
 	// ReasoningEffort controls reasoning model effort: "low", "medium", "high".
 	ReasoningEffort string
+
+	// ServiceTier pins the provider scheduling class for every generation,
+	// including compaction and goal evaluation. Empty leaves it unspecified.
+	ServiceTier provider.ServiceTier
+
+	// PinnedModel rejects provider-directed model fallback. Benchmark and other
+	// contract-bound runs use it to keep every scored generation on one model.
+	PinnedModel bool
 
 	// EventBufferSize is the channel buffer for Query events (0 = 64).
 	EventBufferSize int

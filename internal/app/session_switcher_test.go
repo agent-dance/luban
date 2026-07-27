@@ -226,6 +226,33 @@ func TestAllowedDirsForSessionDefaultsToUnrestricted(t *testing.T) {
 	}
 }
 
+func TestBuildWorkspacePromptPreservesCacheBoundaryAndInstructions(t *testing.T) {
+	t.Setenv("LUBAN_CODE_SIMPLE", "")
+	cwd := t.TempDir()
+	const instruction = "workspace instruction sentinel"
+	if err := os.WriteFile(filepath.Join(cwd, "AGENTS.md"), []byte(instruction), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := buildWorkspacePrompt("", registry.New(), cwd)
+	if len(got.systemBlocks) != 2 {
+		t.Fatalf("system blocks = %d, want static and dynamic blocks", len(got.systemBlocks))
+	}
+	if !got.systemBlocks[0].Cache || got.systemBlocks[1].Cache {
+		t.Fatalf("cache boundary lost: %#v", got.systemBlocks)
+	}
+	if got.system != got.systemBlocks.JoinedText() {
+		t.Fatalf("joined system prompt differs from typed blocks")
+	}
+	if strings.Contains(got.system, instruction) {
+		t.Fatal("workspace instructions leaked into the system envelope")
+	}
+	meta, ok := got.userContext.MetaMessage()
+	if !ok || !strings.Contains(meta.GetText(), instruction) {
+		t.Fatalf("workspace instructions missing from user context: %#v", got.userContext)
+	}
+}
+
 func newSessionSwitcherTestFixture(t *testing.T) *sessionSwitcherTestFixture {
 	t.Helper()
 
@@ -293,6 +320,10 @@ func newSessionSwitcherTestFixture(t *testing.T) *sessionSwitcherTestFixture {
 func TestSessionSwitcherSwitchToLoadsTranscriptAndAppliesTargetRuntime(t *testing.T) {
 	fixture := newSessionSwitcherTestFixture(t)
 	targetCWD := t.TempDir()
+	const targetInstruction = "target workspace instruction sentinel"
+	if err := os.WriteFile(filepath.Join(targetCWD, "AGENTS.md"), []byte(targetInstruction), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	targetProjectDir := filepath.Join(t.TempDir(), "target-project")
 	targetTranscript := []types.Message{{ID: "target-message", Role: types.RoleAssistant}}
 	fixture.engine.sessions.messages["target-session"] = targetTranscript
@@ -334,6 +365,13 @@ func TestSessionSwitcherSwitchToLoadsTranscriptAndAppliesTargetRuntime(t *testin
 	runtime := fixture.engine.runtime
 	if runtime.CWD != targetCWD || runtime.HookRunner != targetHooks {
 		t.Fatalf("engine runtime not switched coherently: %+v", runtime)
+	}
+	if len(runtime.SystemPromptBlocks) != 1 || runtime.SystemPromptBlocks[0].Source != "override" {
+		t.Fatalf("typed override prompt not preserved: %#v", runtime.SystemPromptBlocks)
+	}
+	meta, ok := runtime.UserContext.MetaMessage()
+	if !ok || !strings.Contains(meta.GetText(), targetInstruction) {
+		t.Fatalf("target instructions missing from switched runtime: %#v", runtime.UserContext)
 	}
 	scope := fixture.deps.RuntimeScope.ToolRuntimeContext()
 	if scope.ProjectRoot != targetCWD || scope.AllowedDirs != nil {

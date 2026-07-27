@@ -29,8 +29,8 @@ import (
 
 	executioncontract "github.com/agent-dance/luban/internal/contracts/execution"
 
-	"github.com/agent-dance/luban/brand"
 	"github.com/agent-dance/luban/i18n"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	runtimestore "github.com/agent-dance/luban/internal/store/runtime"
 	"github.com/agent-dance/luban/internal/store/secureio"
 	"github.com/agent-dance/luban/types"
@@ -88,6 +88,7 @@ type agentTranscriptWriterContextKey struct{}
 
 type agentTranscriptIdentity struct {
 	SessionID    string
+	ProjectRoot  string
 	ContextEpoch string
 	ActorID      string
 	ActorType    string
@@ -256,8 +257,8 @@ func agentTranscriptWriterFromContext(ctx context.Context) io.Writer {
 
 // openAgentTranscriptWriterForRun allocates the persistent JSONL sidechain for
 // one agent. An explicit LUBAN_AGENT_TRANSCRIPT path remains supported for
-// harnesses; normal runs use a process-temporary .luban-code/agent-transcripts
-// directory so read-only project work does not dirty the repository.
+// harnesses; normal runs use external private runtime storage so read-only
+// project work does not dirty the repository.
 func openAgentTranscriptWriterForRun(agentID string) (io.Writer, func()) {
 	return openAgentTranscriptWriterForRunIdentity(agentID, agentTranscriptIdentity{
 		ActorID: agentID, ActorType: "agent", RunID: agentID,
@@ -265,7 +266,7 @@ func openAgentTranscriptWriterForRun(agentID string) (io.Writer, func()) {
 }
 
 func openAgentTranscriptWriterForRunIdentity(runID string, identity agentTranscriptIdentity) (io.Writer, func()) {
-	path := agentTranscriptPathForRun(runID)
+	path := agentTranscriptPathForRunIdentity(runID, identity)
 	if path == "" {
 		return nil, nil
 	}
@@ -278,7 +279,7 @@ func openAgentTranscriptWriterForRunIdentity(runID string, identity agentTranscr
 		// Validate it but never take ownership by changing its mode.
 		f, err = secureio.OpenPrivateRuntimeAppendFileWithoutDirectoryMutation(path)
 	} else {
-		managedRoot := filepath.Join(os.TempDir(), brand.ConfigDirName, "agent-transcripts")
+		managedRoot := defaultAgentTranscriptRoot(identity.ProjectRoot, identity.SessionID)
 		if err = secureio.EnsurePrivateRuntimeDirectory(managedRoot); err != nil {
 			return nil, nil
 		}
@@ -299,6 +300,10 @@ func openAgentTranscriptWriterForRunIdentity(runID string, identity agentTranscr
 }
 
 func agentTranscriptPathForRun(runID string) string {
+	return agentTranscriptPathForRunIdentity(runID, agentTranscriptIdentity{})
+}
+
+func agentTranscriptPathForRunIdentity(runID string, identity agentTranscriptIdentity) string {
 	if path := strings.TrimSpace(os.Getenv("LUBAN_AGENT_TRANSCRIPT")); path != "" {
 		if !filepath.IsAbs(path) || filepath.Clean(path) != path || filepath.Base(path) == "." || filepath.Base(path) == string(os.PathSeparator) {
 			return ""
@@ -315,7 +320,25 @@ func agentTranscriptPathForRun(runID string) string {
 	if id == "" {
 		id = fmt.Sprintf("agent-%d", time.Now().UnixNano())
 	}
-	return filepath.Join(os.TempDir(), brand.ConfigDirName, "agent-transcripts", agentTranscriptProcessNamespace, id+".jsonl")
+	return filepath.Join(defaultAgentTranscriptRoot(identity.ProjectRoot, identity.SessionID), id+".jsonl")
+}
+
+func defaultAgentTranscriptRoot(projectRoot, sessionID string) string {
+	root := strings.TrimSpace(projectRoot)
+	if root == "" {
+		root = "."
+		if current, err := os.Getwd(); err == nil && strings.TrimSpace(current) != "" {
+			root = current
+		}
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		sessionID = strings.TrimSpace(os.Getenv("LUBAN_SESSION_ID"))
+	}
+	return filepath.Join(
+		storepaths.RuntimeSessionDir(root, sessionID),
+		"agent-transcripts",
+		agentTranscriptProcessNamespace,
+	)
 }
 
 func writeAgentTranscriptRecord(w io.Writer, record any) error {

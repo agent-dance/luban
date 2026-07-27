@@ -29,7 +29,7 @@ func TestToolScheduleKeyFormatting(t *testing.T) {
 	}{
 		{KeyToolScheduleInvalidExpression, []any{"*/5 * * * *", cause}, `Invalid cron expression "*/5 * * * *": disk-cause-42`},
 		{KeyToolScheduleTooMany, []any{50}, "Scheduled job limit reached (50). Cancel a job before creating another."},
-		{KeyToolScheduleStoreReadFailed, []any{cause}, "Could not read .luban-code/schedule/jobs.json: disk-cause-42"},
+		{KeyToolScheduleStoreReadFailed, []any{cause}, "Could not read persistent schedule data: disk-cause-42"},
 		{KeyToolScheduleStoreVersion, []any{3}, "Schedule data version 3 is not supported."},
 		{KeyToolScheduleEnqueueFailed, []any{"job-42", cause}, "Could not queue scheduled job job-42: disk-cause-42"},
 		{KeyToolScheduleStopFailed, []any{cause}, "Could not stop the schedule service: disk-cause-42"},
@@ -73,8 +73,8 @@ func TestToolScheduleCopyUsesCurrentContract(t *testing.T) {
 		KeyToolScheduleCreatedPersisted,
 	} {
 		for _, lang := range AllLanguages() {
-			if got := Text(lang, key); !strings.Contains(got, ".luban-code/schedule/jobs.json") {
-				t.Errorf("Text(%s, %s) omitted the current store path: %q", lang.Code(), key, got)
+			if got := Text(lang, key); strings.Contains(got, ".luban-code/schedule/jobs.json") {
+				t.Errorf("Text(%s, %s) exposes the removed project-local store path: %q", lang.Code(), key, got)
 			}
 		}
 	}

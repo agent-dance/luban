@@ -14,7 +14,7 @@ func TestStartupSemanticCopyCoversEveryLanguage(t *testing.T) {
 		KeyStartupSafetyDenied, KeyStartupShutdownWarning,
 		KeyStartupShutdownSchedule, KeyStartupShutdownEngine,
 		KeyStartupShutdownBackground, KeyStartupShutdownMCP, KeyStartupShutdownLSP,
-		KeyStartupShutdownDebugFile,
+		KeyStartupShutdownProvider, KeyStartupShutdownDebugFile,
 		KeyStartupSDKError,
 		KeyStartupResumeWarning, KeyStartupResumed, KeyStartupProviderMismatch,
 		KeyStartupScreenReaderError, KeyStartupTUIError,

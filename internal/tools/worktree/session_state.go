@@ -2,15 +2,13 @@ package worktree
 
 import (
 	"context"
-	"crypto/sha256"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/agent-dance/luban/brand"
 	"github.com/agent-dance/luban/i18n"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 )
 
 // WorktreeRuntime owns the session-local working directory. The context-aware
@@ -102,6 +100,5 @@ func worktreeStateFilePath(root, sessionID string) string {
 	if sessionID == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(sessionID))
-	return filepath.Join(root, brand.ConfigDirName, "worktree-sessions", fmt.Sprintf("%x.json", sum[:12]))
+	return filepath.Join(storepaths.RuntimeSessionDir(root, sessionID), "worktree-state.json")
 }

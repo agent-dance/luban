@@ -26,11 +26,12 @@ func (r *testPlanRuntime) RestorePermissionMode(mode string) error {
 }
 
 func TestPlanStateRequiresProjectRootAndReportsInvalidPersistence(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	if _, err := NewPlanState(""); err == nil {
 		t.Fatal("empty project root must fail")
 	}
 	root := t.TempDir()
-	statePath := filepath.Join(root, ".luban-code", "plan-mode.json")
+	statePath := planStateFile(root)
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +44,7 @@ func TestPlanStateRequiresProjectRootAndReportsInvalidPersistence(t *testing.T) 
 }
 
 func TestPlanStatePersistsV2PrivatelyAndResumes(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	state, err := NewPlanState(root)
 	if err != nil {
@@ -54,13 +56,23 @@ func TestPlanStatePersistsV2PrivatelyAndResumes(t *testing.T) {
 	if err != nil || result.IsError || !state.IsActive() || runtime.context.PermissionMode != permissionModePlan {
 		t.Fatalf("result=%+v state=%v mode=%q err=%v", result, state.IsActive(), runtime.context.PermissionMode, err)
 	}
-	statePath := filepath.Join(root, ".luban-code", "plan-mode.json")
+	statePath := planStateFile(root)
 	info, err := os.Stat(statePath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("plan state mode=%#o, want 0600", info.Mode().Perm())
+	}
+	dirInfo, err := os.Stat(filepath.Dir(statePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Fatalf("plan state directory mode=%v, want 0700", dirInfo.Mode().Perm())
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".luban-code")); !os.IsNotExist(err) {
+		t.Fatalf("plan state dirtied project: %v", err)
 	}
 	data, err := os.ReadFile(statePath)
 	if err != nil {
@@ -77,6 +89,7 @@ func TestPlanStatePersistsV2PrivatelyAndResumes(t *testing.T) {
 }
 
 func TestPrepareProjectRootFailureDoesNotMutateLiveState(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
 	root := t.TempDir()
 	state, err := NewPlanState(root)
 	if err != nil {
@@ -86,7 +99,7 @@ func TestPrepareProjectRootFailureDoesNotMutateLiveState(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := t.TempDir()
-	targetState := filepath.Join(target, ".luban-code", "plan-mode.json")
+	targetState := planStateFile(target)
 	if err := os.MkdirAll(filepath.Dir(targetState), 0o700); err != nil {
 		t.Fatal(err)
 	}

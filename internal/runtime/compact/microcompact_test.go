@@ -408,6 +408,9 @@ func TestMicrocompact_DefaultConfigRequiresExplicitMainSource(t *testing.T) {
 	if cfg.QuerySource != MicrocompactSourceUndefined {
 		t.Errorf("expected undefined default source, got %q", cfg.QuerySource)
 	}
+	if !cfg.AgenticV2ProofsEnabled {
+		t.Error("expected Agentic V2 proof-preserving microcompact enabled by default")
+	}
 }
 
 func idleMainConfig(keepRecent int) MicrocompactConfig {

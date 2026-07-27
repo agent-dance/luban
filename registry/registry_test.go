@@ -2,6 +2,8 @@ package registry
 
 import (
 	"context"
+	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/agent-dance/luban/internal/contracts/toolmeta"
@@ -166,20 +168,81 @@ func TestVisibleDefinitions_HidesDeferredToolsUntilLoaded(t *testing.T) {
 	})
 
 	defs := reg.VisibleDefinitions(nil)
-	if len(defs) != 1 {
-		t.Fatalf("expected 1 visible definition before load, got %d", len(defs))
+	if len(defs) != 2 {
+		t.Fatalf("expected 2 visible definitions before load, got %d", len(defs))
 	}
-	if defs[0].Name != "ToolSearch" {
+	if defs[0].Name != "Read" || defs[1].Name != "ToolSearch" {
 		t.Fatalf("unexpected visible definitions before load: %#v", defs)
 	}
 
-	loaded := map[string]struct{}{"Read": {}, "TaskCreate": {}}
+	loaded := map[string]struct{}{"TaskCreate": {}}
 	defs = reg.VisibleDefinitions(loaded)
 	if len(defs) != 3 {
 		t.Fatalf("expected 3 visible definitions after load, got %d", len(defs))
 	}
 	if defs[0].Name != "Read" || defs[2].Name != "TaskCreate" {
 		t.Fatalf("expected deferred tool to become visible after load, got %#v", defs)
+	}
+}
+
+func TestVisibleDefinitionsKeepEagerCoreCanonicalAcrossDiscovery(t *testing.T) {
+	reg := New()
+	for _, name := range []string{"TaskCreate", "Run", "ApplyPatch", "Inspect", "Grep", "ToolSearch", "Glob", "Edit", "Write", "Read", "PowerShell", "Bash"} {
+		reg.Register(&mockTool{name: name})
+	}
+
+	wantCore := []string{"Bash", "PowerShell", "Read", "Write", "Edit", "Glob", "Grep", "Inspect", "ApplyPatch", "Run"}
+	before := reg.VisibleDefinitions(nil)
+	if len(before) != len(wantCore)+1 {
+		t.Fatalf("visible definitions before discovery = %#v", before)
+	}
+	for index, name := range wantCore {
+		if before[index].Name != name {
+			t.Fatalf("core definition %d = %q, want %q", index, before[index].Name, name)
+		}
+	}
+
+	after := reg.VisibleDefinitions(map[string]struct{}{"TaskCreate": {}})
+	if len(after) != len(before)+1 {
+		t.Fatalf("visible definitions after discovery = %#v", after)
+	}
+	for index := range wantCore {
+		if !reflect.DeepEqual(before[index], after[index]) {
+			t.Fatalf("core definition changed at index %d: before=%#v after=%#v", index, before[index], after[index])
+		}
+	}
+}
+
+func TestVisibleDefinitionsAgenticV2CoreOrder(t *testing.T) {
+	reg := New()
+	reg.Register(&mockTool{name: "Run"})
+	reg.Register(&mockTool{name: "ApplyPatch"})
+	reg.Register(&mockTool{name: "Inspect"})
+
+	definitions := reg.VisibleDefinitions(nil)
+	want := []string{"Inspect", "ApplyPatch", "Run"}
+	if len(definitions) != len(want) {
+		t.Fatalf("V2 definitions = %#v", definitions)
+	}
+	for index, name := range want {
+		if definitions[index].Name != name {
+			t.Fatalf("V2 definition %d = %q, want %q", index, definitions[index].Name, name)
+		}
+	}
+}
+
+func TestEagerCoreCannotBeDeferredByToolMetadata(t *testing.T) {
+	for _, name := range eagerCoreToolOrder {
+		tool := &deferredMockTool{
+			mockTool: mockTool{name: name},
+			meta:     toolmeta.Metadata{ShouldDefer: true},
+		}
+		if IsDeferredTool(tool) {
+			t.Fatalf("%s must remain eager even when tool metadata requests deferral", name)
+		}
+		if meta := DiscoveryMetadata(tool); !meta.AlwaysLoad {
+			t.Fatalf("%s discovery metadata = %+v, want AlwaysLoad", name, meta)
+		}
 	}
 }
 
@@ -198,5 +261,12 @@ func TestGrepDiscoveryMetadataHasSearchHint(t *testing.T) {
 	meta := DiscoveryMetadata(&mockTool{name: "Grep"})
 	if meta.SearchHint != "search file contents with regex (ripgrep)" {
 		t.Fatalf("Grep search hint mismatch: %+v", meta)
+	}
+}
+
+func TestRunDiscoveryMetadataIsAlwaysLoaded(t *testing.T) {
+	meta := DiscoveryMetadata(&mockTool{name: "Run"})
+	if !meta.AlwaysLoad || meta.ShouldDefer || !strings.Contains(meta.SearchHint, "verification") {
+		t.Fatalf("Run discovery metadata = %+v", meta)
 	}
 }

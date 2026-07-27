@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/agent-dance/luban/i18n"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	"github.com/agent-dance/luban/internal/tokenizer"
 	"github.com/agent-dance/luban/types"
 )
@@ -42,10 +43,9 @@ func (t *FileReadTool) pdfToolResultsDir() string {
 			return dir
 		}
 	}
-	if root := strings.TrimSpace(t.runtimeSnapshot().ProjectRoot); root != "" {
-		return filepath.Join(root, ".luban-code", "tool-results")
-	}
-	return filepath.Join(os.TempDir(), "luban-code", "tool-results")
+	runtime := t.runtimeSnapshot()
+	root := strings.TrimSpace(runtime.ProjectRoot)
+	return filepath.Join(storepaths.RuntimeSessionDir(root, runtime.SessionID), "tool-results")
 }
 
 var (

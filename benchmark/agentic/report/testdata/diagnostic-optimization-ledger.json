@@ -1,0 +1,91 @@
+{
+  "schema_version": "agentic-bench/optimization-ledger-v1",
+  "entries": [
+    {
+      "id": "native-responses-p0",
+      "title": "原生 Responses 传输与模型契约固定",
+      "summary": "把兼容 OpenAI 的 GPT-5.6 请求从 Chat fallback 路径切到原生 Responses，并显式固定 xhigh。",
+      "design_defect": "旧路径允许协议探测、Chat fallback 与固定模型请求在同一执行中混杂，额外请求和上下文重传无法被清楚归因。",
+      "mechanism": "移除协议探测重试与 Chat/Responses 双路径歧义；稳定静态 prompt 前缀，避免一次确定性握手失败把完整上下文和墙钟放大。",
+      "value": "在相同 Fabric canary 通过结果下，诊断墙钟、目录价、输入与输出 token 均下降；这只是单题同机趋势，不是正式总分。",
+      "attribution_scope": "diagnostic_association",
+      "measurement_layer": "mixed",
+      "evidence_grade": "diagnostic_bundle",
+      "expected_effect": "减少协议探测请求、完整上下文重传及其关联的 agent 墙钟、token 与目录价。",
+      "observed_effect": "不同构建的单题 HEAD→P0 诊断 bundle 出现同方向变化；由于构建和时间等混杂，未估计原生 Responses 的独立因果效应。",
+      "confounders": [
+        "combined_build_changes",
+        "single_task_canary",
+        "non_randomized_order",
+        "provider_time_drift",
+        "measurement_layer_mixed",
+        "source_archive_unavailable"
+      ],
+      "risks": [
+        "自定义 provider 的 Responses 兼容性必须用真实握手验证。",
+        "服务端实际 model/effort 仍须通过 formal evidence proxy 证明。"
+      ],
+      "implementation": [
+        { "path": "provider/compatible.go", "sha256": "d1c7b172a8c96665573b3f47225415b5877540edad92567cd81186e8a9b3b975", "summary": "原生 Responses negotiation 与 fail-closed fallback 记忆。" },
+        { "path": "provider/responses.go", "sha256": "09b835ec4a540c959e30edaec805c55cfe4fd7918c02e2730ffadfbf5f71dac7", "summary": "Responses 请求/usage/response identity 适配。" },
+        { "path": "internal/runtime/loop/query.go", "sha256": "16564454315f208bf8a7d0cb2dc9eaff5e58518e36b0a1d72ecff7415808ee24", "summary": "固定模型与 stream commit 路径。" }
+      ],
+      "before": { "experiment_id": "diag-head-fabric", "agent_id": "luban" },
+      "after": { "experiment_id": "diag-p0-native-fabric", "agent_id": "luban" },
+      "ablation": {
+        "status": "not_run",
+        "note": "尚未在同一冻结构建、同一正式 harness 中执行 feature-off/on 消融；HEAD 仅是带混杂的诊断关联。"
+      },
+      "metrics": [
+        "pass_rate", "wall_time_seconds", "llm_calls_started", "physical_tool_operations",
+        "input_tokens", "cached_input_tokens", "output_tokens", "token_weighted_cache_hit", "comparable_cost"
+      ],
+      "evidence_class": "diagnostic_canary"
+    },
+    {
+      "id": "agentic-v2-kernel",
+      "title": "Agentic V2 三工具内核",
+      "summary": "用 Inspect / ApplyPatch / Run 替换模型可见的 Read/Grep/Glob/Edit/Bash 碎片化表面。",
+      "design_defect": "旧工具表面把一次代码定位或提交意图拆成多次模型可见调用与跨轮修复，provider 回合、schema token 与工具编排开销相互放大。",
+      "mechanism": "Inspect 在一个调用内批量读取、搜索和 glob；ApplyPatch 原子提交多文件多 hunk；Run 表达有依赖的验证 DAG。更少的工具 schema 与跨轮编辑修复降低 provider 回合、输出 token 和序列化负担。",
+      "value": "诊断 canary 从 15 个 provider 请求降到 6 个，同时保持 Fabric evaluator F2P 1/1、P2P 841/841。工具数字必须按 logical invocation 与 physical child operation 分列。",
+      "attribution_scope": "diagnostic_association",
+      "measurement_layer": "mixed",
+      "evidence_grade": "diagnostic_bundle",
+      "expected_effect": "降低模型可见逻辑调用、provider 回合、编辑修复轮、输出 token 与目录价，同时保持 evaluator 质量。",
+      "observed_effect": "不同构建的单题 P0→V2 诊断 bundle 中 provider 请求与若干效率指标下降；工具、prompt、runtime 同时变化，不能拆出三工具内核的独立因果份额。",
+      "confounders": [
+        "combined_tool_prompt_runtime_changes",
+        "single_task_canary",
+        "non_randomized_order",
+        "provider_time_drift",
+        "mixed_legacy_physical_operation_metric",
+        "source_archive_unavailable"
+      ],
+      "risks": [
+        "批处理扩大单次调用影响面，必须保留 CAS、回滚和权限边界。",
+        "单题 canary 容易受 provider 延迟噪声影响，必须用预注册 5 题 pilot 和 full 复验。",
+        "Inspect 内部 child operations 不能隐匿，formal telemetry 必须同时报告 logical 与 physical。"
+      ],
+      "implementation": [
+        { "path": "internal/agentic/inspect/contract.go", "sha256": "7e4487648685559675e251c31ef67c5c176f0d1eb88485e7adbd3fb2d8bac6cf", "summary": "Inspect 批量只读请求契约。" },
+        { "path": "internal/agentic/inspect/execute.go", "sha256": "02e60a5b69129b1e0aba4151d601c8e087d44b5068e449d7c645a774629589d9", "summary": "Inspect 并行批量只读执行内核。" },
+        { "path": "internal/tools/file/apply_patch.go", "sha256": "f4b6aaa84583dc37387145007254adff21902b48b6d3cbd9b5c509b88423bd1c", "summary": "原子多文件 patch 内核。" },
+        { "path": "internal/tools/shell/run.go", "sha256": "aa7b2ef16b6eb5bc0d30f3a4822de42d6784192064bcab9c11e2caeeda877ecc", "summary": "结构化验证 DAG。" },
+        { "path": "prompt/static_sections.go", "sha256": "a56af43ed1eff15a135a92cefdaf3246f17e6ad675ade6408d3a8f972b92caeb", "summary": "三工具工作流与停止条件。" },
+        { "path": "internal/app/registry_setup.go", "sha256": "e98e44b0bdca9ee0558c6f90a27989951b8c753fb89c0db8854fa170bc452b28", "summary": "实验 V2 模型可见工具替换。" }
+      ],
+      "before": { "experiment_id": "diag-p0-native-fabric", "agent_id": "luban" },
+      "after": { "experiment_id": "diag-v2-fabric", "agent_id": "luban" },
+      "ablation": {
+        "status": "not_run",
+        "note": "尚未在相同冻结构建中执行仅关闭 V2 工具替换的 feature-off/on 消融；P0 bundle 不是因果对照。"
+      },
+      "metrics": [
+        "pass_rate", "wall_time_seconds", "llm_calls_started", "tool_bearing_rounds",
+        "input_tokens", "cached_input_tokens", "output_tokens", "token_weighted_cache_hit", "comparable_cost"
+      ],
+      "evidence_class": "diagnostic_canary"
+    }
+  ]
+}

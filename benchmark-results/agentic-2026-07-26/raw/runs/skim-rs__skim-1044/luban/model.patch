@@ -1,0 +1,230 @@
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index e668a34..a6e628c 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -1157,7 +1157,8 @@ The global allocator is `mimalloc` (v3), chosen for its low-latency multi-thread
+ 
+ ## Public Library API
+ 
+-The minimum surface to embed skim in a Rust application:
++The minimum surface to embed skim in a Rust application. `BorderType::None` can be used with
++`SkimOptionsBuilder::border` to disable borders while sharing CLI-compatible border configuration.
+ 
+ ```rust
+ use skim::prelude::*;
+diff --git a/man/man1/sk.1 b/man/man1/sk.1
+index 296a47a..07c650d 100644
+--- a/man/man1/sk.1
++++ b/man/man1/sk.1
+@@ -417,6 +417,8 @@ Draw borders around the UI components
+ \fIPossible values:\fR
+ .RS 14
+ .IP \(bu 2
++none: Disable borders
++.IP \(bu 2
+ plain
+ .IP \(bu 2
+ rounded
+diff --git a/plugin/skim.vim b/plugin/skim.vim
+index 1043591..fd6a4b4 100644
+--- a/plugin/skim.vim
++++ b/plugin/skim.vim
+@@ -625,7 +625,9 @@ function! s:calc_size(max, val, dict)
+     return size
+   endif
+   let margin = match(opts, '--inline-info\|--info[^-]\{-}inline') > match(opts, '--no-inline-info\|--info[^-]\{-}\(default\|hidden\)') ? 1 : 2
+-  let margin += stridx(opts, '--border') > stridx(opts, '--no-border') ? 2 : 0
++  let border = match(opts, '--border')
++  let no_border = max([match(opts, '--no-border'), match(opts, '--border[= ]none\>')])
++  let margin += border > no_border ? 2 : 0
+   if stridx(opts, '--header') > stridx(opts, '--no-header')
+     let margin += len(split(opts, "\n"))
+   endif
+diff --git a/shell/completion.bash b/shell/completion.bash
+index 0f4978f..e8b7af5 100644
+--- a/shell/completion.bash
++++ b/shell/completion.bash
+@@ -166,7 +166,7 @@ _sk() {
+                     return 0
+                     ;;
+                 --border)
+-                    COMPREPLY=($(compgen -W "plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside" -- "${cur}"))
++                    COMPREPLY=($(compgen -W "none plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside" -- "${cur}"))
+                     return 0
+                     ;;
+                 --multiline)
+diff --git a/shell/completion.fish b/shell/completion.fish
+index dc7719c..4c517f2 100644
+--- a/shell/completion.fish
++++ b/shell/completion.fish
+@@ -49,7 +49,8 @@ inline\t''
+ hidden\t''"
+ complete -c sk -l header -d 'Set header, displayed next to the info' -r
+ complete -c sk -l header-lines -d 'Number of lines of the input treated as header' -r
+-complete -c sk -l border -d 'Draw borders around the UI components' -r -f -a "plain\t''
++complete -c sk -l border -d 'Draw borders around the UI components' -r -f -a "none\t'Disable borders'
++plain\t''
+ rounded\t''
+ double\t''
+ thick\t''
+diff --git a/shell/completion.nu b/shell/completion.nu
+index 95057bd..f4f8264 100644
+--- a/shell/completion.nu
++++ b/shell/completion.nu
+@@ -25,7 +25,7 @@ module completions {
+   }
+ 
+   def "nu-complete sk border" [] {
+-    [ "plain" "rounded" "double" "thick" "light-double-dashed" "heavy-double-dashed" "light-triple-dashed" "heavy-triple-dashed" "light-quadruple-dashed" "heavy-quadruple-dashed" "quadrant-inside" "quadrant-outside" ]
++    [ "none" "plain" "rounded" "double" "thick" "light-double-dashed" "heavy-double-dashed" "light-triple-dashed" "heavy-triple-dashed" "light-quadruple-dashed" "heavy-quadruple-dashed" "quadrant-inside" "quadrant-outside" ]
+   }
+ 
+   def "nu-complete sk shell" [] {
+diff --git a/shell/completion.zsh b/shell/completion.zsh
+index 9a33b7e..9895709 100644
+--- a/shell/completion.zsh
++++ b/shell/completion.zsh
+@@ -59,7 +59,19 @@ reverse-list\:"Display from the top of the screen, prompt at the bottom"))' \
+ '--info=[Set matching result count display position]:INFO:(default inline hidden)' \
+ '--header=[Set header, displayed next to the info]:HEADER:_default' \
+ '--header-lines=[Number of lines of the input treated as header]:HEADER_LINES:_default' \
+-'--border=[Draw borders around the UI components]::BORDER:(plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside)' \
++'--border=[Draw borders around the UI components]::BORDER:((none\:"Disable borders"
++plain\:""
++rounded\:""
++double\:""
++thick\:""
++light-double-dashed\:""
++heavy-double-dashed\:""
++light-triple-dashed\:""
++heavy-triple-dashed\:""
++light-quadruple-dashed\:""
++heavy-quadruple-dashed\:""
++quadrant-inside\:""
++quadrant-outside\:""))' \
+ '--multiline=[Split item text into multiple display lines at the given separator character defaults to \\n if read0 is set, and \\\\n if not (matching literal \\n in text)]::MULTILINE:_default' \
+ '--scrollbar=[Set scrollbar style for the item list]:THUMB:_default' \
+ '--history=[History file]:HISTORY_FILE:_default' \
+diff --git a/src/options.rs b/src/options.rs
+index 70839f1..1b437f6 100644
+--- a/src/options.rs
++++ b/src/options.rs
+@@ -1223,7 +1223,8 @@ impl SkimOptions {
+         if self.no_typos {
+             self.typos = Typos::Disabled;
+         }
+-        if self.no_border {
++        if self.no_border || matches!(self.border, Some(BorderType::None)) {
++            self.no_border = true;
+             self.border = None;
+         }
+ 
+diff --git a/src/popup/tmux.rs b/src/popup/tmux.rs
+index 0744e7f..44a98f6 100644
+--- a/src/popup/tmux.rs
++++ b/src/popup/tmux.rs
+@@ -127,6 +127,7 @@ mod tests {
+         require_tmux!();
+         // Ensure each BorderType variant can be passed without panicking.
+         for border in [
++            crate::tui::BorderType::None,
+             crate::tui::BorderType::Plain,
+             crate::tui::BorderType::Rounded,
+             crate::tui::BorderType::Thick,
+@@ -146,6 +147,13 @@ mod tests {
+         args.windows(2).find(|w| w[0] == flag).map(|w| w[1].as_str())
+     }
+ 
++    #[test]
++    fn none_border_is_borderless() {
++        require_tmux!();
++        let popup = TmuxPopup::build(&opts_with_border("center", crate::tui::BorderType::None));
++        assert_eq!(get_flag(&args(&popup), "-b"), Some("none"));
++    }
++
+     #[test]
+     fn center_default_size() {
+         require_tmux!();
+diff --git a/src/popup/zellij.rs b/src/popup/zellij.rs
+index 0b351d2..72d01ff 100644
+--- a/src/popup/zellij.rs
++++ b/src/popup/zellij.rs
+@@ -272,6 +272,20 @@ mod tests {
+         assert!(a.contains(&"--borderless".to_string()));
+     }
+ 
++    #[test]
++    fn border_none_is_borderless() {
++        require_zellij!();
++        let popup = ZellijPopup::build(
++            &SkimOptionsBuilder::default()
++                .popup("center")
++                .border(crate::tui::BorderType::None)
++                .build()
++                .unwrap(),
++        );
++        let a = args(&popup);
++        assert!(a.contains(&"--borderless".to_string()));
++    }
++
+     #[test]
+     fn no_borderless_when_border_set() {
+         require_zellij!();
+diff --git a/src/tui/layout.rs b/src/tui/layout.rs
+index a4337dc..5779076 100644
+--- a/src/tui/layout.rs
++++ b/src/tui/layout.rs
+@@ -616,6 +616,17 @@ mod tests {
+ 
+     // ── With borders ───────────────────────────────────────────────────────
+ 
++    #[test]
++    fn border_none_has_borderless_layout() {
++        let options = opts().border(crate::tui::BorderType::None).build().unwrap();
++        let layout = compute(&options);
++
++        assert!(options.border.is_none());
++        assert!(options.no_border);
++        assert_eq!(layout.input_area.height, 2);
++        assert_eq!(layout.list_area.height, 22);
++    }
++
+     #[test]
+     fn default_with_borders_no_header() {
+         let options = opts().border(crate::tui::BorderType::Plain).build().unwrap();
+diff --git a/src/tui/mod.rs b/src/tui/mod.rs
+index 30d5518..20c1960 100644
+--- a/src/tui/mod.rs
++++ b/src/tui/mod.rs
+@@ -139,6 +139,8 @@ impl std::fmt::Display for Size {
+ #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+ #[allow(missing_docs)]
+ pub enum BorderType {
++    /// Disable borders.
++    None,
+     #[default]
+     Plain,
+     Rounded,
+@@ -161,6 +163,7 @@ pub enum BorderType {
+ impl From<BorderType> for ratatui::widgets::BorderType {
+     fn from(val: BorderType) -> Self {
+         match val {
++            BorderType::None => ratatui::widgets::BorderType::Plain,
+             BorderType::Plain => ratatui::widgets::BorderType::Plain,
+             BorderType::Rounded => ratatui::widgets::BorderType::Rounded,
+             BorderType::Double => ratatui::widgets::BorderType::Double,
+diff --git a/tests/options.rs b/tests/options.rs
+index bde749f..e965522 100644
+--- a/tests/options.rs
++++ b/tests/options.rs
+@@ -456,6 +456,10 @@ insta_test!(opt_multiple_flags_layout_and_reverse, ["a b c", "d e f"], &["--layo
+     @snap;
+ });
+ 
++insta_test!(opt_border_none, ["a", "b", "c", "ac"], &["-q", "a", "--border", "none"], {
++    @snap;
++});
++
+ insta_test!(opt_border_plain, ["a", "b", "c", "ac"], &["-q", "a", "--border", "plain"], {
+     @snap;
+ });

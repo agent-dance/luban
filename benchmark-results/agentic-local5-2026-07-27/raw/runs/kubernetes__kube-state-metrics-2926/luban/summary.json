@@ -1,0 +1,51 @@
+{
+  "instance_id": "kubernetes__kube-state-metrics-2926",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785087467.7828412,
+  "elapsed_seconds": 1310.848,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1302049,
+    "cached_input_tokens": 1221632,
+    "cache_read_input_tokens": 1221632,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 40550,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 2.229401,
+  "tool_calls": 37,
+  "tool_calls_by_type": {
+    "Inspect": 16,
+    "ApplyPatch": 7,
+    "Run": 14
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "pkg/options/options.go",
+      "pkg/options/options_test.go"
+    ],
+    "additions": 17,
+    "deletions": 3
+  },
+  "final_text": "Implemented the complete regression fix.\n\n- Restored the established options-config YAML key:\n  - `custom_resource_config_file`\n- Left the CLI flag unchanged:\n  - `--custom-resource-state-config-file`\n- Added a focused regression test that unmarshals the reported YAML and verifies `Options.CustomResourceConfigFile`.\n\nSemantic review confirms both configuration-loading paths unmarshal directly into `Options`; restoring this struct tag causes the configured path to reach `resolveCustomResourceConfig`, making the YAML option equivalent to the CLI flag again.\n\nVerification on the current revision:\n\n- Focused config-mapping static test passed.\n- Go AST source/test check passed.\n- `gofmt` check passed.\n- `git diff --check` passed.\n- Complete final diff reviewed.\n- No temporary verification files remain.\n\nFull repository tests could not run because the only installed compiler is Go 1.21.5, while the repository requires Go 1.26.1 and uses unsupported `go.mod` syntax. Only the intended two files are modified, and no changes were committed.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-candidate-cursorfix-20260727",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 38,
+  "llm_successful_calls": 38,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1273.945456,
+  "binary": {
+    "path": "/private/tmp/luban-local5-candidate-cursorfix-20260727",
+    "sha256": "67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9"
+  }
+}

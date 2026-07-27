@@ -3,6 +3,8 @@ package provider
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -63,10 +65,10 @@ func errorEvent(ae *types.APIError) types.StreamEvent {
 // fastConfig returns a RetryConfig with minimal delays for unit tests.
 func fastConfig() RetryConfig {
 	return RetryConfig{
-		MaxRetries:    5,
-		BaseDelay:     time.Millisecond,
-		MaxDelay:      10 * time.Millisecond,
-		Max529Retries: 3,
+		MaxAttempts: 3,
+		BaseDelay:   time.Millisecond,
+		MaxDelay:    10 * time.Millisecond,
+		jitter:      func(upper time.Duration) time.Duration { return upper },
 	}
 }
 
@@ -95,11 +97,10 @@ func TestRetry_429_EventualSuccess(t *testing.T) {
 	}
 }
 
-// TestRetry_529_LimitRespected verifies that consecutive 529 errors stop
-// retrying once Max529Retries is exceeded.
+// TestRetry_529_LimitRespected verifies that overload errors cannot exceed the
+// shared total-attempt budget.
 func TestRetry_529_LimitRespected(t *testing.T) {
 	cfg := fastConfig()
-	cfg.Max529Retries = 3
 
 	overloaded := &types.APIError{Status: 529, Type: "overloaded_error", Message: "overloaded"}
 	mock := &mockProvider{
@@ -108,7 +109,6 @@ func TestRetry_529_LimitRespected(t *testing.T) {
 			{err: overloaded},
 			{err: overloaded},
 			{err: overloaded},
-			{err: overloaded}, // 4th — should exceed limit
 		},
 	}
 	rp := NewRetryProvider(mock, cfg)
@@ -117,9 +117,8 @@ func TestRetry_529_LimitRespected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error after exceeding 529 retry limit")
 	}
-	// Should have tried: initial + 3 retries = 4 calls (limit is 3 529 retries)
-	if mock.calls != 4 {
-		t.Errorf("expected 4 calls, got %d", mock.calls)
+	if mock.calls != 3 {
+		t.Errorf("expected total budget of 3 calls, got %d", mock.calls)
 	}
 }
 
@@ -128,6 +127,7 @@ func TestRetry_ExponentialBackoff(t *testing.T) {
 	rp := &RetryProvider{config: RetryConfig{
 		BaseDelay: 100 * time.Millisecond,
 		MaxDelay:  10 * time.Second,
+		jitter:    func(upper time.Duration) time.Duration { return upper },
 	}}
 
 	d0 := rp.computeDelay(0, nil)
@@ -139,9 +139,9 @@ func TestRetry_ExponentialBackoff(t *testing.T) {
 	}
 }
 
-func TestDefaultRetryConfigUsesTenRetriesFromOneSecond(t *testing.T) {
+func TestDefaultRetryConfigUsesThreeTotalAttempts(t *testing.T) {
 	cfg := DefaultRetryConfig()
-	if cfg.MaxRetries != 10 || cfg.BaseDelay != time.Second || cfg.MaxDelay != 32*time.Second || cfg.Max529Retries != 10 {
+	if cfg.MaxAttempts != 3 || cfg.BaseDelay != time.Second || cfg.MaxDelay != 32*time.Second {
 		t.Fatalf("default retry config = %+v", cfg)
 	}
 }
@@ -166,7 +166,7 @@ func TestRetryObserverReceivesProblemAndBackoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	drainAndExpectSuccess(t, ch)
-	if len(observed) != 1 || observed[0].Attempt != 1 || observed[0].MaxRetries != 5 || observed[0].Delay != 2*time.Millisecond || observed[0].Err == nil {
+	if len(observed) != 1 || observed[0].Attempt != 1 || observed[0].MaxRetries != 2 || observed[0].Delay != 2*time.Millisecond || observed[0].Err == nil {
 		t.Fatalf("retry observer events = %+v", observed)
 	}
 }
@@ -176,6 +176,7 @@ func TestRetry_MaxDelayRespected(t *testing.T) {
 	rp := &RetryProvider{config: RetryConfig{
 		BaseDelay: 500 * time.Millisecond,
 		MaxDelay:  1 * time.Second,
+		jitter:    func(upper time.Duration) time.Duration { return upper },
 	}}
 	// Attempt 10 would give 500ms * 2^10 = 512 s without the cap.
 	d := rp.computeDelay(10, nil)
@@ -189,7 +190,8 @@ func TestRetry_MaxDelayRespected(t *testing.T) {
 func TestRetry_RetryAfterHeader(t *testing.T) {
 	rp := &RetryProvider{config: RetryConfig{
 		BaseDelay: 1 * time.Millisecond,
-		MaxDelay:  10 * time.Millisecond,
+		MaxDelay:  3 * time.Second,
+		jitter:    func(upper time.Duration) time.Duration { return upper },
 	}}
 	ae := &types.APIError{
 		Status:     429,
@@ -198,6 +200,38 @@ func TestRetry_RetryAfterHeader(t *testing.T) {
 	d := rp.computeDelay(0, ae)
 	if d < 2*time.Second {
 		t.Errorf("expected Retry-After of 2s to be respected, got %v", d)
+	}
+}
+
+func TestRetry_RetryAfterHTTPDateAndBound(t *testing.T) {
+	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
+	rp := &RetryProvider{config: RetryConfig{
+		BaseDelay: time.Millisecond,
+		MaxDelay:  1500 * time.Millisecond,
+		jitter:    func(time.Duration) time.Duration { return 0 },
+		now:       func() time.Time { return now },
+	}}
+	ae := &types.APIError{Status: 429, RetryAfter: now.Add(5 * time.Second).Format(http.TimeFormat)}
+	if delay := rp.computeDelay(0, ae); delay != 1500*time.Millisecond {
+		t.Fatalf("bounded HTTP-date Retry-After delay = %v, want 1.5s", delay)
+	}
+}
+
+func TestRetry_FullJitterStaysWithinExponentialCap(t *testing.T) {
+	controller := NewAttemptController(RetryConfig{
+		MaxAttempts: 3,
+		BaseDelay:   100 * time.Millisecond,
+		MaxDelay:    time.Second,
+		jitter: func(upper time.Duration) time.Duration {
+			return upper / 3
+		},
+	})
+	if _, err := controller.beginAttempt(); err != nil {
+		t.Fatal(err)
+	}
+	delay, ok := controller.RetryDelay(&types.APIError{Status: 429})
+	if !ok || delay != 100*time.Millisecond/3 {
+		t.Fatalf("full-jitter delay = %v, retry=%v", delay, ok)
 	}
 }
 
@@ -282,6 +316,24 @@ func TestRetry_401_WithOnAuthError_Refreshed(t *testing.T) {
 	}
 }
 
+func TestRetry_401_RefreshIsAttemptedAtMostOnce(t *testing.T) {
+	unauthorized := &types.APIError{Status: 401, Message: "unauthorized"}
+	mock := &mockProvider{name: "mock", results: []mockResult{{err: unauthorized}, {err: unauthorized}, {events: successEvents()}}}
+	cfg := fastConfig()
+	refreshes := 0
+	cfg.OnAuthError = func() bool {
+		refreshes++
+		return true
+	}
+	rp := NewRetryProvider(mock, cfg)
+	if _, err := rp.CreateStream(context.Background(), Params{}); err == nil {
+		t.Fatal("expected second unauthorized response to fail")
+	}
+	if refreshes != 1 || mock.calls != 2 {
+		t.Fatalf("refreshes=%d calls=%d, want exactly one refresh and two calls", refreshes, mock.calls)
+	}
+}
+
 // TestRetry_401_WithOnAuthError_NotRefreshed verifies that when OnAuthError
 // returns false, the 401 is surfaced immediately without retrying.
 func TestRetry_401_WithOnAuthError_NotRefreshed(t *testing.T) {
@@ -322,6 +374,62 @@ func TestRetry_400_NoRetry(t *testing.T) {
 	}
 	if mock.calls != 1 {
 		t.Errorf("expected exactly 1 call (no retry), got %d", mock.calls)
+	}
+}
+
+func TestRetry_PermanentProblemsUseExactlyOneRawCall(t *testing.T) {
+	cases := []*types.APIError{
+		{Status: 400, Type: "context_length_exceeded", Message: "context window exceeded"},
+		{Status: 402, Type: "billing_error", Message: "payment required"},
+		{Status: 403, Type: "model_not_found", Message: "model not found"},
+		{Status: 404, Type: "server_error", Message: "endpoint not found"},
+	}
+	for _, apiErr := range cases {
+		mock := &mockProvider{name: "mock", results: []mockResult{{err: apiErr}, {events: successEvents()}}}
+		if _, err := NewRetryProvider(mock, fastConfig()).CreateStream(context.Background(), Params{}); err == nil {
+			t.Fatalf("expected permanent problem to fail: %+v", apiErr)
+		}
+		if mock.calls != 1 {
+			t.Fatalf("permanent problem %+v made %d raw calls, want 1", apiErr, mock.calls)
+		}
+	}
+}
+
+func TestRetry_CustomAttemptBudgetIsHonored(t *testing.T) {
+	serverErr := &types.APIError{Status: 503, Type: "server_error", Message: "unavailable"}
+	mock := &mockProvider{name: "mock", results: []mockResult{{err: serverErr}}}
+	cfg := fastConfig()
+	cfg.MaxAttempts = 4
+	if _, err := NewRetryProvider(mock, cfg).CreateStream(context.Background(), Params{}); err == nil {
+		t.Fatal("expected configured attempt budget to exhaust")
+	}
+	if mock.calls != 4 {
+		t.Fatalf("raw calls = %d, want configured total of 4", mock.calls)
+	}
+}
+
+func TestAnthropicSDKAndStreamingFallbackShareControllerBudget(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"type":"error","error":{"type":"overloaded_error","message":"overloaded"}}`))
+	}))
+	defer srv.Close()
+
+	raw := NewAnthropic(Config{APIKey: "test-key", BaseURL: srv.URL, Model: "test-model"})
+	controller := NewAttemptController(RetryConfig{MaxAttempts: 1, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond})
+	stream, err := CreateStreamAttempt(context.Background(), controller, raw, Params{
+		Messages: []types.Message{types.UserMessage("hello")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range stream {
+	}
+	if requests != 1 {
+		t.Fatalf("Anthropic HTTP requests = %d, want controller cap of 1", requests)
 	}
 }
 
@@ -402,12 +510,11 @@ func TestRetry_PromptTooLong_NoRetry(t *testing.T) {
 	}
 }
 
-// TestRetry_MaxTokensOverflow_IsRetryable verifies that a 400 caused by
-// max_tokens overflow is classified as retryable.
-func TestRetry_MaxTokensOverflow_IsRetryable(t *testing.T) {
+// Context-shape errors require request transformation, not blind replay.
+func TestRetry_MaxTokensOverflow_IsPermanent(t *testing.T) {
 	ae := &types.APIError{Status: 400, Message: "max_tokens exceed context length"}
-	if !IsRetryable(ae) {
-		t.Error("expected max_tokens overflow to be retryable")
+	if IsRetryable(ae) {
+		t.Error("expected max_tokens overflow to fail fast")
 	}
 }
 
@@ -424,8 +531,8 @@ func TestIs529Error(t *testing.T) {
 }
 
 func TestIsPromptTooLong(t *testing.T) {
-	if !IsPromptTooLong(&types.APIError{Status: 400, Message: "prompt is too long for this model"}) {
-		t.Error("expected true for PTL message")
+	if !IsPromptTooLong(&types.APIError{Status: 400, Code: "context_length_exceeded", Message: "prompt is too long for this model"}) {
+		t.Error("expected true for structured context code")
 	}
 	if !IsPromptTooLong(&types.APIError{Type: "prompt_too_long"}) {
 		t.Error("expected true for prompt_too_long type")

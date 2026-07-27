@@ -167,7 +167,7 @@ func terminalGuardRepositoryRoot(filename string) (string, error) {
 
 func terminalGuardExcludedDirectory(relative string) bool {
 	switch {
-	case relative == ".git", relative == "vendor", relative == ".luban-code":
+	case relative == ".git", relative == ".tmp", relative == "benchmark-results", relative == "vendor", relative == ".luban-code":
 		return true
 	case relative == "cmd/cache-bench" || strings.HasPrefix(relative, "cmd/cache-bench/"):
 		// The standalone benchmark owns its stdout/stderr lifecycle.

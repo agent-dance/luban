@@ -1,0 +1,43 @@
+{
+  "instance_id": "openai__openai-agents-js-375",
+  "language": "ts",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785017180.5703402,
+  "elapsed_seconds": 408.06,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1360023,
+    "cached_input_tokens": 1260800,
+    "output_tokens": 13382,
+    "reasoning_output_tokens": 5625,
+    "cache_read_input_tokens": 1260800,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 1.527975,
+  "tool_calls": 22,
+  "tool_calls_by_type": {
+    "command_execution": 19,
+    "file_change": 3
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      "packages/agents-core/src/run.ts",
+      "packages/agents-core/src/runImplementation.ts",
+      "packages/agents-core/test/run.stream.test.ts"
+    ],
+    "additions": 139,
+    "deletions": 21
+  },
+  "final_text": "Implemented the streaming lifecycle fix.\n\n- Streaming runs now emit agent- and runner-level `agent_end` hooks.\n- Streamed usage is accumulated before the hook fires.\n- Tool-based final outputs no longer double-emit `agent_end`.\n- Added regression tests for normal and tool-completed streaming runs.\n- Added a patch changeset.\n\nValidation: syntax checks and `git diff --check` pass. Vitest could not run because dependencies are not installed in this checkout.",
+  "command_public": {
+    "executable": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

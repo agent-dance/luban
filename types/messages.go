@@ -1,6 +1,7 @@
 package types
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"strings"
 
@@ -65,6 +66,7 @@ const (
 	InternalMessageKindUserContext         InternalMessageKind = "user_context"
 	InternalMessageKindGoalContinuation    InternalMessageKind = "goal_continuation"
 	InternalMessageKindSkillInvocation     InternalMessageKind = "skill_invocation"
+	InternalMessageKindFlightVerification  InternalMessageKind = "flight_verification"
 )
 
 // StopReason represents why the model stopped generating
@@ -105,19 +107,82 @@ func (b TextBlock) GetType() ContentType { return ContentTypeText }
 
 // ThinkingBlock represents a thinking/reasoning content block
 type ThinkingBlock struct {
-	Type      ContentType `json:"type"`
-	Thinking  string      `json:"thinking"`
-	Signature string      `json:"signature,omitempty"`
+	Type           ContentType           `json:"type"`
+	Thinking       string                `json:"thinking"`
+	Signature      string                `json:"signature,omitempty"`
+	SignatureKind  ThinkingSignatureKind `json:"signature_kind,omitempty"`
+	SignatureModel string                `json:"signature_model,omitempty"`
+	ProviderItemID string                `json:"provider_item_id,omitempty"`
+	ProviderStatus string                `json:"provider_status,omitempty"`
 }
 
 func (b ThinkingBlock) GetType() ContentType { return ContentTypeThinking }
 
+// ThinkingSignatureKind binds an opaque provider continuation token to its
+// wire protocol. A signature must never be projected to another protocol or
+// model merely because both use ThinkingBlock locally.
+type ThinkingSignatureKind string
+
+const (
+	ThinkingSignatureOpenAIEncryptedReasoning ThinkingSignatureKind = "openai_encrypted_reasoning"
+	ThinkingSignatureAnthropic                ThinkingSignatureKind = "anthropic_thinking"
+)
+
+// ProviderContinuation is private provider replay state attached to an
+// assistant message. Message's JSON boundary deliberately omits it: hooks,
+// machine events, debug snapshots, transcripts, and SDK exports must never
+// receive provider-native encrypted continuation bytes.
+//
+// Persistence uses a separate private runtime sidecar; ordinary Message JSON
+// is intentionally not a continuation transport.
+type ProviderContinuation struct {
+	Protocol         string
+	RequestedModel   string
+	ServedModel      string
+	ReasoningContext string
+	ResponseStatus   string
+	Items            []ProviderContinuationItem
+	projectionDigest [sha256.Size]byte
+}
+
+// ProviderContinuationItem retains one completed provider output item at its
+// authoritative output index. raw is unexported so generic JSON/logging paths
+// cannot serialize it by reflection.
+type ProviderContinuationItem struct {
+	OutputIndex int
+	raw         json.RawMessage
+}
+
+func NewProviderContinuationItem(outputIndex int, raw json.RawMessage) ProviderContinuationItem {
+	return ProviderContinuationItem{OutputIndex: outputIndex, raw: append(json.RawMessage(nil), raw...)}
+}
+
+// RawJSON returns a detached copy for the provider adapter's next request.
+func (item ProviderContinuationItem) RawJSON() json.RawMessage {
+	return append(json.RawMessage(nil), item.raw...)
+}
+
+// Clone returns a deep copy safe for conversation snapshots.
+func (continuation *ProviderContinuation) Clone() *ProviderContinuation {
+	if continuation == nil {
+		return nil
+	}
+	clone := *continuation
+	clone.Items = make([]ProviderContinuationItem, len(continuation.Items))
+	for index, item := range continuation.Items {
+		clone.Items[index] = NewProviderContinuationItem(item.OutputIndex, item.raw)
+	}
+	return &clone
+}
+
 // ToolUseBlock represents a tool invocation from the assistant
 type ToolUseBlock struct {
-	Type  ContentType    `json:"type"`
-	ID    string         `json:"id"`
-	Name  string         `json:"name"`
-	Input map[string]any `json:"input"`
+	Type     ContentType        `json:"type"`
+	ID       string             `json:"id"`
+	Name     string             `json:"name"`
+	Input    map[string]any     `json:"input"`
+	ToolType ToolDefinitionType `json:"tool_type,omitempty"`
+	RawInput string             `json:"raw_input,omitempty"`
 }
 
 func (b ToolUseBlock) GetType() ContentType { return ContentTypeToolUse }
@@ -135,6 +200,7 @@ type ToolResultBlock struct {
 	Usage         *Usage                 `json:"-"`
 	Outcome       ToolOutcome            `json:"outcome,omitempty"`
 	Completeness  ToolResultCompleteness `json:"-"`
+	ToolType      ToolDefinitionType     `json:"tool_type,omitempty"`
 }
 
 func (b ToolResultBlock) GetType() ContentType { return ContentTypeToolResult }
@@ -293,12 +359,62 @@ type Message struct {
 	IsMeta            bool                      `json:"is_meta,omitempty"`
 	DeveloperMetadata *DeveloperMessageMetadata `json:"developer_metadata,omitempty"`
 	InternalKind      InternalMessageKind       `json:"internal_kind,omitempty"`
+	// providerContinuation never crosses the public Message JSON boundary.
+	// It is consumed only by the matching provider adapter during an active
+	// conversation and invalidated on model/provider/context changes.
+	providerContinuation *ProviderContinuation
 	// internalControlDigest is deliberately neither exported nor serialized.
 	// It binds trusted runtime provenance to the complete serialized message,
 	// so copying is safe while mutation and ordinary JSON decoding invalidate
 	// the authority.
 	internalControlDigest [messagecontrol.DigestSize]byte
 	internalControlScope  messagecontrol.Scope
+}
+
+// AttachProviderContinuation binds private provider state to this exact
+// semantic assistant projection. Mutating the message after attachment makes
+// the continuation unavailable instead of replaying mismatched provider state.
+func (m *Message) AttachProviderContinuation(continuation *ProviderContinuation) {
+	if m == nil || continuation == nil {
+		return
+	}
+	clone := continuation.Clone()
+	m.providerContinuation = nil
+	projection, err := json.Marshal(m)
+	if err != nil {
+		return
+	}
+	clone.projectionDigest = sha256.Sum256(projection)
+	m.providerContinuation = clone
+}
+
+// ClearProviderContinuation invalidates provider-native replay state without
+// changing the visible message projection.
+func (m *Message) ClearProviderContinuation() {
+	if m != nil {
+		m.providerContinuation = nil
+	}
+}
+
+// ValidatedProviderContinuation returns a detached continuation only when the
+// semantic message is byte-for-byte the projection it was attached to.
+func (m Message) ValidatedProviderContinuation() (*ProviderContinuation, bool) {
+	if m.providerContinuation == nil {
+		return nil, false
+	}
+	continuation := m.providerContinuation
+	m.providerContinuation = nil
+	projection, err := json.Marshal(m)
+	if err != nil || sha256.Sum256(projection) != continuation.projectionDigest {
+		return nil, false
+	}
+	return continuation.Clone(), true
+}
+
+// HasProviderContinuation reports whether opaque state is attached. Callers
+// that need replay bytes must use ValidatedProviderContinuation.
+func (m Message) HasProviderContinuation() bool {
+	return m.providerContinuation != nil
 }
 
 // WithInternalControlProvenance seals a runtime-created control message with

@@ -13,7 +13,8 @@ import (
 type Config struct {
 	// CustomInstructions is additional instructions (for example, from LUBAN.md).
 	CustomInstructions string
-	// ToolDescriptions will be auto-generated from tools if empty
+	// ToolDescriptions is optional late-bound tool guidance. Provider-facing
+	// definitions remain the authoritative catalog.
 	ToolDescriptions string
 	// CWD is the current working directory shown to the model
 	CWD string
@@ -32,12 +33,12 @@ type Config struct {
 }
 
 // SystemPromptParts holds the static and dynamic portions of the system prompt.
-// Static content (role definition, tool descriptions) is stable across sessions and
-// suitable for long-term prompt caching. Dynamic content (working directory)
-// changes per session and should not be cached.
+// Static content (role and invariant workflow) is stable across sessions and
+// suitable for long-term prompt caching. Dynamic content (environment, runtime
+// response settings, and optional late tool notes) must not be cached.
 type SystemPromptParts struct {
-	Static  string // tool descriptions, role definition – stable, cache-eligible
-	Dynamic string // environment info – session-specific
+	Static  string // role and invariant workflow – stable, cache-eligible
+	Dynamic string // environment and runtime settings – session-specific
 }
 
 // SystemPrompt is the ordered system prompt representation used by the request
@@ -75,14 +76,24 @@ func (p SystemPrompt) JoinedText() string {
 // sections. Use the Static part as the first element of provider.Params.SystemParts
 // so it receives a cache_control breakpoint; append Dynamic as the second element.
 func BuildSystemPromptParts(tools []types.Tool, cfg Config) SystemPromptParts {
-	if isTruthyPromptEnv(os.Getenv("LUBAN_CODE_SIMPLE")) {
+	return buildSystemPromptParts(buildStaticPrompt(tools, cfg), cfg)
+}
+
+// BuildSystemPromptPartsForDefinitions constructs a prompt from the exact
+// provider-facing catalog. It prevents prompt guidance from being derived from
+// a broader execution registry than the schemas sent in the same envelope.
+func BuildSystemPromptPartsForDefinitions(tools []types.ToolDefinition, cfg Config) SystemPromptParts {
+	return buildSystemPromptParts(buildStaticPromptForDefinitions(tools, cfg), cfg)
+}
+
+func buildSystemPromptParts(static string, cfg Config) SystemPromptParts {
+	// Simple mode is a legacy diagnostics surface. It must never erase the
+	// Agentic V2 correctness kernel while the exact coding catalog is active.
+	if isTruthyPromptEnv(os.Getenv("LUBAN_CODE_SIMPLE")) && !strings.Contains(static, "# Coding contract") {
 		return SystemPromptParts{
 			Dynamic: buildSimpleSystemPrompt(cfg),
 		}
 	}
-
-	// --- Static section: role identity + global tool-use guidance ---
-	static := buildStaticPrompt(tools, cfg)
 
 	cwd := cfg.CWD
 	if cwd == "" {
@@ -91,17 +102,23 @@ func BuildSystemPromptParts(tools []types.Tool, cfg Config) SystemPromptParts {
 			cwd = "."
 		}
 	}
-	environment := EnvironmentContextBuilder{
+	dynamic := []string{EnvironmentContextBuilder{
 		PrimaryCWD:       cwd,
 		AdditionalDirs:   cfg.AdditionalDirs,
 		ModelID:          cfg.ModelID,
 		ModelDescription: cfg.ModelDescription,
 		KnowledgeCutoff:  cfg.KnowledgeCutoff,
-	}.Build()
+	}.Build()}
+	if runtimeSettings := runtimeSettingsSection(cfg); runtimeSettings != "" {
+		dynamic = append(dynamic, runtimeSettings)
+	}
+	if toolDescriptions := strings.TrimSpace(cfg.ToolDescriptions); toolDescriptions != "" {
+		dynamic = append(dynamic, toolDescriptions)
+	}
 
 	return SystemPromptParts{
 		Static:  static,
-		Dynamic: environment,
+		Dynamic: strings.Join(dynamic, "\n\n"),
 	}
 }
 
@@ -109,6 +126,16 @@ func BuildSystemPromptParts(tools []types.Tool, cfg Config) SystemPromptParts {
 // This is the preferred builder for provider callers.
 func BuildSystemPromptBlocks(tools []types.Tool, cfg Config) SystemPrompt {
 	p := BuildSystemPromptParts(tools, cfg)
+	return systemPromptBlocks(p)
+}
+
+// BuildSystemPromptBlocksForDefinitions is the block-form counterpart of
+// BuildSystemPromptPartsForDefinitions.
+func BuildSystemPromptBlocksForDefinitions(tools []types.ToolDefinition, cfg Config) SystemPrompt {
+	return systemPromptBlocks(BuildSystemPromptPartsForDefinitions(tools, cfg))
+}
+
+func systemPromptBlocks(p SystemPromptParts) SystemPrompt {
 	blocks := make(SystemPrompt, 0, 2)
 	if p.Static != "" {
 		blocks = append(blocks, SystemPromptBlock{

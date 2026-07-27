@@ -32,6 +32,23 @@ func newMaxTurnsReachedEvent(maxTurns, turnCount int) stream.Event {
 	}
 }
 
+func newAgenticFlightDispositionEvent(controller *agenticFlightController, decision agenticFlightTerminalDecision, turnCount int) stream.Event {
+	if controller == nil {
+		return stream.Event{}
+	}
+	return stream.Event{
+		Type:      stream.EventProgress,
+		TurnCount: turnCount,
+		Progress: &stream.ProgressEvent{
+			Stage:         "agentic_flight",
+			Disposition:   decision.Disposition,
+			Blocker:       string(decision.Blocker),
+			MutationEpoch: controller.mutationEpoch(),
+			VerifiedEpoch: controller.verifiedEpoch(),
+		},
+	}
+}
+
 func newGoalEvaluationEvent(usage *types.Usage, turnCount int, model string) stream.Event {
 	usageCopy := *usage
 	metadata := map[string]any{

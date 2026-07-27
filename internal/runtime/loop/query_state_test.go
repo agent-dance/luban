@@ -65,6 +65,7 @@ func (p *queryConfigMutatingProvider) CreateStream(_ context.Context, params pro
 		p.loop.config.MaxTurns = 1
 		p.loop.config.SessionID = "mutated-session"
 		p.loop.config.ReasoningEffort = "high"
+		p.loop.config.ServiceTier = provider.ServiceTier("auto")
 		p.loop.thinkingConfig = &provider.ThinkingConfig{Enabled: true, BudgetTokens: 999}
 	}
 
@@ -115,6 +116,7 @@ func TestQueryStateConfigSnapshotFrozenWithinRun(t *testing.T) {
 		MaxTokens:       111,
 		SessionID:       "original-session",
 		ReasoningEffort: "low",
+		ServiceTier:     provider.ServiceTierDefault,
 	})
 	q.SetThinkingConfig(true, 1234)
 	prov.loop = q
@@ -124,6 +126,9 @@ func TestQueryStateConfigSnapshotFrozenWithinRun(t *testing.T) {
 	}
 	if len(prov.calls) != 2 {
 		t.Fatalf("CreateStream calls = %d, want 2", len(prov.calls))
+	}
+	if first := prov.calls[0].ServiceTier; first != provider.ServiceTierDefault {
+		t.Fatalf("first ServiceTier = %q, want default", first)
 	}
 
 	second := prov.calls[1]
@@ -141,6 +146,9 @@ func TestQueryStateConfigSnapshotFrozenWithinRun(t *testing.T) {
 	}
 	if second.ReasoningEffort != "low" {
 		t.Fatalf("second ReasoningEffort = %q, want low", second.ReasoningEffort)
+	}
+	if second.ServiceTier != provider.ServiceTierDefault {
+		t.Fatalf("second ServiceTier = %q, want frozen default", second.ServiceTier)
 	}
 	if second.Thinking == nil || !second.Thinking.Enabled || second.Thinking.BudgetTokens != 1234 {
 		t.Fatalf("second Thinking = %+v, want enabled budget 1234", second.Thinking)

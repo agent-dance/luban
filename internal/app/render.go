@@ -194,6 +194,18 @@ func makeEventHandler(r presentation.Renderer, verbose bool) func(stream.Event) 
 			brief.flushSemanticGroups()
 			brief.flushText()
 			presentation.DispatchRuntimeWarningEvent(r, runtimeevent.SystemWarningRuntimeEvent(event), i18n.LangEN, false)
+		case stream.EventRequestStart, stream.EventRequestRetry, stream.EventRequestFirstToken, stream.EventRequestEnd, stream.EventRequestFailed:
+			if machine, ok := r.(interface {
+				RenderRequestMetrics(presentation.ToolEventContext, stream.EventType, *stream.RequestStatusEvent)
+			}); ok {
+				machine.RenderRequestMetrics(toolEventContext(event), event.Type, event.RequestStatus)
+			}
+		case stream.EventToolRoundMetrics:
+			if machine, ok := r.(interface {
+				RenderToolRoundMetrics(presentation.ToolEventContext, *stream.ToolRoundMetricsEvent)
+			}); ok {
+				machine.RenderToolRoundMetrics(toolEventContext(event), event.ToolRound)
+			}
 		}
 	}
 }

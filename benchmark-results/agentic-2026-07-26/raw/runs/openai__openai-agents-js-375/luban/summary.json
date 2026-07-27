@@ -1,0 +1,46 @@
+{
+  "instance_id": "openai__openai-agents-js-375",
+  "language": "ts",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785016462.3094132,
+  "elapsed_seconds": 703.577,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1482892,
+    "cached_input_tokens": 1403392,
+    "cache_read_input_tokens": 1403392,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 20481,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.713626,
+  "tool_calls": 70,
+  "tool_calls_by_type": {
+    "ToolSearch": 1,
+    "Glob": 5,
+    "Grep": 14,
+    "Read": 25,
+    "Edit": 17,
+    "Bash": 8
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "packages/agents-core/src/run.ts",
+      "packages/agents-core/test/run.stream.test.ts"
+    ],
+    "additions": 84,
+    "deletions": 3
+  },
+  "final_text": "Implemented the streaming lifecycle fix.\n\n- Streaming runs now aggregate model usage into `RunContext` before completion (`packages/agents-core/src/run.ts:797`).\n- Streaming runs emit `agent_end` on both the `Runner` and final `Agent`, matching non-streaming behavior (`packages/agents-core/src/run.ts:831`).\n- Added a regression test verifying post-`run()` listeners receive `agent_end` exactly once and can access accumulated usage (`packages/agents-core/test/run.stream.test.ts:57`).\n\nValidation:\n- `git diff --check` passed.\n- Tests and full type-check could not run because repository dependencies, including `vitest`, `zod`, and Node typings, are not installed.",
+  "command_public": {
+    "executable": "luban",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

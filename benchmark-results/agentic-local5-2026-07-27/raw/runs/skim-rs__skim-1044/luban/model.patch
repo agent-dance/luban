@@ -1,0 +1,188 @@
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index e668a34..50af570 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -719,6 +719,10 @@ Layout is rebuilt on `Event::Resize`, when the header height changes (multiline
+ | `Reverse` | Input at top, list below (top-to-bottom reading) |
+ | `ReverseList` | List at top, input at bottom |
+ 
++`BorderType` contains the drawable ratatui border styles plus `None`. During option finalization,
++`--border none` is normalized to the same borderless state as `--no-border`, including for tmux and
++zellij popups.
++
+ **Preview placement** is parsed from `--preview-window`:
+ - Direction: `left` / `right` / `up` / `down`
+ - Size: `50%` (default) or fixed cells
+diff --git a/man/man1/sk.1 b/man/man1/sk.1
+index 296a47a..cf0e519 100644
+--- a/man/man1/sk.1
++++ b/man/man1/sk.1
+@@ -440,6 +440,8 @@ heavy\-quadruple\-dashed
+ quadrant\-inside
+ .IP \(bu 2
+ quadrant\-outside
++.IP \(bu 2
++none
+ .RE
+ .TP
+ \fB\-\-no\-border\fR
+diff --git a/shell/completion.bash b/shell/completion.bash
+index 0f4978f..92ad050 100644
+--- a/shell/completion.bash
++++ b/shell/completion.bash
+@@ -166,7 +166,7 @@ _sk() {
+                     return 0
+                     ;;
+                 --border)
+-                    COMPREPLY=($(compgen -W "plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside" -- "${cur}"))
++                    COMPREPLY=($(compgen -W "plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside none" -- "${cur}"))
+                     return 0
+                     ;;
+                 --multiline)
+diff --git a/shell/completion.fish b/shell/completion.fish
+index dc7719c..627bc60 100644
+--- a/shell/completion.fish
++++ b/shell/completion.fish
+@@ -60,7 +60,8 @@ heavy-triple-dashed\t''
+ light-quadruple-dashed\t''
+ heavy-quadruple-dashed\t''
+ quadrant-inside\t''
+-quadrant-outside\t''"
++quadrant-outside\t''
++none\t''"
+ complete -c sk -l multiline -d 'Split item text into multiple display lines at the given separator character defaults to \\n if read0 is set, and \\\\n if not (matching literal \\n in text)' -r
+ complete -c sk -l scrollbar -d 'Set scrollbar style for the item list' -r
+ complete -c sk -l history -d 'History file' -r
+diff --git a/shell/completion.nu b/shell/completion.nu
+index 95057bd..f75a482 100644
+--- a/shell/completion.nu
++++ b/shell/completion.nu
+@@ -25,7 +25,7 @@ module completions {
+   }
+ 
+   def "nu-complete sk border" [] {
+-    [ "plain" "rounded" "double" "thick" "light-double-dashed" "heavy-double-dashed" "light-triple-dashed" "heavy-triple-dashed" "light-quadruple-dashed" "heavy-quadruple-dashed" "quadrant-inside" "quadrant-outside" ]
++    [ "plain" "rounded" "double" "thick" "light-double-dashed" "heavy-double-dashed" "light-triple-dashed" "heavy-triple-dashed" "light-quadruple-dashed" "heavy-quadruple-dashed" "quadrant-inside" "quadrant-outside" "none" ]
+   }
+ 
+   def "nu-complete sk shell" [] {
+diff --git a/shell/completion.zsh b/shell/completion.zsh
+index 9a33b7e..436ff04 100644
+--- a/shell/completion.zsh
++++ b/shell/completion.zsh
+@@ -59,7 +59,7 @@ reverse-list\:"Display from the top of the screen, prompt at the bottom"))' \
+ '--info=[Set matching result count display position]:INFO:(default inline hidden)' \
+ '--header=[Set header, displayed next to the info]:HEADER:_default' \
+ '--header-lines=[Number of lines of the input treated as header]:HEADER_LINES:_default' \
+-'--border=[Draw borders around the UI components]::BORDER:(plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside)' \
++'--border=[Draw borders around the UI components]::BORDER:(plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside none)' \
+ '--multiline=[Split item text into multiple display lines at the given separator character defaults to \\n if read0 is set, and \\\\n if not (matching literal \\n in text)]::MULTILINE:_default' \
+ '--scrollbar=[Set scrollbar style for the item list]:THUMB:_default' \
+ '--history=[History file]:HISTORY_FILE:_default' \
+diff --git a/src/options.rs b/src/options.rs
+index 70839f1..09f09d1 100644
+--- a/src/options.rs
++++ b/src/options.rs
+@@ -539,7 +539,7 @@ pub struct SkimOptions {
+     #[cfg_attr(feature = "cli", arg(long, default_value = "0", help_heading = "Display"))]
+     pub header_lines: usize,
+ 
+-    /// Draw borders around the UI components
++    /// Draw borders around the UI components. The `none` style disables all borders.
+     ///
+     #[cfg_attr(
+         feature = "cli",
+@@ -1223,6 +1223,9 @@ impl SkimOptions {
+         if self.no_typos {
+             self.typos = Typos::Disabled;
+         }
++        if matches!(self.border, Some(BorderType::None)) {
++            self.no_border = true;
++        }
+         if self.no_border {
+             self.border = None;
+         }
+@@ -1327,6 +1330,28 @@ impl SkimOptions {
+     }
+ }
+ 
++#[cfg(all(test, feature = "cli"))]
++mod tests {
++    use clap::Parser;
++
++    use super::*;
++
++    #[test]
++    fn border_none_disables_all_borders() {
++        let spaced = ["sk", "--border", "none"];
++        let equals = ["sk", "--border=none"];
++
++        for args in [spaced.as_slice(), equals.as_slice()] {
++            let options = SkimOptions::try_parse_from(args)
++                .expect("--border none should parse")
++                .build();
++
++            assert!(options.border.is_none());
++            assert!(options.no_border);
++        }
++    }
++}
++
+ /// Feature flags
+ #[derive(Copy, Clone, Debug, Eq, PartialEq)]
+ #[cfg_attr(feature = "cli", derive(clap::ValueEnum))]
+diff --git a/src/popup/tmux.rs b/src/popup/tmux.rs
+index 0744e7f..a221379 100644
+--- a/src/popup/tmux.rs
++++ b/src/popup/tmux.rs
+@@ -26,13 +26,14 @@ impl TmuxPopup {
+ 
+         let border = {
+             use crate::tui::BorderType::{Plain, Rounded, Thick};
+-            if options.no_border {
++            if options.no_border || matches!(options.border, Some(crate::tui::BorderType::None)) {
+                 "none"
+             } else {
+                 match options.border {
+                     None | Some(Plain) => "single",
+                     Some(Rounded) => "rounded",
+                     Some(Thick) => "heavy",
++                    Some(crate::tui::BorderType::None) => "none",
+                     Some(_) => "double",
+                 }
+             }
+diff --git a/src/popup/zellij.rs b/src/popup/zellij.rs
+index 0b351d2..31ec876 100644
+--- a/src/popup/zellij.rs
++++ b/src/popup/zellij.rs
+@@ -58,7 +58,7 @@ impl ZellijPopup {
+                     .map_or(".".to_string(), |d| d.to_string_lossy().to_string()),
+             ]);
+ 
+-        if options.no_border {
++        if options.no_border || matches!(options.border, Some(crate::tui::BorderType::None)) {
+             cmd.args(["--borderless", "true"]);
+         }
+ 
+diff --git a/src/tui/mod.rs b/src/tui/mod.rs
+index 30d5518..f7e3690 100644
+--- a/src/tui/mod.rs
++++ b/src/tui/mod.rs
+@@ -156,12 +156,16 @@ pub enum BorderType {
+ 
+     QuadrantInside,
+     QuadrantOutside,
++
++    /// Disable all borders.
++    None,
+ }
+ 
+ impl From<BorderType> for ratatui::widgets::BorderType {
+     fn from(val: BorderType) -> Self {
+         match val {
+-            BorderType::Plain => ratatui::widgets::BorderType::Plain,
++            // `SkimOptions::build` removes `None` before rendering.
++            BorderType::Plain | BorderType::None => ratatui::widgets::BorderType::Plain,
+             BorderType::Rounded => ratatui::widgets::BorderType::Rounded,
+             BorderType::Double => ratatui::widgets::BorderType::Double,
+             BorderType::Thick => ratatui::widgets::BorderType::Thick,

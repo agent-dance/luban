@@ -1,0 +1,51 @@
+{
+  "instance_id": "include-what-you-use__include-what-you-use-1991",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785088215.645062,
+  "elapsed_seconds": 1391.581,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1705948,
+    "cached_input_tokens": 1595904,
+    "cache_read_input_tokens": 1595904,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 44427,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 2.680982,
+  "tool_calls": 30,
+  "tool_calls_by_type": {
+    "Inspect": 24,
+    "ApplyPatch": 1,
+    "Run": 5
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "iwyu.cc",
+      "tests/bugs/1931/1931.cc"
+    ],
+    "additions": 13,
+    "deletions": 4
+  },
+  "final_text": "Implemented the explicit function-template specialization dependency fix and enabled its regression test.\n\n**Semantic review**\n- Explicit function-template specializations now report a use of their primary `FunctionTemplateDecl`.\n- `UF_RedeclUse` preserves the specific required declaration instead of canonicalizing it to a template definition.\n- The branch is restricted to `TSK_ExplicitSpecialization`; implicit and explicit instantiations are unaffected.\n- The issue fixture’s `print.h` dependency has no unrelated use in `1931.h`, so retaining it specifically exercises the missing specialization-to-primary-template edge.\n\n**Current-revision checks**\n- Issue fixture compiles successfully with the primary template header.\n- Equivalent specialization without a primary template declaration is rejected by Clang.\n- Clang AST output confirms `print(A)` is represented as an `explicit_specialization`.\n- The issue fixture is enabled and registered in the `bugs` test suite.\n- `git diff --check` passes.\n- Final diff contains only:\n  - the specialization dependency handling in `iwyu.cc`;\n  - removal of `IWYU_XFAIL` from issue 1931.\n\nThe full IWYU regression could not execute because CMake cannot find the local LLVM development package (`LLVMConfig.cmake`), so analyzer-level runtime verification remains unavailable in this environment.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-candidate-cursorfix-20260727",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 34,
+  "llm_successful_calls": 34,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1383.64014,
+  "binary": {
+    "path": "/private/tmp/luban-local5-candidate-cursorfix-20260727",
+    "sha256": "67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9"
+  }
+}

@@ -47,7 +47,7 @@ func TestLLMRequestStatusShimmersWorkingAndDimsInterruptHintAndCallMetrics(t *te
 
 	buffer := gtui.NewBuffer(120, 1)
 	element.Render(buffer, 120, 1)
-	if rendered := buffer.String(); !strings.Contains(rendered, "• Working (1h1m1s • Ctrl+C to interrupt) Connection 1m10s · First token 2m10s") {
+	if rendered := buffer.String(); !strings.Contains(rendered, "• Working (1h1m1s • Ctrl+C to interrupt)  Connection 1m10s · First token 2m10s") {
 		t.Fatalf("LLM request status layout = %q", rendered)
 	}
 	hintColumn := strings.Index(buffer.String(), "Ctrl+C to interrupt")

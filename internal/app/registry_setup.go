@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -20,10 +19,13 @@ import (
 	"github.com/agent-dance/luban/hooks"
 	"github.com/agent-dance/luban/i18n"
 	agentruntime "github.com/agent-dance/luban/internal/agent"
+	toolinspect "github.com/agent-dance/luban/internal/agentic/inspect"
+	"github.com/agent-dance/luban/internal/contracts/workspacerevision"
 	"github.com/agent-dance/luban/internal/mcp/catalog"
 	mcpmanager "github.com/agent-dance/luban/internal/mcp/manager"
 	"github.com/agent-dance/luban/internal/runtime/compact"
 	runtimescope "github.com/agent-dance/luban/internal/runtime/scope"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	runtimestore "github.com/agent-dance/luban/internal/store/runtime"
 	settingsstore "github.com/agent-dance/luban/internal/store/settings"
 	taskstore "github.com/agent-dance/luban/internal/store/tasks"
@@ -36,7 +38,6 @@ import (
 	toolmcp "github.com/agent-dance/luban/internal/tools/mcp"
 	toolremote "github.com/agent-dance/luban/internal/tools/remote"
 	toolschedule "github.com/agent-dance/luban/internal/tools/schedule"
-	toolsearch "github.com/agent-dance/luban/internal/tools/search"
 	toolshell "github.com/agent-dance/luban/internal/tools/shell"
 	toolskill "github.com/agent-dance/luban/internal/tools/skill"
 	tooltasks "github.com/agent-dance/luban/internal/tools/tasks"
@@ -68,10 +69,13 @@ type RegistryDeps struct {
 	AskUserQuestionTool   *toolinteraction.AskUserQuestionTool
 	RuntimeScope          *runtimescope.RuntimeScope
 	BashTool              *toolshell.BashTool
+	RunTool               *toolshell.RunTool
+	InspectTool           *toolinspect.Tool
 	PowerShellTool        *toolshell.PowerShellTool
 	FileReadTool          *toolfile.FileReadTool
 	FileWriteTool         *toolfile.FileWriteTool
 	FileEditTool          *toolfile.FileEditTool
+	ApplyPatchTool        *toolfile.ApplyPatchTool
 	NotebookEditTool      *toolfile.NotebookEditTool
 	WebFetchTool          *toolweb.WebFetchTool
 	WebSearchTool         *toolweb.WebSearchTool
@@ -505,35 +509,6 @@ func isEnvTruthy(value string) bool {
 	}
 }
 
-func isEnvDefinedFalsy(value string) bool {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "0", "false", "no", "off":
-		return true
-	default:
-		return false
-	}
-}
-
-func isToolSearchEnabledOptimistic() bool {
-	if isEnvTruthy(os.Getenv("LUBAN_CODE_DISABLE_EXPERIMENTAL_BETAS")) {
-		return false
-	}
-	value := strings.TrimSpace(os.Getenv("ENABLE_TOOL_SEARCH"))
-	if value == "" {
-		return true
-	}
-	if isEnvTruthy(value) {
-		return true
-	}
-	if isEnvDefinedFalsy(value) || strings.EqualFold(value, "auto:100") {
-		return false
-	}
-	if strings.EqualFold(value, "auto") || strings.HasPrefix(strings.ToLower(value), "auto:") {
-		return !strings.EqualFold(value, "auto:100")
-	}
-	return true
-}
-
 func isAgentSwarmsEnabled() bool {
 	if os.Getenv("USER_TYPE") == "ant" {
 		return true
@@ -740,6 +715,9 @@ func (d *RegistryDeps) updateSessionContextAfterSkillCommit(cwd string, allowedD
 	if d.FileEditTool != nil {
 		d.FileEditTool.SetAllowedDirs(allowedDirs)
 	}
+	if d.ApplyPatchTool != nil {
+		d.ApplyPatchTool.SetAllowedDirs(allowedDirs)
+	}
 	if d.NotebookEditTool != nil {
 		d.NotebookEditTool.SetAllowedDirs(allowedDirs)
 	}
@@ -839,7 +817,7 @@ func SetupRegistry(pRef *provider.ProviderRef, cwd string, allowedDirs []string,
 	runtimeScope.SetFeatureGate(types.ToolFeatureTeams, isAgentSwarmsEnabled())
 	runtimeScope.SetFeatureGate(types.ToolFeatureRemoteTrigger, isAgentTriggersRemoteEnabled())
 	runtimeScope.SetFeatureGate(types.ToolFeatureCron, isCronRuntimeEnabled())
-	runtimeScope.SetFeatureGate(types.ToolFeatureToolSearch, isToolSearchEnabledOptimistic())
+	runtimeScope.SetFeatureGate(types.ToolFeatureToolSearch, false)
 	runtimeScope.SetFeatureGate(types.ToolFeaturePlanMode, true)
 	runtimeScope.SetFeatureGate(types.ToolFeatureWorktree, true)
 	// Go currently has no --brief/defaultView setting surface. The TS dev/test
@@ -883,7 +861,12 @@ func SetupRegistry(pRef *provider.ProviderRef, cwd string, allowedDirs []string,
 		AllowedDirs:     append([]string(nil), allowedDirs...),
 		FileMutations:   toolfile.NewFileMutationCoordinator(readState),
 		OutputPersister: shellOutputPersister{},
+		RunVerificationRoot: func() string {
+			runtime := runtimeScope.ToolRuntimeContext()
+			return filepath.Join(storepaths.RuntimeSessionDir(runtime.ProjectRoot, runtime.SessionID), "run-verification")
+		},
 	}
+	runTool := toolshell.NewRunTool(bashTool)
 	powerShellTool := &toolshell.PowerShellTool{
 		CWD: cwd, AllowedDirs: append([]string(nil), allowedDirs...),
 		PlanState: planState, Background: backgroundTasks,
@@ -903,7 +886,11 @@ func SetupRegistry(pRef *provider.ProviderRef, cwd string, allowedDirs []string,
 			return 0, fmt.Errorf("active provider does not expose token counting")
 		},
 		ToolResultsDirProvider: func() string {
-			return filepath.Join(runtimeScope.ProjectRoot(), brand.ConfigDirName, "tool-results")
+			runtime := runtimeScope.ToolRuntimeContext()
+			return filepath.Join(
+				storepaths.RuntimeSessionDir(runtime.ProjectRoot, runtime.SessionID),
+				"tool-results",
+			)
 		},
 	}
 	fileWriteTool := &toolfile.FileWriteTool{
@@ -918,19 +905,25 @@ func SetupRegistry(pRef *provider.ProviderRef, cwd string, allowedDirs []string,
 		PlanState:   planState,
 		ReadState:   readState,
 	}
-	if runtime.GOOS != "windows" {
-		reg.Register(bashTool)
-	} else if _, err := exec.LookPath("bash"); err == nil {
-		reg.Register(bashTool)
+	applyPatchTool := &toolfile.ApplyPatchTool{
+		AllowedDirs: allowedDirs,
+		Runtime:     runtimeScope,
+		PlanState:   planState,
+		ReadState:   readState,
 	}
-	if runtime.GOOS == "windows" {
-		reg.Register(powerShellTool)
-	}
-	reg.Register(fileReadTool)
-	reg.Register(fileWriteTool)
-	reg.Register(fileEditTool)
-	reg.Register(toolsearch.NewGlob(runtimeScope))
-	reg.Register(toolsearch.NewGrep(runtimeScope))
+	inspectTool := toolinspect.New(runtimeScope, readState)
+	// The production coding harness has exactly one model-facing kernel.
+	// Legacy file/search/shell implementations remain private dependencies of
+	// these compound tools and are never registered as an alternate surface.
+	applyPatchTool.CustomToolInput = isEnvTruthy(os.Getenv("LUBAN_CODE_EXPERIMENTAL_APPLY_PATCH_CUSTOM_TOOL"))
+	reg.SetModelToolProfile(registry.ModelToolProfileAgenticV2)
+	revisions := workspacerevision.NewLedger()
+	bashTool.WorkspaceRevisions = revisions
+	applyPatchTool.WorkspaceRevisions = revisions
+	inspectTool.WorkspaceRevisions = revisions
+	reg.Register(inspectTool)
+	reg.Register(applyPatchTool)
+	reg.Register(runTool)
 
 	// Agent tool
 	agentTool := &agentruntime.AgentTool{
@@ -1083,6 +1076,7 @@ func SetupRegistry(pRef *provider.ProviderRef, cwd string, allowedDirs []string,
 	fileSkills := &fileSkillActivator{manager: skillTool.Manager}
 	fileReadTool.SkillManager = fileSkills
 	fileEditTool.SkillManager = fileSkills
+	applyPatchTool.SkillManager = fileSkills
 	reg.Register(skillTool)
 
 	// Team and messaging tools consume only the application-owned skill and
@@ -1121,20 +1115,9 @@ func SetupRegistry(pRef *provider.ProviderRef, cwd string, allowedDirs []string,
 	}
 	reg.Register(notebookEditTool)
 
-	// Misc tools
-	var toolSearch types.Tool
-	if isToolSearchEnabledOptimistic() {
-		toolSearch = toolsearch.NewToolSearch(reg, func() []toolsearch.MCPServerVisibilityState {
-			return mcpVisibilityStatesFromSnapshot(serviceMCP.Snapshot())
-		})
-		reg.Register(toolSearch)
-	}
-	var mcpListChangedUnregister func()
-	if invalidator, ok := toolSearch.(interface{ Invalidate() }); ok {
-		mcpListChangedUnregister = toolmcp.RegisterMCPListChangedInvalidators(reg, serviceMCP, nil, invalidator)
-	} else {
-		mcpListChangedUnregister = toolmcp.RegisterMCPListChangedInvalidators(reg, serviceMCP, nil)
-	}
+	// Dynamic MCP catalog changes still invalidate their runtime projection;
+	// the retired ToolSearch compatibility surface is deliberately absent.
+	mcpListChangedUnregister := toolmcp.RegisterMCPListChangedInvalidators(reg, serviceMCP, nil)
 	if isAgentTriggersRemoteEnabled() {
 		reg.Register(&toolremote.Trigger{})
 	}
@@ -1162,10 +1145,13 @@ func SetupRegistry(pRef *provider.ProviderRef, cwd string, allowedDirs []string,
 		AskUserQuestionTool:      askUserQuestionTool,
 		RuntimeScope:             runtimeScope,
 		BashTool:                 bashTool,
+		RunTool:                  runTool,
+		InspectTool:              inspectTool,
 		PowerShellTool:           powerShellTool,
 		FileReadTool:             fileReadTool,
 		FileWriteTool:            fileWriteTool,
 		FileEditTool:             fileEditTool,
+		ApplyPatchTool:           applyPatchTool,
 		NotebookEditTool:         notebookEditTool,
 		WebFetchTool:             webFetch,
 		WebSearchTool:            webSearch,
@@ -1212,7 +1198,7 @@ func newWebSearchServerToolProvider(ref *provider.ProviderRef) toolweb.WebSearch
 		}
 
 		started := time.Now()
-		stream, err := current.CreateStream(ctx, provider.Params{
+		params := ref.ApplyRequestPolicy(provider.Params{
 			Model:     current.ModelID(),
 			MaxTokens: 4096,
 			System:    "You are an assistant for performing a web search tool use",
@@ -1225,6 +1211,7 @@ func newWebSearchServerToolProvider(ref *provider.ProviderRef) toolweb.WebSearch
 				MaxUses:        req.MaxUses,
 			}},
 		})
+		stream, err := current.CreateStream(ctx, params)
 		if err != nil {
 			return toolweb.WebSearchServerToolResponse{}, err
 		}
@@ -1410,12 +1397,13 @@ func newWebFetchProviderSummariser(ref *provider.ProviderRef) toolweb.Summariser
 		if current == nil {
 			return "", i18n.NewError(i18n.KeyRegistryWebFetchSecondaryProviderUnavailable)
 		}
-		stream, err := current.CreateStream(ctx, provider.Params{
+		params := ref.ApplyRequestPolicy(provider.Params{
 			Model:     webFetchSmallFastModel(current),
 			MaxTokens: req.MaxTokens,
 			System:    req.SystemPrompt,
 			Messages:  []types.Message{types.UserMessage(req.UserPrompt)},
 		})
+		stream, err := current.CreateStream(ctx, params)
 		if err != nil {
 			return "", err
 		}
@@ -1466,21 +1454,4 @@ func webFetchSmallFastModel(current provider.Provider) string {
 	// Non-Claude backends may not expose a separate small model. Their active
 	// model remains the only provider-compatible secondary-model adapter.
 	return current.ModelID()
-}
-
-func mcpVisibilityStatesFromSnapshot(snapshot []mcpmanager.MCPServerConnection) []toolsearch.MCPServerVisibilityState {
-	out := make([]toolsearch.MCPServerVisibilityState, 0, len(snapshot))
-	for _, server := range snapshot {
-		if server.Type == mcpmanager.MCPStateConnected {
-			continue
-		}
-		out = append(out, toolsearch.MCPServerVisibilityState{
-			Name:                 server.Name,
-			State:                string(server.Type),
-			ReconnectAttempt:     server.ReconnectAttempt,
-			MaxReconnectAttempts: server.MaxReconnectAttempts,
-			Error:                server.Error,
-		})
-	}
-	return out
 }

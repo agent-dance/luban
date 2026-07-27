@@ -155,9 +155,14 @@ func TestRepositoryRejectsHardlinkWithoutTouchingSource(t *testing.T) {
 
 func newTestRepository(t *testing.T) *repository {
 	t.Helper()
-	repo, err := newRepository(t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	project := t.TempDir()
+	repo, err := newRepository(project)
 	if err != nil {
 		t.Fatalf("new repository: %v", err)
+	}
+	if strings.HasPrefix(filepath.Clean(repo.dir), filepath.Clean(project)+string(filepath.Separator)) {
+		t.Fatalf("schedule repository remained inside project: %q", repo.dir)
 	}
 	return repo
 }

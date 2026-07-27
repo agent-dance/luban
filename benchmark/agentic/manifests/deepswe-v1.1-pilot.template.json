@@ -1,0 +1,189 @@
+{
+  "schema_version": "agentic-bench/v2",
+  "experiment": {
+    "id": "deepswe-v1.1-pilot-gpt-5.6-sol-xhigh",
+    "description": "Preregistered five-task paired Codex 0.145.0 versus Luban pilot"
+  },
+  "dataset": {
+    "name": "deep-swe-v1.1",
+    "repository": "https://github.com/datacurve-ai/deep-swe",
+    "commit": "8cae5984d5dd0ee37445beff0e928dc10c331116",
+    "root": "tasks",
+    "tree_sha256": "ce6b3f3c7eff0b512d11060976c7f548267755afc26e377f50851b4523db98ea",
+    "manifest_sha256": "0d76a2c978a96350d1dc8468746e56ce25f34526aeffe85094d720979bf6a96b",
+    "inventory_lock_file_sha256": "82b7be87fe9a25118564319959afac9c4ab8d9033a8c3b01dfed96664887a94e"
+  },
+  "evaluator": {
+    "name": "datacurve-pier",
+    "repository": "https://github.com/datacurve-ai/pier",
+    "commit": "e69a20e4e0ac073ec71fde0274bab3d9f40bac87",
+    "root": "src",
+    "tree_sha256": "600c65f30f803d1a9219432f01dd8637e1bf1c636558b3606b0c957f156af197",
+    "manifest_sha256": "8afbae2c8c78ed6eaa3a49656bb4639d77c07cf6cd2b72266e4ad2283d8dc943",
+    "protocol": "pier-harbor-separate-verifier",
+    "minimum_version": "0.3.0",
+    "binary_sha256": "${PIER_BINARY_SHA256}"
+  },
+  "agents": [
+    {
+      "id": "codex",
+      "binary": "${ABSOLUTE_CODEX_BINARY}",
+      "binary_sha256": "${CODEX_BINARY_SHA256}",
+      "command": {
+        "argv": ["${ABSOLUTE_CODEX_BINARY}", "--ask-for-approval", "never", "--sandbox", "workspace-write", "exec", "--json", "--ephemeral", "--ignore-user-config", "--model", "gpt-5.6-sol", "--config", "model_reasoning_effort=xhigh", "--config", "service_tier=\"default\"", "--config", "web_search=\"disabled\"", "--config", "agents.enabled=false", "--config", "model_provider=\"agentic_http\"", "--config", "model_providers.agentic_http={name=\"OpenAI\",base_url=\"{provider_base_url}\",wire_api=\"responses\",requires_openai_auth=true,supports_websockets=false}", "{instruction_path}"],
+        "required_env": ["AGENTIC_SUB_API_KEY", "PATH"]
+      },
+      "model": {
+        "provider": "openai",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "service_tier": "default",
+        "service_tier_request_encoding": "client_canonicalized_default",
+        "transport_requirement": "http_inference_required",
+        "tool_catalog": {
+          "schema_version": "agentic-bench/formal-tool-catalog-v1",
+          "semantic_sha256": "${CODEX_TOOL_CATALOG_SEMANTIC_SHA256}",
+          "tools": [
+            { "type": "custom", "name": "exec", "definition_sha256": "${CODEX_TOOL_EXEC_DEFINITION_SHA256}" },
+            { "type": "function", "name": "wait", "definition_sha256": "${CODEX_TOOL_WAIT_DEFINITION_SHA256}" },
+            { "type": "function", "name": "request_user_input", "definition_sha256": "${CODEX_TOOL_REQUEST_USER_INPUT_DEFINITION_SHA256}" }
+          ]
+        }
+      },
+      "execution_canary": { "generation": "v8", "receipt_sha256": "${CODEX_V8_CANARY_RECEIPT_SHA256}" },
+      "request_evidence": { "relative_path": "metrics/provider-requests.jsonl", "required": true }
+    },
+    {
+      "id": "luban",
+      "binary": "${ABSOLUTE_LUBAN_BINARY}",
+      "binary_sha256": "${LUBAN_BINARY_SHA256}",
+      "source_snapshot": {
+        "worktree": "${ABSOLUTE_LUBAN_WORKTREE}",
+        "base_commit": "${LUBAN_SOURCE_BASE_COMMIT}",
+        "tree_oid": "${LUBAN_SOURCE_TREE_OID}",
+        "patch_sha256": "${LUBAN_SOURCE_PATCH_SHA256}",
+        "archive_sha256": "${LUBAN_SOURCE_ARCHIVE_SHA256}",
+        "path_policy": {
+          "schema_version": "agentic-bench/source-path-policy-v1",
+          "excluded_prefixes": [".agentic-bench/", ".codex/", ".luban/", ".tmp/", "benchmark-artifacts/", "benchmark-results/"]
+        },
+        "path_policy_sha256": "86059e44a68eb7d36f7d4953d53f90945ca4f2a94a83c98c560d670afbf980b5",
+        "exclusion_receipt_sha256": "6ea05139a2686d237ec093866ad5b2223d967977fd9590b742fb79b0c0960020",
+        "build_receipt": "${ABSOLUTE_LUBAN_BUILD_RECEIPT}",
+        "build_receipt_sha256": "${LUBAN_BUILD_RECEIPT_SHA256}"
+      },
+      "command": {
+        "argv": ["${ABSOLUTE_LUBAN_BINARY}", "--print", "--output-format", "stream-json", "--provider", "openai", "--api", "responses", "--model", "gpt-5.6-sol", "--reasoning-effort", "xhigh", "--service-tier", "default", "--pinned-model", "--no-model-fallback", "--allow-all", "--force-sandbox-tools", "{instruction_path}"],
+        "required_env": ["AGENTIC_SUB_API_KEY", "PATH"]
+      },
+      "model": {
+        "provider": "openai",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "service_tier": "default",
+        "service_tier_request_encoding": "explicit_default",
+        "transport_requirement": "http_inference_required",
+        "tool_catalog": {
+          "schema_version": "agentic-bench/formal-tool-catalog-v1",
+          "semantic_sha256": "${LUBAN_TOOL_CATALOG_SEMANTIC_SHA256}",
+          "tools": [
+            { "type": "function", "name": "Inspect", "definition_sha256": "${LUBAN_TOOL_INSPECT_DEFINITION_SHA256}" },
+            { "type": "function", "name": "ApplyPatch", "definition_sha256": "${LUBAN_TOOL_APPLY_PATCH_DEFINITION_SHA256}" },
+            { "type": "function", "name": "Run", "definition_sha256": "${LUBAN_TOOL_RUN_DEFINITION_SHA256}" }
+          ]
+        }
+      },
+      "execution_canary": { "generation": "v8", "receipt_sha256": "${LUBAN_V8_CANARY_RECEIPT_SHA256}" },
+      "request_evidence": { "relative_path": "metrics/provider-requests.jsonl", "required": true }
+    }
+  ],
+  "selection": {
+    "mode": "tasks",
+    "task_ids": [
+      "abs-module-cache-flags",
+      "adaptix-name-mapping-aliases",
+      "cliffy-config-file-parsing",
+      "wasmi-trap-coredumps",
+      "yjs-map-conflict-detection"
+    ],
+    "expected_task_count": 113
+  },
+  "scheduling": { "pair_agents": true, "seed": 20260726, "repetitions": 1, "max_parallel_pairs": 1 },
+  "scoring": {
+    "profile": "deepswe-v1.1-public-ci",
+    "baseline_agent_id": "codex",
+    "challenger_agent_id": "luban"
+  },
+  "provider_endpoint": {
+    "approved_origin": "https://sub.blurooo.com",
+    "semantics": {
+      "schema_version": "agentic-bench/provider-endpoint-semantics-v1",
+      "api_protocol": "openai-responses",
+      "observation_authority": "configured-gateway",
+      "provider_identity_attested": false,
+      "tls_required": true,
+      "websocket_allowed": true
+    },
+    "semantics_sha256": "80bdbbb0289e7290fb96a62bd02ee85610d0e9e804a4364215f7d7a4274c1233"
+  },
+  "environment": {
+    "host_env_allowlist": ["AGENTIC_SUB_API_KEY", "LANG", "LC_ALL", "PATH", "SSL_CERT_DIR", "SSL_CERT_FILE", "TMPDIR"],
+    "agent_egress_hosts": ["host.docker.internal"],
+    "task_network_mode": "no-network",
+    "verifier_network_mode": "no-network"
+  },
+  "timeouts": { "setup_seconds": 1800, "agent_seconds": 5400, "verifier_seconds": 1800, "teardown_seconds": 300 },
+  "resources": {
+    "cpus": 2,
+    "memory_mb": 8192,
+    "storage_mb": 20480,
+    "gpus": 0,
+    "host_storage_guard": {
+      "schema_version": "agentic-bench/host-storage-guard-v1",
+      "admission_minimum_available_bytes": 107374182400,
+      "runtime_warning_below_available_bytes": 53687091200,
+      "runtime_hard_floor_available_bytes": 32212254720,
+      "poll_interval_ms": 1000,
+      "monitoring_gap_threshold_ms": 2500,
+      "measurement": "statfs_bavail_times_block_size"
+    },
+    "guest_storage_guard": {
+      "schema_version": "agentic-bench/guest-storage-guard-v1",
+      "start_minimum_available_bytes": 30064771072,
+      "runtime_abort_below_available_bytes": 8589934592,
+      "poll_interval_ms": 1000,
+      "monitoring_gap_threshold_ms": 2500,
+      "measurement": "statfs_bavail_times_block_size"
+    }
+  },
+  "pricing": {
+    "currency": "USD",
+    "unit_tokens": 1000000,
+    "effective_at": "2026-07-09T00:00:00Z",
+    "observed_at": "2026-07-26T00:00:00Z",
+    "source_url": "https://developers.openai.com/api/docs/models/gpt-5.6-sol",
+    "rates": [{
+      "provider": "openai",
+      "model": "gpt-5.6-sol",
+      "input": 5.0,
+      "cached_input": 0.5,
+      "output": 30.0,
+      "cache_write_input_multiplier": 1.25,
+      "request_tiers": [{
+        "name": "long-context",
+        "threshold_input_tokens": 272000,
+        "input_multiplier": 2.0,
+        "cached_input_multiplier": 2.0,
+        "output_multiplier": 1.5
+      }]
+    }]
+  },
+  "artifacts": {
+    "root": "benchmark-artifacts/deepswe-v1.1-pilot-gpt-5.6-sol-xhigh",
+    "ledger_relative_path": "ledger.json",
+    "state_relative_path": "state.json",
+    "capture_binary_diff": true,
+    "capture_untracked": true
+  },
+  "oracle": { "required": true, "separate_environment": true, "solution_root": "solution" }
+}

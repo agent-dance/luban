@@ -33,6 +33,7 @@ func missingToolResultBlocks(messages []types.Message, reason string) []types.To
 			missing = append(missing, types.ToolResultBlock{
 				Type:      types.ContentTypeToolResult,
 				ToolUseID: use.ID,
+				ToolType:  use.ToolType,
 				Content:   reason,
 				IsError:   true,
 			})

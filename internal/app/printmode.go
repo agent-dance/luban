@@ -14,9 +14,21 @@ import (
 	"github.com/agent-dance/luban/internal/runtime/engine"
 )
 
-// RunPrintMode executes a single query, streams output, and returns an exit code.
-func RunPrintMode(eng engine.Engine, r presentation.Renderer, query string, verbose bool) int {
-	if query == "" {
+// PrintModeConfig binds a one-shot query to the exact startup session and
+// workspace identity already published to the tool runtime.
+type PrintModeConfig struct {
+	SessionID         string
+	SessionProjectDir string
+	ProjectRoot       string
+	CWD               string
+	Query             string
+	Verbose           bool
+}
+
+// RunPrintMode executes a single query in the already-resolved startup session,
+// streams output, and returns an exit code.
+func RunPrintMode(eng engine.Engine, r presentation.Renderer, cfg PrintModeConfig) int {
+	if cfg.Query == "" {
 		fmt.Fprint(os.Stderr, i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyPrintQueryRequired))
 		return 1
 	}
@@ -25,14 +37,18 @@ func RunPrintMode(eng engine.Engine, r presentation.Renderer, query string, verb
 	defer stopSignals()
 
 	ch, err := eng.Query(ctx, engine.QueryRequest{
-		Message: query,
+		SessionID:         cfg.SessionID,
+		SessionProjectDir: cfg.SessionProjectDir,
+		ProjectRoot:       cfg.ProjectRoot,
+		CWD:               cfg.CWD,
+		Message:           cfg.Query,
 	})
 	if err != nil {
 		r.Error(engine.UserFacingError(i18n.DetectOrLoadLanguage(), err))
 		return 1
 	}
 
-	handler := makeEventHandler(r, verbose)
+	handler := makeEventHandler(r, cfg.Verbose)
 	var runErr error
 	for evt := range ch {
 		if evt.Final {

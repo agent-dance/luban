@@ -23,16 +23,32 @@ func TestPromptCacheUserNamespaceIsOpaqueAndStable(t *testing.T) {
 	}
 }
 
-func TestScopedPromptCacheKeySharesIndependentSessionsByDefault(t *testing.T) {
+func TestScopedPromptCacheKeyIsolatesIndependentSessionsByDefault(t *testing.T) {
 	t.Setenv("LUBAN_CODE_PROMPT_CACHE_SHARDS", "")
 	namespace := promptCacheUserNamespace(Config{ProviderName: "openai", APIKey: "account-key"})
 	first := scopedPromptCacheKey(namespace, "session-a", "gpt-5.6-sol", promptCacheRoutingShardCount("openai"))
 	second := scopedPromptCacheKey(namespace, "session-b", "gpt-5.6-sol", promptCacheRoutingShardCount("openai"))
-	if first == "" || first != second {
-		t.Fatalf("default routing did not share independent sessions: %q != %q", first, second)
+	if first == "" || first == second {
+		t.Fatalf("default routing did not isolate independent sessions: %q == %q", first, second)
+	}
+	if len(first) > 64 || len(second) > 64 {
+		t.Fatalf("isolated cache keys exceed the OpenAI limit: %d, %d", len(first), len(second))
+	}
+	if resumed := scopedPromptCacheKey(namespace, "session-a", "gpt-5.6-sol", promptCacheRoutingShardCount("openai")); resumed != first {
+		t.Fatalf("same lineage changed cache route: %q != %q", resumed, first)
 	}
 	if otherModel := scopedPromptCacheKey(namespace, "session-a", "gpt-5.6-terra", 1); otherModel == first {
 		t.Fatalf("different models shared routing key %q", first)
+	}
+}
+
+func TestScopedPromptCacheKeyExplicitShardCoalescesIndependentSessions(t *testing.T) {
+	t.Setenv("LUBAN_CODE_PROMPT_CACHE_SHARDS", "1")
+	namespace := promptCacheUserNamespace(Config{ProviderName: "openai", APIKey: "account-key"})
+	first := scopedPromptCacheKey(namespace, "session-a", "gpt-5.6-sol", promptCacheRoutingShardCount("openai"))
+	second := scopedPromptCacheKey(namespace, "session-b", "gpt-5.6-sol", promptCacheRoutingShardCount("openai"))
+	if first == "" || first != second {
+		t.Fatalf("explicit one-shard routing did not coalesce sessions: %q != %q", first, second)
 	}
 }
 

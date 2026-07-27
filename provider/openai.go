@@ -85,6 +85,45 @@ func (t *noAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 type openAIChatRequestContextKey struct{}
+type retryAfterCaptureContextKey struct{}
+
+type retryAfterCapture struct {
+	mu    sync.Mutex
+	value string
+}
+
+func (c *retryAfterCapture) set(value string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.value = strings.TrimSpace(value)
+	c.mu.Unlock()
+}
+
+func (c *retryAfterCapture) get() string {
+	if c == nil {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.value
+}
+
+// retryAfterCaptureTransport retains only the Retry-After response field. The
+// go-openai SDK preserves status/body errors but discards response headers.
+type retryAfterCaptureTransport struct{ base http.RoundTripper }
+
+func (t *retryAfterCaptureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	response, err := t.base.RoundTrip(req)
+	capture, _ := req.Context().Value(retryAfterCaptureContextKey{}).(*retryAfterCapture)
+	if response == nil {
+		capture.set("")
+	} else {
+		capture.set(response.Header.Get("Retry-After"))
+	}
+	return response, err
+}
 
 type openAIChatRequestExtensions struct {
 	CacheRouting      CacheRoutingMode
@@ -221,6 +260,9 @@ func (t *openAIChatRequestTransport) RoundTrip(req *http.Request) (*http.Respons
 	}
 	t.cacheRoutingRejections.remember(extensions.CacheMemoryKey)
 	_ = response.Body.Close()
+	if attemptErr := beginNestedTransportAttempt(req.Context(), nil); attemptErr != nil {
+		return nil, attemptErr
+	}
 	return t.base.RoundTrip(cloneRequestWithBody(req, fallbackBody))
 }
 
@@ -408,6 +450,7 @@ func NewOpenAI(cfg Config) *OpenAIProvider {
 		transport = &noAuthTransport{base: transport}
 	}
 	transport = &openAIChatRequestTransport{base: transport, cacheRoutingRejections: cacheRoutingRejections}
+	transport = &retryAfterCaptureTransport{base: transport}
 	oaiCfg.BaseURL = baseURL
 	oaiCfg.HTTPClient = &http.Client{
 		Timeout:   timeout,
@@ -519,9 +562,14 @@ func (p *OpenAIProvider) ModelID() string { return p.model }
 
 // Capabilities implements CapabilityProvider for OpenAIProvider.
 func (p *OpenAIProvider) Capabilities() ProviderCapabilities {
+	serviceTier := CapabilityUnsupported
+	if p.officialOpenAIChatEndpoint {
+		serviceTier = CapabilitySupported
+	}
 	return ProviderCapabilities{
 		Thinking:     p.dialect == DialectDeepSeek, // DeepSeek supports thinking via <think> tags
 		ToolUse:      true,
+		ServiceTier:  serviceTier,
 		CacheControl: false,
 		CacheRouting: p.cacheRouting,
 		SystemParts:  true,
@@ -531,6 +579,11 @@ func (p *OpenAIProvider) Capabilities() ProviderCapabilities {
 }
 
 func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-chan types.StreamEvent, error) {
+	if err := ValidateParams(p, params); err != nil {
+		return nil, err
+	}
+	retryAfter := &retryAfterCapture{}
+	ctx = context.WithValue(ctx, retryAfterCaptureContextKey{}, retryAfter)
 	model := params.Model
 	if model == "" {
 		model = p.model
@@ -555,6 +608,9 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 		StreamOptions: &openai.StreamOptions{
 			IncludeUsage: true,
 		},
+	}
+	if params.ServiceTier != "" {
+		req.ServiceTier = openai.ServiceTier(params.ServiceTier)
 	}
 	if tools := convertToolsToOpenAIWithStrictMode(params.Tools, !p.disableStrictTools); len(tools) > 0 {
 		req.Tools = tools
@@ -621,7 +677,9 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 
 	stream, err := p.client.CreateChatCompletionStream(ctx, req)
 	if err != nil {
-		return nil, i18n.WrapError(i18n.KeyProviderStreamCreateFailed, err)
+		apiErr := parseOpenAIError(err)
+		apiErr.RetryAfter = retryAfter.get()
+		return nil, i18n.WrapError(i18n.KeyProviderStreamCreateFailed, apiErr)
 	}
 
 	ch := make(chan types.StreamEvent, 64)
@@ -683,7 +741,7 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 		if err != nil {
 			send(types.StreamEvent{
 				Type:  types.EventError,
-				Error: parseOpenAIError(err),
+				Error: parseOpenAIError(err, types.ProviderErrorStageStream),
 			})
 			return
 		}
@@ -1354,7 +1412,11 @@ func convertToolsToOpenAIWithStrictMode(tools []types.ToolDefinition, allowStric
 
 // parseOpenAIError converts an error from the go-openai SDK into a *types.APIError
 // with a proper HTTP status code so that RetryProvider can correctly classify it.
-func parseOpenAIError(err error) *types.APIError {
+func parseOpenAIError(err error, stages ...types.ProviderErrorStage) *types.APIError {
+	stage := types.ProviderErrorStageConnect
+	if len(stages) > 0 {
+		stage = stages[0]
+	}
 	var oaiErr *openai.APIError
 	if errors.As(err, &oaiErr) {
 		errType := "api_error"
@@ -1368,20 +1430,11 @@ func parseOpenAIError(err error) *types.APIError {
 			Status:  oaiErr.HTTPStatusCode,
 			Type:    errType,
 			Message: oaiErr.Message,
+			Stage:   types.ProviderErrorStageHeaders,
 		}
 	}
-	// Network / connection errors — mark as connection_error so IsRetryable picks them up.
-	msg := err.Error()
-	msgLower := strings.ToLower(msg)
-	if strings.Contains(msgLower, "connection") ||
-		strings.Contains(msgLower, "timeout") ||
-		strings.Contains(msgLower, "eof") ||
-		strings.Contains(msgLower, "dial") ||
-		strings.Contains(msgLower, "broken pipe") {
-		return &types.APIError{
-			Type:    "connection_error",
-			Message: msg,
-		}
+	if transportErr, ok := typedTransportAPIError(err, stage); ok {
+		return transportErr
 	}
-	return &types.APIError{Type: "stream_error", Message: msg}
+	return &types.APIError{Type: "stream_error", Message: err.Error(), Stage: stage}
 }

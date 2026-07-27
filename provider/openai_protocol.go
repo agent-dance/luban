@@ -18,6 +18,8 @@ type openAIProtocolProvider struct {
 	responses *ResponsesProvider
 	chat      *OpenAIProvider
 	useChat   bool
+	confirmed bool
+	probeDone chan struct{}
 }
 
 func newOpenAIProtocolProvider(responses *ResponsesProvider, chat *OpenAIProvider) *openAIProtocolProvider {
@@ -39,22 +41,56 @@ func (p *openAIProtocolProvider) Capabilities() ProviderCapabilities {
 }
 
 func (p *openAIProtocolProvider) CreateStream(ctx context.Context, params Params) (<-chan types.StreamEvent, error) {
-	p.mu.RLock()
-	useChat := p.useChat
-	p.mu.RUnlock()
-	if useChat {
-		return p.chat.CreateStream(ctx, params)
+	if err := ValidateParams(p, params); err != nil {
+		return nil, err
 	}
+	for {
+		p.mu.Lock()
+		if p.useChat {
+			p.mu.Unlock()
+			return p.chat.CreateStream(ctx, params)
+		}
+		if p.confirmed {
+			p.mu.Unlock()
+			return p.responses.CreateStream(ctx, params)
+		}
+		if probeDone := p.probeDone; probeDone != nil {
+			p.mu.Unlock()
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-probeDone:
+				continue
+			}
+		}
+		p.probeDone = make(chan struct{})
+		p.mu.Unlock()
 
-	stream, err := p.responses.CreateStream(ctx, params)
-	if err == nil || !responsesEndpointUnavailable(err) {
+		stream, err := p.responses.CreateStream(ctx, params)
+		unavailable := responsesEndpointUnavailable(err)
+
+		p.mu.Lock()
+		if err == nil {
+			p.confirmed = true
+		} else if unavailable {
+			p.useChat = true
+		}
+		probeDone := p.probeDone
+		p.probeDone = nil
+		close(probeDone)
+		p.mu.Unlock()
+
+		if unavailable {
+			if definitionsHaveCustomTools(params.Tools) {
+				return nil, err
+			}
+			if attemptErr := beginNestedTransportAttempt(ctx, err); attemptErr != nil {
+				return nil, attemptErr
+			}
+			return p.chat.CreateStream(ctx, params)
+		}
 		return stream, err
 	}
-
-	p.mu.Lock()
-	p.useChat = true
-	p.mu.Unlock()
-	return p.chat.CreateStream(ctx, params)
 }
 
 func responsesEndpointUnavailable(err error) bool {

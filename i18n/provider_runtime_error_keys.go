@@ -1,49 +1,51 @@
 package i18n
 
 const (
-	KeyProviderUnconfigured              Key = "provider.runtime.unconfigured"
-	KeyProviderUnconfiguredAction        Key = "provider.runtime.unconfigured_action"
-	KeyProviderDisconnected              Key = "provider.runtime.disconnected"
-	KeyProviderDisconnectedAction        Key = "provider.runtime.disconnected_action"
-	KeyProviderThinkingUnsupported       Key = "provider.runtime.thinking_unsupported"
-	KeyProviderRetryExceededWithoutCause Key = "provider.runtime.retry_exceeded_without_cause"
-	KeyProviderUnknown                   Key = "provider.runtime.unknown"
-	KeyProviderBedrockInvalidBaseURL     Key = "provider.runtime.bedrock.invalid_base_url"
-	KeyProviderVertexProjectRequired     Key = "provider.runtime.vertex.project_required"
-	KeyProviderVertexAPIKeyRequired      Key = "provider.runtime.vertex.api_key_required"
-	KeyProviderVertexBaseURLRequired     Key = "provider.runtime.vertex.base_url_required"
-	KeyProviderVertexEndpointInvalid     Key = "provider.runtime.vertex.endpoint_invalid"
-	KeyCredentialHomeFailed              Key = "provider.credential.home_failed"
-	KeyCredentialReadFailed              Key = "provider.credential.read_failed"
-	KeyCredentialDecodeFailed            Key = "provider.credential.decode_failed"
-	KeyCredentialDirectoryFailed         Key = "provider.credential.directory_failed"
-	KeyCredentialEncodeFailed            Key = "provider.credential.encode_failed"
-	KeyCredentialTempCreateFailed        Key = "provider.credential.temp_create_failed"
-	KeyCredentialTempWriteFailed         Key = "provider.credential.temp_write_failed"
-	KeyCredentialPermissionsFailed       Key = "provider.credential.permissions_failed"
-	KeyCredentialTempCloseFailed         Key = "provider.credential.temp_close_failed"
-	KeyCredentialReplaceFailed           Key = "provider.credential.replace_failed"
-	KeyProviderDebugOpenFailed           Key = "provider.debug.open_failed"
-	KeyProviderDebugWriting              Key = "provider.debug.writing"
-	KeyProviderBedrockConfigInvalid      Key = "provider.runtime.bedrock.config_invalid"
-	KeyProviderBedrockAWSConfigFailed    Key = "provider.runtime.bedrock.aws_config_failed"
-	KeyProviderRequestEncodeFailed       Key = "provider.runtime.request_encode_failed"
-	KeyProviderRequestBuildFailed        Key = "provider.runtime.request_build_failed"
-	KeyProviderRequestFailed             Key = "provider.runtime.request_failed"
-	KeyProviderStreamCreateFailed        Key = "provider.runtime.stream_create_failed"
-	KeyProviderAnthropicUnavailable      Key = "provider.runtime.anthropic.unavailable"
-	KeyProviderTokenCountInvalid         Key = "provider.runtime.anthropic.token_count_invalid"
-	KeyProviderToolsConvertFailed        Key = "provider.runtime.tools_convert_failed"
-	KeyProviderServerToolsConvertFailed  Key = "provider.runtime.server_tools_convert_failed"
-	KeyProviderToolSchemaEncodeFailed    Key = "provider.runtime.tool_schema_encode_failed"
-	KeyProviderToolSchemaDecodeFailed    Key = "provider.runtime.tool_schema_decode_failed"
-	KeyProviderServerToolNameInvalid     Key = "provider.runtime.server_tool.name_invalid"
-	KeyProviderServerToolDomainsConflict Key = "provider.runtime.server_tool.domains_conflict"
-	KeyProviderServerToolMaxUsesInvalid  Key = "provider.runtime.server_tool.max_uses_invalid"
-	KeyProviderServerToolTypeUnsupported Key = "provider.runtime.server_tool.type_unsupported"
-	KeyProviderDebugPathEmpty            Key = "provider.debug.path_empty"
-	KeyProviderDebugFileOpenFailed       Key = "provider.debug.file_open_failed"
-	KeyProviderDebugPermissionsFailed    Key = "provider.debug.permissions_failed"
+	KeyProviderUnconfigured                Key = "provider.runtime.unconfigured"
+	KeyProviderUnconfiguredAction          Key = "provider.runtime.unconfigured_action"
+	KeyProviderDisconnected                Key = "provider.runtime.disconnected"
+	KeyProviderDisconnectedAction          Key = "provider.runtime.disconnected_action"
+	KeyProviderThinkingUnsupported         Key = "provider.runtime.thinking_unsupported"
+	KeyProviderCustomToolsUnsupported      Key = "provider.runtime.custom_tools_unsupported"
+	KeyProviderCustomToolDefinitionInvalid Key = "provider.runtime.custom_tool_definition_invalid"
+	KeyProviderRetryExceededWithoutCause   Key = "provider.runtime.retry_exceeded_without_cause"
+	KeyProviderUnknown                     Key = "provider.runtime.unknown"
+	KeyProviderBedrockInvalidBaseURL       Key = "provider.runtime.bedrock.invalid_base_url"
+	KeyProviderVertexProjectRequired       Key = "provider.runtime.vertex.project_required"
+	KeyProviderVertexAPIKeyRequired        Key = "provider.runtime.vertex.api_key_required"
+	KeyProviderVertexBaseURLRequired       Key = "provider.runtime.vertex.base_url_required"
+	KeyProviderVertexEndpointInvalid       Key = "provider.runtime.vertex.endpoint_invalid"
+	KeyCredentialHomeFailed                Key = "provider.credential.home_failed"
+	KeyCredentialReadFailed                Key = "provider.credential.read_failed"
+	KeyCredentialDecodeFailed              Key = "provider.credential.decode_failed"
+	KeyCredentialDirectoryFailed           Key = "provider.credential.directory_failed"
+	KeyCredentialEncodeFailed              Key = "provider.credential.encode_failed"
+	KeyCredentialTempCreateFailed          Key = "provider.credential.temp_create_failed"
+	KeyCredentialTempWriteFailed           Key = "provider.credential.temp_write_failed"
+	KeyCredentialPermissionsFailed         Key = "provider.credential.permissions_failed"
+	KeyCredentialTempCloseFailed           Key = "provider.credential.temp_close_failed"
+	KeyCredentialReplaceFailed             Key = "provider.credential.replace_failed"
+	KeyProviderDebugOpenFailed             Key = "provider.debug.open_failed"
+	KeyProviderDebugWriting                Key = "provider.debug.writing"
+	KeyProviderBedrockConfigInvalid        Key = "provider.runtime.bedrock.config_invalid"
+	KeyProviderBedrockAWSConfigFailed      Key = "provider.runtime.bedrock.aws_config_failed"
+	KeyProviderRequestEncodeFailed         Key = "provider.runtime.request_encode_failed"
+	KeyProviderRequestBuildFailed          Key = "provider.runtime.request_build_failed"
+	KeyProviderRequestFailed               Key = "provider.runtime.request_failed"
+	KeyProviderStreamCreateFailed          Key = "provider.runtime.stream_create_failed"
+	KeyProviderAnthropicUnavailable        Key = "provider.runtime.anthropic.unavailable"
+	KeyProviderTokenCountInvalid           Key = "provider.runtime.anthropic.token_count_invalid"
+	KeyProviderToolsConvertFailed          Key = "provider.runtime.tools_convert_failed"
+	KeyProviderServerToolsConvertFailed    Key = "provider.runtime.server_tools_convert_failed"
+	KeyProviderToolSchemaEncodeFailed      Key = "provider.runtime.tool_schema_encode_failed"
+	KeyProviderToolSchemaDecodeFailed      Key = "provider.runtime.tool_schema_decode_failed"
+	KeyProviderServerToolNameInvalid       Key = "provider.runtime.server_tool.name_invalid"
+	KeyProviderServerToolDomainsConflict   Key = "provider.runtime.server_tool.domains_conflict"
+	KeyProviderServerToolMaxUsesInvalid    Key = "provider.runtime.server_tool.max_uses_invalid"
+	KeyProviderServerToolTypeUnsupported   Key = "provider.runtime.server_tool.type_unsupported"
+	KeyProviderDebugPathEmpty              Key = "provider.debug.path_empty"
+	KeyProviderDebugFileOpenFailed         Key = "provider.debug.file_open_failed"
+	KeyProviderDebugPermissionsFailed      Key = "provider.debug.permissions_failed"
 )
 
 func init() {
@@ -62,6 +64,20 @@ func init() {
 		"%s. Use /connect %s --oauth or /connect %s first, then /model %s/<model>", "%s。请先运行 /connect %s --oauth 或 /connect %s，再运行 /model %s/<model>", "%s. Führe zuerst /connect %s --oauth oder /connect %s und danach /model %s/<model> aus", "%s。先に /connect %s --oauth または /connect %s を実行し、その後 /model %s/<model> を実行してください", "%s. 먼저 /connect %s --oauth 또는 /connect %s을(를) 실행한 다음 /model %s/<model>을 실행하세요", "%s. Сначала выполните /connect %s --oauth или /connect %s, затем /model %s/<model>")
 	add(KeyProviderThinkingUnsupported,
 		"Provider %q (model %q) does not support extended thinking; disable thinking or switch to a Provider that supports it", "Provider %q（模型 %q）不支持 extended thinking；请关闭 thinking，或切换到支持该功能的 Provider", "Provider %q (Modell %q) unterstützt Extended Thinking nicht; deaktiviere Thinking oder wechsle zu einem Provider, der es unterstützt", "Provider %q（モデル %q）は extended thinking に対応していません。thinking を無効にするか、対応する Provider に切り替えてください", "Provider %q(모델 %q)은 extended thinking을 지원하지 않습니다. thinking을 끄거나 이를 지원하는 Provider로 전환하세요", "Provider %q (модель %q) не поддерживает extended thinking; отключите thinking или выберите Provider с такой поддержкой")
+	add(KeyProviderCustomToolsUnsupported,
+		"Provider %q (model %q) does not explicitly support Responses custom tools; disable the custom tool experiment or use the verified public Responses endpoint with GPT-5.6",
+		"Provider %q（模型 %q）未明确支持 Responses custom 工具；请关闭 custom 工具实验，或使用已验证的 GPT-5.6 公开 Responses endpoint",
+		"Provider %q (Modell %q) unterstützt Responses-Custom-Tools nicht ausdrücklich; deaktiviere das Custom-Tool-Experiment oder verwende den verifizierten öffentlichen Responses-Endpunkt mit GPT-5.6",
+		"Provider %q（モデル %q）は Responses custom ツールを明示的にサポートしていません。custom ツール実験を無効にするか、検証済みの GPT-5.6 公開 Responses endpoint を使用してください",
+		"Provider %q(모델 %q)은 Responses custom 도구를 명시적으로 지원하지 않습니다. custom 도구 실험을 끄거나 검증된 GPT-5.6 공개 Responses endpoint를 사용하세요",
+		"Provider %q (модель %q) не заявляет явную поддержку custom-инструментов Responses; отключите эксперимент или используйте проверенный публичный endpoint Responses с GPT-5.6")
+	add(KeyProviderCustomToolDefinitionInvalid,
+		"Custom tool %q has an invalid or unsupported freeform grammar definition",
+		"Custom 工具 %q 的自由格式 grammar 定义无效或不受支持",
+		"Custom-Tool %q hat eine ungültige oder nicht unterstützte Freeform-Grammatikdefinition",
+		"Custom ツール %q の自由形式 grammar 定義が無効または未対応です",
+		"Custom 도구 %q의 자유 형식 grammar 정의가 올바르지 않거나 지원되지 않습니다",
+		"Custom-инструмент %q содержит недопустимое или неподдерживаемое определение grammar для свободного ввода")
 	add(KeyProviderRetryExceededWithoutCause,
 		"Maximum retry count (%d) exceeded", "已超过最大重试次数（%d）", "Maximale Anzahl von Wiederholungen (%d) überschritten", "最大再試行回数（%d）を超えました", "최대 재시도 횟수(%d)를 초과했습니다", "Превышено максимальное число повторов (%d)")
 	add(KeyProviderUnknown,

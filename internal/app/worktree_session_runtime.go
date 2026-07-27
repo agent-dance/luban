@@ -35,10 +35,20 @@ func configureWorktreeSessionRuntime(
 			return err
 		}
 		targetAllowed := allowedDirsForSession(targetCWD, extraAllowedDirs)
-		targetSystem := buildSystemPromptForCWD(systemPromptOverride, deps.Registry, targetCWD)
+		targetPrompt := buildWorkspacePrompt(systemPromptOverride, deps.Registry, targetCWD)
+		if targetPrompt.catalogErr != nil {
+			return i18n.WrapInternalError(i18n.KeyRootVisibleToolCatalogInvalid, targetPrompt.catalogErr)
+		}
 		targetRuntime := engine.RuntimeContext{
-			SystemPrompt: targetSystem, HookRunner: targetHooks,
-			ProjectRoot: targetCWD, CWD: targetCWD,
+			SystemPrompt:        targetPrompt.system,
+			SystemPromptBlocks:  targetPrompt.systemBlocks,
+			UserContext:         targetPrompt.userContext,
+			HookRunner:          targetHooks,
+			ProjectRoot:         targetCWD,
+			CWD:                 targetCWD,
+			VisibleTools:        targetPrompt.toolSnapshot,
+			ToolPromptConfig:    targetPrompt.promptConfig,
+			GeneratedToolPrompt: targetPrompt.generated,
 		}
 
 		deps.runtimePublishMu.Lock()
@@ -54,7 +64,7 @@ func configureWorktreeSessionRuntime(
 		}
 		sessionID := deps.currentSessionID()
 		if err := deps.commitPreparedSessionRuntimeLocked(
-			sessionID, targetCWD, targetAllowed, targetSystem, targetHooks, prepared,
+			sessionID, targetCWD, targetAllowed, targetPrompt.system, targetHooks, prepared,
 			func() error {
 				if err := eng.RebindWorkspaceRuntime(ctx, sessionID, targetRuntime); err != nil {
 					return rootRuntimeErrorWithCause(i18n.KeyRootWorktreeRebindRejected, err)

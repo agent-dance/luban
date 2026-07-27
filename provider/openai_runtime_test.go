@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/agent-dance/luban/types"
@@ -28,6 +29,29 @@ func TestShouldUseOpenAIResponsesAPI(t *testing.T) {
 		if got := shouldUseOpenAIResponsesAPI(tt.model); got != tt.want {
 			t.Fatalf("shouldUseOpenAIResponsesAPI(%q) = %v, want %v", tt.model, got, tt.want)
 		}
+	}
+}
+
+func TestOpenAIChatHTTPErrorPreservesRetryAfter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Retry-After", "3")
+		w.Header().Set("X-Sensitive-Upstream", "must-not-project")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"error":{"message":"rate limited","type":"rate_limit_error"}}`)
+	}))
+	defer srv.Close()
+
+	p := NewOpenAI(Config{ProviderName: "custom", APIKey: "test-key", BaseURL: srv.URL, Model: "test-model"})
+	_, err := p.CreateStream(context.Background(), Params{Messages: []types.Message{types.UserMessage("hello")}})
+	if err == nil {
+		t.Fatal("expected Chat HTTP error")
+	}
+	apiErr, ok := AsAPIError(err)
+	if !ok || apiErr.RetryAfter != "3" {
+		t.Fatalf("Chat Retry-After = %#v, want only preserved value 3", apiErr)
+	}
+	if strings.Contains(err.Error(), "must-not-project") {
+		t.Fatalf("unrelated response header leaked through error: %v", err)
 	}
 }
 
@@ -109,7 +133,7 @@ func TestOpenAIProtocolProviderPrefersResponsesForCatalogedModel(t *testing.T) {
 			t.Fatalf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = io.WriteString(w, "event: response.completed\ndata: {\"response\":{\"id\":\"resp_cache\",\"status\":\"completed\",\"usage\":{\"input_tokens\":2006,\"output_tokens\":12,\"input_tokens_details\":{\"cached_tokens\":1920}},\"output\":[]}}\n\n")
+		_, _ = io.WriteString(w, "event: response.completed\ndata: {\"response\":{\"id\":\"resp_cache\",\"model\":\"gpt-5.4-mini\",\"status\":\"completed\",\"usage\":{\"input_tokens\":2006,\"output_tokens\":12,\"input_tokens_details\":{\"cached_tokens\":1920}},\"output\":[]}}\n\n")
 	}))
 	defer srv.Close()
 

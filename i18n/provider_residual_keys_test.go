@@ -44,3 +44,14 @@ func TestProviderResidualKeysPreserveEnglishContract(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderResponsesContinuationInvalidCoversEveryLanguage(t *testing.T) {
+	for _, key := range []Key{KeyProviderResponsesContinuationInvalid, KeyProviderResponsesCustomToolCallInvalid} {
+		for _, lang := range AllLanguages() {
+			got := Text(lang, key)
+			if got == "" || got == "["+string(key)+"]" {
+				t.Fatalf("Text(%s, %q) = %q", lang.Code(), key, got)
+			}
+		}
+	}
+}

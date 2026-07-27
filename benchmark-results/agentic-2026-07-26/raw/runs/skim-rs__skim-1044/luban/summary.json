@@ -1,0 +1,57 @@
+{
+  "instance_id": "skim-rs__skim-1044",
+  "language": "rust",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785026157.4922009,
+  "elapsed_seconds": 1282.237,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 3533958,
+    "cached_input_tokens": 3401728,
+    "cache_read_input_tokens": 3401728,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 38754,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 3.524634,
+  "tool_calls": 128,
+  "tool_calls_by_type": {
+    "ToolSearch": 1,
+    "Grep": 46,
+    "Glob": 3,
+    "Read": 42,
+    "Edit": 19,
+    "Bash": 17
+  },
+  "patch": {
+    "files_changed": 13,
+    "files": [
+      "ARCHITECTURE.md",
+      "man/man1/sk.1",
+      "plugin/skim.vim",
+      "shell/completion.bash",
+      "shell/completion.fish",
+      "shell/completion.nu",
+      "shell/completion.zsh",
+      "src/options.rs",
+      "src/popup/tmux.rs",
+      "src/popup/zellij.rs",
+      "src/tui/layout.rs",
+      "src/tui/mod.rs",
+      "tests/options.rs"
+    ],
+    "additions": 79,
+    "deletions": 20
+  },
+  "final_text": "Implemented `--border none` support.\n\n- Added `BorderType::None` and normalize it to the existing borderless state in `src/options.rs:1226`.\n- Ensured tmux/zellij popups are borderless with this value.\n- Updated Vim sizing logic, generated man page, and Bash/Fish/Zsh/Nushell completions.\n- Added layout, popup, CLI parsing, and rendering snapshot coverage.\n\nValidation:\n- `cargo test --lib`: 226 passed.\n- `cargo test --test options`: 103 passed.\n- `cargo fmt --check` and `git diff --check`: passed.",
+  "command_public": {
+    "executable": "luban",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

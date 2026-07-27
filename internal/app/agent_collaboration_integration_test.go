@@ -12,6 +12,7 @@ import (
 	"github.com/agent-dance/luban/internal/runtime/loop"
 	toolcollaboration "github.com/agent-dance/luban/internal/tools/collaboration"
 	"github.com/agent-dance/luban/provider"
+	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/sandbox"
 	"github.com/agent-dance/luban/swarm"
 	"github.com/agent-dance/luban/types"
@@ -88,6 +89,9 @@ func TestSetupRegistryComposesAddressableTeammateLaunch(t *testing.T) {
 	backend := &appCollaborationProvider{}
 	ref := provider.NewProviderRef(backend)
 	deps := SetupRegistry(ref, root, []string{root}, sandbox.NoopBackend{}, nil)
+	// Exercise the non-coding collaboration embedding explicitly; production
+	// coding runs stay bound to the exact Inspect/ApplyPatch/Run profile.
+	deps.Registry.SetModelToolProfile(registry.ModelToolProfileLegacy)
 	t.Cleanup(deps.StopWebFetchCache)
 	cleanupBackgroundTaskManager(t, deps.BackgroundTasks)
 	if err := prepareInitialRegistryRuntime(deps, root, []string{root}); err != nil {

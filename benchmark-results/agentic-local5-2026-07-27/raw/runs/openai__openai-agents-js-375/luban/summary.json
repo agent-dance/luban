@@ -1,0 +1,52 @@
+{
+  "instance_id": "openai__openai-agents-js-375",
+  "language": "ts",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785087467.864854,
+  "elapsed_seconds": 947.381,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1196516,
+    "cached_input_tokens": 1104896,
+    "cache_read_input_tokens": 1104896,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 29460,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.894348,
+  "tool_calls": 26,
+  "tool_calls_by_type": {
+    "Inspect": 20,
+    "ApplyPatch": 4,
+    "Run": 2
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      "packages/agents-core/src/run.ts",
+      "packages/agents-core/src/runImplementation.ts",
+      "packages/agents-core/test/run.stream.test.ts"
+    ],
+    "additions": 140,
+    "deletions": 21
+  },
+  "final_text": "Implemented the streaming lifecycle fix.\n\n### Changes\n- Streaming runs now emit both runner- and agent-level `agent_end` hooks after output guardrails complete.\n- Streaming model usage is accumulated into `RunContext.usage` before `agent_end`, making final usage available to handlers.\n- Removed premature tool-final-output `agent_end` emissions to prevent duplicate callbacks.\n- Added regression tests covering:\n  - Streaming `agent_end` and runner hooks.\n  - Usage availability during `agent_end`.\n  - `agent_tool_end` followed by exactly one `agent_end` when a tool ends the run.\n- Added a patch changeset for `@openai/agents-core`.\n\n### Verification\n- `git diff --check` passed.\n- Vitest, ESLint, and full type checking could not run because this checkout has no installed dependencies (`node_modules`, including `vitest`, `eslint`, `zod`, and others).",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-candidate-cursorfix-20260727",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 27,
+  "llm_successful_calls": 27,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 898.843482,
+  "binary": {
+    "path": "/private/tmp/luban-local5-candidate-cursorfix-20260727",
+    "sha256": "67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9"
+  }
+}

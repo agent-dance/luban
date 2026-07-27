@@ -1,0 +1,1131 @@
+{
+  "report_schema": "luban-agent-comparison/v1",
+  "generated_at": "2026-07-27T10:59:20+08:00",
+  "environment": {
+    "run_date": "2026-07-26",
+    "host": "macOS 15.4.1 (24E263), arm64",
+    "evaluation_vm": "Lima Debian Linux x86_64, 4 vCPU, 3.8 GiB RAM, no swap, 40 GiB disk",
+    "codex_version": "codex-cli 0.144.6",
+    "luban_version": "luban-code v0.1.0",
+    "luban_commit": "7a8e62b317b632e0e11ed1f32ef660a20369678c",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "agent_timeout_seconds": 1800
+  },
+  "experiment": {
+    "dataset": "SWE-bench-Live/MultiLang",
+    "dataset_revision": "608f7ae9ab8ea1f9f0d030fe04562cf6bd1a0c8b",
+    "parquet_sha256": {
+      "cpp": "5afc7db10f28232cc9c13de316ecec146f2da4c76de3bb460b934f5e271b0ec0",
+      "go": "76d2b5dff0f3fac8303d30fa85495539e487d25974ad7c21cd21a545cb4756e2",
+      "java": "75c8d2f925a83c1a5b7a7b267ccdc9db41f1dc7dd80fe641073aac577d13ecc4",
+      "rust": "ea90be54a621c0c0280b77d5e2dee9650bc1d4ae087f9b9b06af821bcd8662d7",
+      "ts": "2095a180276ed76a6f3063f3ca8d2d8d5d0fdb721e683023ebe240aa70fdfed9"
+    },
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "pricing_assumption": {
+      "input_per_million_usd": 5.0,
+      "cached_input_per_million_usd": 0.5,
+      "output_per_million_usd": 30.0
+    },
+    "timeout_seconds": 1800
+  },
+  "task_order": [
+    "danielmiessler__Fabric-2098",
+    "openai__openai-agents-js-375",
+    "kubernetes__kube-state-metrics-2926",
+    "skim-rs__skim-1044",
+    "include-what-you-use__include-what-you-use-1991"
+  ],
+  "runs": {
+    "danielmiessler__Fabric-2098": {
+      "codex": {
+        "instance_id": "danielmiessler__Fabric-2098",
+        "language": "go",
+        "agent": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785011121.749909,
+        "elapsed_seconds": 202.579,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 510952,
+          "cached_input_tokens": 447232,
+          "output_tokens": 7155,
+          "reasoning_output_tokens": 3940,
+          "cache_read_input_tokens": 447232,
+          "cache_creation_input_tokens": 0
+        },
+        "estimated_cost_usd": 0.756866,
+        "tool_calls": 12,
+        "tool_calls_by_type": {
+          "command_execution": 11,
+          "file_change": 1
+        },
+        "patch": {
+          "files_changed": 2,
+          "files": [
+            "internal/plugins/ai/codex/codex.go",
+            "internal/plugins/ai/codex/codex_test.go"
+          ],
+          "additions": 94,
+          "deletions": 4
+        },
+        "final_text": "Implemented the Codex empty-response fix.\n\n- Prevents empty `response.completed` events from overwriting streamed text.\n- Falls back to delta output, then `output_text.done`.\n- Added regression tests for both response formats.\n- `gofmt` and `git diff --check` pass.\n- Package tests could not compile because the sandbox blocked Go’s external build cache. No network was used.",
+        "command_public": {
+          "executable": "codex",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      },
+      "luban": {
+        "instance_id": "danielmiessler__Fabric-2098",
+        "language": "go",
+        "agent": "luban",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785011343.643774,
+        "elapsed_seconds": 234.738,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 459226,
+          "cached_input_tokens": 407040,
+          "cache_read_input_tokens": 407040,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 6413,
+          "reasoning_output_tokens": null
+        },
+        "estimated_cost_usd": 0.65684,
+        "tool_calls": 31,
+        "tool_calls_by_type": {
+          "Glob": 5,
+          "Grep": 7,
+          "ToolSearch": 1,
+          "Read": 9,
+          "Edit": 2,
+          "Bash": 7
+        },
+        "patch": {
+          "files_changed": 2,
+          "files": [
+            "internal/plugins/ai/codex/codex.go",
+            "internal/plugins/ai/codex/codex_test.go"
+          ],
+          "additions": 46,
+          "deletions": 3
+        },
+        "final_text": "Implemented the Codex empty-response fix.\n\n- `internal/plugins/ai/codex/codex.go:245`: falls back to accumulated SSE text deltas when `response.completed` contains no extractable output.\n- `internal/plugins/ai/codex/codex_test.go:368`: added regression coverage for this response shape.\n\nTests passed:\n\n- `go test ./internal/plugins/ai/codex`\n- `go test ./internal/plugins/ai/openai`",
+        "command_public": {
+          "executable": "luban",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      }
+    },
+    "openai__openai-agents-js-375": {
+      "codex": {
+        "instance_id": "openai__openai-agents-js-375",
+        "language": "ts",
+        "agent": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785017180.5703402,
+        "elapsed_seconds": 408.06,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 1360023,
+          "cached_input_tokens": 1260800,
+          "output_tokens": 13382,
+          "reasoning_output_tokens": 5625,
+          "cache_read_input_tokens": 1260800,
+          "cache_creation_input_tokens": 0
+        },
+        "estimated_cost_usd": 1.527975,
+        "tool_calls": 22,
+        "tool_calls_by_type": {
+          "command_execution": 19,
+          "file_change": 3
+        },
+        "patch": {
+          "files_changed": 3,
+          "files": [
+            "packages/agents-core/src/run.ts",
+            "packages/agents-core/src/runImplementation.ts",
+            "packages/agents-core/test/run.stream.test.ts"
+          ],
+          "additions": 139,
+          "deletions": 21
+        },
+        "final_text": "Implemented the streaming lifecycle fix.\n\n- Streaming runs now emit agent- and runner-level `agent_end` hooks.\n- Streamed usage is accumulated before the hook fires.\n- Tool-based final outputs no longer double-emit `agent_end`.\n- Added regression tests for normal and tool-completed streaming runs.\n- Added a patch changeset.\n\nValidation: syntax checks and `git diff --check` pass. Vitest could not run because dependencies are not installed in this checkout.",
+        "command_public": {
+          "executable": "codex",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      },
+      "luban": {
+        "instance_id": "openai__openai-agents-js-375",
+        "language": "ts",
+        "agent": "luban",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785016462.3094132,
+        "elapsed_seconds": 703.577,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 1482892,
+          "cached_input_tokens": 1403392,
+          "cache_read_input_tokens": 1403392,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 20481,
+          "reasoning_output_tokens": null
+        },
+        "estimated_cost_usd": 1.713626,
+        "tool_calls": 70,
+        "tool_calls_by_type": {
+          "ToolSearch": 1,
+          "Glob": 5,
+          "Grep": 14,
+          "Read": 25,
+          "Edit": 17,
+          "Bash": 8
+        },
+        "patch": {
+          "files_changed": 2,
+          "files": [
+            "packages/agents-core/src/run.ts",
+            "packages/agents-core/test/run.stream.test.ts"
+          ],
+          "additions": 84,
+          "deletions": 3
+        },
+        "final_text": "Implemented the streaming lifecycle fix.\n\n- Streaming runs now aggregate model usage into `RunContext` before completion (`packages/agents-core/src/run.ts:797`).\n- Streaming runs emit `agent_end` on both the `Runner` and final `Agent`, matching non-streaming behavior (`packages/agents-core/src/run.ts:831`).\n- Added a regression test verifying post-`run()` listeners receive `agent_end` exactly once and can access accumulated usage (`packages/agents-core/test/run.stream.test.ts:57`).\n\nValidation:\n- `git diff --check` passed.\n- Tests and full type-check could not run because repository dependencies, including `vitest`, `zod`, and Node typings, are not installed.",
+        "command_public": {
+          "executable": "luban",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      }
+    },
+    "kubernetes__kube-state-metrics-2926": {
+      "codex": {
+        "instance_id": "kubernetes__kube-state-metrics-2926",
+        "language": "go",
+        "agent": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785021341.768199,
+        "elapsed_seconds": 228.672,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 468619,
+          "cached_input_tokens": 417280,
+          "output_tokens": 7169,
+          "reasoning_output_tokens": 3359,
+          "cache_read_input_tokens": 417280,
+          "cache_creation_input_tokens": 0
+        },
+        "estimated_cost_usd": 0.680405,
+        "tool_calls": 32,
+        "tool_calls_by_type": {
+          "command_execution": 31,
+          "file_change": 1
+        },
+        "patch": {
+          "files_changed": 2,
+          "files": [
+            "pkg/options/options.go",
+            "pkg/options/options_test.go"
+          ],
+          "additions": 17,
+          "deletions": 3
+        },
+        "final_text": "Restored `custom_resource_config_file` YAML support in [options.go](/private/tmp/luban-agent-benchmark-work/repos/kubernetes__kube-state-metrics-2926/codex/pkg/options/options.go:53), making it equivalent to `--custom-resource-state-config-file` again.\n\nAdded regression coverage in [options_test.go](/private/tmp/luban-agent-benchmark-work/repos/kubernetes__kube-state-metrics-2926/codex/pkg/options/options_test.go:25).\n\nValidation:\n\n- `gofmt` and `git diff --check` pass.\n- Focused tests could not run because dependencies were unavailable inside the repository-only sandbox; no network access was attempted.",
+        "command_public": {
+          "executable": "codex",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      },
+      "luban": {
+        "instance_id": "kubernetes__kube-state-metrics-2926",
+        "language": "go",
+        "agent": "luban",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785021582.223808,
+        "elapsed_seconds": 273.537,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 351347,
+          "cached_input_tokens": 309248,
+          "cache_read_input_tokens": 309248,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 7719,
+          "reasoning_output_tokens": null
+        },
+        "estimated_cost_usd": 0.596689,
+        "tool_calls": 42,
+        "tool_calls_by_type": {
+          "ToolSearch": 1,
+          "Glob": 3,
+          "Grep": 11,
+          "Read": 13,
+          "Bash": 11,
+          "Edit": 3
+        },
+        "patch": {
+          "files_changed": 2,
+          "files": [
+            "pkg/options/options.go",
+            "pkg/options/options_test.go"
+          ],
+          "additions": 19,
+          "deletions": 3
+        },
+        "final_text": "Implemented the regression fix.\n\n- Restored `custom_resource_config_file` as the YAML key for `CustomResourceConfigFile` in `pkg/options/options.go:53`.\n- Added a regression test confirming the configuration value is unmarshaled correctly in `pkg/options/options_test.go:26`.\n- Formatting and `git diff --check` pass.\n- `go test ./pkg/options` could not run because the installed Go toolchain cannot parse the repository’s `go.mod` `tool` block.",
+        "command_public": {
+          "executable": "luban",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      }
+    },
+    "skim-rs__skim-1044": {
+      "codex": {
+        "instance_id": "skim-rs__skim-1044",
+        "language": "rust",
+        "agent": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785027469.146692,
+        "elapsed_seconds": 724.323,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 3594012,
+          "cached_input_tokens": 3466496,
+          "output_tokens": 16307,
+          "reasoning_output_tokens": 9448,
+          "cache_read_input_tokens": 3466496,
+          "cache_creation_input_tokens": 0
+        },
+        "estimated_cost_usd": 2.860038,
+        "tool_calls": 40,
+        "tool_calls_by_type": {
+          "command_execution": 34,
+          "file_change": 6
+        },
+        "patch": {
+          "files_changed": 11,
+          "files": [
+            "ARCHITECTURE.md",
+            "man/man1/sk.1",
+            "shell/completion.bash",
+            "shell/completion.fish",
+            "shell/completion.nu",
+            "shell/completion.zsh",
+            "src/options.rs",
+            "src/popup/tmux.rs",
+            "src/popup/zellij.rs",
+            "src/tui/mod.rs",
+            "tests/options.rs"
+          ],
+          "additions": 54,
+          "deletions": 22
+        },
+        "final_text": "Implemented fzf-compatible `--border=none`.\n\n- Normalizes `none` to the existing borderless state, including tmux/zellij popups.\n- Added a TUI snapshot regression test for `--border=none`.\n- Updated architecture docs, man page, and shell completions.\n- Passed focused border tests, formatting, and offline Clippy. Clippy reports five unrelated pre-existing warnings.",
+        "command_public": {
+          "executable": "codex",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      },
+      "luban": {
+        "instance_id": "skim-rs__skim-1044",
+        "language": "rust",
+        "agent": "luban",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785026157.4922009,
+        "elapsed_seconds": 1282.237,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 3533958,
+          "cached_input_tokens": 3401728,
+          "cache_read_input_tokens": 3401728,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 38754,
+          "reasoning_output_tokens": null
+        },
+        "estimated_cost_usd": 3.524634,
+        "tool_calls": 128,
+        "tool_calls_by_type": {
+          "ToolSearch": 1,
+          "Grep": 46,
+          "Glob": 3,
+          "Read": 42,
+          "Edit": 19,
+          "Bash": 17
+        },
+        "patch": {
+          "files_changed": 13,
+          "files": [
+            "ARCHITECTURE.md",
+            "man/man1/sk.1",
+            "plugin/skim.vim",
+            "shell/completion.bash",
+            "shell/completion.fish",
+            "shell/completion.nu",
+            "shell/completion.zsh",
+            "src/options.rs",
+            "src/popup/tmux.rs",
+            "src/popup/zellij.rs",
+            "src/tui/layout.rs",
+            "src/tui/mod.rs",
+            "tests/options.rs"
+          ],
+          "additions": 79,
+          "deletions": 20
+        },
+        "final_text": "Implemented `--border none` support.\n\n- Added `BorderType::None` and normalize it to the existing borderless state in `src/options.rs:1226`.\n- Ensured tmux/zellij popups are borderless with this value.\n- Updated Vim sizing logic, generated man page, and Bash/Fish/Zsh/Nushell completions.\n- Added layout, popup, CLI parsing, and rendering snapshot coverage.\n\nValidation:\n- `cargo test --lib`: 226 passed.\n- `cargo test --test options`: 103 passed.\n- `cargo fmt --check` and `git diff --check`: passed.",
+        "command_public": {
+          "executable": "luban",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      }
+    },
+    "include-what-you-use__include-what-you-use-1991": {
+      "codex": {
+        "instance_id": "include-what-you-use__include-what-you-use-1991",
+        "language": "cpp",
+        "agent": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785030452.652842,
+        "elapsed_seconds": 659.878,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 2782427,
+          "cached_input_tokens": 2653952,
+          "output_tokens": 16455,
+          "reasoning_output_tokens": 9643,
+          "cache_read_input_tokens": 2653952,
+          "cache_creation_input_tokens": 0
+        },
+        "estimated_cost_usd": 2.463001,
+        "tool_calls": 37,
+        "tool_calls_by_type": {
+          "command_execution": 33,
+          "file_change": 4
+        },
+        "patch": {
+          "files_changed": 1,
+          "files": [
+            "iwyu.cc"
+          ],
+          "additions": 13,
+          "deletions": 1
+        },
+        "final_text": "Implemented the fix.\n\n- Explicit function template specializations now record a dependency on their primary template declaration, preventing IWYU from removing the required header.\n- Added a regression test covering a deleted explicit specialization in an associated header.\n- Verified fixture compilation under C++11, formatting, license headers, test registration, and `git diff --check`.\n\nThe full IWYU test wasn’t run because no built `include-what-you-use` executable is available in the workspace.",
+        "command_public": {
+          "executable": "codex",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      },
+      "luban": {
+        "instance_id": "include-what-you-use__include-what-you-use-1991",
+        "language": "cpp",
+        "agent": "luban",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "xhigh",
+        "started_at_unix": 1785031139.704936,
+        "elapsed_seconds": 546.079,
+        "timeout_seconds": 1800,
+        "timed_out": false,
+        "exit_code": 0,
+        "usage": {
+          "input_tokens": 1117130,
+          "cached_input_tokens": 1041408,
+          "cache_read_input_tokens": 1041408,
+          "cache_creation_input_tokens": 0,
+          "output_tokens": 14994,
+          "reasoning_output_tokens": null
+        },
+        "estimated_cost_usd": 1.349134,
+        "tool_calls": 80,
+        "tool_calls_by_type": {
+          "ToolSearch": 1,
+          "Glob": 8,
+          "Grep": 15,
+          "Read": 38,
+          "Bash": 6,
+          "Edit": 9,
+          "Write": 3
+        },
+        "patch": {
+          "files_changed": 1,
+          "files": [
+            "iwyu.cc"
+          ],
+          "additions": 10,
+          "deletions": 1
+        },
+        "final_text": "Implemented the explicit function-template specialization fix.\n\n- `iwyu.cc:5165` now records the primary `FunctionTemplateDecl` as a full dependency when visiting an explicit specialization, preventing removal of its declaring header.\n- Added regression coverage in `tests/bugs/1991/1991.cc:1`, with the specialization in `tests/bugs/1991/1991.h:17`.\n\nValidation:\n- Regression fixture compiles with `clang++ -fsyntax-only`.\n- Test is discovered by the IWYU bugs test suite.\n- `git diff --check` passes.\n- Full IWYU test was not run because no local `include-what-you-use` binary is available.",
+        "command_public": {
+          "executable": "luban",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "provider": "same custom OpenAI-compatible endpoint"
+        }
+      }
+    }
+  },
+  "evaluations": {
+    "danielmiessler__Fabric-2098": {
+      "codex": {
+        "instance_id": "danielmiessler__Fabric-2098",
+        "language": "go",
+        "agent": "codex",
+        "resolved": true,
+        "elapsed_seconds": 416.971,
+        "image": "starryzhang/sweb.eval.x86_64.danielmiessler_1776_fabric-2098",
+        "image_pull_exit_code": 0,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 0,
+        "parsed_tests": 852,
+        "FAIL_TO_PASS": {
+          "expected": 1,
+          "passed": [
+            "github.com/danielmiessler/fabric/internal/plugins/ai/codex.TestSendFallsBackToDeltaWhenCompletedResponseHasNoText"
+          ],
+          "failed": [],
+          "missing": []
+        },
+        "PASS_TO_PASS": {
+          "expected": 841,
+          "passed_count": 841,
+          "failed": [],
+          "missing_count": 0
+        }
+      },
+      "luban": {
+        "instance_id": "danielmiessler__Fabric-2098",
+        "language": "go",
+        "agent": "luban",
+        "resolved": true,
+        "elapsed_seconds": 419.614,
+        "image": "starryzhang/sweb.eval.x86_64.danielmiessler_1776_fabric-2098",
+        "image_pull_exit_code": 0,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 0,
+        "parsed_tests": 850,
+        "FAIL_TO_PASS": {
+          "expected": 1,
+          "passed": [
+            "github.com/danielmiessler/fabric/internal/plugins/ai/codex.TestSendFallsBackToDeltaWhenCompletedResponseHasNoText"
+          ],
+          "failed": [],
+          "missing": []
+        },
+        "PASS_TO_PASS": {
+          "expected": 841,
+          "passed_count": 841,
+          "failed": [],
+          "missing_count": 0
+        }
+      }
+    },
+    "openai__openai-agents-js-375": {
+      "codex": {
+        "instance_id": "openai__openai-agents-js-375",
+        "language": "ts",
+        "agent": "codex",
+        "resolved": true,
+        "elapsed_seconds": 208.518,
+        "image": "starryzhang/sweb.eval.x86_64.openai_1776_openai-agents-js-375",
+        "image_pull_exit_code": 0,
+        "test_patch_apply_exit_code": 0,
+        "solution_patch_apply_exit_code": 1,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 0,
+        "parsed_tests": 369,
+        "FAIL_TO_PASS": {
+          "expected": 1,
+          "passed": [
+            "Runner.run (streaming) emits agent_end lifecycle event for streaming agents"
+          ],
+          "failed": [],
+          "missing": []
+        },
+        "PASS_TO_PASS": {
+          "expected": 366,
+          "passed_count": 366,
+          "failed": [],
+          "missing_count": 0
+        }
+      },
+      "luban": {
+        "instance_id": "openai__openai-agents-js-375",
+        "language": "ts",
+        "agent": "luban",
+        "resolved": true,
+        "elapsed_seconds": 204.044,
+        "image": "starryzhang/sweb.eval.x86_64.openai_1776_openai-agents-js-375",
+        "image_pull_exit_code": 0,
+        "test_patch_apply_exit_code": 0,
+        "solution_patch_apply_exit_code": 0,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 0,
+        "print_exit_code": 0,
+        "parsed_tests": 368,
+        "FAIL_TO_PASS": {
+          "expected": 1,
+          "passed": [
+            "Runner.run (streaming) emits agent_end lifecycle event for streaming agents"
+          ],
+          "failed": [],
+          "missing": []
+        },
+        "PASS_TO_PASS": {
+          "expected": 366,
+          "passed_count": 366,
+          "failed": [],
+          "missing_count": 0
+        }
+      }
+    },
+    "kubernetes__kube-state-metrics-2926": {
+      "codex": {
+        "instance_id": "kubernetes__kube-state-metrics-2926",
+        "language": "go",
+        "agent": "codex",
+        "resolved": false,
+        "elapsed_seconds": 276.725,
+        "image": "starryzhang/sweb.eval.x86_64.kubernetes_1776_kube-state-metrics-2926",
+        "image_pull_exit_code": 0,
+        "test_patch_apply_exit_code": 0,
+        "solution_patch_apply_exit_code": 1,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 0,
+        "parsed_tests": 211,
+        "FAIL_TO_PASS": {
+          "expected": 15,
+          "passed": [],
+          "failed": [],
+          "missing": [
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias/canonical_key_takes_precedence_when_both_are_set",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias/deprecated_key_populates_alias_field",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestLabelsAllowListSet",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestMergeFieldSelectors",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestMetricSetSet",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceListSet",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceList_ExcludeNamespacesFieldSelector",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceList_GetNamespaces",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestNodeFieldSelector",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/foo_command_line_argument",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/namespaces_command_line_argument",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/resources_command_line_argument",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestResourceSetSet"
+          ]
+        },
+        "PASS_TO_PASS": {
+          "expected": 211,
+          "passed_count": 211,
+          "failed": [],
+          "missing_count": 0
+        }
+      },
+      "luban": {
+        "instance_id": "kubernetes__kube-state-metrics-2926",
+        "language": "go",
+        "agent": "luban",
+        "resolved": false,
+        "elapsed_seconds": 263.448,
+        "image": "starryzhang/sweb.eval.x86_64.kubernetes_1776_kube-state-metrics-2926",
+        "image_pull_exit_code": 0,
+        "test_patch_apply_exit_code": 0,
+        "solution_patch_apply_exit_code": 1,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 0,
+        "parsed_tests": 211,
+        "FAIL_TO_PASS": {
+          "expected": 15,
+          "passed": [],
+          "failed": [],
+          "missing": [
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias/canonical_key_takes_precedence_when_both_are_set",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias/deprecated_key_populates_alias_field",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestLabelsAllowListSet",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestMergeFieldSelectors",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestMetricSetSet",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceListSet",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceList_ExcludeNamespacesFieldSelector",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceList_GetNamespaces",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestNodeFieldSelector",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/foo_command_line_argument",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/namespaces_command_line_argument",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/resources_command_line_argument",
+            "k8s.io/kube-state-metrics/v2/pkg/options/TestResourceSetSet"
+          ]
+        },
+        "PASS_TO_PASS": {
+          "expected": 211,
+          "passed_count": 211,
+          "failed": [],
+          "missing_count": 0
+        }
+      }
+    },
+    "skim-rs__skim-1044": {
+      "codex": {
+        "instance_id": "skim-rs__skim-1044",
+        "language": "rust",
+        "agent": "codex",
+        "resolved": false,
+        "elapsed_seconds": 139.373,
+        "image": "starryzhang/sweb.eval.x86_64.skim-rs_1776_skim-1044",
+        "image_pull_exit_code": 0,
+        "test_patch_apply_exit_code": 0,
+        "solution_patch_apply_exit_code": 0,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 1,
+        "parsed_tests": 0,
+        "FAIL_TO_PASS": {
+          "expected": 1,
+          "passed": [],
+          "failed": [],
+          "missing": [
+            "skim::options::opt_border_none"
+          ]
+        },
+        "PASS_TO_PASS": {
+          "expected": 587,
+          "passed_count": 0,
+          "failed": [],
+          "missing_count": 587
+        }
+      },
+      "luban": {
+        "instance_id": "skim-rs__skim-1044",
+        "language": "rust",
+        "agent": "luban",
+        "resolved": false,
+        "elapsed_seconds": 93.316,
+        "image": "starryzhang/sweb.eval.x86_64.skim-rs_1776_skim-1044",
+        "image_pull_exit_code": 0,
+        "test_patch_apply_exit_code": 0,
+        "solution_patch_apply_exit_code": 0,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 1,
+        "parsed_tests": 0,
+        "FAIL_TO_PASS": {
+          "expected": 1,
+          "passed": [],
+          "failed": [],
+          "missing": [
+            "skim::options::opt_border_none"
+          ]
+        },
+        "PASS_TO_PASS": {
+          "expected": 587,
+          "passed_count": 0,
+          "failed": [],
+          "missing_count": 587
+        }
+      }
+    },
+    "include-what-you-use__include-what-you-use-1991": {
+      "codex": {
+        "instance_id": "include-what-you-use__include-what-you-use-1991",
+        "language": "cpp",
+        "agent": "codex",
+        "diagnostic_excluded_paths": [],
+        "resolved": false,
+        "elapsed_seconds": 421.984,
+        "image": "starryzhang/sweb.eval.x86_64.include-what-you-use_1776_include-what-you-use-1991",
+        "image_pull_exit_code": 0,
+        "test_patch_apply_exit_code": 0,
+        "solution_patch_apply_exit_code": 0,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 0,
+        "parsed_tests": 229,
+        "FAIL_TO_PASS": {
+          "expected": 1,
+          "passed": [],
+          "failed": [
+            "cxx.test_specialization_needs_decl"
+          ],
+          "missing": []
+        },
+        "PASS_TO_PASS": {
+          "expected": 228,
+          "passed_count": 228,
+          "failed": [],
+          "missing_count": 0
+        }
+      },
+      "luban": {
+        "instance_id": "include-what-you-use__include-what-you-use-1991",
+        "language": "cpp",
+        "agent": "luban",
+        "diagnostic_excluded_paths": [],
+        "resolved": false,
+        "elapsed_seconds": 409.922,
+        "image": "starryzhang/sweb.eval.x86_64.include-what-you-use_1776_include-what-you-use-1991",
+        "image_pull_exit_code": 0,
+        "test_patch_apply_exit_code": 0,
+        "solution_patch_apply_exit_code": 0,
+        "rebuild_exit_code": 0,
+        "test_exit_code": 1,
+        "print_exit_code": 0,
+        "parsed_tests": 229,
+        "FAIL_TO_PASS": {
+          "expected": 1,
+          "passed": [],
+          "failed": [
+            "cxx.test_specialization_needs_decl"
+          ],
+          "missing": []
+        },
+        "PASS_TO_PASS": {
+          "expected": 228,
+          "passed_count": 228,
+          "failed": [],
+          "missing_count": 0
+        }
+      }
+    }
+  },
+  "gold": {
+    "danielmiessler__Fabric-2098": {
+      "instance_id": "danielmiessler__Fabric-2098",
+      "language": "go",
+      "agent": "gold",
+      "resolved": true,
+      "elapsed_seconds": 423.085,
+      "image": "starryzhang/sweb.eval.x86_64.danielmiessler_1776_fabric-2098",
+      "image_pull_exit_code": 0,
+      "rebuild_exit_code": 0,
+      "test_exit_code": 1,
+      "print_exit_code": 0,
+      "parsed_tests": 849,
+      "FAIL_TO_PASS": {
+        "expected": 1,
+        "passed": [
+          "github.com/danielmiessler/fabric/internal/plugins/ai/codex.TestSendFallsBackToDeltaWhenCompletedResponseHasNoText"
+        ],
+        "failed": [],
+        "missing": []
+      },
+      "PASS_TO_PASS": {
+        "expected": 841,
+        "passed_count": 841,
+        "failed": [],
+        "missing_count": 0
+      }
+    },
+    "openai__openai-agents-js-375": {
+      "instance_id": "openai__openai-agents-js-375",
+      "language": "ts",
+      "agent": "gold",
+      "resolved": true,
+      "elapsed_seconds": 713.426,
+      "image": "starryzhang/sweb.eval.x86_64.openai_1776_openai-agents-js-375",
+      "image_pull_exit_code": 0,
+      "test_patch_apply_exit_code": 0,
+      "solution_patch_apply_exit_code": 0,
+      "rebuild_exit_code": 0,
+      "test_exit_code": 0,
+      "print_exit_code": 0,
+      "parsed_tests": 367,
+      "FAIL_TO_PASS": {
+        "expected": 1,
+        "passed": [
+          "Runner.run (streaming) emits agent_end lifecycle event for streaming agents"
+        ],
+        "failed": [],
+        "missing": []
+      },
+      "PASS_TO_PASS": {
+        "expected": 366,
+        "passed_count": 366,
+        "failed": [],
+        "missing_count": 0
+      }
+    },
+    "kubernetes__kube-state-metrics-2926": {
+      "instance_id": "kubernetes__kube-state-metrics-2926",
+      "language": "go",
+      "agent": "gold",
+      "resolved": true,
+      "elapsed_seconds": 670.225,
+      "image": "starryzhang/sweb.eval.x86_64.kubernetes_1776_kube-state-metrics-2926",
+      "image_pull_exit_code": 0,
+      "test_patch_apply_exit_code": 0,
+      "solution_patch_apply_exit_code": 0,
+      "rebuild_exit_code": 0,
+      "test_exit_code": 0,
+      "print_exit_code": 0,
+      "parsed_tests": 226,
+      "FAIL_TO_PASS": {
+        "expected": 15,
+        "passed": [
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias/canonical_key_takes_precedence_when_both_are_set",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias/deprecated_key_populates_alias_field",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestLabelsAllowListSet",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestMergeFieldSelectors",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestMetricSetSet",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceListSet",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceList_ExcludeNamespacesFieldSelector",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceList_GetNamespaces",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestNodeFieldSelector",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/foo_command_line_argument",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/namespaces_command_line_argument",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/resources_command_line_argument",
+          "k8s.io/kube-state-metrics/v2/pkg/options/TestResourceSetSet"
+        ],
+        "failed": [],
+        "missing": []
+      },
+      "PASS_TO_PASS": {
+        "expected": 211,
+        "passed_count": 211,
+        "failed": [],
+        "missing_count": 0
+      }
+    },
+    "skim-rs__skim-1044": {
+      "instance_id": "skim-rs__skim-1044",
+      "language": "rust",
+      "agent": "gold",
+      "resolved": true,
+      "elapsed_seconds": 1723.007,
+      "image": "starryzhang/sweb.eval.x86_64.skim-rs_1776_skim-1044",
+      "image_pull_exit_code": 0,
+      "test_patch_apply_exit_code": 0,
+      "solution_patch_apply_exit_code": 0,
+      "rebuild_exit_code": 0,
+      "test_exit_code": 1,
+      "print_exit_code": 0,
+      "parsed_tests": 589,
+      "FAIL_TO_PASS": {
+        "expected": 1,
+        "passed": [
+          "skim::options::opt_border_none"
+        ],
+        "failed": [],
+        "missing": []
+      },
+      "PASS_TO_PASS": {
+        "expected": 587,
+        "passed_count": 587,
+        "failed": [],
+        "missing_count": 0
+      }
+    },
+    "include-what-you-use__include-what-you-use-1991": {
+      "instance_id": "include-what-you-use__include-what-you-use-1991",
+      "language": "cpp",
+      "agent": "gold",
+      "diagnostic_excluded_paths": [],
+      "resolved": true,
+      "elapsed_seconds": 1164.847,
+      "image": "starryzhang/sweb.eval.x86_64.include-what-you-use_1776_include-what-you-use-1991",
+      "image_pull_exit_code": 0,
+      "test_patch_apply_exit_code": 0,
+      "solution_patch_apply_exit_code": 0,
+      "rebuild_exit_code": 0,
+      "test_exit_code": 0,
+      "print_exit_code": 0,
+      "parsed_tests": 229,
+      "FAIL_TO_PASS": {
+        "expected": 1,
+        "passed": [
+          "cxx.test_specialization_needs_decl"
+        ],
+        "failed": [],
+        "missing": []
+      },
+      "PASS_TO_PASS": {
+        "expected": 228,
+        "passed_count": 228,
+        "failed": [],
+        "missing_count": 0
+      }
+    }
+  },
+  "diagnostics_not_in_score": {
+    "codex": {
+      "instance_id": "skim-rs__skim-1044",
+      "language": "rust",
+      "agent": "codex-diagnostic-production-only",
+      "diagnostic_excluded_paths": [
+        "tests/options.rs"
+      ],
+      "resolved": true,
+      "elapsed_seconds": 303.392,
+      "image": "starryzhang/sweb.eval.x86_64.skim-rs_1776_skim-1044",
+      "image_pull_exit_code": 0,
+      "test_patch_apply_exit_code": 0,
+      "solution_patch_apply_exit_code": 0,
+      "rebuild_exit_code": 0,
+      "test_exit_code": 1,
+      "print_exit_code": 0,
+      "parsed_tests": 589,
+      "FAIL_TO_PASS": {
+        "expected": 1,
+        "passed": [
+          "skim::options::opt_border_none"
+        ],
+        "failed": [],
+        "missing": []
+      },
+      "PASS_TO_PASS": {
+        "expected": 587,
+        "passed_count": 587,
+        "failed": [],
+        "missing_count": 0
+      }
+    },
+    "luban": {
+      "instance_id": "skim-rs__skim-1044",
+      "language": "rust",
+      "agent": "luban-diagnostic-production-only",
+      "diagnostic_excluded_paths": [
+        "tests/options.rs"
+      ],
+      "resolved": true,
+      "elapsed_seconds": 297.322,
+      "image": "starryzhang/sweb.eval.x86_64.skim-rs_1776_skim-1044",
+      "image_pull_exit_code": 0,
+      "test_patch_apply_exit_code": 0,
+      "solution_patch_apply_exit_code": 0,
+      "rebuild_exit_code": 0,
+      "test_exit_code": 1,
+      "print_exit_code": 0,
+      "parsed_tests": 592,
+      "FAIL_TO_PASS": {
+        "expected": 1,
+        "passed": [
+          "skim::options::opt_border_none"
+        ],
+        "failed": [],
+        "missing": []
+      },
+      "PASS_TO_PASS": {
+        "expected": 587,
+        "passed_count": 587,
+        "failed": [],
+        "missing_count": 0
+      }
+    }
+  },
+  "aggregates": {
+    "codex": {
+      "resolved": 2,
+      "total_tasks": 5,
+      "elapsed_seconds": 2223.512,
+      "mean_seconds": 444.702,
+      "median_seconds": 408.06,
+      "estimated_cost_usd": 8.288285,
+      "tool_calls": 143,
+      "tool_calls_by_type": {
+        "command_execution": 128,
+        "file_change": 15
+      },
+      "input_tokens": 8716033,
+      "cached_input_tokens": 8245760,
+      "uncached_input_tokens": 470273,
+      "cache_ratio": 0.9460450643084991,
+      "output_tokens": 60468,
+      "reasoning_output_tokens": 32015,
+      "files_changed_sum": 19,
+      "additions": 317,
+      "deletions": 51,
+      "evaluation_seconds": 1463.571
+    },
+    "luban": {
+      "resolved": 2,
+      "total_tasks": 5,
+      "elapsed_seconds": 3040.168,
+      "mean_seconds": 608.034,
+      "median_seconds": 546.079,
+      "estimated_cost_usd": 7.840923,
+      "tool_calls": 351,
+      "tool_calls_by_type": {
+        "Bash": 49,
+        "Edit": 50,
+        "Glob": 24,
+        "Grep": 93,
+        "Read": 127,
+        "ToolSearch": 5,
+        "Write": 3
+      },
+      "input_tokens": 6944553,
+      "cached_input_tokens": 6562816,
+      "uncached_input_tokens": 381737,
+      "cache_ratio": 0.9450307312796087,
+      "output_tokens": 88361,
+      "reasoning_output_tokens": null,
+      "files_changed_sum": 20,
+      "additions": 238,
+      "deletions": 30,
+      "evaluation_seconds": 1390.344
+    }
+  },
+  "recorded_spend": {
+    "counted_five_tasks_usd": 16.129208,
+    "excluded_wxt_runs_usd": 2.106938,
+    "all_recorded_agent_runs_usd": 18.236146,
+    "note": "Estimate from token events and the pinned local model catalog; excludes compute and network costs."
+  },
+  "security_incident": {
+    "observed": "The Fabric Luban trajectory ran env and captured inherited host credentials in tool output.",
+    "impact": "Those values were included in provider requests to the configured model endpoint.",
+    "remediation": "12 distinct values were redacted across 18 delivered files; rotate the exposed credentials. The delivered runner now uses an environment allowlist."
+  }
+}

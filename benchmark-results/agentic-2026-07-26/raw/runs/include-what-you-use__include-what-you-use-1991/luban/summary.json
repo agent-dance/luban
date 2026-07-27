@@ -1,0 +1,46 @@
+{
+  "instance_id": "include-what-you-use__include-what-you-use-1991",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785031139.704936,
+  "elapsed_seconds": 546.079,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1117130,
+    "cached_input_tokens": 1041408,
+    "cache_read_input_tokens": 1041408,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 14994,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.349134,
+  "tool_calls": 80,
+  "tool_calls_by_type": {
+    "ToolSearch": 1,
+    "Glob": 8,
+    "Grep": 15,
+    "Read": 38,
+    "Bash": 6,
+    "Edit": 9,
+    "Write": 3
+  },
+  "patch": {
+    "files_changed": 1,
+    "files": [
+      "iwyu.cc"
+    ],
+    "additions": 10,
+    "deletions": 1
+  },
+  "final_text": "Implemented the explicit function-template specialization fix.\n\n- `iwyu.cc:5165` now records the primary `FunctionTemplateDecl` as a full dependency when visiting an explicit specialization, preventing removal of its declaring header.\n- Added regression coverage in `tests/bugs/1991/1991.cc:1`, with the specialization in `tests/bugs/1991/1991.h:17`.\n\nValidation:\n- Regression fixture compiles with `clang++ -fsyntax-only`.\n- Test is discovered by the IWYU bugs test suite.\n- `git diff --check` passes.\n- Full IWYU test was not run because no local `include-what-you-use` binary is available.",
+  "command_public": {
+    "executable": "luban",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

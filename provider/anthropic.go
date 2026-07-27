@@ -48,7 +48,9 @@ type AnthropicProvider struct {
 
 // NewAnthropic creates a Provider backed by the Anthropic API
 func NewAnthropic(cfg Config) *AnthropicProvider {
-	var opts []option.RequestOption
+	// RetryProvider/AttemptController is the sole retry owner. The SDK defaults
+	// to two hidden retries, which would otherwise multiply every raw attempt.
+	opts := []option.RequestOption{option.WithMaxRetries(0)}
 	for _, key := range sortedHeaderKeys(cfg.Headers) {
 		if strings.EqualFold(key, "anthropic-beta") {
 			continue
@@ -466,6 +468,9 @@ func (p *AnthropicProvider) Capabilities() ProviderCapabilities {
 }
 
 func (p *AnthropicProvider) CreateStream(ctx context.Context, params Params) (<-chan types.StreamEvent, error) {
+	if err := ValidateParams(p, params); err != nil {
+		return nil, err
+	}
 	if params.Model == "" {
 		params.Model = p.model
 	}
@@ -570,7 +575,13 @@ func createAnthropicStream(ctx context.Context, client *anthropic.Client, params
 			return
 		}
 		if shouldFallbackAnthropicStream(summary, streamErr) {
-			if fallbackErr := emitAnthropicNonStreamingFallback(streamCtx, client, reqParams, requestOptions, ch); fallbackErr == nil {
+			var cause error
+			if streamErr != nil {
+				cause = parseAnthropicStreamError(streamErr)
+			}
+			if attemptErr := beginNestedTransportAttempt(streamCtx, cause); attemptErr != nil {
+				streamErr = attemptErr
+			} else if fallbackErr := emitAnthropicNonStreamingFallback(streamCtx, client, reqParams, requestOptions, ch); fallbackErr == nil {
 				return
 			} else if streamErr == nil {
 				streamErr = fallbackErr
@@ -673,6 +684,10 @@ func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthro
 			case anthropic.ThinkingDelta:
 				delta.Type = "thinking_delta"
 				delta.Thinking = d.Thinking
+			case anthropic.SignatureDelta:
+				delta.Type = "signature_delta"
+				delta.Signature = d.Signature
+				delta.SignatureKind = types.ThinkingSignatureAnthropic
 			}
 			if !sendEvent(ctx, ch, types.StreamEvent{
 				Type:  types.EventContentBlockDelta,
@@ -840,7 +855,11 @@ func anthropicStreamContentBlock(block anthropic.ContentBlockStartEventContentBl
 	case anthropic.ToolUseBlock:
 		return &types.ContentDelta{Type: types.ContentTypeToolUse, ID: variant.ID, Name: variant.Name}
 	case anthropic.ThinkingBlock:
-		return &types.ContentDelta{Type: types.ContentTypeThinking, Signature: variant.Signature}
+		return &types.ContentDelta{
+			Type:          types.ContentTypeThinking,
+			Signature:     variant.Signature,
+			SignatureKind: types.ThinkingSignatureAnthropic,
+		}
 	case anthropic.ServerToolUseBlock:
 		delta := rawContentDelta(types.ContentTypeServerToolUse, variant.RawJSON())
 		delta.ID = variant.ID
@@ -865,7 +884,11 @@ func anthropicBlockToEvents(block anthropic.ContentBlockUnion) (*types.ContentDe
 	case anthropic.ToolUseBlock:
 		return &types.ContentDelta{Type: types.ContentTypeToolUse, ID: b.ID, Name: b.Name}, &types.ContentDelta{Type: "input_json_delta", PartialJSON: string(b.Input)}, true
 	case anthropic.ThinkingBlock:
-		return &types.ContentDelta{Type: types.ContentTypeThinking, Signature: b.Signature}, &types.ContentDelta{Type: "thinking_delta", Thinking: b.Thinking}, true
+		return &types.ContentDelta{
+			Type:          types.ContentTypeThinking,
+			Signature:     b.Signature,
+			SignatureKind: types.ThinkingSignatureAnthropic,
+		}, &types.ContentDelta{Type: "thinking_delta", Thinking: b.Thinking}, true
 	case anthropic.ServerToolUseBlock:
 		start := rawContentDelta(types.ContentTypeServerToolUse, b.RawJSON())
 		start.ID, start.Name = b.ID, string(b.Name)
@@ -904,11 +927,16 @@ func parseAnthropicStreamError(err error) *types.APIError {
 			Type:       errType,
 			Message:    sdkErr.Error(),
 			RetryAfter: retryAfter,
+			Stage:      types.ProviderErrorStageStream,
 		}
+	}
+	if transportErr, ok := typedTransportAPIError(err, types.ProviderErrorStageStream); ok {
+		return transportErr
 	}
 	return &types.APIError{
 		Type:    "stream_error",
 		Message: err.Error(),
+		Stage:   types.ProviderErrorStageStream,
 	}
 }
 
@@ -1001,7 +1029,12 @@ func convertToAnthropicMessagesForParams(params Params) []anthropic.MessageParam
 				case types.ToolUseBlock:
 					parts = append(parts, anthropic.NewToolUseBlock(b.ID, b.Input, b.Name))
 				case types.ThinkingBlock:
-					parts = append(parts, anthropic.NewThinkingBlock(b.Signature, b.Thinking))
+					// Opaque thinking signatures are protocol-bound. Fail closed for
+					// untyped and foreign continuation state so an OpenAI encrypted
+					// reasoning token can never be projected onto Anthropic's wire.
+					if b.SignatureKind == types.ThinkingSignatureAnthropic && b.Signature != "" {
+						parts = append(parts, anthropic.NewThinkingBlock(b.Signature, b.Thinking))
+					}
 				case types.UnknownBlock:
 					if len(b.Raw) > 0 {
 						parts = append(parts, anthropicRawContentBlock(b.Raw))

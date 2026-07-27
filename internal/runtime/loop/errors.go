@@ -6,16 +6,21 @@ import (
 	"time"
 
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/contracts/stream"
+	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/types"
 )
 
-// PartialStreamError indicates the stream was interrupted mid-response but some
-// content blocks were already received. The partial message is returned alongside
-// this error so the caller can decide whether to proceed with the partial content
-// or retry from scratch.
+// PartialStreamError indicates that a provider response ended before its
+// explicit message/response commit event. Any blocks counted here are
+// uncommitted observations: callers must not append them to history or execute
+// their tool calls. Because processStream never starts tools while receiving
+// deltas, the complete generation is safe to replay from the last committed
+// history boundary.
 type PartialStreamError struct {
 	Cause         error
 	PartialBlocks int
+	OpenBlocks    int
 }
 
 func (e *PartialStreamError) Error() string {
@@ -23,6 +28,43 @@ func (e *PartialStreamError) Error() string {
 }
 
 func (e *PartialStreamError) Unwrap() error { return e.Cause }
+
+// SafeToReplay reports the response-transaction invariant guaranteed by
+// processStream. It is a typed extension point for a future provider-native
+// resume strategy; today recovery always replays the complete generation.
+func (e *PartialStreamError) SafeToReplay() bool { return true }
+
+// AttemptErrorStage, AttemptErrorClass, and AttemptReplaySafety bind the
+// runtime's response-transaction evidence into provider.AttemptController's
+// transport-neutral retry contract. A partial stream is replay-safe locally
+// because neither its message nor its tool batch has been committed.
+func (e *PartialStreamError) AttemptErrorStage() types.ProviderErrorStage {
+	return types.ProviderErrorStageStream
+}
+
+func (e *PartialStreamError) AttemptErrorClass() types.ProviderErrorClass {
+	contract := provider.ClassifyAttemptError(e.Cause)
+	if contract.Class == types.ProviderErrorClassUnknown {
+		// An explicit but unclassified provider failure is not transport
+		// evidence. Only a locally observed channel close/reader failure may
+		// be promoted to the replayable transport class.
+		if _, providerDeclared := provider.AsAPIError(e.Cause); providerDeclared {
+			return types.ProviderErrorClassUnknown
+		}
+		return types.ProviderErrorClassTransport
+	}
+	return contract.Class
+}
+
+func (e *PartialStreamError) AttemptReplaySafety() types.ProviderReplaySafety {
+	if apiErr, ok := provider.AsAPIError(e.Cause); ok {
+		switch apiErr.ReplaySafety {
+		case types.ProviderReplayAmbiguous, types.ProviderReplayUnsafe:
+			return apiErr.ReplaySafety
+		}
+	}
+	return types.ProviderReplaySafe
+}
 
 // MaxTurnsError indicates the agentic loop reached an explicit turn cap. The
 // TypeScript runtime surfaces this as a max_turns_reached attachment rather
@@ -57,53 +99,32 @@ func (e *MessageHistoryLimitError) Error() string {
 	)
 }
 
-// retryBaseDelay is the time unit used by retryDelay. Override in tests to avoid
-// slow test runs.
-var retryBaseDelay = time.Second
-
-const maxProviderRequestRetries = 10
-
-// retryDelay returns the wait duration before the given retry attempt (0-indexed).
-// Uses exponential backoff capped at 32× retryBaseDelay.
-func retryDelay(attempt int) time.Duration {
-	if attempt < 0 {
-		attempt = 0
+// terminalProviderErrorEvent preserves a typed provider cause until the
+// presentation boundary. Public renderers still redact Message and arbitrary
+// Type values; runtimeevent.NewErrorEvent exposes only its small allowlist of
+// semantic machine codes. Keeping the typed cause here is what lets the
+// benchmark distinguish a provider-declared context exhaustion without
+// parsing localized error prose.
+func terminalProviderErrorEvent(err error, turnCount int) stream.Event {
+	event := stream.Event{Type: stream.EventError, TurnCount: turnCount}
+	if err == nil {
+		return event
 	}
-	if attempt > 5 {
-		attempt = 5
+	event.Text = err.Error()
+	if apiErr, ok := provider.AsAPIError(err); ok {
+		event.Error = apiErr
 	}
-	return time.Duration(1<<attempt) * retryBaseDelay
+	return event
 }
+
+// retryBaseDelay is the fallback policy for raw providers that are not wrapped
+// by RetryProvider. Tests lower it to avoid sleeping on transient failures.
+var retryBaseDelay = time.Second
 
 // IsTransient reports whether err is a transient error that may resolve on retry.
 // Transient errors include API rate-limits, overloaded servers, and network failures.
 func IsTransient(err error) bool {
-	if err == nil {
-		return false
-	}
-
-	// Check well-typed Anthropic API errors first.
-	var apiErr *types.APIError
-	if errors.As(err, &apiErr) {
-		switch apiErr.Type {
-		case "overloaded_error", "rate_limit_error":
-			return true
-		}
-		msg := strings.ToLower(apiErr.Message)
-		return strings.Contains(msg, "overloaded") ||
-			strings.Contains(msg, "too many requests") ||
-			strings.Contains(msg, "rate limit") ||
-			strings.Contains(msg, "service unavailable")
-	}
-
-	// Network / transport errors (plain Go errors from the HTTP layer).
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "connection") ||
-		strings.Contains(msg, "timeout") ||
-		strings.Contains(msg, "reset by peer") ||
-		strings.Contains(msg, "eof") ||
-		strings.Contains(msg, "temporary") ||
-		strings.Contains(msg, "dial")
+	return provider.IsRetryable(err)
 }
 
 // isPreviousResponseNotFound reports whether err indicates that a
@@ -116,15 +137,8 @@ func isPreviousResponseNotFound(err error) bool {
 	}
 	var apiErr *types.APIError
 	if errors.As(err, &apiErr) {
-		if apiErr.Type == "previous_response_not_found" {
-			return true
-		}
-		if apiErr.Type == "invalid_request_error" {
-			msg := strings.ToLower(apiErr.Message)
-			hasPrev := strings.Contains(msg, "previous_response") || strings.Contains(msg, "previous response")
-			hasMissing := strings.Contains(msg, "not found") || strings.Contains(msg, "expired") || strings.Contains(msg, "does not exist")
-			return hasPrev && hasMissing
-		}
+		return strings.EqualFold(strings.TrimSpace(apiErr.Type), "previous_response_not_found") ||
+			strings.EqualFold(strings.TrimSpace(apiErr.Code), "previous_response_not_found")
 	}
 	return false
 }
@@ -134,25 +148,10 @@ func isPreviousResponseNotFound(err error) bool {
 // stream breaks, and similar transient failures that occur *during* streaming
 // (as opposed to *before* the request succeeds, which IsTransient handles).
 func isStreamInterrupted(err error) bool {
-	if err == nil {
-		return false
-	}
-	var apiErr *types.APIError
-	if errors.As(err, &apiErr) {
-		if apiErr.Type == "stream_interrupted" {
-			return true
-		}
-		msg := strings.ToLower(apiErr.Message)
-		return strings.Contains(msg, "upstream") && (strings.Contains(msg, "closed") || strings.Contains(msg, "disconnect")) ||
-			strings.Contains(msg, "websocket closed") ||
-			strings.Contains(msg, "stream ended") ||
-			strings.Contains(msg, "connection reset")
-	}
-	// Also check raw errors (e.g. from HTTP layer)
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "stream interrupted") ||
-		strings.Contains(msg, "upstream") && strings.Contains(msg, "closed") ||
-		strings.Contains(msg, "websocket closed")
+	contract := provider.ClassifyAttemptError(err)
+	return contract.Stage == types.ProviderErrorStageStream &&
+		contract.Class == types.ProviderErrorClassTransport &&
+		contract.ReplaySafety == types.ProviderReplaySafe
 }
 
 // isResponseFailedRetryable reports whether err is from a response.failed event
@@ -164,28 +163,10 @@ func isStreamInterrupted(err error) bool {
 // isPreviousResponseNotFound (parameter-level). It specifically catches
 // server-side response failures that didn't produce any content.
 func isResponseFailedRetryable(err error) bool {
-	if err == nil {
+	contract := provider.ClassifyAttemptError(err)
+	if contract.ReplaySafety != types.ProviderReplaySafe {
 		return false
 	}
-	var apiErr *types.APIError
-	if !errors.As(err, &apiErr) {
-		return false
-	}
-	// Don't retry parameter errors or quota errors
-	switch apiErr.Type {
-	case "invalid_request_error", "authentication_error", "permission_error",
-		"previous_response_not_found":
-		return false
-	}
-	// Retry server errors and unknown api_error types
-	switch apiErr.Type {
-	case "api_error", "server_error":
-		return true
-	}
-	// Retry overloaded/rate-limited if they came through the stream
-	switch apiErr.Type {
-	case "overloaded_error", "rate_limit_error":
-		return true
-	}
-	return false
+	return contract.Class == types.ProviderErrorClassOverload ||
+		contract.Class == types.ProviderErrorClassThrottle
 }

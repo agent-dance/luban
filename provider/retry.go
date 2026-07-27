@@ -2,37 +2,38 @@ package provider
 
 import (
 	"context"
-	"fmt"
-	"math"
-	"strconv"
 	"time"
 
-	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/types"
 )
 
 // RetryConfig controls retry behaviour.
 type RetryConfig struct {
-	MaxRetries    int           // default 10
-	BaseDelay     time.Duration // default 1 s
-	MaxDelay      time.Duration // default 32 s
-	Max529Retries int           // default 10
+	// MaxAttempts is the total raw transport-call budget for one logical
+	// generation, including the initial call. The default is three.
+	MaxAttempts int
+	BaseDelay   time.Duration // default 1 s
+	MaxDelay    time.Duration // default 32 s
 	// OnRetry is called before each retry attempt. nil = no logging.
-	// attempt is 1-based; delay is 0 when giving up (e.g. 529 limit reached).
+	// attempt is the one-based failed raw attempt that triggered the retry.
 	OnRetry func(attempt, maxRetries int, delay time.Duration, err error)
 	// OnAuthError is called when a 401 Unauthorized error is encountered.
 	// If it returns true, credentials were refreshed and one retry is allowed.
 	// If nil or it returns false, the 401 is surfaced immediately (fail fast).
 	OnAuthError func() bool
+
+	// Test seams kept private so callers cannot accidentally disable jitter or
+	// replace the monotonic wall-clock policy in production.
+	jitter func(time.Duration) time.Duration
+	now    func() time.Time
 }
 
 // DefaultRetryConfig returns the interactive LLM retry policy.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxRetries:    10,
-		BaseDelay:     time.Second,
-		MaxDelay:      32 * time.Second,
-		Max529Retries: 10,
+		MaxAttempts: 3,
+		BaseDelay:   time.Second,
+		MaxDelay:    32 * time.Second,
 	}
 }
 
@@ -43,22 +44,18 @@ type RetryProvider struct {
 	config RetryConfig
 }
 
+// Close releases a persistent transport owned by the wrapped provider.
+func (r *RetryProvider) Close() error {
+	if closer, ok := r.inner.(CloseProvider); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
 // NewRetryProvider creates a RetryProvider wrapping inner with the given config.
 // Use DefaultRetryConfig() to get sensible defaults.
 func NewRetryProvider(inner Provider, cfg RetryConfig) *RetryProvider {
-	if cfg.MaxRetries == 0 {
-		cfg.MaxRetries = DefaultRetryConfig().MaxRetries
-	}
-	if cfg.BaseDelay == 0 {
-		cfg.BaseDelay = DefaultRetryConfig().BaseDelay
-	}
-	if cfg.MaxDelay == 0 {
-		cfg.MaxDelay = DefaultRetryConfig().MaxDelay
-	}
-	if cfg.Max529Retries == 0 {
-		cfg.Max529Retries = DefaultRetryConfig().Max529Retries
-	}
-	return &RetryProvider{inner: inner, config: cfg}
+	return &RetryProvider{inner: inner, config: normalizeRetryConfig(cfg)}
 }
 
 // Name delegates to the wrapped provider.
@@ -80,9 +77,10 @@ func (r *RetryProvider) Capabilities() ProviderCapabilities {
 // errors according to the RetryConfig.
 //
 // Retry strategy:
-//   - Exponential back-off: delay = min(base*2^attempt, maxDelay)
-//   - Respects Retry-After header when present in the error.
-//   - 529 "overloaded" retries are limited by Max529Retries.
+//   - At most MaxAttempts raw calls across all provider/loop retry layers.
+//   - Bounded exponential full jitter with Retry-After support.
+//   - Permanent 4xx, context, quota, billing, and model errors fail fast.
+//   - A 401 can refresh credentials at most once, then retries without delay.
 //   - Context cancellation aborts the retry loop immediately.
 //
 // If CreateStream succeeds (returns a channel), the channel is returned directly
@@ -93,12 +91,19 @@ func (r *RetryProvider) CreateStream(ctx context.Context, params Params) (<-chan
 		return nil, err
 	}
 
-	cfg := r.config
-	retries529 := 0
+	controller := attemptControllerFromContext(ctx)
+	if controller == nil {
+		controller = NewAttemptController(r.config)
+		ctx = WithAttemptController(ctx, controller)
+	}
 
-	for attempt := 0; attempt <= cfg.MaxRetries; attempt++ {
+	for {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
+		}
+		attempt, beginErr := controller.beginAttempt()
+		if beginErr != nil {
+			return nil, beginErr
 		}
 
 		ch, err := r.inner.CreateStream(ctx, params)
@@ -106,88 +111,51 @@ func (r *RetryProvider) CreateStream(ctx context.Context, params Params) (<-chan
 			// Success — return the channel directly; no stream-level retry wrapper.
 			return ch, nil
 		}
+		controller.recordError(err)
 
-		// Classify the error.
-		if Is529Error(err) {
-			retries529++
-			if retries529 > cfg.Max529Retries {
-				r.notifyRetry(ctx, attempt+1, 0, err)
-				return nil, err
-			}
-		} else if is401Error(err) {
-			// 401 Unauthorized: no built-in auth refresh; fail fast unless
-			// OnAuthError callback signals that credentials were refreshed.
-			if cfg.OnAuthError != nil && cfg.OnAuthError() {
-				// Credentials refreshed — allow one retry without backoff.
+		if is401Error(err) {
+			// Refresh is both single-use and budget-aware. A second 401 is never
+			// replayed, even if a buggy callback keeps returning true.
+			if r.config.OnAuthError != nil && controller.reserveAuthRefresh() && r.config.OnAuthError() {
+				r.notifyRetry(ctx, controller, attempt, 0, err)
 				continue
 			}
 			return nil, err
-		} else if IsPromptTooLong(err) {
-			// Not retryable — surface to caller for PTL handling.
-			return nil, err
-		} else if !IsRetryable(err) {
-			return nil, err
 		}
-
-		if attempt == cfg.MaxRetries {
-			return nil, fmt.Errorf("%s: %w", i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderRetryExceededWithoutCause, cfg.MaxRetries), err)
+		delay, retry := controller.RetryDelay(err)
+		if !retry {
+			return nil, controller.exhausted(err)
 		}
-
-		delay := r.computeDelay(attempt, err)
-		r.notifyRetry(ctx, attempt+1, delay, err)
-
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return nil, ctx.Err()
-		case <-timer.C:
+		r.notifyRetry(ctx, controller, attempt, delay, err)
+		if waitErr := controller.Wait(ctx, delay); waitErr != nil {
+			return nil, waitErr
 		}
 	}
-
-	return nil, fmt.Errorf("%s", i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderRetryExceededWithoutCause, cfg.MaxRetries))
 }
 
-// computeDelay returns the back-off delay for a given attempt number.
-//
-// Formula:
-//
-//	baseDelay = min(BaseDelay * 2^attempt, MaxDelay)
-//	delay     = baseDelay
-//
-// If the error carries a Retry-After header, that value is used instead when
-// it is larger than the computed delay.
+// computeDelay remains a focused policy test seam. Production calls use the
+// generation-scoped controller directly.
 func (r *RetryProvider) computeDelay(attempt int, err error) time.Duration {
-	base := r.config.BaseDelay
-	maxD := r.config.MaxDelay
-
-	factor := math.Pow(2, float64(attempt))
-	scaled := time.Duration(float64(base) * factor)
-	if scaled > maxD {
-		scaled = maxD
+	config := normalizeRetryConfig(r.config)
+	capDelay := exponentialDelay(config.BaseDelay, config.MaxDelay, attempt)
+	delay := config.jitter(capDelay)
+	if retryAfter := parseRetryAfter(err, config.now()); retryAfter > delay {
+		delay = retryAfter
 	}
-	delay := scaled
-
-	// Honor Retry-After header if present.
-	if ae, ok := AsAPIError(err); ok && ae.RetryAfter != "" {
-		if secs, parseErr := strconv.ParseFloat(ae.RetryAfter, 64); parseErr == nil {
-			ra := time.Duration(secs * float64(time.Second))
-			if ra > delay {
-				delay = ra
-			}
-		}
+	if delay > config.MaxDelay {
+		return config.MaxDelay
 	}
-
 	return delay
 }
 
-func (r *RetryProvider) notifyRetry(ctx context.Context, attempt int, delay time.Duration, err error) {
+func (r *RetryProvider) notifyRetry(ctx context.Context, controller *AttemptController, attempt int, delay time.Duration, err error) {
+	maxRetries := controller.MaxAttempts() - 1
 	if r.config.OnRetry != nil {
-		r.config.OnRetry(attempt, r.config.MaxRetries, delay, err)
+		r.config.OnRetry(attempt, maxRetries, delay, err)
 	}
 	notifyRetryObserver(ctx, RetryEvent{
 		Attempt:    attempt,
-		MaxRetries: r.config.MaxRetries,
+		MaxRetries: maxRetries,
 		Delay:      delay,
 		Err:        err,
 	})

@@ -15,6 +15,7 @@ require (
 	github.com/chzyer/readline v1.5.1
 	github.com/creachadair/jrpc2 v1.3.5
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
 	github.com/grindlemire/go-tui v0.11.0
 	github.com/pkoukk/tiktoken-go v0.1.8
 	github.com/rivo/uniseg v0.4.7

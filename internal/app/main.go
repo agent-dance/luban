@@ -164,11 +164,6 @@ func Run() (exitCode int) {
 		return 1
 	}
 
-	// Pass --api flag to provider layer via env var (before provider init).
-	if opts.API != "" {
-		os.Setenv("OPENAI_API", opts.API)
-	}
-
 	// Obtain shared singletons for multi-provider support (Phase 4).
 	providerRegistry := provider.DefaultRegistry()
 	credStore, credErr := provider.DefaultCredentialStore()
@@ -203,7 +198,8 @@ func Run() (exitCode int) {
 	}
 
 	// Create provider from environment, with CLI overrides for provider/model.
-	p, err := provider.NewFromEnvWithOverrides(opts.Provider, opts.Model)
+	providerRuntimeOverrides := providerRuntimeOverridesFromOptions(opts)
+	p, err := provider.NewFromEnvWithRuntimeOverrides(opts.Provider, opts.Model, providerRuntimeOverrides)
 	if err != nil {
 		if !opts.Print && !opts.SDK && isBootstrappableProviderError(providerRegistry, opts.Provider, err) {
 			providerName, modelName := bootstrapProviderSelection(providerRegistry, opts.Provider, opts.Model)
@@ -220,6 +216,8 @@ func Run() (exitCode int) {
 	// consumers (Engine, AgentTool, TeamManager) receive pRef, so a
 	// Swap() propagates everywhere automatically.
 	pRef := provider.NewProviderRef(p)
+	serviceTier := serviceTierFromOptions(opts)
+	pRef.SetServiceTier(serviceTier)
 	if opts.DebugFile != "" {
 		debugFile, debugErr := provider.OpenDebugFile(opts.DebugFile)
 		if debugErr != nil {
@@ -290,6 +288,14 @@ func Run() (exitCode int) {
 		defer restoreDiagnosticLogger()
 	}
 	deps := SetupRegistry(pRef, cwd, allowedDirs, sb, webDomains, interactive)
+	deps.AgentTool.ServiceTier = serviceTier
+	if opts.ForceSandboxTools {
+		if _, ok := sandbox.Snapshot(sb); !ok || deps.BashTool == nil {
+			fmt.Fprint(os.Stderr, i18n.Text(lang, i18n.KeyStartupSandboxUnavailable))
+			return 1
+		}
+		deps.BashTool.ForceSandbox = true
+	}
 	var eng *engine.CoreEngine
 	// The lifecycle owner is installed immediately after composition. This also
 	// covers failures while preparing the initial workspace, after SetupRegistry
@@ -297,7 +303,7 @@ func Run() (exitCode int) {
 	defer func() {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), applicationShutdownTimeout)
 		defer shutdownCancel()
-		issues := shutdownApplicationRuntime(shutdownCtx, deps, eng)
+		issues := shutdownApplicationRuntime(shutdownCtx, deps, eng, pRef)
 		if shutdownErr := joinApplicationShutdownIssues(issues); shutdownErr != nil {
 			fmt.Fprint(os.Stderr, i18n.Format(lang, i18n.KeyStartupShutdownWarning, shutdownErr))
 		}
@@ -324,11 +330,17 @@ func Run() (exitCode int) {
 		return 1
 	}
 
-	// Build system prompt
-	systemPrompt := buildSystemPromptForCWD(opts.SystemPrompt, deps.Registry, cwd)
+	// Build the prompt envelope once so provider-facing block boundaries and
+	// project instructions survive the production runtime wiring unchanged.
+	workspacePrompt := buildWorkspacePrompt(opts.SystemPrompt, deps.Registry, cwd)
+	if workspacePrompt.catalogErr != nil {
+		fmt.Fprint(os.Stderr, i18n.Format(lang, i18n.KeyStartupFatal,
+			i18n.WrapInternalError(i18n.KeyRootVisibleToolCatalogInvalid, workspacePrompt.catalogErr)))
+		return 1
+	}
 
 	// Wire the system prompt into the agent runtime.
-	deps.AgentTool.System = systemPrompt
+	deps.AgentTool.System = workspacePrompt.system
 
 	// Effective max turns
 	maxTurns := opts.MaxTurns
@@ -339,8 +351,12 @@ func Run() (exitCode int) {
 	// Create hooks and engine
 	hookRunner := loadHooks(cwd)
 	deps.SetHookRunner(hookRunner)
+	explicitReasoningEffort := strings.TrimSpace(opts.ReasoningEffort)
+	if explicitReasoningEffort == "" {
+		explicitReasoningEffort = os.Getenv("OPENAI_REASONING_EFFORT")
+	}
 	reasoningEffort := resolveStartupReasoningEffort(
-		os.Getenv("OPENAI_REASONING_EFFORT"),
+		explicitReasoningEffort,
 		startupModelSettings,
 		pRef.Name(),
 		pRef.ModelID(),
@@ -394,12 +410,19 @@ func Run() (exitCode int) {
 		Provider:              pRef,
 		Registry:              deps.Registry,
 		Sessions:              engine.NewRepositorySessionManager(sessionRepo, func() string { return sessionProjectDir }),
-		SystemPrompt:          systemPrompt,
+		SystemPrompt:          workspacePrompt.system,
+		SystemPromptBlocks:    workspacePrompt.systemBlocks,
+		UserContext:           workspacePrompt.userContext,
+		VisibleTools:          workspacePrompt.toolSnapshot,
+		ToolPromptConfig:      workspacePrompt.promptConfig,
+		GeneratedToolPrompt:   workspacePrompt.generated,
 		HookRunner:            hookRunner,
 		MaxTurns:              maxTurns,
 		MaxTokens:             16384,
 		MaxContextTokens:      200000,
 		ReasoningEffort:       reasoningEffort,
+		ServiceTier:           serviceTier,
+		PinnedModel:           opts.PinnedModel,
 		Permission:            permHandler,
 		ProjectRoot:           cwd,
 		CWD:                   cwd,
@@ -434,7 +457,14 @@ func Run() (exitCode int) {
 			fmt.Fprint(os.Stderr, i18n.Format(lang, i18n.KeyStartupFatal, rendererErr))
 			return 2
 		}
-		exitCode := RunPrintMode(eng, renderer, strings.Join(opts.Args, " "), opts.Verbose)
+		exitCode := RunPrintMode(eng, renderer, PrintModeConfig{
+			SessionID:         sessionID,
+			SessionProjectDir: sessionProjectDir,
+			ProjectRoot:       cwd,
+			CWD:               cwd,
+			Query:             strings.Join(opts.Args, " "),
+			Verbose:           opts.Verbose,
+		})
 		return exitCode
 	}
 
@@ -509,7 +539,8 @@ func Run() (exitCode int) {
 			Engine: eng, Repo: sessionRepo, SessionID: &sessionID, SessionProjectDir: &sessionProjectDir,
 			CWD: &cwd, HookRunnerRef: &hookRunner, SwitchSession: switcher.switchTo, PublishSessionID: deps.PublishSessionID,
 			ProviderRef: pRef, ProviderRegistry: providerRegistry, CredentialStore: credStore,
-			PermChecker: checker, PlanState: deps.PlanState, AskUserQuestionTool: deps.AskUserQuestionTool, RuntimeScope: deps.RuntimeScope,
+			ProviderRuntimeOverrides: providerRuntimeOverrides,
+			PermChecker:              checker, PlanState: deps.PlanState, AskUserQuestionTool: deps.AskUserQuestionTool, RuntimeScope: deps.RuntimeScope,
 			TaskCreateTool: deps.TaskCreateTool, AgentTool: deps.AgentTool, BackgroundTasks: agentBackgroundPresentationPort(deps.BackgroundTasks), MCPBackend: deps.ServiceMCP,
 			SkillManager: deps.SkillManager, SkillInvoker: skillInvoker,
 			ReasoningEffort: reasoningEffort,
@@ -526,29 +557,30 @@ func Run() (exitCode int) {
 
 	// ── Interactive TUI mode (default) ──────────────────────────────────────
 	if tuiErr := RunTUIREPL(globalCtx, TUIREPLConfig{
-		Engine:              eng,
-		Repo:                sessionRepo,
-		SessionID:           &sessionID,
-		SessionProjectDir:   &sessionProjectDir,
-		CWD:                 &cwd,
-		HookRunnerRef:       &hookRunner,
-		SwitchSession:       switcher.switchTo,
-		PublishSessionID:    deps.PublishSessionID,
-		ProviderRef:         pRef,
-		ProviderRegistry:    providerRegistry,
-		CredentialStore:     credStore,
-		PermChecker:         checker,
-		PlanState:           deps.PlanState,
-		AskUserQuestionTool: deps.AskUserQuestionTool,
-		RuntimeScope:        deps.RuntimeScope,
-		TaskCreateTool:      deps.TaskCreateTool,
-		AgentTool:           deps.AgentTool,
-		BackgroundTasks:     agentBackgroundPresentationPort(deps.BackgroundTasks),
-		MCPBackend:          deps.ServiceMCP,
-		SkillManager:        deps.SkillManager,
-		SkillInvoker:        skillInvoker,
-		ReasoningEffort:     reasoningEffort,
-		BuildDiagnostic:     buildinfo.Current,
+		Engine:                   eng,
+		Repo:                     sessionRepo,
+		SessionID:                &sessionID,
+		SessionProjectDir:        &sessionProjectDir,
+		CWD:                      &cwd,
+		HookRunnerRef:            &hookRunner,
+		SwitchSession:            switcher.switchTo,
+		PublishSessionID:         deps.PublishSessionID,
+		ProviderRef:              pRef,
+		ProviderRegistry:         providerRegistry,
+		CredentialStore:          credStore,
+		ProviderRuntimeOverrides: providerRuntimeOverrides,
+		PermChecker:              checker,
+		PlanState:                deps.PlanState,
+		AskUserQuestionTool:      deps.AskUserQuestionTool,
+		RuntimeScope:             deps.RuntimeScope,
+		TaskCreateTool:           deps.TaskCreateTool,
+		AgentTool:                deps.AgentTool,
+		BackgroundTasks:          agentBackgroundPresentationPort(deps.BackgroundTasks),
+		MCPBackend:               deps.ServiceMCP,
+		SkillManager:             deps.SkillManager,
+		SkillInvoker:             skillInvoker,
+		ReasoningEffort:          reasoningEffort,
+		BuildDiagnostic:          buildinfo.Current,
 		OpenSessionTerminal: func(ctx context.Context, forkID, forkCWD, providerName, modelID string) error {
 			return openForkSessionTerminal(ctx, opts, providerName, modelID, forkID, forkCWD)
 		},

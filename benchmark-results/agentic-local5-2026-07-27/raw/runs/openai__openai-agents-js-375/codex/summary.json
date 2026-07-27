@@ -1,0 +1,52 @@
+{
+  "instance_id": "openai__openai-agents-js-375",
+  "language": "ts",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785084891.036492,
+  "elapsed_seconds": 521.94,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1416883,
+    "cached_input_tokens": 1334016,
+    "output_tokens": 12258,
+    "reasoning_output_tokens": 5521,
+    "cache_read_input_tokens": 1334016,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 1.449083,
+  "tool_calls": 25,
+  "tool_calls_by_type": {
+    "command_execution": 18,
+    "file_change": 7
+  },
+  "patch": {
+    "files_changed": 4,
+    "files": [
+      "packages/agents-core/src/run.ts",
+      "packages/agents-core/src/runImplementation.ts",
+      "packages/agents-core/test/run.stream.test.ts",
+      "packages/agents-core/test/run.test.ts"
+    ],
+    "additions": 168,
+    "deletions": 43
+  },
+  "final_text": "Implemented the streaming lifecycle fix.\n\n- Streaming runs now emit both Agent and Runner `agent_end` hooks after output guardrails.\n- Streamed usage is aggregated before hooks execute.\n- Final tool outputs emit `agent_end` exactly once in streaming and non-streaming runs.\n- Added regression tests for lifecycle hooks, usage visibility, and tool-final completion.\n\nValidation: `git diff --check` passes. Tests could not run because dependencies are not installed and the sandbox blocks the external pnpm cache.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 30,
+  "llm_successful_calls": 30,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 519.307157,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

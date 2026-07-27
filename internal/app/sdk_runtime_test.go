@@ -117,14 +117,20 @@ func TestSDKRequestStatusAdapterMapsEveryPhaseWithoutRawError(t *testing.T) {
 			event := sdkEventFromStream(stream.Event{
 				Type: test.eventType,
 				RequestStatus: &stream.RequestStatusEvent{
-					RequestID: "request-9", Attempt: 2, MaxRetries: 3,
+					RequestID: "request-9", StartedAt: "2026-07-26T00:00:00Z", EndedAt: "2026-07-26T00:00:01Z",
+					Attempt: 2, MaxRetries: 3, RetryCount: 1,
 					RetryDelayMilliseconds: 250, RequestMilliseconds: 40,
-					FirstTokenMilliseconds: 80, TotalMilliseconds: 120, Error: secret,
+					FirstTokenMilliseconds: 80, TotalMilliseconds: 120,
+					InputTokens: 100, CacheReadInputTokens: 70, CacheWriteInputTokens: 10, OutputTokens: 20,
+					Error: secret,
 				},
 			})
 			status := event.RequestStatus
-			if status == nil || status.RequestID != "request-9" || status.Phase != string(test.eventType) || status.Status != test.status || status.Attempt != 2 || status.MaxAttempts != 4 {
+			if status == nil || status.RequestID != "request-9" || status.Phase != string(test.eventType) || status.Status != test.status || status.Attempt != 2 || status.MaxAttempts != 4 || status.RetryCount != 1 {
 				t.Fatalf("request status = %+v", status)
+			}
+			if status.StartedAt == "" || status.EndedAt == "" || status.InputTokens != 100 || status.CacheReadInputTokens != 70 || status.CacheWriteInputTokens != 10 || status.OutputTokens != 20 {
+				t.Fatalf("request status lost timing/usage = %+v", status)
 			}
 			if test.eventType == stream.EventRequestRetry && status.ErrorCode != "provider_request_retry" {
 				t.Fatalf("retry error projection = %+v", status)
@@ -140,6 +146,40 @@ func TestSDKRequestStatusAdapterMapsEveryPhaseWithoutRawError(t *testing.T) {
 				t.Fatalf("SDK event leaked raw request error: %s", encoded)
 			}
 		})
+	}
+}
+
+func TestSDKToolRoundMetricsAdapterIsLossless(t *testing.T) {
+	event := sdkEventFromStream(stream.Event{
+		Type: stream.EventToolRoundMetrics,
+		ToolRound: &stream.ToolRoundMetricsEvent{
+			RoundID: "turn-3", LogicalModelVisibleCalls: 5,
+			PhysicalChildOperations: 7, Fanout: 3, BatchCount: 2,
+			QueueMilliseconds: 12, CriticalPathMilliseconds: 40,
+			TotalChildLatencyMilliseconds: 70, ErrorCount: 1,
+			RevisionFusionCount: 2, RevisionBarrierSkips: 1, RevisionMismatchCount: 1,
+		},
+	})
+	if event.Type != sdk.EventToolRoundMetrics || event.ToolRound == nil {
+		t.Fatalf("SDK tool round event = %+v", event)
+	}
+	if event.ToolRound.RoundID != "turn-3" || event.ToolRound.LogicalModelVisibleCalls != 5 || event.ToolRound.PhysicalChildOperations != 7 || event.ToolRound.Fanout != 3 || event.ToolRound.ErrorCount != 1 || event.ToolRound.RevisionFusionCount != 2 || event.ToolRound.RevisionBarrierSkips != 1 || event.ToolRound.RevisionMismatchCount != 1 {
+		t.Fatalf("SDK tool round metrics = %+v", event.ToolRound)
+	}
+}
+
+func TestSDKFlightProgressAdapterPreservesContentFreeDisposition(t *testing.T) {
+	event := sdkEventFromStream(stream.Event{
+		Type: stream.EventProgress,
+		Progress: &stream.ProgressEvent{
+			Stage: "agentic_flight", Disposition: "incomplete_unverified", Blocker: "verification_missing",
+			MutationEpoch: 5, VerifiedEpoch: 4,
+		},
+	})
+	if event.Progress == nil || event.Progress.Stage != "agentic_flight" ||
+		event.Progress.Disposition != "incomplete_unverified" || event.Progress.Blocker != "verification_missing" ||
+		event.Progress.MutationEpoch != 5 || event.Progress.VerifiedEpoch != 4 {
+		t.Fatalf("SDK flight progress = %+v", event.Progress)
 	}
 }
 

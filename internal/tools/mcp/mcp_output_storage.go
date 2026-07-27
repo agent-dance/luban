@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -11,6 +12,9 @@ import (
 	"time"
 
 	"github.com/agent-dance/luban/i18n"
+	executioncontract "github.com/agent-dance/luban/internal/contracts/execution"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
+	"github.com/agent-dance/luban/internal/store/secureio"
 )
 
 const (
@@ -113,8 +117,12 @@ func extensionForMCPMimeType(mimeType string) string {
 }
 
 func persistMCPBinaryContent(bytes []byte, mimeType, persistID string) mcpPersistedBinaryResult {
+	return persistMCPBinaryContentAt(bytes, mimeType, persistID, "")
+}
+
+func persistMCPBinaryContentAt(bytes []byte, mimeType, persistID, toolResultsDir string) mcpPersistedBinaryResult {
 	ext := extensionForMCPMimeType(mimeType)
-	path, err := mcpToolResultPath(persistID, ext)
+	path, err := mcpToolResultPathAt(persistID, ext, toolResultsDir)
 	if err != nil {
 		return mcpPersistedBinaryResult{Error: err.Error()}
 	}
@@ -125,11 +133,15 @@ func persistMCPBinaryContent(bytes []byte, mimeType, persistID string) mcpPersis
 }
 
 func persistMCPTextOutput(content, persistID string, isJSON bool) mcpPersistedTextResult {
+	return persistMCPTextOutputAt(content, persistID, isJSON, "")
+}
+
+func persistMCPTextOutputAt(content, persistID string, isJSON bool, toolResultsDir string) mcpPersistedTextResult {
 	ext := "txt"
 	if isJSON {
 		ext = "json"
 	}
-	path, err := mcpToolResultPath(persistID, ext)
+	path, err := mcpToolResultPathAt(persistID, ext, toolResultsDir)
 	if err != nil {
 		return mcpPersistedTextResult{Error: err.Error()}
 	}
@@ -156,8 +168,15 @@ func newMCPPersistID(serverName, suffix string) string {
 }
 
 func mcpToolResultPath(persistID, ext string) (string, error) {
-	dir := getMCPToolResultsDir()
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	return mcpToolResultPathAt(persistID, ext, "")
+}
+
+func mcpToolResultPathAt(persistID, ext, toolResultsDir string) (string, error) {
+	dir := strings.TrimSpace(toolResultsDir)
+	if dir == "" {
+		dir = getMCPToolResultsDir()
+	}
+	if err := secureio.EnsurePrivateRuntimeDirectory(dir); err != nil {
 		return "", err
 	}
 	cleanDir, err := filepath.Abs(dir)
@@ -187,10 +206,31 @@ func getMCPToolResultsDir() string {
 	if dir := strings.TrimSpace(os.Getenv(mcpLubanToolResultsDirEnv)); dir != "" {
 		return dir
 	}
-	if cwd, err := os.Getwd(); err == nil && strings.TrimSpace(cwd) != "" {
-		return filepath.Join(cwd, ".luban-code", "tool-results")
+	cwd := "."
+	if current, err := os.Getwd(); err == nil && strings.TrimSpace(current) != "" {
+		cwd = current
 	}
-	return filepath.Join(os.TempDir(), "luban-code", "tool-results")
+	return filepath.Join(
+		storepaths.RuntimeSessionDir(cwd, strings.TrimSpace(os.Getenv("LUBAN_SESSION_ID"))),
+		"tool-results",
+	)
+}
+
+func mcpToolResultsDirForContext(ctx context.Context) string {
+	if strings.TrimSpace(os.Getenv(mcpToolResultsDirEnv)) != "" ||
+		strings.TrimSpace(os.Getenv(mcpLubanToolResultsDirEnv)) != "" {
+		return getMCPToolResultsDir()
+	}
+	if runtime, ok := executioncontract.ToolExecutionContextFromContext(ctx); ok {
+		root := strings.TrimSpace(runtime.ProjectRoot)
+		if root == "" {
+			root = strings.TrimSpace(runtime.CWD)
+		}
+		if root != "" {
+			return filepath.Join(storepaths.RuntimeSessionDir(root, runtime.SessionID), "tool-results")
+		}
+	}
+	return getMCPToolResultsDir()
 }
 
 func writeMCPFileCreateOnce(path string, data []byte) error {
@@ -198,11 +238,24 @@ func writeMCPFileCreateOnce(path string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	if _, err := f.Write(data); err != nil {
+	complete := false
+	defer func() {
+		_ = f.Close()
+		if !complete {
+			_ = os.Remove(path)
+		}
+	}()
+	if err := secureio.WriteAll(f, data); err != nil {
 		return err
 	}
-	return nil
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	complete = true
+	return secureio.SyncRuntimeDirectory(filepath.Dir(path))
 }
 
 func sanitizeMCPPersistID(value string) string {

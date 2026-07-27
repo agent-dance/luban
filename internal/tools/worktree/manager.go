@@ -6,9 +6,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/agent-dance/luban/brand"
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/internal/gitutil"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
+	"github.com/agent-dance/luban/internal/store/secureio"
 )
 
 // worktreeRef is the stable representation of one git worktree porcelain
@@ -198,7 +199,7 @@ func (m *WorktreeManager) create(repoRoot, name, baseRef string, sparsePaths []s
 	} else if !os.IsNotExist(err) {
 		return worktreeCreateResult{}, i18n.WrapError(i18n.KeyToolWorktreeInspectPathFailed, err, path)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := secureio.EnsurePrivateRuntimeDirectory(filepath.Dir(path)); err != nil {
 		return worktreeCreateResult{}, i18n.WrapError(i18n.KeyToolWorktreeCreateParentFailed, err)
 	}
 	head, err := gitutil.Run(repoRoot, "rev-parse", "--verify", baseRef)
@@ -234,7 +235,7 @@ func (m *WorktreeManager) create(repoRoot, name, baseRef string, sparsePaths []s
 
 func worktreePathAndBranch(repoRoot, name string) (string, string) {
 	flatName, _ := normalizeSlug(name)
-	path := cleanWorktreePath(filepath.Join(repoRoot, brand.ConfigDirName, "worktrees", flatName))
+	path := cleanWorktreePath(filepath.Join(storepaths.RuntimeServiceDir(repoRoot, "worktrees"), "interactive", flatName))
 	return path, "worktree-" + flatName
 }
 

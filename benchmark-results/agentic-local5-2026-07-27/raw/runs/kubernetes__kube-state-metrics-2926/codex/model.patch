@@ -1,0 +1,41 @@
+diff --git a/pkg/options/options.go b/pkg/options/options.go
+index e57f4ba..f04417c 100644
+--- a/pkg/options/options.go
++++ b/pkg/options/options.go
+@@ -50,7 +50,7 @@ type Options struct {
+ 	cmd                                     *cobra.Command
+ 	Apiserver                               string   `yaml:"apiserver"`
+ 	CustomResourceConfig                    string   `yaml:"custom_resource_config"`
+-	CustomResourceConfigFile                string   `yaml:"custom_resource_state_config_file"`
++	CustomResourceConfigFile                string   `yaml:"custom_resource_config_file"`
+ 	ContinueWithoutCustomResourceConfigFile bool     `yaml:"continue_without_custom_resource_state_config_file"`
+ 	Host                                    string   `yaml:"host"`
+ 	Kubeconfig                              string   `yaml:"kubeconfig"`
+diff --git a/pkg/options/options_test.go b/pkg/options/options_test.go
+index 0e17c0c..d552a28 100644
+--- a/pkg/options/options_test.go
++++ b/pkg/options/options_test.go
+@@ -19,8 +19,23 @@ package options
+ import (
+ 	"os"
+ 	"testing"
++
++	yaml "sigs.k8s.io/yaml/goyaml.v3"
+ )
+ 
++func TestCustomResourceConfigFileFromYAML(t *testing.T) {
++	opts := NewOptions()
++	err := yaml.Unmarshal([]byte("custom_resource_config_file: /etc/kube-state-metrics/custom-resource-config.yaml\n"), opts)
++	if err != nil {
++		t.Fatalf("unexpected error unmarshalling options: %v", err)
++	}
++
++	want := "/etc/kube-state-metrics/custom-resource-config.yaml"
++	if opts.CustomResourceConfigFile != want {
++		t.Fatalf("expected CustomResourceConfigFile %q, got %q", want, opts.CustomResourceConfigFile)
++	}
++}
++
+ func TestOptionsParse(t *testing.T) {
+ 	tests := []struct {
+ 		Desc         string

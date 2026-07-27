@@ -4,6 +4,7 @@ package i18n
 // environment variables, formats, commands, and paths remain literal.
 const (
 	KeyCLIUsage                 Key = "cli.help.usage"
+	KeyCLIHelpCodingSurface     Key = "cli.help.coding_surface"
 	KeyCLIOptions               Key = "cli.help.options"
 	KeyCLIExamples              Key = "cli.help.examples"
 	KeyCLIExampleInteractive    Key = "cli.help.example.interactive"
@@ -26,6 +27,8 @@ const (
 	KeyCLIFlagModel             Key = "cli.flag.model"
 	KeyCLIFlagProvider          Key = "cli.flag.provider"
 	KeyCLIFlagAPI               Key = "cli.flag.api"
+	KeyCLIFlagReasoningEffort   Key = "cli.flag.reasoning_effort"
+	KeyCLIFlagPinnedModel       Key = "cli.flag.pinned_model"
 	KeyCLIFlagPrint             Key = "cli.flag.print"
 	KeyCLIFlagResume            Key = "cli.flag.resume"
 	KeyCLIFlagSessionID         Key = "cli.flag.session_id"
@@ -36,6 +39,7 @@ const (
 	KeyCLIFlagAllowedTools      Key = "cli.flag.allowed_tools"
 	KeyCLIFlagDisallowedTools   Key = "cli.flag.disallowed_tools"
 	KeyCLIFlagSandbox           Key = "cli.flag.sandbox"
+	KeyCLIFlagForceSandboxTools Key = "cli.flag.force_sandbox_tools"
 	KeyCLIFlagSDK               Key = "cli.flag.sdk"
 	KeyCLIFlagVersion           Key = "cli.flag.version"
 	KeyCLIFlagVerbose           Key = "cli.flag.verbose"
@@ -55,6 +59,7 @@ const (
 
 func init() {
 	addCLI(KeyCLIUsage, "Usage: %s [options] [query]\n\n", "用法：%s [选项] [查询]\n\n", "Verwendung: %s [Optionen] [Anfrage]\n\n", "使い方: %s [オプション] [クエリ]\n\n", "사용법: %s [옵션] [질의]\n\n", "Использование: %s [параметры] [запрос]\n\n")
+	addCLI(KeyCLIHelpCodingSurface, "Coding tools: Inspect, ApplyPatch, and Run.\n\n", "编码工具：Inspect、ApplyPatch 和 Run。\n\n", "Coding-Werkzeuge: Inspect, ApplyPatch und Run.\n\n", "コーディングツール: Inspect、ApplyPatch、Run。\n\n", "코딩 도구: Inspect, ApplyPatch, Run.\n\n", "Инструменты для разработки: Inspect, ApplyPatch и Run.\n\n")
 	addCLI(KeyCLIOptions, "Options:\n", "选项：\n", "Optionen:\n", "オプション:\n", "옵션:\n", "Параметры:\n")
 	addCLI(KeyCLIExamples, "\nExamples:\n", "\n示例：\n", "\nBeispiele:\n", "\n例:\n", "\n예시:\n", "\nПримеры:\n")
 	addCLI(KeyCLIExampleInteractive, "  %s                              # interactive terminal UI\n", "  %s                              # 交互式终端 UI\n", "  %s                              # interaktive Terminal-UI\n", "  %s                              # 対話型ターミナル UI\n", "  %s                              # 대화형 터미널 UI\n", "  %s                              # интерактивный терминальный UI\n")
@@ -78,6 +83,8 @@ func init() {
 	addCLI(KeyCLIFlagModel, "Model ID to use; overrides the environment", "要使用的模型 ID；覆盖环境设置", "Zu verwendende Modell-ID; überschreibt die Umgebung", "使用するモデル ID。環境設定より優先されます", "사용할 모델 ID. 환경 설정보다 우선합니다", "ID используемой модели; переопределяет окружение")
 	addCLI(KeyCLIFlagProvider, "Provider: deepseek | anthropic | openai | ollama | gemini | groq | mistral; overrides PROVIDER", "Provider：deepseek | anthropic | openai | ollama | gemini | groq | mistral；覆盖 PROVIDER", "Provider: deepseek | anthropic | openai | ollama | gemini | groq | mistral; überschreibt PROVIDER", "プロバイダー: deepseek | anthropic | openai | ollama | gemini | groq | mistral。PROVIDER より優先されます", "Provider: deepseek | anthropic | openai | ollama | gemini | groq | mistral. PROVIDER보다 우선합니다", "Провайдер: deepseek | anthropic | openai | ollama | gemini | groq | mistral; переопределяет PROVIDER")
 	addCLI(KeyCLIFlagAPI, "API format: chat-completions | responses; overrides OPENAI_API", "API 格式：chat-completions | responses；覆盖 OPENAI_API", "API-Format: chat-completions | responses; überschreibt OPENAI_API", "API 形式: chat-completions | responses。OPENAI_API より優先されます", "API 형식: chat-completions | responses. OPENAI_API보다 우선합니다", "Формат API: chat-completions | responses; переопределяет OPENAI_API")
+	addCLI(KeyCLIFlagReasoningEffort, "Reasoning effort to use; overrides OPENAI_REASONING_EFFORT", "要使用的推理强度；覆盖 OPENAI_REASONING_EFFORT", "Zu verwendende Reasoning-Stufe; überschreibt OPENAI_REASONING_EFFORT", "使用する推論強度。OPENAI_REASONING_EFFORT より優先されます", "사용할 추론 강도. OPENAI_REASONING_EFFORT보다 우선합니다", "Уровень усилий для рассуждения; переопределяет OPENAI_REASONING_EFFORT")
+	addCLI(KeyCLIFlagPinnedModel, "Reject any provider-directed model fallback", "拒绝任何由 provider 触发的模型 fallback", "Jeden vom Provider angeforderten Modell-Fallback ablehnen", "provider によるモデル fallback をすべて拒否", "provider가 요청한 모든 모델 fallback 거부", "Отклонять любое переключение модели по запросу провайдера")
 	addCLI(KeyCLIFlagPrint, "Send one query, print the result, and exit; no REPL", "发送一次查询，输出结果后退出；不启动 REPL", "Eine Anfrage senden, Ergebnis ausgeben und beenden; keine REPL", "1 回だけ問い合わせ、結果を出力して終了します。REPL は起動しません", "한 번 질의하고 결과를 출력한 뒤 종료합니다. REPL은 시작하지 않습니다", "Отправить один запрос, вывести результат и завершить работу; без REPL")
 	addCLI(KeyCLIFlagResume, "Resume the most recent session", "恢复最近的会话", "Letzte Sitzung fortsetzen", "直近のセッションを再開", "가장 최근 세션 재개", "Возобновить последний сеанс")
 	addCLI(KeyCLIFlagSessionID, "Resume a session by ID", "按 ID 恢复会话", "Sitzung anhand ihrer ID fortsetzen", "ID を指定してセッションを再開", "ID로 세션 재개", "Возобновить сеанс по ID")
@@ -88,6 +95,7 @@ func init() {
 	addCLI(KeyCLIFlagAllowedTools, "Comma-separated allowlist of tools", "以逗号分隔的工具允许列表", "Kommagetrennte Positivliste der Tools", "カンマ区切りのツール許可リスト", "쉼표로 구분한 도구 허용 목록", "Разделённый запятыми список разрешённых инструментов")
 	addCLI(KeyCLIFlagDisallowedTools, "Comma-separated denylist of tools", "以逗号分隔的工具拒绝列表", "Kommagetrennte Sperrliste der Tools", "カンマ区切りのツール拒否リスト", "쉼표로 구분한 도구 차단 목록", "Разделённый запятыми список запрещённых инструментов")
 	addCLI(KeyCLIFlagSandbox, "Enable OS-level sandboxing for shell commands", "为 shell 命令启用操作系统级 sandbox", "Sandboxing auf Betriebssystemebene für Shell-Befehle aktivieren", "shell コマンドに OS レベルの sandbox を有効化", "shell 명령에 OS 수준 sandbox 활성화", "Включить системную sandbox-изоляцию для команд shell")
+	addCLI(KeyCLIFlagForceSandboxTools, "Require every shell tool execution to use a verified OS sandbox", "要求每次 shell 工具执行都使用已验证的操作系统 sandbox", "Für jede Ausführung eines Shell-Tools eine verifizierte Betriebssystem-Sandbox verlangen", "shell ツールのすべての実行に検証済み OS sandbox を必須とする", "모든 shell 도구 실행에 검증된 OS sandbox를 필수로 사용", "Требовать проверенную изоляцию ОС для каждого запуска shell-инструмента")
 	addCLI(KeyCLIFlagSDK, "SDK mode: read NDJSON from stdin and write NDJSON to stdout", "SDK 模式：从 stdin 读取 NDJSON，向 stdout 写入 NDJSON", "SDK-Modus: NDJSON von stdin lesen und nach stdout schreiben", "SDK モード: stdin から NDJSON を読み、stdout に NDJSON を出力", "SDK 모드: stdin에서 NDJSON을 읽고 stdout에 NDJSON 쓰기", "Режим SDK: читать NDJSON из stdin и писать NDJSON в stdout")
 	addCLI(KeyCLIFlagVersion, "Print the version and exit", "输出版本后退出", "Version ausgeben und beenden", "バージョンを表示して終了", "버전을 출력하고 종료", "Вывести версию и завершить работу")
 	addCLI(KeyCLIFlagVerbose, "Enable detailed logging", "启用详细日志", "Ausführliche Protokollierung aktivieren", "詳細ログを有効化", "상세 로그 활성화", "Включить подробное журналирование")

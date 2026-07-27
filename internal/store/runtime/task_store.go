@@ -15,6 +15,7 @@ import (
 	"unicode/utf16"
 
 	agentcontract "github.com/agent-dance/luban/internal/contracts/agent"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	"github.com/agent-dance/luban/internal/store/secureio"
 	"github.com/agent-dance/luban/types"
 )
@@ -67,7 +68,9 @@ type RuntimeTaskRecord struct {
 }
 
 type RuntimeTaskStore struct {
-	baseDir string
+	projectRoot string
+	storageRoot string
+	baseDir     string
 }
 
 const maxRuntimeStorageIDBytes = 200
@@ -94,15 +97,43 @@ func SafeTaskPathComponent(input string) string {
 }
 
 func NewRuntimeTaskStore(projectRoot string) *RuntimeTaskStore {
+	return NewRuntimeTaskStoreAt(projectRoot, storepaths.RuntimeServiceDir(projectRoot, "background-tasks"))
+}
+
+// NewRuntimeTaskStoreForSession creates task state and output paths isolated
+// to one conversation. An empty session ID selects the process namespace.
+func NewRuntimeTaskStoreForSession(projectRoot, sessionID string) *RuntimeTaskStore {
+	return NewRuntimeTaskStoreAt(projectRoot, storepaths.RuntimeSessionDir(projectRoot, sessionID))
+}
+
+// NewRuntimeTaskStoreAt injects an external runtime root for hermetic tests and
+// embedded runtimes. projectRoot remains the logical owner of every record.
+func NewRuntimeTaskStoreAt(projectRoot, storageRoot string) *RuntimeTaskStore {
 	root := filepath.Clean(strings.TrimSpace(projectRoot))
 	if root == "" {
 		root = "."
 	}
-	store := &RuntimeTaskStore{baseDir: filepath.Join(root, ".luban-code", "runtime-tasks")}
+	storage := filepath.Clean(strings.TrimSpace(storageRoot))
+	if strings.TrimSpace(storageRoot) == "" {
+		storage = storepaths.RuntimeSessionDir(root, "")
+	}
+	store := &RuntimeTaskStore{
+		projectRoot: root,
+		storageRoot: storage,
+		baseDir:     filepath.Join(storage, "runtime-tasks"),
+	}
 	// Prepare the private directory eagerly. Every operation revalidates it and
 	// fails closed before touching a managed path.
 	_ = secureio.EnsurePrivateRuntimeDirectory(store.baseDir)
 	return store
+}
+
+// StorageRoot returns the external private namespace used by this store.
+func (s *RuntimeTaskStore) StorageRoot() string {
+	if s == nil {
+		return ""
+	}
+	return s.storageRoot
 }
 
 func (s *RuntimeTaskStore) path(id string) string {
@@ -114,7 +145,7 @@ func (s *RuntimeTaskStore) lockPath(id string) string {
 }
 
 func (s *RuntimeTaskStore) outputPath(id string) string {
-	return filepath.Join(filepath.Dir(s.baseDir), "task-output", runtimeOutputPathComponent(id)+".output")
+	return filepath.Join(s.storageRoot, "task-output", runtimeOutputPathComponent(id)+".output")
 }
 
 func runtimeOutputPathComponent(id string) string {
@@ -137,8 +168,27 @@ func (s *RuntimeTaskStore) normalizeManagedPaths(record *RuntimeTaskRecord) {
 		return
 	}
 	if record.Type == agentcontract.TaskTypeLocalAgent || record.Type == agentcontract.TaskTypeLocalBash {
-		record.OutputPath = s.outputPath(record.ID)
+		if !s.isManagedOutputPath(record.OutputPath, record.ID) {
+			record.OutputPath = s.outputPath(record.ID)
+		}
 	}
+}
+
+func (s *RuntimeTaskStore) isManagedOutputPath(path, id string) bool {
+	if s == nil || strings.TrimSpace(path) == "" {
+		return false
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil || filepath.Clean(abs) != filepath.Clean(path) {
+		return false
+	}
+	wantBase := runtimeOutputPathComponent(id) + ".output"
+	if filepath.Base(abs) != wantBase {
+		return false
+	}
+	projectRuntime := storepaths.RuntimeProjectDir(s.projectRoot)
+	rel, err := filepath.Rel(projectRuntime, abs)
+	return err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func (s *RuntimeTaskStore) Exists(id string) bool {

@@ -30,7 +30,9 @@ import (
 	mcpmanager "github.com/agent-dance/luban/internal/mcp/manager"
 	"github.com/agent-dance/luban/internal/runtime/loop"
 	"github.com/agent-dance/luban/internal/runtime/skillauthority"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	runtimestore "github.com/agent-dance/luban/internal/store/runtime"
+	"github.com/agent-dance/luban/internal/store/secureio"
 	toolmcp "github.com/agent-dance/luban/internal/tools/mcp"
 	"github.com/agent-dance/luban/internal/tools/toolbase"
 	toolworktree "github.com/agent-dance/luban/internal/tools/worktree"
@@ -78,6 +80,9 @@ type AgentTool struct {
 	Registry *registry.Registry
 	System   string
 	Model    string
+	// ServiceTier is inherited by every nested model generation so a
+	// contract-bound parent cannot spawn an unpinned scheduling lane.
+	ServiceTier provider.ServiceTier
 	// Background tracks async/background agent executions.
 	Background *BackgroundTaskManager
 	// Collaboration owns team persistence and teammate transaction semantics.
@@ -1370,6 +1375,7 @@ func (t *AgentTool) buildSubAgentLoopWithOptions(agentID string, in agentcontrac
 		Registry:          subReg,
 		System:            parentRuntime.System,
 		Model:             model,
+		ServiceTier:       t.ServiceTier,
 		Background:        t.Background,
 		Collaboration:     t.Collaboration,
 		SkillManager:      t.SkillManager,
@@ -1406,6 +1412,7 @@ func (t *AgentTool) buildSubAgentLoopWithOptions(agentID string, in agentcontrac
 		System:                 systemPrompt,
 		Model:                  model,
 		ReasoningEffort:        profile.ReasoningEffort,
+		ServiceTier:            t.ServiceTier,
 		MaxTokens:              16384,
 		SessionID:              agentID,
 		CacheLineageID:         cacheLineageID,
@@ -2160,6 +2167,7 @@ func buildForkedMessages(directive string, execCtx executioncontract.ToolExecuti
 		content = append(content, types.ToolResultBlock{
 			Type:      types.ContentTypeToolResult,
 			ToolUseID: toolUse.ID,
+			ToolType:  toolUse.ToolType,
 			Content:   forkPlaceholderToolResultText(),
 		})
 	}
@@ -3244,6 +3252,7 @@ func asyncAgentAllowedTools() map[string]struct{} {
 		"WebFetch",
 		"Glob",
 		"Bash",
+		"Run",
 		"PowerShell",
 		"Edit",
 		"Write",
@@ -4786,7 +4795,10 @@ func createAgentWorktree(agentID, parentProjectRoot string) (*agentWorktree, err
 		return nil, err
 	}
 	branch := "luban-agent-" + flattened
-	worktreePath := filepath.Join(repoRoot, brand.ConfigDirName, "worktrees", flattened)
+	worktreePath := filepath.Join(storepaths.RuntimeServiceDir(repoRoot, "worktrees"), "agents", flattened)
+	if err := secureio.EnsurePrivateRuntimeDirectory(filepath.Dir(worktreePath)); err != nil {
+		return nil, i18n.NewError(i18n.KeyToolAgentDeepWorktreeCreateFailed, err)
+	}
 	if out, err := gitutil.Run(repoRoot, "worktree", "add", worktreePath, "-b", branch, "HEAD"); err != nil {
 		return nil, i18n.NewError(i18n.KeyToolAgentDeepWorktreeCreateFailed, out)
 	}

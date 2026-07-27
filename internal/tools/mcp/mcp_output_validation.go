@@ -17,6 +17,10 @@ const (
 )
 
 func maybePersistLargeMCPResult(result types.ToolResult, resultType, formatDescription, serverName, toolName string) types.ToolResult {
+	return maybePersistLargeMCPResultAt(result, resultType, formatDescription, serverName, toolName, "")
+}
+
+func maybePersistLargeMCPResultAt(result types.ToolResult, resultType, formatDescription, serverName, toolName, toolResultsDir string) types.ToolResult {
 	if !mcpContentNeedsPersistence(result) {
 		return result
 	}
@@ -34,7 +38,7 @@ func maybePersistLargeMCPResult(result types.ToolResult, resultType, formatDescr
 		return result
 	}
 	persistID := newMCPPersistID(strings.TrimSpace(serverName)+"-"+strings.TrimSpace(toolName), "large-output")
-	persisted := persistMCPTextOutput(content, persistID, isJSON)
+	persisted := persistMCPTextOutputAt(content, persistID, isJSON, toolResultsDir)
 	if persisted.Error != "" {
 		msg := toolRuntimeFormat(i18n.KeyToolRuntimeMCPLargeOutputSaveFailed, formatMCPInteger(len(content)), persisted.Error) +
 			toolRuntimeText(i18n.KeyToolMCPPaginationHint)

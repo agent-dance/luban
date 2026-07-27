@@ -1,0 +1,46 @@
+{
+  "instance_id": "kubernetes__kube-state-metrics-2926",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785021582.223808,
+  "elapsed_seconds": 273.537,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 351347,
+    "cached_input_tokens": 309248,
+    "cache_read_input_tokens": 309248,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 7719,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.596689,
+  "tool_calls": 42,
+  "tool_calls_by_type": {
+    "ToolSearch": 1,
+    "Glob": 3,
+    "Grep": 11,
+    "Read": 13,
+    "Bash": 11,
+    "Edit": 3
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "pkg/options/options.go",
+      "pkg/options/options_test.go"
+    ],
+    "additions": 19,
+    "deletions": 3
+  },
+  "final_text": "Implemented the regression fix.\n\n- Restored `custom_resource_config_file` as the YAML key for `CustomResourceConfigFile` in `pkg/options/options.go:53`.\n- Added a regression test confirming the configuration value is unmarshaled correctly in `pkg/options/options_test.go:26`.\n- Formatting and `git diff --check` pass.\n- `go test ./pkg/options` could not run because the installed Go toolchain cannot parse the repository’s `go.mod` `tool` block.",
+  "command_public": {
+    "executable": "luban",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

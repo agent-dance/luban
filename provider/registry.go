@@ -141,6 +141,9 @@ func (r *ProviderRegistry) Get(name string) (ProviderInfo, bool) {
 
 // Create instantiates a Provider by name using the registered factory.
 func (r *ProviderRegistry) Create(name string, cfg Config, modelOverride string) (Provider, error) {
+	if normalizeCapabilitySupport(cfg.ResponsesWebSocket) == CapabilitySupported && CanonicalProviderName(name) != "openai" {
+		return nil, responsesWebSocketProfileUnsupportedError()
+	}
 	r.mu.RLock()
 	factory, ok := r.factories[name]
 	r.mu.RUnlock()
@@ -149,7 +152,20 @@ func (r *ProviderRegistry) Create(name string, cfg Config, modelOverride string)
 		return nil, fmt.Errorf("%s", i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderUnknown, name, strings.Join(r.VisibleNames(), ", ")))
 	}
 
-	return factory(cfg, modelOverride)
+	created, err := factory(cfg, modelOverride)
+	if err != nil {
+		return nil, err
+	}
+	if normalizeCapabilitySupport(cfg.ResponsesWebSocket) == CapabilitySupported {
+		capable, ok := created.(CapabilityProvider)
+		if !ok || capable.Capabilities().ResponsesWebSocket != CapabilitySupported {
+			if closer, closeOK := created.(CloseProvider); closeOK {
+				_ = closer.Close()
+			}
+			return nil, responsesWebSocketProfileUnsupportedError()
+		}
+	}
+	return created, nil
 }
 
 // All returns every registered ProviderInfo, sorted by popularity (descending) then name.

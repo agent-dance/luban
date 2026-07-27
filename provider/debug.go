@@ -84,6 +84,7 @@ type DebugRequest struct {
 	Truncation              string                       `json:"truncation,omitempty"`
 	PromptCacheKey          string                       `json:"prompt_cache_key,omitempty"`
 	ReasoningEffort         string                       `json:"reasoning_effort,omitempty"`
+	ServiceTier             ServiceTier                  `json:"service_tier,omitempty"`
 	UsePromptCache          bool                         `json:"use_prompt_cache,omitempty"`
 }
 
@@ -163,7 +164,7 @@ func newDebugRequest(params Params, model string) *DebugRequest {
 		MaxOutputTokensOverride: params.MaxOutputTokensOverride,
 		System:                  params.JoinedSystemPrompt(),
 		SystemBlocks:            params.SystemTextBlocks(),
-		Messages:                params.Messages,
+		Messages:                sanitizeDebugMessages(params.Messages),
 		Tools:                   params.Tools,
 		ExtraToolSchemas:        params.ExtraToolSchemas,
 		ToolChoice:              params.ToolChoice,
@@ -174,18 +175,58 @@ func newDebugRequest(params Params, model string) *DebugRequest {
 		Truncation:              params.Truncation,
 		PromptCacheKey:          params.PromptCacheKey,
 		ReasoningEffort:         params.ReasoningEffort,
+		ServiceTier:             params.ServiceTier,
 		UsePromptCache:          params.UsePromptCache,
 	}
 }
 
+// sanitizeDebugMessages removes opaque provider continuation state before an
+// opt-in debug observer receives the request. Encrypted reasoning is necessary
+// on the wire but is neither useful diagnostic text nor safe log material.
+func sanitizeDebugMessages(messages []types.Message) []types.Message {
+	result := make([]types.Message, len(messages))
+	for i, message := range messages {
+		result[i] = message
+		result[i].ClearProviderContinuation()
+		result[i].Content = make([]types.ContentBlock, len(message.Content))
+		for j, block := range message.Content {
+			switch thinking := block.(type) {
+			case types.ThinkingBlock:
+				result[i].Content[j] = sanitizeDebugThinkingBlock(thinking)
+				continue
+			case *types.ThinkingBlock:
+				if thinking == nil {
+					result[i].Content[j] = thinking
+					continue
+				}
+				cloned := sanitizeDebugThinkingBlock(*thinking)
+				result[i].Content[j] = &cloned
+				continue
+			}
+			result[i].Content[j] = block
+		}
+	}
+	return result
+}
+
+func sanitizeDebugThinkingBlock(thinking types.ThinkingBlock) types.ThinkingBlock {
+	thinking.Signature = ""
+	thinking.SignatureKind = ""
+	thinking.SignatureModel = ""
+	thinking.ProviderItemID = ""
+	thinking.ProviderStatus = ""
+	return thinking
+}
+
 type debugResponseBlock struct {
 	kind        types.ContentType
+	toolType    types.ToolDefinitionType
 	text        strings.Builder
 	thinking    strings.Builder
 	partialJSON strings.Builder
+	rawInput    strings.Builder
 	id          string
 	name        string
-	signature   string
 	rawJSON     json.RawMessage
 }
 
@@ -247,7 +288,7 @@ func applyDebugDelta(block *debugResponseBlock, delta *types.ContentDelta) {
 		block.kind = types.ContentTypeText
 	case types.ContentTypeThinking, "thinking_delta", "signature_delta":
 		block.kind = types.ContentTypeThinking
-	case types.ContentTypeToolUse, "input_json_delta":
+	case types.ContentTypeToolUse, "input_json_delta", "input_text_delta", "tool_state_final":
 		block.kind = types.ContentTypeToolUse
 	default:
 		if delta.Type != "" && block.kind == "" {
@@ -256,16 +297,29 @@ func applyDebugDelta(block *debugResponseBlock, delta *types.ContentDelta) {
 	}
 	block.text.WriteString(delta.Text)
 	block.thinking.WriteString(delta.Thinking)
-	block.partialJSON.WriteString(delta.PartialJSON)
+	if delta.ToolType == types.ToolDefinitionTypeCustom || delta.Type == "input_text_delta" {
+		block.toolType = types.ToolDefinitionTypeCustom
+	}
+	if delta.Type == "tool_state_final" {
+		if block.toolType == types.ToolDefinitionTypeCustom {
+			block.rawInput.Reset()
+			block.rawInput.WriteString(delta.PartialText)
+		} else if delta.PartialJSON != "" {
+			block.partialJSON.Reset()
+			block.partialJSON.WriteString(delta.PartialJSON)
+		}
+	} else {
+		block.partialJSON.WriteString(delta.PartialJSON)
+		block.rawInput.WriteString(delta.PartialText)
+	}
 	if delta.ID != "" {
 		block.id = delta.ID
 	}
 	if delta.Name != "" {
 		block.name = delta.Name
 	}
-	if delta.Signature != "" {
-		block.signature = delta.Signature
-	}
+	// Signatures may contain encrypted provider reasoning. Do not copy them
+	// into the developer-facing debug response.
 	if len(delta.RawJSON) > 0 {
 		block.rawJSON = append(block.rawJSON[:0], delta.RawJSON...)
 	}
@@ -284,8 +338,15 @@ func buildDebugContent(blocks map[int]*debugResponseBlock) []types.ContentBlock 
 		case types.ContentTypeText:
 			content = append(content, types.TextBlock{Type: types.ContentTypeText, Text: block.text.String()})
 		case types.ContentTypeThinking:
-			content = append(content, types.ThinkingBlock{Type: types.ContentTypeThinking, Thinking: block.thinking.String(), Signature: block.signature})
+			content = append(content, types.ThinkingBlock{Type: types.ContentTypeThinking, Thinking: block.thinking.String()})
 		case types.ContentTypeToolUse:
+			if block.toolType == types.ToolDefinitionTypeCustom {
+				content = append(content, types.ToolUseBlock{
+					Type: types.ContentTypeToolUse, ID: block.id, Name: block.name,
+					ToolType: types.ToolDefinitionTypeCustom, RawInput: block.rawInput.String(),
+				})
+				continue
+			}
 			input := make(map[string]any)
 			raw := block.partialJSON.String()
 			if raw != "" {

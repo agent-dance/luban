@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/runtime/engine"
 )
 
 func TestExecuteApplicationShutdownStepsPreservesOrderAndCollectsSemanticErrors(t *testing.T) {
@@ -56,6 +57,14 @@ func TestApplicationShutdownFailureChangesOnlySuccessfulExit(t *testing.T) {
 	}
 	if got := applicationExitCodeAfterShutdown(0, nil); got != 0 {
 		t.Fatalf("clean shutdown exit = %d, want 0", got)
+	}
+}
+
+func TestShutdownApplicationRuntimeTreatsTypedNilEngineAsAbsent(t *testing.T) {
+	var core *engine.CoreEngine
+	issues := shutdownApplicationRuntime(context.Background(), nil, core)
+	if len(issues) != 0 {
+		t.Fatalf("typed-nil engine produced shutdown issues: %v", issues)
 	}
 }
 

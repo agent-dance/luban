@@ -183,7 +183,7 @@ func (t *ReadMcpResourceTool) readWithServiceManager(ctx context.Context, server
 
 	raw, readErr := readResourceRaw(ctx, state.Client, uri)
 	if readErr == nil {
-		return renderMCPReadResourceToolResult(raw, server), nil
+		return renderMCPReadResourceToolResultAt(raw, server, mcpToolResultsDirForContext(ctx)), nil
 	}
 	if mcpauth.IsRequiredError(readErr) {
 		t.serviceManager.MarkNeedsAuth(server, readErr)
@@ -214,7 +214,7 @@ func (t *ReadMcpResourceTool) readWithServiceManager(ctx context.Context, server
 	if readErr != nil {
 		return mcpResourceErrorResult(toolRuntimeFormat(i18n.KeyToolMCPReadFailed, uri, server, readErr)), nil
 	}
-	return renderMCPReadResourceToolResult(raw, server), nil
+	return renderMCPReadResourceToolResultAt(raw, server, mcpToolResultsDirForContext(ctx)), nil
 }
 
 func (t *ReadMcpResourceTool) reconnectServiceResourceClient(ctx context.Context, server string) (mcpmanager.MCPServerConnection, error) {
@@ -249,7 +249,11 @@ func readResourceRaw(ctx context.Context, client *mcptransport.Client, uri strin
 }
 
 func renderMCPReadResourceToolResult(raw json.RawMessage, serverName string) types.ToolResult {
-	output, err := normalizeMCPReadResourceOutput(raw, serverName)
+	return renderMCPReadResourceToolResultAt(raw, serverName, "")
+}
+
+func renderMCPReadResourceToolResultAt(raw json.RawMessage, serverName, toolResultsDir string) types.ToolResult {
+	output, err := normalizeMCPReadResourceOutputAt(raw, serverName, toolResultsDir)
 	if err != nil {
 		return mcpResourceErrorResult(toolRuntimeFormat(i18n.KeyToolMCPReadInvalidResult, err))
 	}
@@ -268,6 +272,10 @@ func renderMCPReadResourceToolResult(raw json.RawMessage, serverName string) typ
 }
 
 func normalizeMCPReadResourceOutput(raw json.RawMessage, serverName string) (ReadMcpResourceOutput, error) {
+	return normalizeMCPReadResourceOutputAt(raw, serverName, "")
+}
+
+func normalizeMCPReadResourceOutputAt(raw json.RawMessage, serverName, toolResultsDir string) (ReadMcpResourceOutput, error) {
 	output := ReadMcpResourceOutput{Contents: make([]ReadMcpResourceContent, 0)}
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return output, nil
@@ -301,7 +309,7 @@ func normalizeMCPReadResourceOutput(raw json.RawMessage, serverName string) (Rea
 			output.Contents = append(output.Contents, content)
 			continue
 		}
-		persisted := persistMCPBinaryContent(decoded, dereferenceString(item.MimeType), newMCPPersistID("", fmt.Sprintf("resource-%d", i)))
+		persisted := persistMCPBinaryContentAt(decoded, dereferenceString(item.MimeType), newMCPPersistID("", fmt.Sprintf("resource-%d", i)), toolResultsDir)
 		if persisted.Error != "" {
 			message := toolRuntimeFormat(i18n.KeyToolMCPReadBinarySaveFailed, persisted.Error)
 			content.Text = &message

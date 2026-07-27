@@ -20,6 +20,8 @@ var agentCWDWrappedTools = map[string]bool{
 	"Read":         true,
 	"Write":        true,
 	"Edit":         true,
+	"Inspect":      true,
+	"ApplyPatch":   true,
 	"Glob":         true,
 	"Grep":         true,
 	"NotebookEdit": true,
@@ -329,6 +331,10 @@ func wrapRegistryForAgentCWD(reg *registry.Registry, cwd string) {
 	planStates := make(map[*toolinteraction.PlanState]*toolinteraction.PlanState)
 	readStates := make(map[*toolfile.ReadFileState]*toolfile.ReadFileState)
 	sharedReadState := pinnedAgentReadFileState(registryReadFileState(reg), readStates)
+	if sharedReadState == nil {
+		sharedReadState = toolfile.NewReadFileState()
+	}
+	readStates[nil] = sharedReadState
 	for _, name := range reg.Names() {
 		tool := reg.Get(name)
 		if tool == nil {
@@ -370,6 +376,7 @@ func wrapRegistryForAgentCWD(reg *registry.Registry, cwd string) {
 			}
 		}
 	}
+	bindRunToAgentCWD(reg, cwd, planStates, sharedReadState)
 }
 
 func pinRegistryForAgentRuntime(reg *registry.Registry, runtime types.ToolRuntimeContextProvider, snapshot types.ToolRuntimeContext) {
@@ -386,6 +393,10 @@ func pinRegistryForAgentRuntime(reg *registry.Registry, runtime types.ToolRuntim
 	planStates := make(map[*toolinteraction.PlanState]*toolinteraction.PlanState)
 	readStates := make(map[*toolfile.ReadFileState]*toolfile.ReadFileState)
 	sharedReadState := pinnedAgentReadFileState(registryReadFileState(reg), readStates)
+	if sharedReadState == nil {
+		sharedReadState = toolfile.NewReadFileState()
+	}
+	readStates[nil] = sharedReadState
 	for _, name := range reg.Names() {
 		tool := unwrapAgentCWDTool(reg.Get(name))
 		if tool == nil {
@@ -393,12 +404,7 @@ func pinRegistryForAgentRuntime(reg *registry.Registry, runtime types.ToolRuntim
 		}
 		switch typed := tool.(type) {
 		case *toolshell.BashTool:
-			cloned := typed.Clone()
-			cloned.CWD = root
-			cloned.AllowedDirs = append([]string(nil), allowed...)
-			cloned.PermissionRules = agentPermissionRulesForRuntime(effective)
-			cloned.PlanState = pinnedAgentShellPlanGate(typed.PlanState, root, planStates)
-			cloned.FileMutations = toolfile.NewFileMutationCoordinator(sharedReadState)
+			cloned := cloneBashForAgentRuntime(typed, root, allowed, effective, planStates, sharedReadState)
 			reg.Register(cloned)
 			continue
 		case *toolshell.PowerShellTool:
@@ -413,6 +419,7 @@ func pinRegistryForAgentRuntime(reg *registry.Registry, runtime types.ToolRuntim
 			reg.Register(cloneAgentRuntimeFileTool(tool, runtime, allowed, root, planStates, readStates))
 		}
 	}
+	bindRunToAgentRuntime(reg, root, allowed, effective, planStates, sharedReadState)
 }
 
 func pinAgentRegistryPermissionRules(reg *registry.Registry, snapshot types.ToolRuntimeContext) {
@@ -428,6 +435,120 @@ func pinAgentRegistryPermissionRules(reg *registry.Registry, snapshot types.Tool
 		cloned.PermissionRules = agentPermissionRulesForRuntime(snapshot)
 		reg.Register(cloned)
 	}
+	bindRunToPermissionPinnedBash(reg, snapshot)
+}
+
+func cloneBashForAgentRuntime(
+	source *toolshell.BashTool,
+	root string,
+	allowed []string,
+	runtime types.ToolRuntimeContext,
+	planStates map[*toolinteraction.PlanState]*toolinteraction.PlanState,
+	readState *toolfile.ReadFileState,
+) *toolshell.BashTool {
+	if source == nil {
+		return nil
+	}
+	cloned := source.Clone()
+	cloned.CWD = root
+	cloned.AllowedDirs = append([]string(nil), allowed...)
+	cloned.PermissionRules = agentPermissionRulesForRuntime(runtime)
+	cloned.PlanState = pinnedAgentShellPlanGate(source.PlanState, root, planStates)
+	cloned.FileMutations = toolfile.NewFileMutationCoordinator(readState)
+	return cloned
+}
+
+// bindRunToAgentRuntime repairs Registry.Clone's intentionally shallow tool
+// copy. Run must never retain the parent Bash pointer after a child runtime is
+// pinned, including profiles that expose Run without exposing Bash itself.
+func bindRunToAgentRuntime(
+	reg *registry.Registry,
+	root string,
+	allowed []string,
+	runtime types.ToolRuntimeContext,
+	planStates map[*toolinteraction.PlanState]*toolinteraction.PlanState,
+	readState *toolfile.ReadFileState,
+) {
+	run := registryRunTool(reg)
+	if run == nil {
+		return
+	}
+	bash := registryBashTool(reg)
+	if bash == nil {
+		bash = cloneBashForAgentRuntime(run.Bash, root, allowed, runtime, planStates, readState)
+	}
+	bindRegistryRunToBash(reg, bash)
+}
+
+func bindRunToAgentCWD(
+	reg *registry.Registry,
+	cwd string,
+	planStates map[*toolinteraction.PlanState]*toolinteraction.PlanState,
+	readState *toolfile.ReadFileState,
+) {
+	run := registryRunTool(reg)
+	if run == nil {
+		return
+	}
+	bash := registryBashTool(reg)
+	if bash == nil {
+		source := run.Bash
+		if source == nil {
+			reg.Unregister(run.Name())
+			return
+		}
+		if _, capabilityOK := sandbox.Snapshot(source.Sandbox); !capabilityOK {
+			reg.Unregister(run.Name())
+			return
+		}
+		bash = source.Clone()
+		bash.CWD = cwd
+		bash.AllowedDirs = []string{filepath.Clean(cwd)}
+		bash.PlanState = pinnedAgentShellPlanGate(source.PlanState, cwd, planStates)
+		bash.FileMutations = toolfile.NewFileMutationCoordinator(readState)
+		bash.ForceSandbox = true
+	}
+	bindRegistryRunToBash(reg, bash)
+}
+
+func bindRunToPermissionPinnedBash(reg *registry.Registry, snapshot types.ToolRuntimeContext) {
+	run := registryRunTool(reg)
+	if run == nil {
+		return
+	}
+	bash := registryBashTool(reg)
+	if bash == nil && run.Bash != nil {
+		bash = run.Bash.Clone()
+		bash.PermissionRules = agentPermissionRulesForRuntime(snapshot)
+	}
+	bindRegistryRunToBash(reg, bash)
+}
+
+func registryRunTool(reg *registry.Registry) *toolshell.RunTool {
+	if reg == nil {
+		return nil
+	}
+	run, _ := unwrapAgentCWDTool(reg.Get("Run")).(*toolshell.RunTool)
+	return run
+}
+
+func registryBashTool(reg *registry.Registry) *toolshell.BashTool {
+	if reg == nil {
+		return nil
+	}
+	bash, _ := unwrapAgentCWDTool(reg.Get("Bash")).(*toolshell.BashTool)
+	return bash
+}
+
+func bindRegistryRunToBash(reg *registry.Registry, bash *toolshell.BashTool) {
+	if reg == nil || reg.Get("Run") == nil {
+		return
+	}
+	if bash == nil {
+		reg.Unregister("Run")
+		return
+	}
+	reg.Register(toolshell.NewRunTool(bash))
 }
 
 func agentPermissionRulesForRuntime(snapshot types.ToolRuntimeContext) []permissions.Rule {
@@ -517,7 +638,14 @@ func cloneAgentRuntimeFileTool(tool types.Tool, runtime types.ToolRuntimeContext
 		return &cloned
 	case *toolfile.FileEditTool:
 		cloned := *typed
-		cloned.AllowedDirs = allowed
+		cloned.AllowedDirs = append([]string(nil), allowed...)
+		cloned.Runtime = runtime
+		cloned.PlanState = pinnedAgentFilePlanMode(typed.PlanState, projectRoot, planStates)
+		cloned.ReadState = pinnedAgentReadFileState(typed.ReadState, readStates)
+		return &cloned
+	case *toolfile.ApplyPatchTool:
+		cloned := *typed
+		cloned.AllowedDirs = append([]string(nil), allowed...)
 		cloned.Runtime = runtime
 		cloned.PlanState = pinnedAgentFilePlanMode(typed.PlanState, projectRoot, planStates)
 		cloned.ReadState = pinnedAgentReadFileState(typed.ReadState, readStates)
@@ -529,6 +657,10 @@ func cloneAgentRuntimeFileTool(tool types.Tool, runtime types.ToolRuntimeContext
 		cloned.PlanState = pinnedAgentFilePlanMode(typed.PlanState, projectRoot, planStates)
 		cloned.ReadState = pinnedAgentReadFileState(typed.ReadState, readStates)
 		return &cloned
+	case interface {
+		WithRuntimeAndReadState(types.ToolRuntimeContextProvider, *toolfile.ReadFileState) types.Tool
+	}:
+		return typed.WithRuntimeAndReadState(runtime, sharedPinnedAgentReadFileState(readStates))
 	case agentcontract.RuntimeScopedTool:
 		return typed.WithRuntime(runtime)
 	default:
@@ -555,10 +687,25 @@ func registryReadFileState(reg *registry.Registry) *toolfile.ReadFileState {
 		return nil
 	}
 	read, _ := unwrapAgentCWDTool(reg.Get("Read")).(*toolfile.FileReadTool)
-	if read == nil {
-		return nil
+	if read != nil {
+		return read.ReadState
 	}
-	return read.ReadState
+	patch, _ := unwrapAgentCWDTool(reg.Get("ApplyPatch")).(*toolfile.ApplyPatchTool)
+	if patch != nil {
+		return patch.ReadState
+	}
+	return nil
+}
+
+func sharedPinnedAgentReadFileState(readStates map[*toolfile.ReadFileState]*toolfile.ReadFileState) *toolfile.ReadFileState {
+	if state := readStates[nil]; state != nil {
+		return state
+	}
+	state := toolfile.NewReadFileState()
+	if readStates != nil {
+		readStates[nil] = state
+	}
+	return state
 }
 
 func shellPlanState(gate toolshell.PlanGate) *toolinteraction.PlanState {

@@ -1,0 +1,212 @@
+diff --git a/internal/plugins/ai/codex/codex.go b/internal/plugins/ai/codex/codex.go
+index b1b531f..366578b 100644
+--- a/internal/plugins/ai/codex/codex.go
++++ b/internal/plugins/ai/codex/codex.go
+@@ -226,6 +226,7 @@ func (c *Client) Send(ctx context.Context, msgs []*chat.ChatCompletionMessage, o
+ 
+ 	var (
+ 		builder       strings.Builder
++		doneText      string
+ 		completedResp *responses.Response
+ 	)
+ 	for stream.Next() {
+@@ -233,6 +234,8 @@ func (c *Client) Send(ctx context.Context, msgs []*chat.ChatCompletionMessage, o
+ 		switch event.Type {
+ 		case string(constant.ResponseOutputTextDelta("").Default()):
+ 			builder.WriteString(event.AsResponseOutputTextDelta().Delta)
++		case string(constant.ResponseOutputTextDone("").Default()):
++			doneText = event.AsResponseOutputTextDone().Text
+ 		case "response.completed":
+ 			resp := event.AsResponseCompleted().Response
+ 			completedResp = &resp
+@@ -243,10 +246,20 @@ func (c *Client) Send(ctx context.Context, msgs []*chat.ChatCompletionMessage, o
+ 		return "", err
+ 	}
+ 	if completedResp != nil {
+-		return c.ExtractText(completedResp), nil
++		// The Codex backend may send a sparse response.completed envelope even
++		// after streaming the output text. Do not let that empty envelope erase
++		// text collected from the preceding stream events.
++		if text := c.ExtractText(completedResp); text != "" {
++			return text, nil
++		}
++	}
++	if builder.Len() > 0 {
++		return builder.String(), nil
+ 	}
+ 
+-	return builder.String(), nil
++	// Most Responses API streams include deltas, but a done-only stream still
++	// carries the complete output and is valid input for this client.
++	return doneText, nil
+ }
+ 
+ // SendStream sends a request to Codex and streams the response text updates.
+@@ -267,18 +280,47 @@ func (c *Client) SendStream(
+ 	req := c.buildCodexResponseParams(msgs, opts)
+ 	stream := c.ApiClient.Responses.NewStreaming(ctx, req)
+ 	defer stream.Close()
++	hasOutput := false
+ 	for stream.Next() {
+ 		event := stream.Current()
+ 		switch event.Type {
+ 		case string(constant.ResponseOutputTextDelta("").Default()):
++			delta := event.AsResponseOutputTextDelta().Delta
+ 			if err := sendStreamUpdate(ctx, channel, domain.StreamUpdate{
+ 				Type:    domain.StreamTypeContent,
+-				Content: event.AsResponseOutputTextDelta().Delta,
++				Content: delta,
+ 			}); err != nil {
+ 				return err
+ 			}
++			hasOutput = hasOutput || delta != ""
+ 		case string(constant.ResponseOutputTextDone("").Default()):
+-			continue
++			// The done event repeats the complete text after normal delta
++			// events. Use it only when the backend did not send any deltas.
++			if !hasOutput {
++				text := event.AsResponseOutputTextDone().Text
++				if text != "" {
++					if err := sendStreamUpdate(ctx, channel, domain.StreamUpdate{
++						Type:    domain.StreamTypeContent,
++						Content: text,
++					}); err != nil {
++						return err
++					}
++					hasOutput = true
++				}
++			}
++		case "response.completed":
++			if !hasOutput {
++				resp := event.AsResponseCompleted().Response
++				if text := c.ExtractText(&resp); text != "" {
++					if err := sendStreamUpdate(ctx, channel, domain.StreamUpdate{
++						Type:    domain.StreamTypeContent,
++						Content: text,
++					}); err != nil {
++						return err
++					}
++					hasOutput = true
++				}
++			}
+ 		}
+ 	}
+ 
+diff --git a/internal/plugins/ai/codex/codex_test.go b/internal/plugins/ai/codex/codex_test.go
+index 5989956..ce2ccb5 100644
+--- a/internal/plugins/ai/codex/codex_test.go
++++ b/internal/plugins/ai/codex/codex_test.go
+@@ -429,6 +429,70 @@ func TestSendIncludesSourcesFromAnnotatedResponse(t *testing.T) {
+ 	}
+ }
+ 
++func TestSendFallsBackWhenCompletedResponseHasNoText(t *testing.T) {
++	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path != "/responses" {
++			http.NotFound(w, r)
++			return
++		}
++
++		w.Header().Set("Content-Type", "text/event-stream")
++		fmt.Fprintf(w, "data: %s\n\n", marshalJSON(t, map[string]any{
++			"type":  string(constant.ResponseOutputTextDelta("").Default()),
++			"delta": "text from delta events",
++		}))
++		fmt.Fprintf(w, "data: %s\n\n", marshalJSON(t, map[string]any{
++			"type": "response.completed",
++			"response": map[string]any{
++				"output": []any{},
++			},
++		}))
++		fmt.Fprint(w, "data: [DONE]\n\n")
++	}))
++	defer apiServer.Close()
++
++	client := newConfiguredTestClient(t, apiServer.URL, "acct_sparse", testJWT("acct_sparse", time.Now().Add(time.Hour)))
++
++	message, err := client.Send(context.Background(), []*chat.ChatCompletionMessage{
++		{Role: chat.ChatMessageRoleUser, Content: "Hello"},
++	}, &domain.ChatOptions{Model: "gpt-5.4"})
++	if err != nil {
++		t.Fatalf("Send() error = %v", err)
++	}
++	if message != "text from delta events" {
++		t.Fatalf("Send() = %q, want text collected before sparse completed response", message)
++	}
++}
++
++func TestSendReadsDoneOnlySSE(t *testing.T) {
++	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path != "/responses" {
++			http.NotFound(w, r)
++			return
++		}
++
++		w.Header().Set("Content-Type", "text/event-stream")
++		fmt.Fprintf(w, "data: %s\n\n", marshalJSON(t, map[string]any{
++			"type": string(constant.ResponseOutputTextDone("").Default()),
++			"text": "complete text from done event",
++		}))
++		fmt.Fprint(w, "data: [DONE]\n\n")
++	}))
++	defer apiServer.Close()
++
++	client := newConfiguredTestClient(t, apiServer.URL, "acct_done", testJWT("acct_done", time.Now().Add(time.Hour)))
++
++	message, err := client.Send(context.Background(), []*chat.ChatCompletionMessage{
++		{Role: chat.ChatMessageRoleUser, Content: "Hello"},
++	}, &domain.ChatOptions{Model: "gpt-5.4"})
++	if err != nil {
++		t.Fatalf("Send() error = %v", err)
++	}
++	if message != "complete text from done event" {
++		t.Fatalf("Send() = %q, want done event text", message)
++	}
++}
++
+ func TestSendStreamReadsCodexSSE(t *testing.T) {
+ 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 		if r.URL.Path != "/responses" {
+@@ -499,6 +563,42 @@ func TestSendStreamReadsCodexSSE(t *testing.T) {
+ 	}
+ }
+ 
++func TestSendStreamReadsDoneOnlySSE(t *testing.T) {
++	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path != "/responses" {
++			http.NotFound(w, r)
++			return
++		}
++
++		w.Header().Set("Content-Type", "text/event-stream")
++		fmt.Fprintf(w, "data: %s\n\n", marshalJSON(t, map[string]any{
++			"type": string(constant.ResponseOutputTextDone("").Default()),
++			"text": "done-only stream",
++		}))
++		fmt.Fprint(w, "data: [DONE]\n\n")
++	}))
++	defer apiServer.Close()
++
++	client := newConfiguredTestClient(t, apiServer.URL, "acct_stream_done", testJWT("acct_stream_done", time.Now().Add(time.Hour)))
++
++	updates := make(chan domain.StreamUpdate, 2)
++	if err := client.SendStream(context.Background(), []*chat.ChatCompletionMessage{
++		{Role: chat.ChatMessageRoleUser, Content: "Hello"},
++	}, &domain.ChatOptions{Model: "gpt-5.4"}, updates); err != nil {
++		t.Fatalf("SendStream() error = %v", err)
++	}
++
++	var builder strings.Builder
++	for update := range updates {
++		if update.Type == domain.StreamTypeContent {
++			builder.WriteString(update.Content)
++		}
++	}
++	if builder.String() != "done-only stream\n" {
++		t.Fatalf("streamed content = %q, want %q", builder.String(), "done-only stream\n")
++	}
++}
++
+ func TestSendStreamClosesChannelAndMapsHTTPError(t *testing.T) {
+ 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 		if r.URL.Path != "/responses" {

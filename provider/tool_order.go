@@ -33,18 +33,40 @@ func toolDefinitionOrderKey(definition types.ToolDefinition) string {
 	// Tool names are expected to be unique. The remaining wire-visible fields
 	// provide a deterministic tie-breaker for malformed duplicate-name input.
 	wireShape := struct {
-		Name        string           `json:"name"`
-		Description string           `json:"description"`
-		InputSchema types.JSONSchema `json:"input_schema"`
-		Strict      bool             `json:"strict"`
+		Name        string                   `json:"name"`
+		Description string                   `json:"description"`
+		InputSchema types.JSONSchema         `json:"input_schema"`
+		Strict      bool                     `json:"strict"`
+		Type        types.ToolDefinitionType `json:"type,omitempty"`
+		Format      *types.ToolInputFormat   `json:"format,omitempty"`
 	}{
 		Name:        definition.Name,
 		Description: definition.Description,
 		InputSchema: definition.InputSchema,
 		Strict:      definition.Strict,
+		Type:        definition.Type,
+		Format:      definition.Format,
 	}
 	raw, _ := json.Marshal(wireShape)
-	return strings.ToLower(strings.TrimSpace(definition.Name)) + "\x00" + definition.Name + "\x00" + string(raw)
+	return agenticToolWorkflowOrder(definition.Name) + "\x00" +
+		strings.ToLower(strings.TrimSpace(definition.Name)) + "\x00" + definition.Name + "\x00" + string(raw)
+}
+
+// agenticToolWorkflowOrder keeps the three-tool coding kernel in the same
+// inspect → mutate → verify order used by the system prompt. The prefix remains
+// deterministic for arbitrary caller slices, so cache stability does not rely
+// on registration order.
+func agenticToolWorkflowOrder(name string) string {
+	switch strings.TrimSpace(name) {
+	case "Inspect":
+		return "0"
+	case "ApplyPatch":
+		return "1"
+	case "Run":
+		return "2"
+	default:
+		return "3"
+	}
 }
 
 // canonicalServerToolDefinitions applies the same copy-before-sort contract to

@@ -36,7 +36,7 @@ func TestResponsesSkillCatalogFullHistoryPreservesDeveloperItems(t *testing.T) {
 	}
 }
 
-func TestResponsesPreviousResponseDeveloperSuffixAndEnvelopeStability(t *testing.T) {
+func TestResponsesStoreFalseReplaysCompleteDeveloperHistory(t *testing.T) {
 	params := Params{
 		Model:              "gpt-5",
 		MaxTokens:          4096,
@@ -57,11 +57,14 @@ func TestResponsesPreviousResponseDeveloperSuffixAndEnvelopeStability(t *testing
 
 	input := responsesSkillCatalogInput(t, incrementalBody)
 	assertResponsesSkillCatalogItems(t, input, []map[string]any{
+		{"role": "developer", "content": "catalog snapshot revision 1"},
+		{"role": "user", "content": "first question"},
+		{"role": "assistant", "content": "first answer"},
 		{"role": "developer", "content": "catalog delta revision 2"},
 		{"role": "user", "content": "second question"},
 	})
-	if got := incrementalBody["previous_response_id"]; got != "resp_previous" {
-		t.Fatalf("previous_response_id = %#v, want resp_previous", got)
+	if got := incrementalBody["previous_response_id"]; got != nil {
+		t.Fatalf("store=false request retained previous_response_id = %#v", got)
 	}
 
 	for _, key := range []string{

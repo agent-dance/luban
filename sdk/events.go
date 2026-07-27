@@ -2,11 +2,7 @@ package sdk
 
 import (
 	"errors"
-	"sort"
-	"strconv"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/google/uuid"
 
@@ -52,22 +48,22 @@ type StreamlinedTextMsg struct {
 
 // StreamlinedToolUseSummaryMsg is the typed form of "streamlined_tool_use_summary".
 type StreamlinedToolUseSummaryMsg struct {
-	Type          string            `json:"type"` // "streamlined_tool_use_summary"
-	ToolUseID     string            `json:"tool_use_id"`
-	ToolName      string            `json:"tool_name,omitempty"`
-	Status        string            `json:"status"` // "started" | "completed" | "error"
-	Outcome       ToolOutcome       `json:"outcome,omitempty"`
-	Input         map[string]any    `json:"input,omitempty"`
-	OutputSummary string            `json:"output_summary,omitempty"`
-	Metadata      map[string]string `json:"metadata,omitempty"`
-	Usage         *Usage            `json:"usage,omitempty"`
-	UUID          string            `json:"uuid"`
-	SessionID     string            `json:"session_id"`
-	ProjectRoot   string            `json:"project_root,omitempty"`
-	TurnID        string            `json:"turn_id,omitempty"`
-	ActorID       string            `json:"actor_id,omitempty"`
-	ActorType     string            `json:"actor_type,omitempty"`
-	WorkUnitID    string            `json:"work_unit_id,omitempty"`
+	Type          string                   `json:"type"` // "streamlined_tool_use_summary"
+	SchemaVersion string                   `json:"schema_version"`
+	ToolUseID     string                   `json:"tool_use_id"`
+	ToolName      string                   `json:"tool_name,omitempty"`
+	Status        string                   `json:"status"` // "started" | "completed" | "error"
+	Outcome       ToolOutcome              `json:"outcome,omitempty"`
+	InputRef      *MachineContentReference `json:"input_ref,omitempty"`
+	ContentRef    *MachineContentReference `json:"content_ref,omitempty"`
+	Metrics       *MachineToolEventMetrics `json:"metrics,omitempty"`
+	RuntimeEvent  *ProjectedRuntimeEvent   `json:"runtime_event,omitempty"`
+	UUID          string                   `json:"uuid"`
+	SessionID     string                   `json:"session_id"`
+	TurnID        string                   `json:"turn_id,omitempty"`
+	ActorID       string                   `json:"actor_id,omitempty"`
+	ActorType     string                   `json:"actor_type,omitempty"`
+	WorkUnitID    string                   `json:"work_unit_id,omitempty"`
 }
 
 // StreamEventMsg is the typed form of a "stream_event" message.
@@ -81,24 +77,23 @@ type StreamEventMsg struct {
 
 // RuntimeEventPayload is the SDK-visible structured form of runtime events.
 type RuntimeEventPayload struct {
-	Type           string                `json:"type"`
-	SessionID      string                `json:"session_id"`
-	ProjectRoot    string                `json:"project_root,omitempty"`
-	TurnID         string                `json:"turn_id,omitempty"`
-	ActorID        string                `json:"actor_id,omitempty"`
-	ActorType      string                `json:"actor_type,omitempty"`
-	WorkUnitID     string                `json:"work_unit_id,omitempty"`
-	Text           string                `json:"text,omitempty"`
-	ToolUseID      string                `json:"tool_use_id,omitempty"`
-	TerminalReason string                `json:"terminal_reason,omitempty"`
-	Metadata       map[string]any        `json:"metadata,omitempty"`
-	Compact        *CompactBoundaryEvent `json:"compact,omitempty"`
-	MaxTurns       *MaxTurnsEvent        `json:"max_turns,omitempty"`
-	Tombstone      *TombstoneEvent       `json:"tombstone,omitempty"`
-	ToolSummary    *ToolUseSummaryEvent  `json:"tool_summary,omitempty"`
-	HookSummary    *HookSummaryEvent     `json:"hook_summary,omitempty"`
-	Progress       *RuntimeProgressEvent `json:"progress,omitempty"`
-	RequestStatus  *RequestStatusEvent   `json:"request_status,omitempty"`
+	Type           string                 `json:"type"`
+	SchemaVersion  string                 `json:"schema_version"`
+	SessionID      string                 `json:"session_id"`
+	TurnID         string                 `json:"turn_id,omitempty"`
+	ActorID        string                 `json:"actor_id,omitempty"`
+	ActorType      string                 `json:"actor_type,omitempty"`
+	WorkUnitID     string                 `json:"work_unit_id,omitempty"`
+	Text           string                 `json:"text,omitempty"`
+	ToolUseID      string                 `json:"tool_use_id,omitempty"`
+	TerminalReason string                 `json:"terminal_reason,omitempty"`
+	Compact        *CompactBoundaryEvent  `json:"compact,omitempty"`
+	MaxTurns       *MaxTurnsEvent         `json:"max_turns,omitempty"`
+	Tombstone      *TombstoneEvent        `json:"tombstone,omitempty"`
+	HookSummary    *HookSummaryEvent      `json:"hook_summary,omitempty"`
+	Progress       *RuntimeProgressEvent  `json:"progress,omitempty"`
+	RequestStatus  *RequestStatusEvent    `json:"request_status,omitempty"`
+	ToolRound      *ToolRoundMetricsEvent `json:"tool_round,omitempty"`
 }
 
 // process converts an Event into one or more SDK output values.
@@ -129,30 +124,24 @@ func (a *eventAdapter) process(ev Event) []any {
 	case EventThinking:
 		// Emit as a stream event with a thinking block — opaque to most clients.
 		return []any{StreamEventMsg{
-			Type:        "stream_event",
-			Event:       runtimeEventPayload(a.sessionID, ev, a.language),
-			UUID:        uuid.New().String(),
-			SessionID:   a.sessionID,
-			ProjectRoot: ev.ProjectRoot,
+			Type: "stream_event", Event: runtimeEventPayload(a.sessionID, ev, a.language),
+			UUID: uuid.New().String(), SessionID: a.sessionID,
 		}}
 
 	case EventToolUse:
 		if ev.ToolUse == nil {
 			return nil
 		}
+		inputRef := runtimeevent.NewToolInputReference(ev.ToolUse.Input)
 		return []any{StreamlinedToolUseSummaryMsg{
-			Type:        "streamlined_tool_use_summary",
-			ToolUseID:   ev.ToolUse.ID,
-			ToolName:    ev.ToolUse.Name,
-			Status:      "started",
-			Input:       streamlinedToolInput(ev.ToolUse.Input),
-			UUID:        uuid.New().String(),
-			SessionID:   a.sessionID,
-			ProjectRoot: ev.ProjectRoot,
-			TurnID:      ev.TurnID,
-			ActorID:     ev.ActorID,
-			ActorType:   ev.ActorType,
-			WorkUnitID:  ev.WorkUnitID,
+			Type: "streamlined_tool_use_summary", SchemaVersion: MachineEventSchemaVersion,
+			ToolUseID: ev.ToolUse.ID, ToolName: ev.ToolUse.Name, Status: "started",
+			InputRef: &inputRef,
+			Metrics: &MachineToolEventMetrics{
+				InputBytes: inputRef.Bytes, InputFieldCount: len(ev.ToolUse.Input),
+			},
+			UUID: uuid.New().String(), SessionID: a.sessionID, TurnID: ev.TurnID,
+			ActorID: ev.ActorID, ActorType: ev.ActorType, WorkUnitID: ev.WorkUnitID,
 		}}
 
 	case EventToolResult:
@@ -164,30 +153,20 @@ func (a *eventAdapter) process(ev Event) []any {
 		case ToolOutcomeFailed, ToolOutcomeDenied, ToolOutcomeCancelled, ToolOutcomeTimedOut:
 			status = "error"
 		}
-		outputSummary, outputTruncated := streamlinedText(ev.ToolResult.Content, streamlinedOutputLimit)
-		metadata := streamlinedMetadata(ev.ToolResult.Metadata)
-		if outputTruncated {
-			if metadata == nil {
-				metadata = make(map[string]string, 2)
-			}
-			metadata["output_truncated"] = "true"
-			metadata["output_bytes"] = strconv.Itoa(len(ev.ToolResult.Content))
+		projection, ok := a.projectToolResult(ev)
+		if !ok {
+			return nil
 		}
+		contentRef := runtimeevent.NewToolResultContentReference(runtimeevent.ToolResultPrivatePayload{
+			Content: ev.ToolResult.Content, ContentBlocks: ev.ToolResult.ContentBlocks,
+			Data: ev.ToolResult.Data, Metadata: ev.ToolResult.Metadata,
+		})
 		return []any{StreamlinedToolUseSummaryMsg{
-			Type:          "streamlined_tool_use_summary",
-			ToolUseID:     ev.ToolResult.ToolUseID,
-			Status:        status,
-			Outcome:       ev.ToolResult.Outcome,
-			OutputSummary: outputSummary,
-			Metadata:      metadata,
-			Usage:         ev.ToolResult.Usage,
-			UUID:          uuid.New().String(),
-			SessionID:     a.sessionID,
-			ProjectRoot:   ev.ProjectRoot,
-			TurnID:        ev.TurnID,
-			ActorID:       ev.ActorID,
-			ActorType:     ev.ActorType,
-			WorkUnitID:    ev.WorkUnitID,
+			Type: "streamlined_tool_use_summary", SchemaVersion: MachineEventSchemaVersion,
+			ToolUseID: ev.ToolResult.ToolUseID, Status: status, Outcome: ev.ToolResult.Outcome,
+			ContentRef: &contentRef, Metrics: sdkToolResultMetrics(ev.ToolResult), RuntimeEvent: projection,
+			UUID: uuid.New().String(), SessionID: a.sessionID, TurnID: ev.TurnID,
+			ActorID: ev.ActorID, ActorType: ev.ActorType, WorkUnitID: ev.WorkUnitID,
 		}}
 
 	case EventTurnEnd:
@@ -214,32 +193,27 @@ func (a *eventAdapter) process(ev Event) []any {
 		if ev.ToolSummary == nil {
 			return nil
 		}
+		contentRef := runtimeevent.NewToolResultContentReference(runtimeevent.ToolResultPrivatePayload{
+			Content: ev.ToolSummary.OutputSummary,
+		})
 		return []any{StreamlinedToolUseSummaryMsg{
-			Type:          "streamlined_tool_use_summary",
-			ToolUseID:     ev.ToolSummary.ToolUseID,
-			ToolName:      ev.ToolSummary.ToolName,
-			Status:        ev.ToolSummary.Status,
-			OutputSummary: ev.ToolSummary.OutputSummary,
-			UUID:          uuid.New().String(),
-			SessionID:     a.sessionID,
-			ProjectRoot:   ev.ProjectRoot,
-			TurnID:        ev.TurnID,
-			ActorID:       ev.ActorID,
-			ActorType:     ev.ActorType,
-			WorkUnitID:    ev.WorkUnitID,
+			Type: "streamlined_tool_use_summary", SchemaVersion: MachineEventSchemaVersion,
+			ToolUseID: ev.ToolSummary.ToolUseID, ToolName: ev.ToolSummary.ToolName,
+			Status: ev.ToolSummary.Status, ContentRef: &contentRef,
+			Metrics: &MachineToolEventMetrics{ContentBytes: len(ev.ToolSummary.OutputSummary)},
+			UUID:    uuid.New().String(), SessionID: a.sessionID, TurnID: ev.TurnID,
+			ActorID: ev.ActorID, ActorType: ev.ActorType, WorkUnitID: ev.WorkUnitID,
 		}}
 
 	case EventRequestStart,
 		EventRequestRetry,
 		EventRequestFirstToken,
 		EventRequestEnd,
-		EventRequestFailed:
+		EventRequestFailed,
+		EventToolRoundMetrics:
 		return []any{StreamEventMsg{
-			Type:        "stream_event",
-			Event:       runtimeEventPayload(a.sessionID, ev, a.language),
-			UUID:        uuid.New().String(),
-			SessionID:   a.sessionID,
-			ProjectRoot: ev.ProjectRoot,
+			Type: "stream_event", Event: runtimeEventPayload(a.sessionID, ev, a.language),
+			UUID: uuid.New().String(), SessionID: a.sessionID,
 		}}
 
 	case EventTombstone,
@@ -249,105 +223,54 @@ func (a *eventAdapter) process(ev Event) []any {
 		EventHookSummary,
 		EventProgress:
 		return []any{StreamEventMsg{
-			Type:        "stream_event",
-			Event:       runtimeEventPayload(a.sessionID, ev, a.language),
-			UUID:        uuid.New().String(),
-			SessionID:   a.sessionID,
-			ProjectRoot: ev.ProjectRoot,
+			Type: "stream_event", Event: runtimeEventPayload(a.sessionID, ev, a.language),
+			UUID: uuid.New().String(), SessionID: a.sessionID,
 		}}
 	}
 	return nil
 }
 
-const (
-	streamlinedInputStringLimit   = 512
-	streamlinedOutputLimit        = 4096
-	streamlinedMetadataValueLimit = 512
-	streamlinedCollectionLimit    = 32
-	streamlinedValueDepthLimit    = 4
-)
+func (a *eventAdapter) projectToolResult(ev Event) (*ProjectedRuntimeEvent, bool) {
+	if ev.ToolResult == nil {
+		return nil, false
+	}
+	result := types.ToolResultBlock{
+		ToolUseID: ev.ToolResult.ToolUseID,
+		Outcome:   types.ToolOutcome(ev.ToolResult.Outcome),
+	}
+	event := types.NewToolResultRuntimeEvent(types.RuntimeIdentity{
+		SessionID: a.sessionID, TurnID: ev.TurnID, ToolUseID: ev.ToolResult.ToolUseID,
+		WorkUnitID: ev.WorkUnitID, ActorID: ev.ActorID, ActorType: ev.ActorType,
+	}, result, i18n.KeyRuntimeToolResultPublicSummary, nil)
+	projection, err := runtimeevent.NewAudienceProjector().Project(event, runtimeevent.ProjectionOptions{
+		Audience: runtimeevent.AudienceSDK, Redaction: runtimeevent.RedactionStrict,
+		Language: a.language, LanguageSet: true,
+	})
+	if err != nil {
+		return nil, false
+	}
+	return sdkProjectedRuntimeEvent(projection), true
+}
 
-// streamlinedToolInput keeps routing fields and small arguments visible while
-// replacing large payloads such as Write.content and Edit.old_string with a
-// stable size descriptor. A summary event must never duplicate entire files.
-func streamlinedToolInput(input map[string]any) map[string]any {
-	if len(input) == 0 {
+func sdkToolResultMetrics(result *ToolResult) *MachineToolEventMetrics {
+	if result == nil {
 		return nil
 	}
-	result := make(map[string]any, len(input))
-	for key, value := range input {
-		result[key] = streamlinedValue(value, 0)
+	metrics := &MachineToolEventMetrics{
+		ContentBytes: len(result.Content), ContentBlockCount: len(result.ContentBlocks),
+		DataPresent: result.Data != nil, MetadataCount: len(result.Metadata),
 	}
-	return result
-}
-
-func streamlinedValue(value any, depth int) any {
-	if depth >= streamlinedValueDepthLimit {
-		return map[string]any{"omitted": true}
-	}
-	switch typed := value.(type) {
-	case string:
-		if len(typed) <= streamlinedInputStringLimit {
-			return typed
+	if result.Usage != nil {
+		metrics.Usage = &runtimeevent.TokenUsageMetrics{
+			InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens,
+			CacheCreationInputTokens: result.Usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     result.Usage.CacheReadInputTokens,
+			WebSearchRequests:        result.Usage.ServerToolUse.WebSearchRequests,
+			WebFetchRequests:         result.Usage.ServerToolUse.WebFetchRequests,
 		}
-		return map[string]any{"omitted": true, "bytes": len(typed)}
-	case map[string]any:
-		keys := make([]string, 0, len(typed))
-		for key := range typed {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		if len(keys) > streamlinedCollectionLimit {
-			return map[string]any{"omitted": true, "items": len(keys)}
-		}
-		result := make(map[string]any, len(typed))
-		for _, key := range keys {
-			result[key] = streamlinedValue(typed[key], depth+1)
-		}
-		return result
-	case []any:
-		if len(typed) > streamlinedCollectionLimit {
-			return map[string]any{"omitted": true, "items": len(typed)}
-		}
-		result := make([]any, len(typed))
-		for index, item := range typed {
-			result[index] = streamlinedValue(item, depth+1)
-		}
-		return result
-	default:
-		return value
 	}
-}
-
-func streamlinedMetadata(metadata map[string]string) map[string]string {
-	if len(metadata) == 0 {
-		return nil
-	}
-	result := make(map[string]string, len(metadata))
-	omitted := make([]string, 0)
-	for key, value := range metadata {
-		if len(value) > streamlinedMetadataValueLimit {
-			omitted = append(omitted, key)
-			continue
-		}
-		result[key] = value
-	}
-	if len(omitted) > 0 {
-		sort.Strings(omitted)
-		result["truncated_metadata_keys"] = strings.Join(omitted, ",")
-	}
-	return result
-}
-
-func streamlinedText(value string, limit int) (string, bool) {
-	if len(value) <= limit {
-		return value, false
-	}
-	end := limit
-	for end > 0 && !utf8.ValidString(value[:end]) {
-		end--
-	}
-	return value[:end], true
+	runtimeevent.AttachToolExecutionEvidence(metrics, result.ToolUseID, result.Data)
+	return metrics
 }
 
 func authoritativeToolOutcome(outcome ToolOutcome) bool {
@@ -433,43 +356,95 @@ func sdkProjectedRuntimeEvent(source runtimeevent.ProjectedRuntimeEvent) *Projec
 }
 
 func runtimeEventPayload(sessionID string, ev Event, language i18n.Language) RuntimeEventPayload {
-	requestStatus := projectRequestStatus(ev.Type, ev.RequestStatus, language)
 	payload := RuntimeEventPayload{
-		Type:           string(ev.Type),
-		SessionID:      sessionID,
-		ProjectRoot:    ev.ProjectRoot,
-		TurnID:         ev.TurnID,
-		ActorID:        ev.ActorID,
-		ActorType:      ev.ActorType,
-		WorkUnitID:     ev.WorkUnitID,
-		Text:           ev.Text,
-		ToolUseID:      ev.ToolUseID,
-		TerminalReason: ev.TerminalReason,
-		Metadata:       ev.Metadata,
-		Compact:        ev.Compact,
-		MaxTurns:       ev.MaxTurns,
-		Tombstone:      ev.Tombstone,
-		ToolSummary:    ev.ToolSummary,
-		HookSummary:    ev.HookSummary,
-		Progress:       ev.Progress,
-		RequestStatus:  requestStatus,
+		Type: string(ev.Type), SchemaVersion: MachineEventSchemaVersion,
+		SessionID: sessionID, TurnID: ev.TurnID, ActorID: ev.ActorID,
+		ActorType: ev.ActorType, WorkUnitID: ev.WorkUnitID,
 	}
-	if requestStatus != nil {
-		// Provider request lifecycle events have a deliberately narrow wire
-		// shape. Ignore all unrelated carrier fields so a raw error copied into
-		// Text or Metadata cannot bypass RequestStatus's semantic projection.
-		payload.Text = ""
-		payload.ToolUseID = ""
-		payload.TerminalReason = ""
-		payload.Metadata = nil
-		payload.Compact = nil
-		payload.MaxTurns = nil
-		payload.Tombstone = nil
-		payload.ToolSummary = nil
-		payload.HookSummary = nil
-		payload.Progress = nil
+
+	// Every event type gets an explicit allowlist. Generic carrier Text and
+	// Metadata are never copied alongside a typed payload, so adding a new raw
+	// field to Event cannot silently widen the external wire schema.
+	switch ev.Type {
+	case EventThinking:
+		payload.Text = ev.Text
+	case EventRequestStart, EventRequestRetry, EventRequestFirstToken, EventRequestEnd, EventRequestFailed:
+		payload.RequestStatus = projectRequestStatus(ev.Type, ev.RequestStatus, language)
+	case EventToolRoundMetrics:
+		payload.ToolRound = cloneToolRoundMetrics(ev.ToolRound)
+	case EventCompactBoundary:
+		payload.Compact = safeCompactBoundary(ev.Compact)
+	case EventMaxTurnsReached:
+		payload.TerminalReason = ev.TerminalReason
+		payload.MaxTurns = safeMaxTurns(ev.MaxTurns)
+	case EventTombstone:
+		payload.Tombstone = safeTombstone(ev.Tombstone)
+	case EventUserInterruption:
+		payload.TerminalReason = ev.TerminalReason
+	case EventHookSummary:
+		payload.ToolUseID = ev.ToolUseID
+		payload.HookSummary = safeHookSummary(ev.HookSummary)
+	case EventProgress:
+		payload.ToolUseID = ev.ToolUseID
+		payload.Progress = safeProgress(ev.Progress)
 	}
 	return payload
+}
+
+func safeCompactBoundary(source *CompactBoundaryEvent) *CompactBoundaryEvent {
+	if source == nil {
+		return nil
+	}
+	return &CompactBoundaryEvent{
+		BoundaryID: source.BoundaryID, Trigger: source.Trigger,
+		PreCompactTokenCount: source.PreCompactTokenCount, PostCompactTokenCount: source.PostCompactTokenCount,
+		TruePostCompactTokenCount: source.TruePostCompactTokenCount,
+		PreCompactDiscoveredTools: append([]string(nil), source.PreCompactDiscoveredTools...),
+	}
+}
+
+func safeMaxTurns(source *MaxTurnsEvent) *MaxTurnsEvent {
+	if source == nil {
+		return nil
+	}
+	copy := *source
+	return &copy
+}
+
+func safeTombstone(source *TombstoneEvent) *TombstoneEvent {
+	if source == nil {
+		return nil
+	}
+	return &TombstoneEvent{Reason: source.Reason}
+}
+
+func safeHookSummary(source *HookSummaryEvent) *HookSummaryEvent {
+	if source == nil {
+		return nil
+	}
+	return &HookSummaryEvent{
+		HookExecutionID: source.HookExecutionID, ToolUseID: source.ToolUseID,
+		HookName: source.HookName, Status: source.Status,
+	}
+}
+
+func safeProgress(source *RuntimeProgressEvent) *RuntimeProgressEvent {
+	if source == nil {
+		return nil
+	}
+	return &RuntimeProgressEvent{
+		Stage: source.Stage, Current: source.Current, Total: source.Total,
+		Disposition: source.Disposition, Blocker: source.Blocker,
+		MutationEpoch: source.MutationEpoch, VerifiedEpoch: source.VerifiedEpoch,
+	}
+}
+
+func cloneToolRoundMetrics(source *ToolRoundMetricsEvent) *ToolRoundMetricsEvent {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	return &cloned
 }
 
 func projectRequestStatus(eventType EventType, source *RequestStatusEvent, language i18n.Language) *RequestStatusEvent {

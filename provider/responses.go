@@ -15,11 +15,13 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
+const maxResponsesCustomToolInputBytes = 16 << 20
+
 // ResponsesProvider implements Provider for the OpenAI Responses API (/v1/responses).
-// It is stateless. The official public API can chain conversations by passing
-// PreviousResponseID in Params and reading ResponseID from EventMessageStop.
-// Custom and ChatGPT-backed HTTP endpoints receive full input because their
-// response IDs are not necessarily valid for HTTP chaining.
+// It is stateless. Every request disables provider storage and replays the
+// complete committed input history. OpenAI reasoning items are round-tripped
+// as opaque encrypted items; response IDs remain observable evidence but are
+// never treated as retrievable state while store=false.
 type ResponsesProvider struct {
 	mu                  sync.RWMutex
 	name                string
@@ -29,6 +31,7 @@ type ResponsesProvider struct {
 	maxTokens           int
 	timeout             time.Duration
 	headers             map[string]string
+	semantics           ResponsesSemantics
 	chatGPTCodexBackend bool
 	firstPartyEndpoint  bool
 	publicAPIEndpoint   bool
@@ -36,8 +39,12 @@ type ResponsesProvider struct {
 	cacheRouting        CacheRoutingMode
 	cacheUserNamespace  string
 	cacheRoutingShards  int
+	responsesWebSocket  CapabilitySupport
 	unsupportedFields   sync.Map
 	client              *http.Client
+	wsMu                sync.Mutex
+	wsSessions          map[string]*responsesWebSocketSession
+	wsCredentialEpoch   uint64
 }
 
 // NewResponses creates a Provider for the OpenAI Responses API.
@@ -59,8 +66,9 @@ func NewResponses(cfg Config) *ResponsesProvider {
 		maxTokens = 16384
 	}
 	timeout := time.Duration(cfg.Timeout) * time.Second
-	if timeout == 0 {
-		timeout = 600 * time.Second
+	watchdogConfig := responsesStreamWatchdogConfig()
+	if timeout <= 0 || timeout > maxResponsesInitialIdleTimeout {
+		timeout = watchdogConfig.initialIdle
 	}
 	bearerToken := cfg.APIKey
 	if authToken := strings.TrimSpace(cfg.AuthToken); authToken != "" {
@@ -71,6 +79,7 @@ func NewResponses(cfg Config) *ResponsesProvider {
 	if providerName == "" {
 		providerName = "openai"
 	}
+	semantics := resolveResponsesSemantics(cfg, baseURL)
 
 	return &ResponsesProvider{
 		name:                providerName,
@@ -80,17 +89,47 @@ func NewResponses(cfg Config) *ResponsesProvider {
 		maxTokens:           maxTokens,
 		timeout:             timeout,
 		headers:             cloneHeaders(cfg.Headers),
-		chatGPTCodexBackend: isOpenAIChatGPTCodexBaseURL(baseURL),
-		firstPartyEndpoint:  isFirstPartyOpenAIResponsesBaseURL(baseURL),
-		publicAPIEndpoint:   isOpenAIPublicAPIBaseURL(baseURL),
+		semantics:           semantics,
+		chatGPTCodexBackend: semantics == ResponsesSemanticsOpenAICodex,
+		firstPartyEndpoint:  semantics == ResponsesSemanticsOpenAIPublic || semantics == ResponsesSemanticsOpenAICodex,
+		publicAPIEndpoint:   semantics == ResponsesSemanticsOpenAIPublic,
 		disableStrictTools:  cfg.DisableStrictTools,
 		cacheRouting:        cacheRoutingModeForResponses(cfg.CacheRoutingPreference),
 		cacheUserNamespace:  cacheUserNamespace,
 		cacheRoutingShards:  promptCacheRoutingShardCount(cfg.ProviderName),
-		client: &http.Client{
-			Timeout: timeout,
-		},
+		responsesWebSocket:  normalizeCapabilitySupport(cfg.ResponsesWebSocket),
+		wsCredentialEpoch:   1,
+		// A request-wide Client.Timeout killed healthy long-running xhigh
+		// reasoning at 600 seconds. Bound connection/header silence here; the
+		// response body has its own byte-progress watchdog below.
+		client: newResponsesHTTPClient(timeout),
 	}
+}
+
+func resolveResponsesSemantics(cfg Config, baseURL string) ResponsesSemantics {
+	switch cfg.ResponsesSemantics {
+	case ResponsesSemanticsOpenAIPublic, ResponsesSemanticsOpenAICodex, ResponsesSemanticsCompatible:
+		return cfg.ResponsesSemantics
+	}
+	if strings.TrimSpace(cfg.AuthToken) != "" {
+		return ResponsesSemanticsOpenAICodex
+	}
+	if providerName := CanonicalProviderName(cfg.ProviderName); providerName != "" {
+		if providerName == "openai" {
+			return ResponsesSemanticsOpenAIPublic
+		}
+		return ResponsesSemanticsCompatible
+	}
+	// Backward-compatible direct-library default only. Production factories
+	// always set a profile, so a benchmark proxy hostname cannot alter this
+	// decision.
+	if isOpenAIChatGPTCodexBaseURL(baseURL) {
+		return ResponsesSemanticsOpenAICodex
+	}
+	if isOpenAIPublicAPIBaseURL(baseURL) {
+		return ResponsesSemanticsOpenAIPublic
+	}
+	return ResponsesSemanticsCompatible
 }
 
 func cacheRoutingModeForResponses(preference CacheRoutingPreference) CacheRoutingMode {
@@ -121,16 +160,26 @@ func (p *ResponsesProvider) ApplyCredentialConfig(cfg Config) {
 	}
 
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.baseURL = baseURL
 	p.apiKey = bearerToken
 	p.headers = cloneHeaders(cfg.Headers)
-	p.chatGPTCodexBackend = isOpenAIChatGPTCodexBaseURL(baseURL)
-	p.firstPartyEndpoint = isFirstPartyOpenAIResponsesBaseURL(baseURL)
-	p.publicAPIEndpoint = isOpenAIPublicAPIBaseURL(baseURL)
+	p.semantics = resolveResponsesSemantics(cfg, baseURL)
+	p.chatGPTCodexBackend = p.semantics == ResponsesSemanticsOpenAICodex
+	p.firstPartyEndpoint = p.semantics == ResponsesSemanticsOpenAIPublic || p.semantics == ResponsesSemanticsOpenAICodex
+	p.publicAPIEndpoint = p.semantics == ResponsesSemanticsOpenAIPublic
 	p.disableStrictTools = cfg.DisableStrictTools
 	p.cacheUserNamespace = promptCacheUserNamespace(cfg)
 	p.cacheRoutingShards = promptCacheRoutingShardCount(cfg.ProviderName)
+	p.responsesWebSocket = normalizeCapabilitySupport(cfg.ResponsesWebSocket)
+	p.wsCredentialEpoch++
+	if p.wsCredentialEpoch == 0 {
+		p.wsCredentialEpoch = 1
+	}
+	p.mu.Unlock()
+
+	// A refreshed bearer token, endpoint, header set, or semantics profile must
+	// never inherit connection-local state created under the prior authority.
+	p.resetResponsesWebSocketSessions()
 }
 
 // APIFormat returns the API protocol used by this provider.
@@ -140,198 +189,67 @@ func (p *ResponsesProvider) APIFormat() string { return "responses" }
 func (p *ResponsesProvider) Capabilities() ProviderCapabilities {
 	p.mu.RLock()
 	model := p.model
+	semantics := p.semantics
+	responsesWebSocket := p.responsesWebSocket
+	cacheRouting := p.cacheRouting
 	p.mu.RUnlock()
+	customTools := CapabilityUnsupported
+	if supportsOpenAIResponsesCustomTools(semantics, model) {
+		customTools = CapabilitySupported
+	}
+	if semantics != ResponsesSemanticsOpenAIPublic {
+		responsesWebSocket = CapabilityUnsupported
+	}
 	return ProviderCapabilities{
-		Thinking:     false,
-		ToolUse:      true,
-		CacheControl: false,
-		CacheRouting: p.cacheRouting,
-		SystemParts:  true,
-		Vision:       true,
-		MaxContext:   LookupMaxContext(model),
+		Thinking:           false,
+		ToolUse:            true,
+		CustomTools:        customTools,
+		ResponsesWebSocket: responsesWebSocket,
+		ServiceTier:        serviceTierCapabilityForResponses(semantics),
+		CacheControl:       false,
+		CacheRouting:       cacheRouting,
+		SystemParts:        true,
+		Vision:             true,
+		MaxContext:         LookupMaxContext(model),
 	}
 }
 
-// CreateStream implements Provider.CreateStream using the Responses API.
+func serviceTierCapabilityForResponses(semantics ResponsesSemantics) CapabilitySupport {
+	if semantics == ResponsesSemanticsOpenAIPublic {
+		return CapabilitySupported
+	}
+	return CapabilityUnsupported
+}
+
+// CreateStream selects WebSocket mode only for an explicitly verified public
+// Responses endpoint and a loop-private continuation lineage. Every other
+// profile remains on the stable HTTP/SSE transport.
 func (p *ResponsesProvider) CreateStream(ctx context.Context, params Params) (<-chan types.StreamEvent, error) {
-	p.mu.RLock()
-	baseURL := p.baseURL
-	apiKey := p.apiKey
-	defaultModel := p.model
-	headers := cloneHeaders(p.headers)
-	chatGPTCodexBackend := p.chatGPTCodexBackend
-	firstPartyEndpoint := p.firstPartyEndpoint
-	publicAPIEndpoint := p.publicAPIEndpoint
-	disableStrictTools := p.disableStrictTools
-	cacheRouting := p.cacheRouting
-	cacheUserNamespace := p.cacheUserNamespace
-	cacheRoutingShards := p.cacheRoutingShards
-	client := p.client
-	p.mu.RUnlock()
-
-	systemPrompt := params.JoinedSystemPrompt()
-	model := params.Model
-	if model == "" {
-		model = defaultModel
+	if err := ValidateParams(p, params); err != nil {
+		return nil, err
 	}
-	responsesLite := firstPartyEndpoint && isOpenAIResponsesLiteModel(model)
-
-	// Only the official public API has a stable HTTP response-chaining contract.
-	// Custom Responses-compatible endpoints may return response IDs while only
-	// accepting them on a different transport (for example, WebSocket v2).
-	// Sending full history is the portable HTTP behavior for those endpoints.
-	prevID := ""
-	if publicAPIEndpoint {
-		prevID = params.PreviousResponseID
-	}
-
-	// Build request body
-	body := map[string]any{
-		"model":  model,
-		"stream": true,
-	}
-	if chatGPTCodexBackend || responsesLite {
-		body["store"] = false
-		prevID = ""
-	}
-	if chatGPTCodexBackend && !responsesLite {
-		body["tools"] = []map[string]any{}
-		body["tool_choice"] = "auto"
-		body["parallel_tool_calls"] = false
-		body["include"] = []string{}
-	}
-	// Codex 0.144.x no longer sends the ordinary MaxTokens value through the
-	// Responses request. Preserve the local output-limit recovery only for the
-	// public API, where max_output_tokens is documented, and only when the loop
-	// explicitly escalates the limit.
-	if publicAPIEndpoint && !responsesLite && params.MaxOutputTokensOverride > 0 {
-		body["max_output_tokens"] = params.MaxOutputTokensOverride
-	}
-
-	cacheKey := scopedPromptCacheKey(cacheUserNamespace, params.PromptCacheKey, model, cacheRoutingShards)
-	promptCacheEnabled := publicAPIEndpoint && cacheRouting == CacheRoutingPromptCacheKey && params.UsePromptCache && cacheKey != ""
-	cachePolicy := openAIPromptCachePolicy{}
-	if promptCacheEnabled {
-		cachePolicy = applyOpenAIPromptCachePolicy(body, model)
-	}
-
-	var cacheableDeveloperInput any
-	if systemPrompt != "" && !responsesLite {
-		if cachePolicy.Options && prevID == "" {
-			if content, ok := openAIStaticSystemContent(params.SystemTextBlocks(), "input_text"); ok {
-				cacheableDeveloperInput = map[string]any{
-					"type":    "message",
-					"role":    "developer",
-					"content": content,
-				}
-			} else {
-				body["instructions"] = systemPrompt
-			}
-		} else {
-			body["instructions"] = systemPrompt
+	profile := p.snapshotRequestProfile()
+	if profile.webSocketEligible(params) {
+		stream, safeHTTPFallback, err := p.createResponsesWebSocketStream(ctx, params, profile)
+		if err == nil {
+			return stream, nil
+		}
+		if !safeHTTPFallback {
+			return nil, err
 		}
 	}
+	return p.createResponsesHTTPStream(ctx, params, profile)
+}
 
-	tools := convertToolsToResponsesAPIWithStrictMode(params.Tools, !disableStrictTools)
-
-	// Convert messages to Responses API input format. Responses Lite carries
-	// tools and instructions as leading developer input items and sends the full
-	// HTTP history, matching current Codex HTTP fallback behavior.
-	input := convertMessagesToResponsesAPIForParams(params, prevID)
-	if cacheableDeveloperInput != nil {
-		input = append([]any{cacheableDeveloperInput}, input...)
+func (p *ResponsesProvider) createResponsesHTTPStream(ctx context.Context, params Params, profile responsesRequestProfile) (<-chan types.StreamEvent, error) {
+	if err := ValidateParams(p, params); err != nil {
+		return nil, err
 	}
-	if responsesLite {
-		prefix := []any{map[string]any{
-			"type":  "additional_tools",
-			"role":  "developer",
-			"tools": tools,
-		}}
-		if systemPrompt != "" {
-			content := any([]map[string]string{{
-				"type": "input_text",
-				"text": systemPrompt,
-			}})
-			if cachePolicy.Options {
-				if cacheContent, ok := openAIStaticSystemContent(params.SystemTextBlocks(), "input_text"); ok {
-					content = cacheContent
-				}
-			}
-			prefix = append(prefix, map[string]any{
-				"type":    "message",
-				"role":    "developer",
-				"content": content,
-			})
-		}
-		input = append(prefix, input...)
-		body["tool_choice"] = "auto"
-		body["parallel_tool_calls"] = false
-		body["include"] = []string{"reasoning.encrypted_content"}
+	body, model, responsesLite, err := p.buildResponsesRequestBody(params, profile, "", responsesTransportHTTP)
+	if err != nil {
+		return nil, err
 	}
-	if len(input) > 0 {
-		body["input"] = input
-	}
-
-	// Tools
-	if len(tools) > 0 && !responsesLite {
-		body["tools"] = tools
-		body["parallel_tool_calls"] = true
-	}
-
-	// Tool choice
-	if params.ToolChoice != nil && !responsesLite {
-		switch params.ToolChoice.Type {
-		case "any":
-			body["tool_choice"] = "required"
-		case "tool":
-			body["tool_choice"] = map[string]string{
-				"type": "function",
-				"name": params.ToolChoice.Name,
-			}
-		default:
-			body["tool_choice"] = "auto"
-		}
-	}
-
-	// Previous response ID for chaining
-	if prevID != "" {
-		body["previous_response_id"] = prevID
-	}
-
-	// Prompt cache key for sticky routing / prompt cache reuse.
-	// Align with Codex CLI: keep this enabled independently from previous_response_id,
-	// so that when chaining breaks we still preserve prompt-cache affinity.
-	if cacheRouting == CacheRoutingPromptCacheKey && params.UsePromptCache && cacheKey != "" {
-		body["prompt_cache_key"] = cacheKey
-	}
-
-	// Truncation strategy
-	if !chatGPTCodexBackend && !responsesLite && params.Truncation != "" {
-		body["truncation"] = params.Truncation
-	}
-
-	// Reasoning effort
-	if params.ReasoningEffort != "" || responsesLite {
-		reasoning := map[string]string{}
-		if params.ReasoningEffort != "" {
-			reasoning["effort"] = reasoningEffortForRequest(params.ReasoningEffort)
-		}
-		if responsesLite {
-			reasoning["context"] = "all_turns"
-		}
-		body["reasoning"] = reasoning
-		if chatGPTCodexBackend {
-			body["include"] = []string{"reasoning.encrypted_content"}
-		}
-	}
-	if outputConfig := outputConfigBody(params.TaskBudget); !responsesLite && len(outputConfig) > 0 {
-		body["output_config"] = outputConfig
-	}
-
-	// Build endpoint URL
-	endpoint := baseURL + "/responses"
-	p.omitUnsupportedFields(model, body)
-
+	endpoint := profile.baseURL + "/responses"
 	var resp *http.Response
 	for {
 		jsonBody, err := json.Marshal(body)
@@ -344,17 +262,24 @@ func (p *ResponsesProvider) CreateStream(ctx context.Context, params Params) (<-
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "text/event-stream")
-		if apiKey != "" {
-			req.Header.Set("Authorization", "Bearer "+apiKey)
+		if profile.apiKey != "" {
+			req.Header.Set("Authorization", "Bearer "+profile.apiKey)
 		}
-		for k, v := range headers {
+		for k, v := range profile.headers {
 			req.Header.Set(k, v)
+		}
+		if params.ContinuationLineage != "" {
+			req.Header.Set(responsesContinuationLineageHeader, params.ContinuationLineage)
+			req.Header.Set(responsesContinuationEpochHeader, fmt.Sprintf("%d", params.ContinuationEpoch))
+			if params.ContinuationReset {
+				req.Header.Set(responsesContinuationResetHeader, "1")
+			}
 		}
 		if responsesLite {
 			req.Header.Set("x-openai-internal-codex-responses-lite", "true")
 		}
 
-		resp, err = client.Do(req)
+		resp, err = profile.timeoutClient.Do(req)
 		if err != nil {
 			return nil, i18n.WrapError(i18n.KeyProviderRequestFailed, err, "Responses API")
 		}
@@ -364,24 +289,39 @@ func (p *ResponsesProvider) CreateStream(ctx context.Context, params Params) (<-
 
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		_ = resp.Body.Close()
-		if !firstPartyEndpoint && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity) {
+		if !profile.firstPartyEndpoint && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity) {
 			if field := unsupportedResponsesRequestField(bodyBytes, body); field != "" {
 				p.rememberUnsupportedField(model, field)
 				delete(body, field)
+				cause := parseResponsesHTTPError(resp.StatusCode, bodyBytes, resp.Header.Get("Retry-After"))
+				if attemptErr := beginNestedTransportAttempt(ctx, cause); attemptErr != nil {
+					return nil, attemptErr
+				}
 				continue
 			}
 		}
-		return nil, parseResponsesHTTPError(resp.StatusCode, bodyBytes)
+		return nil, parseResponsesHTTPError(resp.StatusCode, bodyBytes, resp.Header.Get("Retry-After"))
 	}
 
+	watchdogBody := newStreamWatchdogBody(resp.Body, responsesStreamWatchdogConfig())
 	ch := make(chan types.StreamEvent, 64)
 	go func() {
 		defer close(ch)
-		defer resp.Body.Close()
-		p.processResponsesStream(ctx, resp.Body, ch)
+		defer watchdogBody.Close()
+		processResponsesStreamForRequest(ctx, watchdogBody, ch, model, profile.semantics, responsesLite, params.ServiceTier)
 	}()
 
 	return ch, nil
+}
+
+func newResponsesHTTPClient(responseHeaderTimeout time.Duration) *http.Client {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Client{}
+	}
+	cloned := transport.Clone()
+	cloned.ResponseHeaderTimeout = responseHeaderTimeout
+	return &http.Client{Transport: cloned}
 }
 
 var responsesOptionalGatewayFields = []string{
@@ -450,7 +390,41 @@ func unsupportedResponsesRequestField(responseBody []byte, requestBody map[strin
 }
 
 // processResponsesStream reads SSE events from the Responses API and maps them to StreamEvents.
-func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.Reader, ch chan<- types.StreamEvent) {
+func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.Reader, ch chan<- types.StreamEvent, requestModels ...string) {
+	p.mu.RLock()
+	requestModel := p.model
+	semantics := p.semantics
+	p.mu.RUnlock()
+	if len(requestModels) > 0 && strings.TrimSpace(requestModels[0]) != "" {
+		requestModel = strings.TrimSpace(requestModels[0])
+	}
+	processResponsesStreamForRequest(ctx, body, ch, requestModel, semantics, semantics == ResponsesSemanticsOpenAICodex && isOpenAIResponsesLiteModel(requestModel))
+}
+
+func processResponsesStreamForRequest(ctx context.Context, body io.Reader, ch chan<- types.StreamEvent, requestModel string, semantics ResponsesSemantics, responsesLite bool, serviceTiers ...ServiceTier) {
+	expectedServiceTier := ServiceTier("")
+	if len(serviceTiers) > 0 {
+		expectedServiceTier = serviceTiers[0]
+	}
+	processResponsesEventsForRequest(ctx, body, parseSSE(body), ch, requestModel, semantics, responsesLite, false, expectedServiceTier)
+}
+
+// processResponsesEventsForRequest is the transport-neutral Responses reducer.
+// HTTP supplies SSE-framed events; WebSocket supplies one JSON event per text
+// frame. Keeping a single reducer prevents protocol, usage, encrypted reasoning,
+// and MessageStop commit semantics from drifting between transports.
+func processResponsesEventsForRequest(
+	ctx context.Context,
+	activity any,
+	events <-chan sseEvent,
+	ch chan<- types.StreamEvent,
+	requestModel string,
+	semantics ResponsesSemantics,
+	responsesLite bool,
+	connectionScopedContinuation bool,
+	expectedServiceTier ServiceTier,
+) {
+	encryptedReasoning := semantics == ResponsesSemanticsOpenAIPublic || semantics == ResponsesSemanticsOpenAICodex
 	send := func(evt types.StreamEvent) bool {
 		select {
 		case ch <- evt:
@@ -462,17 +436,22 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 
 	// Track output items by their index for mapping to stream events
 	type outputItem struct {
-		itemType string // "message", "function_call"
-		blockIdx int    // our block index for StreamEvent
-		callID   string
-		name     string
+		itemType       string // "message", "function_call", "custom_tool_call", "reasoning"
+		blockIdx       int    // our block index for StreamEvent
+		callID         string
+		name           string
+		providerItemID string
+		providerStatus string
+		signature      string
+		stopped        bool
+		customInput    strings.Builder
+		customFinal    *string
 	}
 	outputItems := make(map[int]*outputItem) // keyed by output_index
 	nextBlockIdx := 0
 	messageStarted := false
 
 	completedNormally := false
-	events := parseSSE(body)
 	for sse := range events {
 		if ctx.Err() != nil {
 			return
@@ -506,10 +485,12 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 			var data struct {
 				OutputIndex int `json:"output_index"`
 				Item        struct {
-					Type   string `json:"type"`
-					ID     string `json:"id"`
-					CallID string `json:"call_id"`
-					Name   string `json:"name"`
+					Type             string `json:"type"`
+					ID               string `json:"id"`
+					CallID           string `json:"call_id"`
+					Name             string `json:"name"`
+					Status           string `json:"status"`
+					EncryptedContent string `json:"encrypted_content"`
 				} `json:"item"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
@@ -517,35 +498,55 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 			}
 
 			item := &outputItem{
-				itemType: data.Item.Type,
-				blockIdx: nextBlockIdx,
+				itemType:       data.Item.Type,
+				blockIdx:       data.OutputIndex,
+				providerItemID: data.Item.ID,
+				providerStatus: data.Item.Status,
+			}
+			if encryptedReasoning && data.Item.Type == "reasoning" {
+				item.signature = data.Item.EncryptedContent
 			}
 
-			if data.Item.Type == "function_call" {
+			if data.Item.Type == "function_call" || data.Item.Type == "custom_tool_call" {
 				item.callID = data.Item.CallID
 				item.name = data.Item.Name
+				toolType := types.ToolDefinitionTypeFunction
+				if data.Item.Type == "custom_tool_call" {
+					toolType = types.ToolDefinitionTypeCustom
+				}
 				// Emit content_block_start for tool_use
 				if !send(types.StreamEvent{
 					Type:  types.EventContentBlockStart,
-					Index: nextBlockIdx,
+					Index: item.blockIdx,
 					ContentBlock: &types.ContentDelta{
-						Type: types.ContentTypeToolUse,
-						ID:   data.Item.CallID,
-						Name: data.Item.Name,
+						Type:     types.ContentTypeToolUse,
+						ID:       data.Item.CallID,
+						Name:     data.Item.Name,
+						ToolType: toolType,
 					},
 				}) {
 					return
 				}
-				nextBlockIdx++
+				nextBlockIdx = max(nextBlockIdx, item.blockIdx+1)
 			} else if data.Item.Type == "reasoning" {
+				delta := &types.ContentDelta{
+					Type:           types.ContentTypeThinking,
+					ID:             item.providerItemID,
+					ProviderStatus: item.providerStatus,
+				}
+				if encryptedReasoning {
+					delta.Signature = item.signature
+					delta.SignatureKind = types.ThinkingSignatureOpenAIEncryptedReasoning
+					delta.SignatureModel = requestModel
+				}
 				if !send(types.StreamEvent{
 					Type:         types.EventContentBlockStart,
-					Index:        nextBlockIdx,
-					ContentBlock: &types.ContentDelta{Type: types.ContentTypeThinking},
+					Index:        item.blockIdx,
+					ContentBlock: delta,
 				}) {
 					return
 				}
-				nextBlockIdx++
+				nextBlockIdx = max(nextBlockIdx, item.blockIdx+1)
 			}
 
 			outputItems[data.OutputIndex] = item
@@ -565,7 +566,7 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 
 			item := outputItems[data.OutputIndex]
 			if item == nil {
-				item = &outputItem{itemType: "message", blockIdx: nextBlockIdx}
+				item = &outputItem{itemType: "message", blockIdx: data.OutputIndex}
 				outputItems[data.OutputIndex] = item
 			}
 
@@ -590,6 +591,11 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
+			}
+			if data.Delta != "" {
+				if watchdog, ok := activity.(*streamWatchdogBody); ok {
+					watchdog.markOutputActive()
+				}
 			}
 
 			item := outputItems[data.OutputIndex]
@@ -619,6 +625,11 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
 			}
+			if data.Delta.Text != "" {
+				if watchdog, ok := activity.(*streamWatchdogBody); ok {
+					watchdog.markOutputActive()
+				}
+			}
 
 			item := outputItems[data.OutputIndex]
 			idx := 0
@@ -644,6 +655,11 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
 			}
+			if data.Delta != "" {
+				if watchdog, ok := activity.(*streamWatchdogBody); ok {
+					watchdog.markOutputActive()
+				}
+			}
 
 			item := outputItems[data.OutputIndex]
 			idx := 0
@@ -662,6 +678,39 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 				return
 			}
 
+		case "response.custom_tool_call_input.delta":
+			var data struct {
+				OutputIndex int    `json:"output_index"`
+				Delta       string `json:"delta"`
+			}
+			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
+				continue
+			}
+			item := outputItems[data.OutputIndex]
+			if item == nil || item.itemType != "custom_tool_call" || item.stopped {
+				sendResponsesCustomToolProtocolError(send)
+				completedNormally = true
+				return
+			}
+			if item.customInput.Len()+len(data.Delta) > maxResponsesCustomToolInputBytes {
+				sendResponsesCustomToolProtocolError(send)
+				completedNormally = true
+				return
+			}
+			item.customInput.WriteString(data.Delta)
+			if data.Delta != "" {
+				if watchdog, ok := activity.(*streamWatchdogBody); ok {
+					watchdog.markOutputActive()
+				}
+			}
+			if !send(types.StreamEvent{
+				Type:  types.EventContentBlockDelta,
+				Index: item.blockIdx,
+				Delta: &types.ContentDelta{Type: "input_text_delta", PartialText: data.Delta, ToolType: types.ToolDefinitionTypeCustom},
+			}) {
+				return
+			}
+
 		case "response.reasoning.delta", "response.reasoning_text.delta", "response.reasoning_summary_text.delta":
 			var data struct {
 				OutputIndex int    `json:"output_index"`
@@ -669,6 +718,11 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
+			}
+			if data.Delta != "" {
+				if watchdog, ok := activity.(*streamWatchdogBody); ok {
+					watchdog.markOutputActive()
+				}
 			}
 
 			item := outputItems[data.OutputIndex]
@@ -689,22 +743,190 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 		case "response.function_call_arguments.done":
 			// No action needed — block_stop will handle finalization
 
+		case "response.custom_tool_call_input.done":
+			var data struct {
+				OutputIndex int     `json:"output_index"`
+				Input       *string `json:"input"`
+			}
+			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
+				continue
+			}
+			item := outputItems[data.OutputIndex]
+			if item == nil || item.itemType != "custom_tool_call" || item.stopped || data.Input == nil {
+				sendResponsesCustomToolProtocolError(send)
+				completedNormally = true
+				return
+			}
+			if len(*data.Input) > maxResponsesCustomToolInputBytes || (item.customInput.Len() > 0 && item.customInput.String() != *data.Input) {
+				sendResponsesCustomToolProtocolError(send)
+				completedNormally = true
+				return
+			}
+			finalInput := *data.Input
+			item.customFinal = &finalInput
+			if !send(types.StreamEvent{
+				Type:  types.EventContentBlockDelta,
+				Index: item.blockIdx,
+				Delta: &types.ContentDelta{
+					Type: "tool_state_final", ID: item.callID, Name: item.name,
+					ToolType: types.ToolDefinitionTypeCustom, PartialText: *data.Input,
+				},
+			}) {
+				return
+			}
+
 		case "response.output_item.done":
 			var data struct {
 				OutputIndex int `json:"output_index"`
+				Item        struct {
+					Type             string  `json:"type"`
+					ID               string  `json:"id"`
+					CallID           string  `json:"call_id"`
+					Name             string  `json:"name"`
+					Arguments        *string `json:"arguments"`
+					Input            *string `json:"input"`
+					Status           string  `json:"status"`
+					EncryptedContent string  `json:"encrypted_content"`
+				} `json:"item"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
 			}
 
 			item := outputItems[data.OutputIndex]
+			if item == nil && (data.Item.Type == "function_call" || data.Item.Type == "custom_tool_call") {
+				item = &outputItem{itemType: data.Item.Type, blockIdx: data.OutputIndex, callID: data.Item.CallID, name: data.Item.Name}
+				outputItems[data.OutputIndex] = item
+				toolType := types.ToolDefinitionTypeFunction
+				if data.Item.Type == "custom_tool_call" {
+					toolType = types.ToolDefinitionTypeCustom
+				}
+				if !send(types.StreamEvent{
+					Type:  types.EventContentBlockStart,
+					Index: item.blockIdx,
+					ContentBlock: &types.ContentDelta{
+						Type:     types.ContentTypeToolUse,
+						ID:       data.Item.CallID,
+						Name:     data.Item.Name,
+						ToolType: toolType,
+					},
+				}) {
+					return
+				}
+				nextBlockIdx = max(nextBlockIdx, item.blockIdx+1)
+			}
+			if item == nil && data.Item.Type == "reasoning" {
+				item = &outputItem{itemType: "reasoning", blockIdx: data.OutputIndex}
+				outputItems[data.OutputIndex] = item
+				delta := &types.ContentDelta{
+					Type:           types.ContentTypeThinking,
+					ID:             data.Item.ID,
+					ProviderStatus: data.Item.Status,
+				}
+				if encryptedReasoning {
+					delta.SignatureKind = types.ThinkingSignatureOpenAIEncryptedReasoning
+					delta.SignatureModel = requestModel
+				}
+				if !send(types.StreamEvent{
+					Type:         types.EventContentBlockStart,
+					Index:        item.blockIdx,
+					ContentBlock: delta,
+				}) {
+					return
+				}
+				nextBlockIdx = max(nextBlockIdx, item.blockIdx+1)
+			}
 			if item != nil {
+				if item.itemType == "custom_tool_call" && item.stopped {
+					sendResponsesCustomToolProtocolError(send)
+					completedNormally = true
+					return
+				}
+				if item.itemType == "reasoning" && encryptedReasoning {
+					changed := false
+					if data.Item.ID != "" {
+						changed = changed || data.Item.ID != item.providerItemID
+						item.providerItemID = data.Item.ID
+					}
+					if data.Item.Status != "" {
+						changed = changed || data.Item.Status != item.providerStatus
+						item.providerStatus = data.Item.Status
+					}
+					if data.Item.EncryptedContent != "" {
+						changed = changed || data.Item.EncryptedContent != item.signature
+						item.signature = data.Item.EncryptedContent
+					}
+					if changed && item.signature != "" {
+						if !send(types.StreamEvent{
+							Type:  types.EventContentBlockDelta,
+							Index: item.blockIdx,
+							Delta: &types.ContentDelta{
+								Type:           "signature_delta",
+								ID:             item.providerItemID,
+								Signature:      item.signature,
+								SignatureKind:  types.ThinkingSignatureOpenAIEncryptedReasoning,
+								SignatureModel: requestModel,
+								ProviderStatus: item.providerStatus,
+							},
+						}) {
+							return
+						}
+					}
+				} else if item.itemType == "function_call" {
+					if data.Item.CallID != "" {
+						item.callID = data.Item.CallID
+					}
+					if data.Item.Name != "" {
+						item.name = data.Item.Name
+					}
+					if data.Item.Arguments != nil && !send(types.StreamEvent{
+						Type:  types.EventContentBlockDelta,
+						Index: item.blockIdx,
+						Delta: &types.ContentDelta{
+							Type:        "tool_state_final",
+							ID:          item.callID,
+							Name:        item.name,
+							PartialJSON: *data.Item.Arguments,
+						},
+					}) {
+						return
+					}
+				} else if item.itemType == "custom_tool_call" {
+					if data.Item.CallID != "" {
+						item.callID = data.Item.CallID
+					}
+					if data.Item.Name != "" {
+						item.name = data.Item.Name
+					}
+					if data.Item.Status != "completed" || item.callID == "" || item.name == "" || data.Item.Input == nil || len(*data.Item.Input) > maxResponsesCustomToolInputBytes {
+						sendResponsesCustomToolProtocolError(send)
+						completedNormally = true
+						return
+					}
+					if (item.customFinal != nil && *item.customFinal != *data.Item.Input) ||
+						(item.customFinal == nil && item.customInput.Len() > 0 && item.customInput.String() != *data.Item.Input) {
+						sendResponsesCustomToolProtocolError(send)
+						completedNormally = true
+						return
+					}
+					if !send(types.StreamEvent{
+						Type:  types.EventContentBlockDelta,
+						Index: item.blockIdx,
+						Delta: &types.ContentDelta{
+							Type: "tool_state_final", ID: item.callID, Name: item.name,
+							ToolType: types.ToolDefinitionTypeCustom, PartialText: *data.Item.Input,
+						},
+					}) {
+						return
+					}
+				}
 				if !send(types.StreamEvent{
 					Type:  types.EventContentBlockStop,
 					Index: item.blockIdx,
 				}) {
 					return
 				}
+				item.stopped = true
 			}
 
 		case "response.content_part.done":
@@ -721,9 +943,11 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 		case "response.completed":
 			var data struct {
 				Response struct {
-					ID     string `json:"id"`
-					Status string `json:"status"`
-					Usage  struct {
+					ID          string `json:"id"`
+					Model       string `json:"model"`
+					Status      string `json:"status"`
+					ServiceTier string `json:"service_tier"`
+					Usage       struct {
 						InputTokens        int `json:"input_tokens"`
 						OutputTokens       int `json:"output_tokens"`
 						InputTokensDetails struct {
@@ -734,10 +958,7 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 					IncompleteDetails struct {
 						Reason string `json:"reason"`
 					} `json:"incomplete_details"`
-					Output []struct {
-						Type   string `json:"type"`
-						Status string `json:"status"`
-					} `json:"output"`
+					Output []json.RawMessage `json:"output"`
 				} `json:"response"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
@@ -756,14 +977,77 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 				completedNormally = true // don't also emit stream_interrupted
 				return
 			}
+			// Preserve usage even when a contract-bound request is rejected for
+			// scheduling drift; the provider may already have billed this attempt.
+			usage := normalizeOpenAIUsage(
+				data.Response.Usage.InputTokens,
+				data.Response.Usage.OutputTokens,
+				data.Response.Usage.InputTokensDetails.CachedTokens,
+				data.Response.Usage.InputTokensDetails.CacheWriteTokens,
+			)
+			if expectedServiceTier != "" && data.Response.ServiceTier != string(expectedServiceTier) {
+				send(types.StreamEvent{Type: types.EventMessageDelta, Usage: usage})
+				send(types.StreamEvent{
+					Type: types.EventError,
+					Error: &types.APIError{
+						Type: "service_tier_mismatch",
+						Message: i18n.Format(
+							i18n.DetectOrLoadLanguage(),
+							i18n.KeyProviderServiceTierMismatch,
+							data.Response.ServiceTier,
+							expectedServiceTier,
+						),
+					},
+				})
+				completedNormally = true
+				return
+			}
+			hasCustomToolCall := false
+			for outputIndex, rawOutput := range data.Response.Output {
+				var output struct {
+					Type string `json:"type"`
+				}
+				if json.Unmarshal(rawOutput, &output) != nil || output.Type != "custom_tool_call" {
+					continue
+				}
+				hasCustomToolCall = true
+				item := outputItems[outputIndex]
+				if item == nil || item.itemType != "custom_tool_call" || !item.stopped {
+					sendResponsesCustomToolProtocolError(send)
+					completedNormally = true
+					return
+				}
+			}
+			if hasCustomToolCall && data.Response.Status != "completed" {
+				sendResponsesCustomToolProtocolError(send)
+				completedNormally = true
+				return
+			}
 
 			// Store response ID for next turn's chaining
 			responseID := data.Response.ID
+			continuation, continuationErr := buildResponsesContinuation(
+				data.Response.Output, requestModel, data.Response.Model, data.Response.Status, semantics, responsesLite,
+			)
+			if continuationErr != nil {
+				send(types.StreamEvent{
+					Type: types.EventError,
+					Error: &types.APIError{
+						Type:    "invalid_continuation",
+						Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesContinuationInvalid),
+					},
+				})
+				completedNormally = true
+				return
+			}
 
 			// Determine stop reason from output items
 			sr := types.StopReasonEndTurn
-			for _, out := range data.Response.Output {
-				if out.Type == "function_call" {
+			for _, rawOutput := range data.Response.Output {
+				var out struct {
+					Type string `json:"type"`
+				}
+				if json.Unmarshal(rawOutput, &out) == nil && (out.Type == "function_call" || out.Type == "custom_tool_call") {
 					sr = types.StopReasonToolUse
 					break
 				}
@@ -774,14 +1058,6 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 				sr = types.StopReasonMaxTokens
 			}
 
-			// Emit usage. OpenAI cached tokens remain a detail of input_tokens.
-			usage := normalizeOpenAIUsage(
-				data.Response.Usage.InputTokens,
-				data.Response.Usage.OutputTokens,
-				data.Response.Usage.InputTokensDetails.CachedTokens,
-				data.Response.Usage.InputTokensDetails.CacheWriteTokens,
-			)
-
 			if !send(types.StreamEvent{
 				Type:       types.EventMessageDelta,
 				StopReason: &sr,
@@ -791,7 +1067,7 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 			}
 
 			completedNormally = true
-			send(types.StreamEvent{Type: types.EventMessageStop, ResponseID: responseID})
+			send(types.StreamEvent{Type: types.EventMessageStop, ResponseID: responseID, ProviderContinuation: continuation})
 			return
 
 		case "response.failed":
@@ -829,32 +1105,98 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 			if status == 0 {
 				status = data.Response.StatusCode
 			}
-			errType, status := classifyResponsesAPIError(data.Response.Error.Code, errMsg, status)
+			code := data.Response.Error.Code
+			errType, status := classifyResponsesAPIError(code, errMsg, status)
+			if connectionScopedContinuation && errType == "previous_response_not_found" {
+				errType, status = "stream_interrupted", 0
+				code = errType
+			}
 
 			send(types.StreamEvent{
 				Type: types.EventError,
 				Error: &types.APIError{
-					Type:    errType,
-					Message: errMsg,
-					Status:  status,
+					Type:         errType,
+					Code:         code,
+					Message:      errMsg,
+					Status:       status,
+					Stage:        types.ProviderErrorStageStream,
+					ReplaySafety: types.ProviderReplaySafe,
 				},
 			})
 			completedNormally = true // explicit failure, not an interruption
 			return
 
 		case "error":
+			if idle, ok := streamIdleTimeoutFromError(sse.Err); ok {
+				send(types.StreamEvent{
+					Type: types.EventError,
+					Error: &types.APIError{
+						Type:    "stream_idle_timeout",
+						Message: idle.Error(),
+					},
+				})
+				completedNormally = true
+				return
+			}
+			if sse.Err != nil {
+				send(types.StreamEvent{
+					Type: types.EventError,
+					Error: &types.APIError{
+						Type:    "stream_interrupted",
+						Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeResponsesStreamIncomplete),
+					},
+				})
+				completedNormally = true
+				return
+			}
 			var data struct {
 				Message string `json:"message"`
 				Code    string `json:"code"`
+				Status  int    `json:"status"`
+				Error   struct {
+					Message    string `json:"message"`
+					Code       string `json:"code"`
+					Status     int    `json:"status"`
+					StatusCode int    `json:"status_code"`
+				} `json:"error"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				send(types.StreamEvent{
+					Type: types.EventError,
+					Error: &types.APIError{
+						Type:    "stream_interrupted",
+						Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeResponsesStreamIncomplete),
+					},
+				})
+				completedNormally = true
+				return
+			}
+			message, code, status := data.Message, data.Code, data.Status
+			if data.Error.Message != "" {
+				message = data.Error.Message
+			}
+			if data.Error.Code != "" {
+				code = data.Error.Code
+			}
+			if data.Error.Status != 0 {
+				status = data.Error.Status
+			} else if data.Error.StatusCode != 0 {
+				status = data.Error.StatusCode
+			}
+			errType, status := classifyResponsesAPIError(code, message, status)
+			if connectionScopedContinuation && errType == "previous_response_not_found" {
+				errType, status = "stream_interrupted", 0
+				code = errType
 			}
 			send(types.StreamEvent{
 				Type: types.EventError,
 				Error: &types.APIError{
-					Type:    "stream_error",
-					Message: data.Message,
+					Type:         errType,
+					Code:         code,
+					Message:      message,
+					Status:       status,
+					Stage:        types.ProviderErrorStageStream,
+					ReplaySafety: types.ProviderReplaySafe,
 				},
 			})
 			completedNormally = true // explicit error, not an interruption
@@ -876,8 +1218,17 @@ func (p *ResponsesProvider) processResponsesStream(ctx context.Context, body io.
 				Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeResponsesStreamIncomplete),
 			},
 		})
-		send(types.StreamEvent{Type: types.EventMessageStop})
 	}
+}
+
+func sendResponsesCustomToolProtocolError(send func(types.StreamEvent) bool) {
+	send(types.StreamEvent{
+		Type: types.EventError,
+		Error: &types.APIError{
+			Type:    "invalid_custom_tool_call",
+			Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCustomToolCallInvalid),
+		},
+	})
 }
 
 // ── Message conversion for Responses API ────────────────────────────────────
@@ -909,14 +1260,21 @@ func taskBudgetBody(taskBudget *TaskBudget) map[string]any {
 	return body
 }
 
-func classifyResponsesAPIError(code, message string, status int) (string, int) {
+func classifyResponsesAPIError(code, _ string, status int) (string, int) {
 	errCode := strings.ToLower(code)
-	msgLower := strings.ToLower(message)
 
+	// A provider protocol code is stronger authority than the HTTP status or
+	// diagnostic prose. Preserve the allowlisted context terminal exactly so
+	// the machine projection never has to infer it from a localized message.
+	if errCode == "context_length_exceeded" {
+		return "context_length_exceeded", status
+	}
 	if strings.Contains(errCode, "previous_response_not_found") ||
-		((strings.Contains(errCode, "previous_response") || strings.Contains(msgLower, "previous_response") || strings.Contains(msgLower, "previous response")) &&
-			(strings.Contains(errCode, "not_found") || strings.Contains(msgLower, "not found") || strings.Contains(msgLower, "expired") || strings.Contains(msgLower, "does not exist"))) {
+		(strings.Contains(errCode, "previous_response") && strings.Contains(errCode, "not_found")) {
 		return "previous_response_not_found", status
+	}
+	if errCode == "websocket_connection_limit_reached" {
+		return "stream_interrupted", 0
 	}
 	if status == http.StatusTooManyRequests || strings.Contains(errCode, "rate_limit") {
 		if status == 0 {
@@ -956,7 +1314,7 @@ func convertAllMessagesForResponsesAPIWithParams(params Params) []any {
 		case types.RoleUser:
 			input = append(input, convertUserMessageToResponsesAPI(msg)...)
 		case types.RoleAssistant:
-			input = append(input, convertAssistantMessageToResponsesAPI(msg)...)
+			input = append(input, convertAssistantMessageToResponsesAPIForModel(msg, params.Model)...)
 		case types.RoleDeveloper:
 			input = append(input, convertDeveloperMessageToResponsesAPI(msg)...)
 		}
@@ -991,7 +1349,7 @@ func convertNewMessagesForResponsesAPIWithParams(params Params) []any {
 		case types.RoleUser:
 			input = append(input, convertUserMessageToResponsesAPI(msg)...)
 		case types.RoleAssistant:
-			input = append(input, convertAssistantMessageToResponsesAPI(msg)...)
+			input = append(input, convertAssistantMessageToResponsesAPIForModel(msg, params.Model)...)
 		case types.RoleDeveloper:
 			input = append(input, convertDeveloperMessageToResponsesAPI(msg)...)
 		}
@@ -1017,6 +1375,11 @@ func convertDeveloperMessageToResponsesAPI(msg types.Message) []any {
 // Tool results become function_call_output items; text becomes a user message.
 // Image blocks are converted to input_image content parts with data URIs.
 func convertUserMessageToResponsesAPI(msg types.Message) []any {
+	items, _ := convertUserMessageToResponsesAPIWithCallKinds(msg, nil)
+	return items
+}
+
+func convertUserMessageToResponsesAPIWithCallKinds(msg types.Message, callKinds map[string]types.ToolDefinitionType) ([]any, error) {
 	var functionOutputs []any
 	var followUps []any
 	var textParts []string
@@ -1034,8 +1397,14 @@ func convertUserMessageToResponsesAPI(msg types.Message) []any {
 		switch b := block.(type) {
 		case types.ToolResultBlock:
 			flushUserParts()
+			outputType := "function_call_output"
+			if callKinds[b.ToolUseID] == types.ToolDefinitionTypeCustom {
+				outputType = "custom_tool_call_output"
+			} else if b.ToolType == types.ToolDefinitionTypeCustom {
+				return nil, i18n.NewError(i18n.KeyProviderResponsesContinuationInvalid)
+			}
 			functionOutputs = append(functionOutputs, map[string]any{
-				"type":    "function_call_output",
+				"type":    outputType,
 				"call_id": b.ToolUseID,
 				"output":  b.TextContent(),
 			})
@@ -1082,7 +1451,7 @@ func convertUserMessageToResponsesAPI(msg types.Message) []any {
 
 	// Keep all sibling function outputs contiguous before supplemental user
 	// content, matching the Chat Completions tool-call ordering contract.
-	return append(functionOutputs, followUps...)
+	return append(functionOutputs, followUps...), nil
 }
 
 // buildUserItem constructs a Responses API user input item from text and image parts.
@@ -1128,63 +1497,91 @@ func buildUserItem(textParts []string, imageParts []types.ImageBlock) map[string
 	}
 }
 
-// convertAssistantMessageToResponsesAPI converts an assistant message to input items.
+// convertAssistantMessageToResponsesAPI converts an assistant message to input
+// items without replaying provider-bound continuation state. Production
+// Responses requests use the model-aware variant below.
 func convertAssistantMessageToResponsesAPI(msg types.Message) []any {
+	return convertAssistantMessageToResponsesAPIForModel(msg, "")
+}
+
+// convertAssistantMessageToResponsesAPIForModel preserves the original output
+// item order. In particular, encrypted reasoning must remain immediately before
+// the function_call it authorized; moving text or calls around it changes the
+// official stateless Responses history.
+func convertAssistantMessageToResponsesAPIForModel(msg types.Message, model string) []any {
 	var items []any
-
-	text := msg.GetText()
-	if text != "" {
-		items = append(items, map[string]any{
-			"role":    "assistant",
-			"content": text,
-		})
-	}
-
-	// Include tool uses as function_call items
-	for _, tu := range msg.GetToolUses() {
-		args, err := json.Marshal(tu.Input)
-		if err != nil {
-			continue
+	for _, block := range msg.Content {
+		switch value := block.(type) {
+		case types.ThinkingBlock:
+			if item, ok := openAIEncryptedReasoningInput(value, model); ok {
+				items = append(items, item)
+			}
+		case types.TextBlock:
+			if value.Text != "" {
+				items = append(items, map[string]any{
+					"role":    "assistant",
+					"content": value.Text,
+				})
+			}
+		case types.ToolUseBlock:
+			if value.ToolType == types.ToolDefinitionTypeCustom {
+				if value.ID == "" || value.Name == "" || value.RawInput == "" {
+					continue
+				}
+				items = append(items, map[string]any{
+					"type": "custom_tool_call", "call_id": value.ID,
+					"name": value.Name, "input": value.RawInput,
+				})
+				continue
+			}
+			args, err := json.Marshal(value.Input)
+			if err != nil {
+				continue
+			}
+			items = append(items, map[string]any{
+				"type":      "function_call",
+				"call_id":   value.ID,
+				"name":      value.Name,
+				"arguments": string(args),
+			})
 		}
-		items = append(items, map[string]any{
-			"type":      "function_call",
-			"call_id":   tu.ID,
-			"name":      tu.Name,
-			"arguments": string(args),
-		})
 	}
 
 	return items
 }
 
-// ── Tool conversion for Responses API ───────────────────────────────────────
-
-func convertToolsToResponsesAPIWithStrictMode(tools []types.ToolDefinition, strictMode bool) []map[string]any {
-	result := make([]map[string]any, 0, len(tools))
-	for _, t := range canonicalToolDefinitions(tools) {
-		schema := t.InputSchema
-		if schema.Properties == nil {
-			schema.Properties = map[string]any{}
-		}
-		tool := map[string]any{
-			"type":        "function",
-			"name":        t.Name,
-			"description": t.Description,
-			"parameters":  schema,
-		}
-		if strictMode && t.Strict {
-			tool["strict"] = true
-		}
-		result = append(result, tool)
+func openAIEncryptedReasoningInput(block types.ThinkingBlock, model string) (map[string]any, bool) {
+	if block.Signature == "" || block.ProviderItemID == "" ||
+		block.SignatureKind != types.ThinkingSignatureOpenAIEncryptedReasoning ||
+		strings.TrimSpace(model) == "" || strings.TrimSpace(block.SignatureModel) != strings.TrimSpace(model) {
+		return nil, false
 	}
-	return result
+	summary := make([]map[string]string, 0, 1)
+	if block.Thinking != "" {
+		summary = append(summary, map[string]string{
+			"type": "summary_text",
+			"text": block.Thinking,
+		})
+	}
+	item := map[string]any{
+		"type":              "reasoning",
+		"id":                block.ProviderItemID,
+		"summary":           summary,
+		"encrypted_content": block.Signature,
+	}
+	switch block.ProviderStatus {
+	case "in_progress", "completed", "incomplete":
+		item["status"] = block.ProviderStatus
+	}
+	return item, true
 }
 
 // ── Error handling ──────────────────────────────────────────────────────────
 
 // parseResponsesHTTPError converts an HTTP error from the Responses API into an *types.APIError.
-func parseResponsesHTTPError(status int, body []byte) *types.APIError {
+func parseResponsesHTTPError(status int, body []byte, retryAfter ...string) *types.APIError {
 	errType := "api_error"
+	errCode := ""
 	switch status {
 	case 429:
 		errType = "rate_limit_error"
@@ -1207,18 +1604,25 @@ func parseResponsesHTTPError(status int, body []byte) *types.APIError {
 		if errResp.Error.Type != "" {
 			errType = errResp.Error.Type
 		}
-		code := strings.ToLower(fmt.Sprint(errResp.Error.Code))
+		if errResp.Error.Code != nil {
+			errCode = strings.ToLower(strings.TrimSpace(fmt.Sprint(errResp.Error.Code)))
+		}
 		param := strings.ToLower(errResp.Error.Param)
-		msg := strings.ToLower(message)
-		if (strings.Contains(param, "previous_response") || strings.Contains(msg, "previous response") || strings.Contains(msg, "previous_response")) &&
-			(strings.Contains(msg, "not found") || strings.Contains(msg, "expired") || strings.Contains(msg, "does not exist") || strings.Contains(code, "not_found")) {
+		if strings.Contains(errCode, "previous_response_not_found") ||
+			(strings.Contains(param, "previous_response") && strings.Contains(errCode, "not_found")) {
 			errType = "previous_response_not_found"
+		}
+		if errCode == "context_length_exceeded" {
+			errType = "context_length_exceeded"
 		}
 	}
 
-	return &types.APIError{
-		Status:  status,
-		Type:    errType,
-		Message: message,
+	apiErr := &types.APIError{
+		Status: status, Type: errType, Code: errCode, Message: message,
+		Stage: types.ProviderErrorStageHeaders,
 	}
+	if len(retryAfter) > 0 {
+		apiErr.RetryAfter = strings.TrimSpace(retryAfter[0])
+	}
+	return apiErr
 }

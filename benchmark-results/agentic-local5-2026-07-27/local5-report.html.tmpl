@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="{{.HTMLLanguage}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{tr "agentic.report.title"}} · {{tr "agentic.local5.watermark"}}</title>
+<style>
+:root{--bg:#eef2f6;--paper:#fff;--ink:#15212d;--muted:#5b6978;--line:#d8e0e8;--brand:#075985;--brand-soft:#e0f2fe;--good:#166534;--good-soft:#dcfce7;--bad:#991b1b;--bad-soft:#fee2e2;--warn:#92400e;--warn-soft:#fef3c7;--violet:#6d28d9;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#091018;--paper:#111b25;--ink:#e7eef5;--muted:#9dabb9;--line:#2b3a48;--brand:#7dd3fc;--brand-soft:#123348;--good:#86efac;--good-soft:#12351f;--bad:#fca5a5;--bad-soft:#421b1b;--warn:#fcd34d;--warn-soft:#402f0d;--violet:#c4b5fd}}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans)}main{width:min(1500px,calc(100% - 32px));margin:24px auto 60px}.hero,.section{position:relative;overflow:hidden;margin:0 0 18px;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--paper);box-shadow:0 8px 28px rgba(15,23,42,.04)}.hero{padding:36px}.eyebrow{color:var(--brand);font-weight:800;letter-spacing:.09em;text-transform:uppercase}.hero h1{max-width:920px;margin:8px 0 12px;font-size:clamp(28px,4.4vw,54px);line-height:1.05}.subtitle{max-width:1000px;color:var(--muted);font-size:17px}.watermark{position:absolute;right:-86px;top:44px;width:420px;transform:rotate(28deg);padding:8px 34px;border:2px solid currentColor;color:var(--warn);font-size:11px;font-weight:900;letter-spacing:.05em;text-align:center;opacity:.72;pointer-events:none}.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}.pill{display:inline-flex;padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg);font-size:12px;font-weight:700}.pill.good{border-color:var(--good);color:var(--good)}.pill.warn{border-color:var(--warn);color:var(--warn)}h2{margin:0 0 14px;font-size:24px}h3{margin:22px 0 10px;font-size:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.stat,.card{padding:14px;border:1px solid var(--line);border-radius:11px;background:color-mix(in srgb,var(--paper) 94%,var(--bg))}.stat strong{display:block;margin-top:4px;font-size:22px;font-variant-numeric:tabular-nums}.muted,.note{color:var(--muted)}.note{font-size:12px}.callout{margin:12px 0;padding:12px 14px;border-left:4px solid var(--brand);background:var(--brand-soft)}.callout.warn{border-color:var(--warn);background:var(--warn-soft)}.callout.good{border-color:var(--good);background:var(--good-soft)}.table-wrap{overflow-x:auto;margin:10px 0 18px}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font-size:12px;letter-spacing:.02em}th.num,td.num{text-align:right;white-space:nowrap}.status{font-weight:800}.status.good,.good{color:var(--good)}.status.bad,.bad{color:var(--bad)}.status.unknown,.unknown{color:var(--warn)}code{font:12px/1.5 var(--mono);overflow-wrap:anywhere}.links{display:flex;flex-wrap:wrap;gap:5px}.links a{padding:2px 6px;border:1px solid var(--line);border-radius:5px;text-decoration:none}.links a:hover{border-color:var(--brand);color:var(--brand)}a{color:var(--brand)}.metric-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.metric-list div{padding:9px 0;border-top:2px solid var(--line)}.metric-list strong{display:block;font-size:17px}.card p{margin:8px 0}.evidence{padding:8px;border-radius:7px;background:var(--bg);font:12px/1.5 var(--mono);overflow-wrap:anywhere}.delta.good{color:var(--good)}.delta.bad{color:var(--bad)}.delta.unknown{color:var(--warn)}footer{padding:18px;color:var(--muted);text-align:center}
+@media(max-width:760px){main{width:min(100% - 14px,1500px);margin-top:7px}.hero,.section{padding:16px;border-radius:10px}.hero{padding-top:54px}.watermark{right:-118px;top:28px}.grid{grid-template-columns:1fr}}
+@media print{body{background:#fff;color:#111;font-size:9pt}main{width:100%;margin:0}.hero,.section{margin:0 0 8mm;border:1px solid #bbb;box-shadow:none;break-inside:auto}.no-print{display:none}a{color:#111;text-decoration:none}}
+</style>
+</head>
+<body>
+<main>
+<header class="hero">
+  <div class="eyebrow">{{tr "agentic.report.eyebrow"}}</div>
+  <h1>{{tr "agentic.report.title"}}</h1>
+  <p class="subtitle">{{tr "agentic.local5.subtitle"}}</p>
+  <div class="watermark">{{tr "agentic.local5.watermark"}}</div>
+  <div class="meta">
+    <span class="pill"><code>{{.Model}}</code> · <code>{{.ReasoningEffort}}</code></span>
+    <span class="pill"><code>{{.Dataset}}@{{.DatasetRevision}}</code></span>
+    <span class="pill"><code>timeout_seconds={{.TimeoutSeconds}}</code></span>
+    <span class="pill"><code>tasks={{.TaskCount}}</code></span>
+    <span class="pill"><code>agents=codex,luban</code></span>
+    <span class="pill {{if .Complete}}good{{else}}warn{{end}}">{{tr "agentic.report.header.coverage"}} · {{if .Complete}}{{tr "agentic.report.coverage.complete"}}{{else}}{{tr "agentic.report.coverage.partial"}}{{end}}</span>
+    <span class="pill">{{tr "agentic.report.header.evidence_as_of"}} · {{timeValue .EvidenceCutoff}}</span>
+  </div>
+  <div class="callout warn">{{tr "agentic.local5.caveat.sample5_nonofficial"}}</div>
+  {{if not .Complete}}<div class="callout warn"><strong>{{tr "agentic.report.coverage.partial"}}</strong> · {{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
+</header>
+
+<section class="section" id="conclusion">
+  <h2>{{tr "agentic.local5.section.conclusion"}}</h2>
+  {{if .Headline.Available}}
+  <div class="callout warn"><strong>{{tr "agentic.local5.conclusion.no_comprehensive_superiority"}}</strong><br>{{tf "agentic.local5.conclusion.measured" .Headline.LubanResolved .Headline.Tasks .Headline.CodexResolved .Headline.Tasks .Headline.LubanCalls .Headline.CodexCalls .Headline.CallsDelta .Headline.WallDelta .Headline.CostDelta}}</div>
+  <div class="callout">{{tf "agentic.local5.conclusion.cache_context" .Headline.CachePointDelta .Headline.LubanCached .Headline.CodexCached}}</div>
+  {{else}}<div class="callout warn">{{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
+  <p class="note">{{tr "agentic.local5.conclusion.raw_projection_scope"}}</p>
+</section>
+
+<section class="section" id="current-comparison">
+  <h2>{{tr "agentic.local5.section.current_comparison"}}</h2>
+  <div class="grid">
+    <div class="stat"><code>sealed_run_summaries</code><strong>{{.RunSlotsObserved}}/{{.AgentSlotCount}}</strong></div>
+    <div class="stat"><code>strict_agent_evaluations</code><strong>{{.EvaluationSlotsObserved}}/{{.AgentSlotCount}}</strong></div>
+    <div class="stat"><code>paired_run_evaluation</code><strong>{{.PairSlotsObserved}}/{{.AgentSlotCount}}</strong></div>
+    <div class="stat"><code>gold_oracle_reports</code><strong>{{.GoldObserved}}/{{.TaskCount}}</strong></div>
+  </div>
+  <div class="callout">{{tr "agentic.local5.caveat.exact_llm_definition"}}</div>
+  <div class="callout">{{tr "agentic.local5.caveat.cost_formula_estimate"}}<br><code>((I−C−W)×$5 + C×$0.5 + W×$6.25 + O×$30) / 1,000,000</code></div>
+  <div class="callout warn">{{tr "agentic.local5.caveat.tool_diagnostic_not_comparable"}}</div>
+
+  <h3>{{tr "agentic.report.section.aggregate_results"}}</h3>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>{{tr "agentic.report.header.agent"}}</th>
+      <th>{{tr "agentic.report.header.coverage"}}</th>
+      <th class="num">{{tr "agentic.report.metric.pass_rate"}}</th>
+      <th class="num">{{tr "agentic.report.metric.wall_time_seconds"}}</th>
+      <th class="num"><code>meter_recorded_POST_/responses</code></th>
+      <th class="num"><code>I / C / W / O</code></th>
+      <th class="num">{{tr "agentic.report.metric.token_weighted_cache_hit"}}</th>
+      <th class="num">{{tr "agentic.report.metric.catalog_cost"}}</th>
+      <th class="num"><code>unique_agent_tool_events*</code></th>
+    </tr></thead>
+    <tbody>{{range .Agents}}<tr>
+      <td><strong>{{.ID}}</strong><br><code>{{.BinaryPath}}</code><br><code>{{.BinarySHA256}}</code></td>
+      <td><code>run={{.RunsObserved}}/{{.Tasks}}</code><br><code>eval={{.EvaluationsObserved}}/{{.Tasks}}</code><br><code>pair={{.PairsObserved}}/{{.Tasks}}</code></td>
+      <td class="num">{{if gt .PairsObserved 0}}{{score .Resolved .PairsObserved}}{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>
+      <td class="num">{{if gt .RunsObserved 0}}{{seconds .ElapsedSeconds}}<br><code>provider_http={{seconds .ProviderRequestSeconds}}</code>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>
+      <td class="num">{{if gt .RunsObserved 0}}<strong>{{integer .LLMCalls}}</strong><br><code>http_2xx={{integer .LLMSuccessful}}</code><br><code>http_non_2xx={{integer .LLMFailed}}</code>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>
+      <td class="num">{{if gt .RunsObserved 0}}<code>{{integer64 .InputTokens}} / {{integer64 .CachedTokens}} / {{integer64 .CacheWriteTokens}} / {{integer64 .OutputTokens}}</code>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>
+      <td class="num">{{if gt .RunsObserved 0}}{{percent .CacheRatio}}{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>
+      <td class="num">{{if gt .RunsObserved 0}}<code>deduplicated={{cost .EstimatedCost}}</code><br><code>runner_receipt={{cost .RunnerEstimatedCost}}</code>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>
+      <td class="num">{{if gt .RunsObserved 0}}{{integer .ToolCalls}}{{range .ToolTypes}}<br><code>{{.Name}}={{.Count}}</code>{{end}}{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+
+  <h3>{{tr "agentic.report.section.task_results"}}</h3>
+  <div class="table-wrap"><table>
+    <thead><tr>
+      <th>{{tr "agentic.report.header.task"}} / {{tr "agentic.report.header.agent"}}</th>
+      <th>{{tr "agentic.report.header.result"}}</th>
+      <th class="num">{{tr "agentic.report.header.wall_time"}}</th>
+      <th class="num"><code>exact_POST_/responses</code></th>
+      <th class="num"><code>I / C / W / O</code></th>
+      <th class="num">{{tr "agentic.report.header.cache_hit"}}</th>
+      <th class="num">{{tr "agentic.report.header.cost"}}</th>
+      <th class="num">{{tr "agentic.report.header.tool_invocations"}}</th>
+      <th>{{tr "agentic.report.header.evidence"}}</th>
+    </tr></thead>
+    <tbody>{{range .Tasks}}{{$task := .}}{{range .Runs}}<tr>
+      <td><code>{{$task.ID}}</code><br><strong>{{.Agent}}</strong>{{if $task.Language}} · <code>{{$task.Language}}</code>{{end}}<br><span class="note"><code>gold={{if $task.GoldAvailable}}sealed{{else}}N/A{{end}}</code></span></td>
+      <td>{{if and .RunAvailable .EvaluationAvailable}}<span class="status {{resultClass .Resolved}}">{{result .Resolved}}</span>{{else}}<span class="status unknown">{{tr "agentic.report.not_applicable"}}</span>{{end}}<br><span class="note"><code>run={{if .RunAvailable}}sealed{{else}}N/A{{end}};eval={{if .EvaluationAvailable}}sealed{{else}}N/A{{end}}</code></span></td>
+      {{if .RunAvailable}}
+      <td class="num">{{seconds .ElapsedSeconds}}<br><code>provider_http={{seconds .ProviderRequestSeconds}}</code><br><code>exit={{.ExitCode}};timeout={{.TimedOut}}</code></td>
+      <td class="num"><strong>{{integer .LLMCalls}}</strong><br><code>http_2xx={{integer .LLMSuccessful}};http_non_2xx={{integer .LLMFailed}}</code></td>
+      <td class="num"><code>{{integer64 .InputTokens}} / {{integer64 .CachedTokens}} / {{integer64 .CacheWriteTokens}} / {{integer64 .OutputTokens}}</code></td>
+      <td class="num">{{percent .CacheRatio}}</td>
+      <td class="num"><code>deduplicated={{cost .EstimatedCost}}</code><br><code>runner_receipt={{cost .RunnerEstimatedCost}}</code></td>
+      <td class="num">{{integer .ToolCalls}}{{range .ToolTypes}}<br><code>{{.Name}}={{.Count}}</code>{{end}}</td>
+      {{else}}
+      <td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td>
+      {{end}}
+      <td>{{if .RunAvailable}}<code>{{.BinaryPath}}</code><br><code>{{.BinarySHA256}}</code>{{end}}<div class="links">{{range .RawArtifactLinks}}<a href="{{.Href}}"><code>{{.Label}}</code></a>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}{{if and $task.GoldAvailable (eq .Agent "codex")}}<a href="{{$task.GoldLink.Href}}"><code>{{$task.GoldLink.Label}}</code></a>{{end}}</div></td>
+    </tr>{{end}}{{end}}</tbody>
+  </table></div>
+</section>
+
+<section class="section" id="shared-pass-comparison">
+  <h2>{{tr "agentic.local5.section.shared_pass_comparison"}}</h2>
+  {{if .SharedPass.Available}}
+  <div class="callout good">{{tf "agentic.local5.caveat.shared_pass_scope" .SharedPass.TaskCount}}</div>
+  <h3>{{tr "agentic.report.section.aggregate_results"}}</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{tr "agentic.report.header.metric"}}</th><th class="num"><code>Codex</code></th><th class="num"><code>Luban</code></th><th class="num"><code>Luban/Codex</code></th><th class="num">{{tr "agentic.report.header.relative_change"}}</th></tr></thead>
+    <tbody>{{range .SharedPass.Rows}}<tr><td><code>{{.Metric}}</code></td><td class="num">{{.Codex}}</td><td class="num">{{.Luban}}</td><td class="num">{{.Ratio}}</td><td class="num">{{.Delta}}</td></tr>{{end}}</tbody>
+  </table></div>
+  <div class="grid">
+    <div class="stat"><code>Codex_tool_taxonomy</code><strong>{{.SharedPass.Codex.ToolCalls}}</strong>{{range .SharedPass.Codex.ToolTypes}}<span class="note"><code>{{.Name}}={{.Count}}</code></span><br>{{end}}</div>
+    <div class="stat"><code>Luban_tool_taxonomy</code><strong>{{.SharedPass.Luban.ToolCalls}}</strong>{{range .SharedPass.Luban.ToolTypes}}<span class="note"><code>{{.Name}}={{.Count}}</code></span><br>{{end}}</div>
+  </div>
+  <div class="callout warn">{{tr "agentic.local5.caveat.shared_pass_tool_taxonomy"}}</div>
+  {{if .SharedPass.LubanLongerSlower}}<div class="callout warn">{{tf "agentic.local5.shared_pass.longer_slower" .SharedPass.CodexInputPerCall .SharedPass.LubanInputPerCall .SharedPass.InputPerCallDelta .SharedPass.CodexProviderPerCall .SharedPass.LubanProviderPerCall .SharedPass.ProviderPerCallDelta .SharedPass.CodexOutputPerCall .SharedPass.LubanOutputPerCall .SharedPass.OutputPerCallDelta}}</div>{{else}}<div class="callout">{{tr "agentic.local5.shared_pass.normalized_neutral"}}</div>{{end}}
+
+  <h3>{{tr "agentic.report.section.task_results"}}</h3>
+  {{range .SharedPass.Tasks}}
+  <h3><code>{{.ID}}</code> · <code>{{.Language}}</code></h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{tr "agentic.report.header.metric"}}</th><th class="num"><code>Codex</code></th><th class="num"><code>Luban</code></th><th class="num"><code>Luban/Codex</code></th><th class="num">{{tr "agentic.report.header.relative_change"}}</th></tr></thead>
+    <tbody>{{range .Rows}}<tr><td><code>{{.Metric}}</code></td><td class="num">{{.Codex}}</td><td class="num">{{.Luban}}</td><td class="num">{{.Ratio}}</td><td class="num">{{.Delta}}</td></tr>{{end}}</tbody>
+  </table></div>
+  <div class="grid">
+    <div class="stat"><code>Codex_tool_taxonomy</code><strong>{{.Codex.ToolCalls}}</strong>{{range .Codex.ToolTypes}}<span class="note"><code>{{.Name}}={{.Count}}</code></span><br>{{end}}</div>
+    <div class="stat"><code>Luban_tool_taxonomy</code><strong>{{.Luban.ToolCalls}}</strong>{{range .Luban.ToolTypes}}<span class="note"><code>{{.Name}}={{.Count}}</code></span><br>{{end}}</div>
+  </div>
+  <div class="links">{{range .CodexLinks}}<a href="{{.Href}}"><code>codex/{{.Label}}</code></a>{{end}}{{range .LubanLinks}}<a href="{{.Href}}"><code>luban/{{.Label}}</code></a>{{end}}</div>
+  {{end}}
+  {{else}}<div class="callout warn">{{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
+</section>
+
+<section class="section" id="efficiency-diagnosis">
+  <h2>{{tr "agentic.local5.section.efficiency_diagnosis"}}</h2>
+  {{if .Efficiency.Available}}
+  <div class="callout warn"><strong>{{tr "agentic.local5.efficiency.primary_conclusion"}}</strong></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th><code>metric</code></th><th class="num"><code>old_luban</code></th><th class="num"><code>new_luban</code></th><th class="num">{{tr "agentic.report.header.relative_change"}}</th></tr></thead>
+    <tbody>
+      <tr><td><code>model_visible_tool_events</code></td><td class="num">{{.Efficiency.OldOuterToolEvents}}</td><td class="num">{{.Efficiency.NewLogicalToolEvents}}</td><td class="num">{{.Efficiency.LogicalToolDelta}}</td></tr>
+      <tr><td><code>physical_child_operations*</code></td><td class="num">{{.Efficiency.OldOuterToolEvents}}</td><td class="num">{{.Efficiency.NewPhysicalChildOperations}}</td><td class="num">{{.Efficiency.PhysicalOperationDelta}}</td></tr>
+      <tr><td><code>tool_bearing_rounds</code></td><td class="num">{{.Efficiency.OldToolRounds}}</td><td class="num">{{.Efficiency.NewToolRounds}}</td><td class="num">{{.Efficiency.ToolRoundDelta}}</td></tr>
+      <tr><td><code>provider_round_records</code></td><td class="num">{{.Efficiency.OldUsageRounds}}</td><td class="num">{{.Efficiency.NewProviderPOSTs}}</td><td class="num">{{.Efficiency.ProviderRoundDelta}}</td></tr>
+    </tbody>
+  </table></div>
+  <div class="grid">
+    <div class="stat"><code>tool_outcomes</code><strong>{{.Efficiency.Succeeded}} / {{.Efficiency.Partial}} / {{.Efficiency.Failed}} / {{.Efficiency.TimedOut}} / {{.Efficiency.Cancelled}}</strong><span class="note"><code>succeeded / partial / failed / timed_out / cancelled</code></span></div>
+    <div class="stat"><code>Inspect_partial</code><strong>{{.Efficiency.InspectPartial}} / {{.Efficiency.InspectCalls}}</strong></div>
+    <div class="stat"><code>provider_share_of_wall</code><strong>{{percent .Efficiency.ProviderShare}}</strong><span class="note"><code>{{seconds .Efficiency.ProviderSeconds}} / {{seconds .Efficiency.WallSeconds}}</code></span></div>
+    <div class="stat"><code>transport_retries</code><strong>{{.Efficiency.TransportRetries}}</strong></div>
+    <div class="stat"><code>tool_round_errors</code><strong>{{.Efficiency.ToolRoundErrors}}</strong></div>
+    <div class="stat"><code>Run_revision_seal</code><strong>{{.Efficiency.RunRevisionBound}} / {{.Efficiency.RunCommittedUnverified}} / {{.Efficiency.RunWithoutRevisionSeal}}</strong><span class="note"><code>revision_bound / committed_unverified / absent</code></span></div>
+  </div>
+  <div class="callout">{{tf "agentic.local5.efficiency.completion_tail" .Efficiency.CompletionTailCalls .Efficiency.CompletionTailSeconds .Efficiency.CompletionTailCost .Efficiency.CompletionRejections}}</div>
+  <div class="callout warn">{{tr "agentic.local5.efficiency.tail_upper_bound"}}</div>
+  <div class="callout warn">{{tr "agentic.local5.efficiency.flight_proof"}}</div>
+  {{else}}<div class="callout warn">{{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
+</section>
+
+<section class="section" id="before-after">
+  <h2>{{tr "agentic.local5.section.before_after"}}</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{tr "agentic.report.header.metric"}}</th><th class="num">{{tr "agentic.report.optimization.before"}}</th><th class="num">{{tr "agentic.report.optimization.after"}}</th><th class="num">{{tr "agentic.report.header.relative_change"}}</th></tr></thead>
+    <tbody>{{range .LubanChanges}}<tr><td>{{tr .MetricKey}}</td><td class="num">{{.Before}}</td><td class="num">{{.After}}</td><td class="num delta {{.Tone}}">{{.Change}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{if not .Complete}}<div class="callout warn">{{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
+  {{if .BaselineIncidentObserved}}<div class="callout warn">{{tr "agentic.local5.caveat.baseline_security_incident"}}</div>{{end}}
+</section>
+
+<section class="section" id="root-causes">
+  <h2>{{tr "agentic.local5.section.historical_tool_root_cause"}}</h2>
+  <div class="stat"><code>historical_tool_event_ratio=luban/codex</code><strong>{{ratioX .HistoricalToolRatio}}</strong></div>
+  <div class="callout warn">{{tr "agentic.local5.caveat.tool_diagnostic_not_comparable"}}</div>
+  <div class="callout warn">{{tr "agentic.local5.caveat.attribution_bundle"}}</div>
+  <div class="grid">{{range .HistoricalCards}}<article class="card"><p>{{tr .CopyKey}}</p><div class="evidence">{{.Evidence}}</div></article>{{end}}</div>
+</section>
+
+<section class="section" id="optimizations">
+  <h2>{{tr "agentic.local5.section.key_optimizations"}}</h2>
+  <div class="callout warn">{{tr "agentic.local5.caveat.attribution_bundle"}}</div>
+  <h3>{{tr "agentic.local5.section.optimization_evidence"}}</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>{{tr "agentic.report.header.metric"}}</th><th class="num">{{tr "agentic.report.optimization.before"}}</th><th class="num">{{tr "agentic.report.optimization.after"}}</th><th class="num">{{tr "agentic.report.header.relative_change"}}</th><th>{{tr "agentic.report.optimization.attribution_scope"}}</th><th>{{tr "agentic.report.header.evidence"}}</th></tr></thead>
+    <tbody>{{range .OptimizationEvidence}}<tr><td>{{tr .CopyKey}}</td><td class="num"><code>{{.Before}}</code></td><td class="num"><code>{{.After}}</code></td><td class="num"><code>{{.Change}}</code></td><td>{{tr .ScopeKey}}</td><td><div class="links">{{range .Sources}}<a href="{{.Href}}"><code>{{.Label}}</code></a>{{end}}</div></td></tr>{{end}}</tbody>
+  </table></div>
+  <div class="grid">{{range .Optimizations}}<article class="card"><p>{{tr .CopyKey}}</p><div class="links">{{range .Sources}}<a href="{{.Href}}"><code>{{.Label}}</code></a>{{end}}</div></article>{{end}}</div>
+</section>
+
+<section class="section" id="limitations">
+  <h2>{{tr "agentic.report.section.limitations"}}</h2>
+  <div class="callout warn">{{tr "agentic.local5.limitation.evaluator_semantics"}}</div>
+  <div class="callout warn">{{tr "agentic.local5.limitation.experimental_design"}}</div>
+  <div class="callout warn">{{tr "agentic.local5.limitation.model_unverified"}}</div>
+  <div class="callout warn">{{tr "agentic.local5.limitation.mutable_raw_no_manifest"}}</div>
+  <div class="callout warn">{{tr "agentic.local5.caveat.cost_formula_estimate"}}</div>
+</section>
+
+<section class="section" id="raw-evidence">
+  <h2>{{tr "agentic.local5.section.raw_evidence"}}</h2>
+  <div class="links"><a href="{{.BaselineHref}}"><code>agentic-2026-07-26/results.json</code></a><a href="{{.MetadataHref}}"><code>raw/metadata/experiment.json</code></a><a href="{{.CurrentRootHref}}"><code>agentic-local5-2026-07-27/raw/</code></a></div>
+  <p class="callout">{{tr "agentic.local5.caveat.incomplete_refusal"}}</p>
+</section>
+
+<footer>{{tf "agentic.local5.footer" (timeValue .EvidenceCutoff)}}</footer>
+</main>
+</body>
+</html>

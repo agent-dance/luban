@@ -1,0 +1,74 @@
+{
+  "schema_version": "agentic-bench/codex-vendor-bundle-v2",
+  "package": {
+    "name": "@openai/codex",
+    "version": "0.145.0-linux-x64",
+    "runtime_version": "0.145.0",
+    "target": "x86_64-unknown-linux-musl",
+    "source_url": "https://registry.npmjs.org/@openai/codex/-/codex-0.145.0-linux-x64.tgz",
+    "dist_integrity": "sha512-u8w8LLv3DvsfrDCoswLIemZ0SoNEXyi511WsfFsSiYUazk9qMsB/NtU8N9vhAfN7mZAxLFoMex4v66JjHuZWwA==",
+    "tarball_sha256": "11239480f8e3efd1430f23bbe91c1a397856b8bbe6185ccbaee2382d25e03df2"
+  },
+  "registry_snapshot": {
+    "fetched_at": "2026-07-26T09:49:26Z",
+    "package_metadata_url": "https://registry.npmjs.org/@openai%2fcodex",
+    "version_metadata_url": "https://registry.npmjs.org/@openai%2fcodex/0.145.0-linux-x64",
+    "dist_tags_url": "https://registry.npmjs.org/-/package/@openai%2fcodex/dist-tags",
+    "latest_version": "0.145.0",
+    "linux_x64_version": "0.145.0-linux-x64",
+    "published_at": "2026-07-21T18:21:50.929Z",
+    "registry_modified_at": "2026-07-25T20:33:52.658Z",
+    "dist_shasum": "ff7b16287345f0dc9d087002dfd0aafe280b01a7",
+    "tarball_size": 135637111,
+    "dist_file_count": 8,
+    "dist_unpacked_size": 363710778,
+    "dist_signature_keyid": "SHA256:DhQ8wR5APBvFHLF/+Tc+AYvPOdTpcIDqOhxsBHRwC7U",
+    "dist_signature": "MEYCIQC0FjMiAzCjgGQdi6PX3Cr/H+hs5baEiRdFeqdqNBLhZAIhAKbzR4enAHr2kA0gb8bnEXotrW5oCluk9WfF3v4wQz1U",
+    "dist_attestation_url": "https://registry.npmjs.org/-/npm/v1/attestations/@openai%2fcodex@0.145.0-linux-x64",
+    "dist_attestation_predicate_type": "https://slsa.dev/provenance/v1",
+    "npm_audit_signatures_version": "11.12.1",
+    "npm_audit_signatures_verified": true,
+    "package_file_count": 8,
+    "package_tree_sha256": "68e64b834dee9d80f5df3de9dd5f1217e8cd3c0173323d7153ed882f0b6b3429"
+  },
+  "binary_path": "x86_64-unknown-linux-musl/bin/codex",
+  "tree_sha256": "8cf6573a8606622b108da33f980ba43f1f19762e242bdef59a54dfa396a509e5",
+  "files": [
+    {
+      "path": "x86_64-unknown-linux-musl/bin/codex",
+      "mode": "0755",
+      "size": 310730800,
+      "sha256": "a2a05dafaa1acb002a45eaec0a462de5b13694fcfcd7bc43305f14781ce7be14"
+    },
+    {
+      "path": "x86_64-unknown-linux-musl/bin/codex-code-mode-host",
+      "mode": "0755",
+      "size": 46139288,
+      "sha256": "60bf16414be5333f09ff082540082304c7352931ef64bdeb170d4c35a82e6ef8"
+    },
+    {
+      "path": "x86_64-unknown-linux-musl/codex-package.json",
+      "mode": "0644",
+      "size": 205,
+      "sha256": "8da5349aa5a4242f5e11c5ca8ff4a16d8f9f912cb8accebea4def94edbf30aee"
+    },
+    {
+      "path": "x86_64-unknown-linux-musl/codex-path/rg",
+      "mode": "0755",
+      "size": 5408904,
+      "sha256": "e62198eb19b136b88c330af83647b5a962cb99b6b1f066758568f12de1974849"
+    },
+    {
+      "path": "x86_64-unknown-linux-musl/codex-resources/bwrap",
+      "mode": "0755",
+      "size": 529776,
+      "sha256": "77360cb751ccedc5971391444ac86a8a33c15b04d6b4a6fe45f5d25496e62c4c"
+    },
+    {
+      "path": "x86_64-unknown-linux-musl/codex-resources/zsh/bin/zsh",
+      "mode": "0755",
+      "size": 898480,
+      "sha256": "67faaaa89242c4a332e16e508a1977cffc24bf7fca31d4411cdfd101f3831ef3"
+    }
+  ]
+}

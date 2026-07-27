@@ -1,0 +1,27 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "codex",
+  "resolved": true,
+  "elapsed_seconds": 416.971,
+  "image": "starryzhang/sweb.eval.x86_64.danielmiessler_1776_fabric-2098",
+  "image_pull_exit_code": 0,
+  "rebuild_exit_code": 0,
+  "test_exit_code": 1,
+  "print_exit_code": 0,
+  "parsed_tests": 852,
+  "FAIL_TO_PASS": {
+    "expected": 1,
+    "passed": [
+      "github.com/danielmiessler/fabric/internal/plugins/ai/codex.TestSendFallsBackToDeltaWhenCompletedResponseHasNoText"
+    ],
+    "failed": [],
+    "missing": []
+  },
+  "PASS_TO_PASS": {
+    "expected": 841,
+    "passed_count": 841,
+    "failed": [],
+    "missing_count": 0
+  }
+}

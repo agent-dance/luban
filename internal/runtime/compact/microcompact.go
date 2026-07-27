@@ -7,10 +7,10 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
-// compactableTools lists tools whose results can be safely cleared.
+// legacyCompactableTools lists tools whose results can be safely cleared.
 // Matches TS COMPACTABLE_TOOLS: FileRead, Shell tools, Grep, Glob,
 // WebSearch, WebFetch, FileEdit, FileWrite.
-var compactableTools = map[string]bool{
+var legacyCompactableTools = map[string]bool{
 	"Read": true, "Bash": true, "Grep": true, "Glob": true,
 	"WebSearch": true, "WebFetch": true, "Write": true, "Edit": true,
 }
@@ -50,6 +50,12 @@ type MicrocompactConfig struct {
 	// CachedKeepRecent is the number of most recent active tool results to
 	// preserve after cached microcompact triggers. Zero falls back to KeepRecent.
 	CachedKeepRecent int
+
+	// AgenticV2ProofsEnabled allows Inspect, Run, and ApplyPatch results to be
+	// compacted only when a deterministic proof projection is smaller than the
+	// original provider-visible result. It is a same-build switch, never an
+	// environment or provider-profile fallback.
+	AgenticV2ProofsEnabled bool
 }
 
 type MicrocompactQuerySource string
@@ -66,6 +72,9 @@ type MicrocompactResult struct {
 	TimeBasedTriggered bool
 	ToolsCleared       int
 	ToolsKept          int
+	OriginalBytes      int
+	CompactedBytes     int
+	BytesSaved         int
 }
 
 // DefaultMicrocompactConfig returns sensible defaults.
@@ -73,10 +82,11 @@ type MicrocompactResult struct {
 // explicit main-thread source before time-based microcompact can fire.
 func DefaultMicrocompactConfig() MicrocompactConfig {
 	return MicrocompactConfig{
-		KeepRecent:       5,
-		TimeBasedEnabled: true,
-		IdleThreshold:    60 * time.Minute,
-		QuerySource:      MicrocompactSourceUndefined,
+		KeepRecent:             5,
+		TimeBasedEnabled:       true,
+		IdleThreshold:          60 * time.Minute,
+		QuerySource:            MicrocompactSourceUndefined,
+		AgenticV2ProofsEnabled: true,
 	}
 }
 
@@ -110,8 +120,11 @@ func MicrocompactWithResult(messages []types.Message, cfg MicrocompactConfig) Mi
 
 	// First pass: find all compactable tool result positions (message index + block index)
 	type resultPos struct {
-		msgIdx   int
-		blockIdx int
+		msgIdx      int
+		blockIdx    int
+		replacement *types.ToolResultBlock
+		beforeBytes int
+		afterBytes  int
 	}
 	var positions []resultPos
 
@@ -130,8 +143,25 @@ func MicrocompactWithResult(messages []types.Message, cfg MicrocompactConfig) Mi
 				// Check if this is from a compactable tool by looking at the
 				// preceding assistant message's tool_use name
 				toolName := findToolName(messages, tr.ToolUseID)
-				if compactableTools[toolName] {
-					positions = append(positions, resultPos{i, j})
+				if legacyCompactableTools[toolName] {
+					positions = append(positions, resultPos{
+						msgIdx: i, blockIdx: j,
+						beforeBytes: len(tr.TextContent()), afterBytes: len(microcompactClearedText()),
+					})
+					continue
+				}
+				if cfg.AgenticV2ProofsEnabled && isAgenticV2ProofTool(toolName) {
+					proof, ok := agenticV2ProofContent(toolName, tr)
+					if !ok || len(proof) >= len(tr.TextContent()) {
+						continue
+					}
+					replacement := tr
+					replacement.Content = proof
+					replacement.ContentBlocks = nil
+					positions = append(positions, resultPos{
+						msgIdx: i, blockIdx: j, replacement: &replacement,
+						beforeBytes: len(tr.TextContent()), afterBytes: len(proof),
+					})
 				}
 			}
 		}
@@ -145,8 +175,16 @@ func MicrocompactWithResult(messages []types.Message, cfg MicrocompactConfig) Mi
 
 	// Build a set of positions to clear (oldest N)
 	toClear := make(map[[2]int]bool)
+	replacements := make(map[[2]int]types.ToolResultBlock)
+	originalBytes, compactedBytes := 0, 0
 	for _, pos := range positions[:clearCount] {
-		toClear[[2]int{pos.msgIdx, pos.blockIdx}] = true
+		key := [2]int{pos.msgIdx, pos.blockIdx}
+		toClear[key] = true
+		if pos.replacement != nil {
+			replacements[key] = *pos.replacement
+		}
+		originalBytes += pos.beforeBytes
+		compactedBytes += pos.afterBytes
 	}
 
 	// Second pass: create new messages with cleared content
@@ -157,7 +195,10 @@ func MicrocompactWithResult(messages []types.Message, cfg MicrocompactConfig) Mi
 		result[i] = msg
 		result[i].Content = make([]types.ContentBlock, 0, len(msg.Content))
 		for j, block := range msg.Content {
-			if toClear[[2]int{i, j}] {
+			key := [2]int{i, j}
+			if replacement, ok := replacements[key]; ok {
+				result[i].Content = append(result[i].Content, replacement)
+			} else if toClear[key] {
 				tr := block.(types.ToolResultBlock)
 				tr.Content = microcompactClearedText()
 				tr.ContentBlocks = nil
@@ -174,6 +215,9 @@ func MicrocompactWithResult(messages []types.Message, cfg MicrocompactConfig) Mi
 		TimeBasedTriggered: true,
 		ToolsCleared:       clearCount,
 		ToolsKept:          len(positions) - clearCount,
+		OriginalBytes:      originalBytes,
+		CompactedBytes:     compactedBytes,
+		BytesSaved:         originalBytes - compactedBytes,
 	}
 }
 

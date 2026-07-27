@@ -140,12 +140,12 @@ func init() {
 		"첫 번째 전달 성공 후에도 작업을 계속할지 여부입니다.",
 		"Продолжать ли задачу после первой успешной доставки.")
 	add(KeyToolScheduleSchemaDurable,
-		"Whether the job should persist in .luban-code/schedule/jobs.json.",
-		"是否将任务持久化到 .luban-code/schedule/jobs.json。",
-		"Gibt an, ob die Aufgabe in .luban-code/schedule/jobs.json gespeichert wird.",
-		"ジョブを .luban-code/schedule/jobs.json に永続化するかどうか。",
-		"작업을 .luban-code/schedule/jobs.json에 영구 저장할지 여부입니다.",
-		"Сохранять ли задачу в .luban-code/schedule/jobs.json.")
+		"Whether the job should persist in Luban's private runtime storage.",
+		"是否将任务持久化到 Luban 的私有运行时存储中。",
+		"Gibt an, ob die Aufgabe im privaten Laufzeitspeicher von Luban gespeichert wird.",
+		"ジョブを Luban のプライベートランタイムストレージに永続化するかどうか。",
+		"작업을 Luban의 비공개 런타임 저장소에 영구 보관할지 여부입니다.",
+		"Сохранять ли задачу в закрытом хранилище среды выполнения Luban.")
 	add(KeyToolScheduleSchemaID,
 		"ID of the scheduled job.",
 		"计划任务的 ID。",
@@ -197,26 +197,26 @@ func init() {
 		"이 Agent에는 영구 일정을 만들 권한이 없습니다.",
 		"Этому Agent запрещено создавать постоянные расписания.")
 	add(KeyToolScheduleStoreReadFailed,
-		"Could not read .luban-code/schedule/jobs.json: %v",
-		"无法读取 .luban-code/schedule/jobs.json：%v",
-		".luban-code/schedule/jobs.json konnte nicht gelesen werden: %v",
-		".luban-code/schedule/jobs.json を読み込めませんでした: %v",
-		".luban-code/schedule/jobs.json을 읽을 수 없습니다: %v",
-		"Не удалось прочитать .luban-code/schedule/jobs.json: %v")
+		"Could not read persistent schedule data: %v",
+		"无法读取持久化计划任务数据：%v",
+		"Persistente Zeitplandaten konnten nicht gelesen werden: %v",
+		"永続スケジュールデータを読み込めませんでした: %v",
+		"영구 일정 데이터를 읽을 수 없습니다: %v",
+		"Не удалось прочитать данные постоянных расписаний: %v")
 	add(KeyToolScheduleStoreWriteFailed,
-		"Could not write .luban-code/schedule/jobs.json: %v",
-		"无法写入 .luban-code/schedule/jobs.json：%v",
-		".luban-code/schedule/jobs.json konnte nicht geschrieben werden: %v",
-		".luban-code/schedule/jobs.json に書き込めませんでした: %v",
-		".luban-code/schedule/jobs.json에 쓸 수 없습니다: %v",
-		"Не удалось записать .luban-code/schedule/jobs.json: %v")
+		"Could not write persistent schedule data: %v",
+		"无法写入持久化计划任务数据：%v",
+		"Persistente Zeitplandaten konnten nicht geschrieben werden: %v",
+		"永続スケジュールデータを書き込めませんでした: %v",
+		"영구 일정 데이터를 쓸 수 없습니다: %v",
+		"Не удалось записать данные постоянных расписаний: %v")
 	add(KeyToolScheduleStoreCorrupt,
-		"Schedule data in .luban-code/schedule/jobs.json is invalid: %v",
-		".luban-code/schedule/jobs.json 中的计划任务数据无效：%v",
-		"Die Zeitplandaten in .luban-code/schedule/jobs.json sind ungültig: %v",
-		".luban-code/schedule/jobs.json のスケジュールデータが無効です: %v",
-		".luban-code/schedule/jobs.json의 일정 데이터가 올바르지 않습니다: %v",
-		"Данные расписания в .luban-code/schedule/jobs.json недопустимы: %v")
+		"Persistent schedule data is invalid: %v",
+		"持久化计划任务数据无效：%v",
+		"Die persistenten Zeitplandaten sind ungültig: %v",
+		"永続スケジュールデータが無効です: %v",
+		"영구 일정 데이터가 올바르지 않습니다: %v",
+		"Данные постоянных расписаний недопустимы: %v")
 	add(KeyToolScheduleStoreVersion,
 		"Schedule data version %d is not supported.",
 		"不支持版本为 %d 的计划任务数据。",
@@ -317,12 +317,12 @@ func init() {
 		"작업 %s은(는) 이 세션에서만 유효합니다.",
 		"Задача %s действует только в этом сеансе.")
 	add(KeyToolScheduleCreatedPersisted,
-		"Job %s was saved to .luban-code/schedule/jobs.json.",
-		"任务 %s 已保存到 .luban-code/schedule/jobs.json。",
-		"Aufgabe %s wurde in .luban-code/schedule/jobs.json gespeichert.",
-		"ジョブ %s を .luban-code/schedule/jobs.json に保存しました。",
-		"작업 %s을(를) .luban-code/schedule/jobs.json에 저장했습니다.",
-		"Задача %s сохранена в .luban-code/schedule/jobs.json.")
+		"Job %s was saved to private runtime storage.",
+		"任务 %s 已保存到私有运行时存储中。",
+		"Aufgabe %s wurde im privaten Laufzeitspeicher gespeichert.",
+		"ジョブ %s をプライベートランタイムストレージに保存しました。",
+		"작업 %s을(를) 비공개 런타임 저장소에 저장했습니다.",
+		"Задача %s сохранена в закрытом хранилище среды выполнения.")
 	add(KeyToolScheduleCancelled,
 		"Canceled scheduled job %s.",
 		"已取消计划任务 %s。",

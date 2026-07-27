@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/agent-dance/luban/internal/contracts/interaction"
+	"github.com/agent-dance/luban/internal/contracts/stream"
 	"github.com/agent-dance/luban/internal/presentation"
 
 	"github.com/agent-dance/luban/i18n"
@@ -26,14 +27,45 @@ import (
 // Line format examples:
 //
 //	{"type":"text","content":"Hello"}
-//	{"type":"tool_use","name":"Bash","input":{"command":"ls"}}
-//	{"type":"tool_result","name":"Bash","output":"file.txt","is_error":false}
+//	{"type":"tool_use","schema_version":"machine-event/v2","name":"Bash","input_ref":{"algorithm":"sha256","digest":"..."}}
+//	{"type":"tool_result","schema_version":"machine-event/v2","tool_use_id":"toolu_1","is_error":false,"content_ref":{"algorithm":"sha256","digest":"..."}}
 //	{"type":"thinking","content":"..."}
 //	{"type":"cost","turn":0.003,"total":0.12}
 type JSONRenderer struct {
 	mu        sync.Mutex
 	w         io.Writer
 	sessionID string
+}
+
+type machineToolUseEvent struct {
+	Type          string                        `json:"type"`
+	SchemaVersion string                        `json:"schema_version"`
+	SessionID     string                        `json:"session_id,omitempty"`
+	TurnID        string                        `json:"turn_id,omitempty"`
+	ActorID       string                        `json:"actor_id,omitempty"`
+	ActorType     string                        `json:"actor_type,omitempty"`
+	WorkUnitID    string                        `json:"work_unit_id,omitempty"`
+	ToolUseID     string                        `json:"tool_use_id"`
+	Name          string                        `json:"name"`
+	Hidden        bool                          `json:"hidden,omitempty"`
+	InputRef      runtimeevent.ContentReference `json:"input_ref"`
+	Metrics       runtimeevent.ToolEventMetrics `json:"metrics"`
+}
+
+type machineToolResultEvent struct {
+	Type          string                             `json:"type"`
+	SchemaVersion string                             `json:"schema_version"`
+	SessionID     string                             `json:"session_id,omitempty"`
+	TurnID        string                             `json:"turn_id,omitempty"`
+	ActorID       string                             `json:"actor_id,omitempty"`
+	ActorType     string                             `json:"actor_type,omitempty"`
+	WorkUnitID    string                             `json:"work_unit_id,omitempty"`
+	ToolUseID     string                             `json:"tool_use_id"`
+	Outcome       types.ToolOutcome                  `json:"outcome"`
+	IsError       bool                               `json:"is_error"`
+	RuntimeEvent  runtimeevent.ProjectedRuntimeEvent `json:"runtime_event"`
+	ContentRef    runtimeevent.ContentReference      `json:"content_ref"`
+	Metrics       runtimeevent.ToolEventMetrics      `json:"metrics"`
 }
 
 // NewJSONRenderer creates a JSONRenderer that writes NDJSON to w.
@@ -90,6 +122,58 @@ func (r *JSONRenderer) eventIdentity(ctx presentation.ToolEventContext) map[stri
 	return identity
 }
 
+// telemetryIdentity deliberately excludes ProjectRoot. Performance telemetry
+// has no need for commands, paths, tool payloads, or filesystem identity.
+func (r *JSONRenderer) telemetryIdentity(ctx presentation.ToolEventContext) map[string]any {
+	event := r.eventIdentity(ctx)
+	delete(event, "project_root")
+	return event
+}
+
+// RenderRequestMetrics emits an additive, content-free stream-json record.
+// The raw internal Error field is intentionally replaced by a boolean.
+func (r *JSONRenderer) RenderRequestMetrics(ctx presentation.ToolEventContext, phase stream.EventType, status *stream.RequestStatusEvent) {
+	if status == nil {
+		return
+	}
+	request := map[string]any{
+		"request_id":               status.RequestID,
+		"phase":                    string(phase),
+		"started_at":               status.StartedAt,
+		"ended_at":                 status.EndedAt,
+		"attempt":                  status.Attempt,
+		"max_retries":              status.MaxRetries,
+		"retry_count":              status.RetryCount,
+		"retry_delay_ms":           status.RetryDelayMilliseconds,
+		"request_ms":               status.RequestMilliseconds,
+		"first_token_ms":           status.FirstTokenMilliseconds,
+		"total_ms":                 status.TotalMilliseconds,
+		"input_tokens":             status.InputTokens,
+		"cache_read_input_tokens":  status.CacheReadInputTokens,
+		"cache_write_input_tokens": status.CacheWriteInputTokens,
+		"output_tokens":            status.OutputTokens,
+		"failed":                   phase == stream.EventRequestFailed,
+	}
+	event := r.telemetryIdentity(ctx)
+	event["type"] = "agentic_metrics"
+	event["metric"] = "provider_request"
+	event["request_status"] = request
+	r.writeLine(event)
+}
+
+// RenderToolRoundMetrics emits aggregate scheduler measurements without any
+// model-visible or tool-result content.
+func (r *JSONRenderer) RenderToolRoundMetrics(ctx presentation.ToolEventContext, metrics *stream.ToolRoundMetricsEvent) {
+	if metrics == nil {
+		return
+	}
+	event := r.telemetryIdentity(ctx)
+	event["type"] = "agentic_metrics"
+	event["metric"] = "tool_round"
+	event["tool_round"] = metrics
+	r.writeLine(event)
+}
+
 // --- presentation.Renderer interface implementation ---
 
 func (r *JSONRenderer) Text(s string) {
@@ -120,19 +204,32 @@ func (r *JSONRenderer) Bold(s string) {
 	r.writeLine(map[string]any{"type": "bold", "content": s})
 }
 
-// RenderToolCall preserves the durable execution identity and complete input
-// for machine consumers.
+// RenderToolCall preserves durable execution identity while replacing the raw
+// input with a content-addressed reference before the serialization boundary.
 func (r *JSONRenderer) RenderToolCall(ctx presentation.ToolEventContext, call types.ToolUseBlock) {
-	event := r.eventIdentity(ctx)
-	event["type"] = "tool_use"
-	event["tool_use_id"] = call.ID
-	event["name"] = call.Name
-	event["input"] = call.Input
-	r.writeLine(event)
+	r.renderToolCall(ctx, call, false)
 }
 
-// RenderToolResult keeps the explicit outcome and lossless result envelope in
-// NDJSON instead of reducing it to an uncorrelated output string.
+func (r *JSONRenderer) renderToolCall(ctx presentation.ToolEventContext, call types.ToolUseBlock, hidden bool) {
+	inputRef := runtimeevent.NewToolInputReference(call.Input)
+	sessionID := ctx.SessionID
+	if sessionID == "" {
+		r.mu.Lock()
+		sessionID = r.sessionID
+		r.mu.Unlock()
+	}
+	r.writeLine(machineToolUseEvent{
+		Type: "tool_use", SchemaVersion: runtimeevent.MachineEventSchemaVersion,
+		SessionID: sessionID, TurnID: ctx.TurnID, ActorID: ctx.ActorID,
+		ActorType: ctx.ActorType, WorkUnitID: ctx.WorkUnitID,
+		ToolUseID: call.ID, Name: call.Name, Hidden: hidden, InputRef: inputRef,
+		Metrics: runtimeevent.ToolEventMetrics{InputBytes: inputRef.Bytes, InputFieldCount: len(call.Input)},
+	})
+}
+
+// RenderToolResult emits only the strict runtime projection, aggregate numeric
+// metrics, and a content-addressed reference. The source result remains intact
+// for the model path but raw content never enters the external event value.
 func (r *JSONRenderer) RenderToolResult(ctx presentation.ToolEventContext, result types.ToolResultBlock) {
 	runtimeResult := types.NewToolResultRuntimeEvent(ctx.RuntimeIdentity(result.ToolUseID), result, i18n.KeyRuntimeToolResultPublicSummary, nil)
 	projection, err := runtimeevent.NewAudienceProjector().Project(runtimeResult, runtimeevent.ProjectionOptions{
@@ -145,59 +242,37 @@ func (r *JSONRenderer) RenderToolResult(ctx presentation.ToolEventContext, resul
 		return
 	}
 
-	event := r.eventIdentity(ctx)
-	event["type"] = "tool_result"
-	event["tool_use_id"] = result.ToolUseID
-	event["output"] = result.TextContent()
-	event["is_error"] = presentation.ToolOutcomeIsError(result.Outcome)
-	if result.Content != "" {
-		event["content"] = result.Content
-	}
-	if result.Outcome != "" {
-		event["outcome"] = result.Outcome
-	}
-	if len(result.ContentBlocks) > 0 {
-		event["content_blocks"] = result.ContentBlocks
-	}
-	if result.Data != nil {
-		event["data"] = result.Data
-	}
-	if len(result.Metadata) > 0 {
-		event["metadata"] = result.Metadata
-	}
-	if result.Usage != nil {
-		event["usage"] = result.Usage
-	}
-	if len(result.NewMessages) > 0 {
-		event["new_messages"] = result.NewMessages
-	}
-	attachRuntimeProjection(event, projection)
-	r.writeLine(event)
+	contentRef := runtimeevent.NewToolResultContentReference(runtimeevent.ToolResultPrivatePayload{
+		Content: result.Content, ContentBlocks: result.ContentBlocks, Data: result.Data,
+		Metadata: result.Metadata, NewMessages: result.NewMessages,
+	})
+	r.writeLine(machineToolResultEvent{
+		Type: "tool_result", SchemaVersion: runtimeevent.MachineEventSchemaVersion,
+		SessionID: projection.SessionID, TurnID: projection.TurnID,
+		ActorID: projection.ActorID, ActorType: projection.ActorType, WorkUnitID: projection.WorkUnitID,
+		ToolUseID: result.ToolUseID, Outcome: result.Outcome,
+		IsError: presentation.ToolOutcomeIsError(result.Outcome), RuntimeEvent: projection,
+		ContentRef: contentRef, Metrics: toolResultMetrics(result),
+	})
 }
 
-func attachRuntimeProjection(event map[string]any, projection runtimeevent.ProjectedRuntimeEvent) {
-	event["schema_version"] = projection.SchemaVersion
-	event["audience"] = projection.Audience
-	event["redaction_level"] = projection.RedactionLevel
-	event["event_id"] = projection.EventID
-	event["kind"] = projection.Kind
-	event["code"] = projection.Code
-	event["message"] = projection.Message
-	if projection.PublicKey != "" {
-		event["public_key"] = projection.PublicKey
+func toolResultMetrics(result types.ToolResultBlock) runtimeevent.ToolEventMetrics {
+	metrics := runtimeevent.ToolEventMetrics{
+		ContentBytes: len(result.TextContent()), ContentBlockCount: len(result.ContentBlocks),
+		DataPresent: result.Data != nil, MetadataCount: len(result.Metadata),
+		NewMessageCount: len(result.NewMessages),
 	}
-	if len(projection.PublicArgs) > 0 {
-		event["public_args"] = projection.PublicArgs
+	if result.Usage != nil {
+		metrics.Usage = &runtimeevent.TokenUsageMetrics{
+			InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens,
+			CacheCreationInputTokens: result.Usage.CacheCreationInputTokens,
+			CacheReadInputTokens:     result.Usage.CacheReadInputTokens,
+			WebSearchRequests:        result.Usage.ServerToolUse.WebSearchRequests,
+			WebFetchRequests:         result.Usage.ServerToolUse.WebFetchRequests,
+		}
 	}
-	if projection.Epoch != 0 {
-		event["epoch"] = projection.Epoch
-	}
-	if projection.ContextGeneration != 0 {
-		event["context_generation"] = projection.ContextGeneration
-	}
-	if projection.Outcome != "" {
-		event["outcome"] = projection.Outcome
-	}
+	runtimeevent.AttachToolExecutionEvidence(&metrics, result.ToolUseID, result.Data)
+	return metrics
 }
 
 // RenderHookSummary keeps hook execution identity separate from its source
@@ -261,13 +336,7 @@ func (r *JSONRenderer) RenderSendUserMessageEvent(ctx presentation.ToolEventCont
 // RenderHiddenToolCall retains the protocol identity of Brief while marking it
 // hidden so presentation clients can omit generic tool chrome.
 func (r *JSONRenderer) RenderHiddenToolCall(ctx presentation.ToolEventContext, call types.ToolUseBlock) {
-	event := r.eventIdentity(ctx)
-	event["type"] = "tool_use"
-	event["tool_use_id"] = call.ID
-	event["name"] = call.Name
-	event["input"] = call.Input
-	event["hidden"] = true
-	r.writeLine(event)
+	r.renderToolCall(ctx, call, true)
 }
 
 // RenderSendUserMessageToolEvent correlates the visible message with the

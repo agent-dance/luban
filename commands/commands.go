@@ -177,9 +177,10 @@ type Context struct {
 	CompactFunc func(customInstructions string) error
 
 	// Provider-related fields (Phase 4: multi-provider support)
-	CurrentProvider  string                     // canonical name of the active provider (e.g. "anthropic")
-	ProviderRegistry *provider.ProviderRegistry // registry of all known providers
-	CredentialStore  *provider.CredentialStore  // persistent credential store
+	CurrentProvider          string                     // canonical name of the active provider (e.g. "anthropic")
+	ProviderRegistry         *provider.ProviderRegistry // registry of all known providers
+	CredentialStore          *provider.CredentialStore  // persistent credential store
+	ProviderRuntimeOverrides provider.RuntimeOverrides  // invocation-scoped wire choices retained across provider reconstruction
 
 	// SwitchLanguage switches the display language and persists the preference.
 	// Receives an ISO 639-1 code or "next" to cycle.

@@ -32,6 +32,14 @@ func forkedSessionArgs(opts cli.Options, providerName, modelID, sessionID string
 	appendValue("--provider", providerName)
 	appendValue("--model", modelID)
 	appendValue("--api", opts.API)
+	appendValue("--reasoning-effort", opts.ReasoningEffort)
+	appendValue("--service-tier", opts.ServiceTier)
+	if opts.ResponsesWebSocket {
+		args = append(args, "--responses-websocket")
+	}
+	if opts.PinnedModel {
+		args = append(args, "--pinned-model")
+	}
 	if opts.MaxTurns > 0 {
 		args = append(args, "--max-turns", strconv.Itoa(opts.MaxTurns))
 	}
@@ -44,6 +52,9 @@ func forkedSessionArgs(opts cli.Options, providerName, modelID, sessionID string
 	}
 	if opts.Sandbox {
 		args = append(args, "--sandbox")
+	}
+	if opts.ForceSandboxTools {
+		args = append(args, "--force-sandbox-tools")
 	}
 	appendValue("--allowed-tools", opts.AllowedTools)
 	appendValue("--disallowed-tools", opts.DisallowedTools)

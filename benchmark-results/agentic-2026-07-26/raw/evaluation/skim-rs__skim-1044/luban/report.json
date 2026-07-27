@@ -1,0 +1,29 @@
+{
+  "instance_id": "skim-rs__skim-1044",
+  "language": "rust",
+  "agent": "luban",
+  "resolved": false,
+  "elapsed_seconds": 93.316,
+  "image": "starryzhang/sweb.eval.x86_64.skim-rs_1776_skim-1044",
+  "image_pull_exit_code": 0,
+  "test_patch_apply_exit_code": 0,
+  "solution_patch_apply_exit_code": 0,
+  "rebuild_exit_code": 0,
+  "test_exit_code": 1,
+  "print_exit_code": 1,
+  "parsed_tests": 0,
+  "FAIL_TO_PASS": {
+    "expected": 1,
+    "passed": [],
+    "failed": [],
+    "missing": [
+      "skim::options::opt_border_none"
+    ]
+  },
+  "PASS_TO_PASS": {
+    "expected": 587,
+    "passed_count": 0,
+    "failed": [],
+    "missing_count": 587
+  }
+}

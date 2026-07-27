@@ -82,3 +82,34 @@ func TestValidateParams_NoCapabilityProvider(t *testing.T) {
 		t.Errorf("expected nil error for non-CapabilityProvider, got: %v", err)
 	}
 }
+
+func TestValidateParams_CustomToolsRequireExplicitCapability(t *testing.T) {
+	definition := responsesCustomToolFixture()
+	tests := []struct {
+		name string
+		p    Provider
+		want bool
+	}{
+		{name: "unknown provider", p: &mockProvider{name: "custom"}, want: true},
+		{name: "unknown capability", p: &capMockProvider{name: "unknown", caps: ProviderCapabilities{ToolUse: true}}, want: true},
+		{name: "explicitly unsupported", p: &capMockProvider{name: "chat", caps: ProviderCapabilities{ToolUse: true, CustomTools: CapabilityUnsupported}}, want: true},
+		{name: "explicitly supported", p: &capMockProvider{name: "responses", caps: ProviderCapabilities{ToolUse: true, CustomTools: CapabilitySupported}}, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateParams(test.p, Params{Model: "gpt-5.6-sol", Tools: []types.ToolDefinition{definition}})
+			if (err != nil) != test.want {
+				t.Fatalf("error = %v, wantError=%v", err, test.want)
+			}
+		})
+	}
+}
+
+func TestValidateParams_RejectsMalformedCustomDefinitionBeforeCapability(t *testing.T) {
+	definition := responsesCustomToolFixture()
+	definition.Format = &types.ToolInputFormat{Type: "grammar", Syntax: "regex", Definition: ".*"}
+	p := &capMockProvider{name: "responses", caps: ProviderCapabilities{ToolUse: true, CustomTools: CapabilitySupported}}
+	if err := ValidateParams(p, Params{Tools: []types.ToolDefinition{definition}}); err == nil || !strings.Contains(err.Error(), "invalid or unsupported") {
+		t.Fatalf("malformed definition error = %v", err)
+	}
+}

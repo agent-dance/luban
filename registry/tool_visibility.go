@@ -179,6 +179,8 @@ func permissionOwnerBindingValid(binding types.ToolPermissionBinding, runtime ty
 
 var builtinToolDiscoveryMetadata = map[string]toolmeta.Metadata{
 	"AskUserQuestion":      {ShouldDefer: true, SearchHint: "ask user question decision choices confirmation interview prompt"},
+	"ApplyPatch":           {AlwaysLoad: true, SearchHint: "multi file unified diff patch create update delete atomic"},
+	"Bash":                 {AlwaysLoad: true},
 	"Config":               {ShouldDefer: true, SearchHint: "config configuration settings get set runtime preferences"},
 	"CreateGoal":           {AlwaysLoad: true, SearchHint: "create a persisted session goal when explicitly requested"},
 	"CronCreate":           {ShouldDefer: true, SearchHint: "cron schedule recurring deferred task automation create"},
@@ -189,14 +191,18 @@ var builtinToolDiscoveryMetadata = map[string]toolmeta.Metadata{
 	"ExitPlanMode":         {ShouldDefer: true, SearchHint: "plan planning finish exit approval implementation"},
 	"ExitWorktree":         {ShouldDefer: true, SearchHint: "git worktree cleanup branch remove exit"},
 	"GetGoal":              {AlwaysLoad: true, SearchHint: "inspect the current persisted session goal"},
-	"Glob":                 {SearchHint: "find files by name pattern or wildcard"},
-	"Grep":                 {SearchHint: "search file contents with regex (ripgrep)"},
+	"Edit":                 {AlwaysLoad: true},
+	"Glob":                 {AlwaysLoad: true, SearchHint: "find files by name pattern or wildcard"},
+	"Grep":                 {AlwaysLoad: true, SearchHint: "search file contents with regex (ripgrep)"},
+	"Inspect":              {AlwaysLoad: true, SearchHint: "batch repository inspect read search glob source evidence"},
 	"LSP":                  {ShouldDefer: true, SearchHint: "language server symbols definitions references diagnostics rename"},
 	"ListMcpResourcesTool": {ShouldDefer: true, SearchHint: "list resources from connected MCP servers"},
 	"NotebookEdit":         {ShouldDefer: true, SearchHint: "notebook jupyter ipynb cell output edit"},
-	"Read":                 {ShouldDefer: true, SearchHint: "read files, images, PDFs, notebooks"},
+	"PowerShell":           {AlwaysLoad: true},
+	"Read":                 {AlwaysLoad: true, SearchHint: "read files, images, PDFs, notebooks"},
 	"ReadMcpResourceTool":  {ShouldDefer: true, SearchHint: "read a specific MCP resource by URI"},
 	"RemoteTrigger":        {ShouldDefer: true, SearchHint: "remote trigger scheduled agent automation run create update"},
+	"Run":                  {AlwaysLoad: true, SearchHint: "run command dependency graph tests build lint verification"},
 	"SendMessage":          {ShouldDefer: true, SearchHint: "send message teammate team agent coordination mailbox"},
 	"TaskCreate":           {ShouldDefer: true, SearchHint: "task create work item plan tracker todo"},
 	"TaskGet":              {ShouldDefer: true, SearchHint: "task get inspect details status work item"},
@@ -209,7 +215,33 @@ var builtinToolDiscoveryMetadata = map[string]toolmeta.Metadata{
 	"UpdateGoal":           {AlwaysLoad: true, SearchHint: "revise goal acceptance criteria or mark the goal complete or blocked"},
 	"WebFetch":             {ShouldDefer: true, SearchHint: "web fetch page url article website read"},
 	"WebSearch":            {ShouldDefer: true, SearchHint: "web search internet query results search engine"},
+	"Write":                {AlwaysLoad: true},
 }
+
+// eagerCoreToolOrder is the stable model-facing prefix for the coding tools
+// used on nearly every repository task. Keeping this prefix eager avoids a
+// ToolSearch round trip for basic file access, while canonical ordering keeps
+// their serialized definitions stable when a rarer deferred tool is loaded.
+var eagerCoreToolOrder = [...]string{
+	"Bash",
+	"PowerShell",
+	"Read",
+	"Write",
+	"Edit",
+	"Glob",
+	"Grep",
+	"Inspect",
+	"ApplyPatch",
+	"Run",
+}
+
+var eagerCoreToolNames = func() map[string]struct{} {
+	names := make(map[string]struct{}, len(eagerCoreToolOrder))
+	for _, name := range eagerCoreToolOrder {
+		names[name] = struct{}{}
+	}
+	return names
+}()
 
 // DiscoveryMetadata returns the merged discovery metadata for a tool.
 func DiscoveryMetadata(tool types.Tool) toolmeta.Metadata {
@@ -435,20 +467,55 @@ func (r *Registry) EnabledDefinitions() []types.ToolDefinition {
 // is unavailable, so every runtime-enabled tool is visible.
 func (r *Registry) VisibleTools(loaded map[string]struct{}) []types.Tool {
 	all := r.All()
+	if r.ModelToolProfile() == ModelToolProfileAgenticV2 {
+		// Agentic V2 is a fixed provider protocol, not a projection of the
+		// current execution allow-list. Keep its three schemas stable while
+		// IsToolEnabled and the permission checker independently deny dispatch
+		// for tools excluded by --allowed-tools or --disallowed-tools.
+		byName := make(map[string]types.Tool, len(all))
+		for _, tool := range all {
+			if tool != nil {
+				byName[tool.Name()] = tool
+			}
+		}
+		visible := make([]types.Tool, 0, len(agenticV2VisibleToolOrder))
+		for _, name := range agenticV2VisibleToolOrder {
+			if tool := byName[name]; tool != nil {
+				visible = append(visible, tool)
+			}
+		}
+		return visible
+	}
 	toolSearchEnabled := r.IsToolEnabled(r.Get("ToolSearch"))
 
 	visible := make([]types.Tool, 0, len(all))
+	byName := make(map[string]types.Tool, len(all))
 	for _, tool := range all {
+		byName[tool.Name()] = tool
+	}
+	appendVisible := func(tool types.Tool) {
 		if !r.IsToolEnabled(tool) {
-			continue
+			return
 		}
 		if !toolSearchEnabled || !IsDeferredTool(tool) {
 			visible = append(visible, tool)
-			continue
+			return
 		}
 		if _, ok := loaded[tool.Name()]; ok {
 			visible = append(visible, tool)
 		}
+	}
+
+	for _, name := range eagerCoreToolOrder {
+		if tool := byName[name]; tool != nil {
+			appendVisible(tool)
+		}
+	}
+	for _, tool := range all {
+		if _, core := eagerCoreToolNames[tool.Name()]; core {
+			continue
+		}
+		appendVisible(tool)
 	}
 	return visible
 }

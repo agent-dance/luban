@@ -8,6 +8,7 @@ import (
 	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/prompt"
 	"github.com/agent-dance/luban/provider"
+	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -113,11 +114,15 @@ type SessionHistoryDeleter interface {
 // RuntimeContext is mutable engine configuration that depends on the active
 // session/workspace rather than the provider itself.
 type RuntimeContext struct {
-	SystemPrompt       string
-	SystemPromptBlocks []prompt.SystemPromptBlock
-	HookRunner         *hooks.Runner
-	ProjectRoot        string
-	CWD                string
+	SystemPrompt        string
+	SystemPromptBlocks  []prompt.SystemPromptBlock
+	UserContext         prompt.UserContext
+	VisibleTools        registry.VisibleToolSnapshot
+	ToolPromptConfig    prompt.Config
+	GeneratedToolPrompt bool
+	HookRunner          *hooks.Runner
+	ProjectRoot         string
+	CWD                 string
 }
 
 // RuntimeConfigurable is implemented by engines that can be retargeted to a

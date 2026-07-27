@@ -319,7 +319,7 @@ func TestServeClosedQueryChannelEmitsOneErrorTerminal(t *testing.T) {
 	waitServe(t, done, nil)
 }
 
-func TestServeAsyncQueryOutputFailureTerminatesInsteadOfDroppingTerminal(t *testing.T) {
+func TestServeAsyncQueryMetadataCannotBypassSafeProjection(t *testing.T) {
 	runtime := &concurrencyRuntime{}
 	runtime.queryFn = func(context.Context, QueryRequest, PermissionHandler) (<-chan QueryEvent, error) {
 		events := make(chan QueryEvent, 1)
@@ -329,18 +329,24 @@ func TestServeAsyncQueryOutputFailureTerminatesInsteadOfDroppingTerminal(t *test
 		close(events)
 		return events, nil
 	}
-	inW, _, done := startSDKServe(t, runtime)
+	inW, output, done := startSDKServe(t, runtime)
 	sendLine(t, inW, SDKUserMessage{Type: "user", UUID: "marshal-query", Message: textUserMessage("wait")})
-	select {
-	case err := <-done:
-		var unsupported *json.UnsupportedTypeError
-		if !errors.As(err, &unsupported) {
-			t.Fatalf("Serve error = %T %v, want json.UnsupportedTypeError", err, err)
-		}
-	case <-time.After(testTimeout):
-		t.Fatal("async query output error did not terminate Serve")
+	progress := receiveWithTimeout(t, output, testTimeout)
+	event, ok := progress["event"].(map[string]any)
+	if !ok || event["type"] != string(EventProgress) {
+		t.Fatalf("safe progress event = %#v", progress)
 	}
-	_ = inW.Close()
+	if _, leaked := event["metadata"]; leaked {
+		t.Fatalf("raw runtime metadata bypassed projection: %#v", event)
+	}
+	terminal := receiveWithTimeout(t, output, testTimeout)
+	if terminal["type"] != "result" || terminal["is_error"] != true {
+		t.Fatalf("closed query terminal = %#v", terminal)
+	}
+	if err := inW.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitServe(t, done, nil)
 }
 
 func TestServeRejectsCompactButInterruptsActiveQuery(t *testing.T) {

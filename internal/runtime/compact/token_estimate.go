@@ -143,7 +143,13 @@ func (cw *ContextWindow) EstimateMessagesDetailed(messages []types.Message, supp
 				estimate.MessageContentTokens += cw.Counter.Count(typed.Thinking)
 			case types.ToolUseBlock:
 				estimate.ToolPayloadTokens += cw.Counter.Count(typed.Name)
-				if payload, err := json.Marshal(typed.Input); err == nil {
+				if typed.ToolType == types.ToolDefinitionTypeCustom {
+					if typed.RawInput == "" {
+						toolPayloadUnknown = true
+					} else {
+						estimate.ToolPayloadTokens += cw.Counter.Count(typed.RawInput)
+					}
+				} else if payload, err := json.Marshal(typed.Input); err == nil {
 					estimate.ToolPayloadTokens += cw.Counter.Count(string(payload))
 				} else {
 					toolPayloadUnknown = true

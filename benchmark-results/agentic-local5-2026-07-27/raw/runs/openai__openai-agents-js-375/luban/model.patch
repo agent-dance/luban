@@ -1,0 +1,218 @@
+diff --git a/packages/agents-core/src/run.ts b/packages/agents-core/src/run.ts
+index 987fded..7cea08c 100644
+--- a/packages/agents-core/src/run.ts
++++ b/packages/agents-core/src/run.ts
+@@ -796,6 +796,7 @@ export class Runner extends RunHooks<any, AgentOutputType<unknown>> {
+ 
+           result.state._lastTurnResponse = finalResponse;
+           result.state._modelResponses.push(result.state._lastTurnResponse);
++          result.state._context.usage.add(result.state._lastTurnResponse.usage);
+ 
+           const processedResponse = processModelResponse(
+             result.state._lastTurnResponse,
+@@ -832,6 +833,17 @@ export class Runner extends RunHooks<any, AgentOutputType<unknown>> {
+             result.state,
+             result.state._currentStep.output,
+           );
++          this.emit(
++            'agent_end',
++            result.state._context,
++            result.state._currentAgent,
++            result.state._currentStep.output,
++          );
++          result.state._currentAgent.emit(
++            'agent_end',
++            result.state._context,
++            result.state._currentStep.output,
++          );
+           return;
+         } else if (
+           result.state._currentStep.type === 'next_step_interruption'
+diff --git a/packages/agents-core/src/runImplementation.ts b/packages/agents-core/src/runImplementation.ts
+index 3acff6d..72bc5c2 100644
+--- a/packages/agents-core/src/runImplementation.ts
++++ b/packages/agents-core/src/runImplementation.ts
+@@ -377,14 +377,6 @@ export async function executeInterruptedToolsAndSideEffects<TContext>(
+   });
+ 
+   if (checkToolOutput.isFinalOutput) {
+-    runner.emit(
+-      'agent_end',
+-      state._context,
+-      agent,
+-      checkToolOutput.finalOutput,
+-    );
+-    agent.emit('agent_end', state._context, checkToolOutput.finalOutput);
+-
+     return new SingleStepResult(
+       originalInput,
+       newResponse,
+@@ -526,14 +518,6 @@ export async function executeToolsAndSideEffects<TContext>(
+   );
+ 
+   if (checkToolOutput.isFinalOutput) {
+-    runner.emit(
+-      'agent_end',
+-      state._context,
+-      agent,
+-      checkToolOutput.finalOutput,
+-    );
+-    agent.emit('agent_end', state._context, checkToolOutput.finalOutput);
+-
+     return new SingleStepResult(
+       originalInput,
+       newResponse,
+diff --git a/packages/agents-core/test/run.stream.test.ts b/packages/agents-core/test/run.stream.test.ts
+index f7b29f8..3e666da 100644
+--- a/packages/agents-core/test/run.stream.test.ts
++++ b/packages/agents-core/test/run.stream.test.ts
+@@ -1,6 +1,8 @@
+-import { describe, it, expect, beforeAll } from 'vitest';
++import { describe, it, expect, beforeAll, vi } from 'vitest';
+ import {
+   Agent,
++  RunContext,
++  Runner,
+   run,
+   setDefaultModelProvider,
+   setTracingDisabled,
+@@ -14,10 +16,38 @@ import {
+   StreamEvent,
+   FunctionCallItem,
+ } from '../src';
+-import { FakeModel, FakeModelProvider, fakeModelMessage } from './stubs';
++import {
++  FakeModel,
++  FakeModelProvider,
++  fakeModelMessage,
++  TEST_TOOL,
++} from './stubs';
+ 
+ // Test for unhandled rejection when stream loop throws
+ 
++function createStreamingModel(response: ModelResponse): Model {
++  return {
++    async getResponse(_request: ModelRequest): Promise<ModelResponse> {
++      return response;
++    },
++    async *getStreamedResponse(): AsyncIterable<StreamEvent> {
++      yield {
++        type: 'response_done',
++        response: {
++          id: 'response-id',
++          usage: {
++            requests: response.usage.requests,
++            inputTokens: response.usage.inputTokens,
++            outputTokens: response.usage.outputTokens,
++            totalTokens: response.usage.totalTokens,
++          },
++          output: response.output,
++        },
++      } as StreamEvent;
++    },
++  };
++}
++
+ describe('Runner.run (streaming)', () => {
+   beforeAll(() => {
+     setTracingDisabled(true);
+@@ -53,6 +83,99 @@ describe('Runner.run (streaming)', () => {
+     expect((result.error as Error).message).toBe('Not implemented');
+   });
+ 
++  it('emits end hooks with accumulated usage when the stream completes', async () => {
++    const agent = new Agent({
++      name: 'StreamEnd',
++      model: createStreamingModel({
++        output: [fakeModelMessage('done')],
++        usage: new Usage({
++          requests: 1,
++          inputTokens: 11,
++          outputTokens: 7,
++          totalTokens: 18,
++        }),
++      }),
++    });
++    const runner = new Runner();
++    let usageAtAgentEnd:
++      | {
++          requests: number;
++          inputTokens: number;
++          outputTokens: number;
++          totalTokens: number;
++        }
++      | undefined;
++    const agentEnd = vi.fn((context: RunContext<unknown>) => {
++      usageAtAgentEnd = {
++        requests: context.usage.requests,
++        inputTokens: context.usage.inputTokens,
++        outputTokens: context.usage.outputTokens,
++        totalTokens: context.usage.totalTokens,
++      };
++    });
++    const runnerEnd = vi.fn();
++    agent.on('agent_end', agentEnd);
++    runner.on('agent_end', runnerEnd);
++
++    const result = await runner.run(agent, 'hi', { stream: true });
++    await result.completed;
++
++    expect(agentEnd).toHaveBeenCalledOnce();
++    expect(agentEnd).toHaveBeenCalledWith(result.state._context, 'done');
++    expect(runnerEnd).toHaveBeenCalledOnce();
++    expect(runnerEnd).toHaveBeenCalledWith(
++      result.state._context,
++      agent,
++      'done',
++    );
++    expect(usageAtAgentEnd).toEqual({
++      requests: 1,
++      inputTokens: 11,
++      outputTokens: 7,
++      totalTokens: 18,
++    });
++  });
++
++  it('emits tool and agent end hooks once when tool output ends the stream', async () => {
++    const toolCall: FunctionCallItem = {
++      id: 'tool-call',
++      type: 'function_call',
++      name: TEST_TOOL.name,
++      callId: 'call-id',
++      status: 'completed',
++      arguments: '{"test":"value"}',
++    };
++    const agent = new Agent({
++      name: 'StreamToolEnd',
++      model: createStreamingModel({
++        output: [toolCall],
++        usage: new Usage({ requests: 1 }),
++      }),
++      tools: [TEST_TOOL],
++      toolUseBehavior: 'stop_on_first_tool',
++    });
++    const agentToolEnd = vi.fn();
++    const agentEnd = vi.fn();
++    agent.on('agent_tool_end', agentToolEnd);
++    agent.on('agent_end', agentEnd);
++
++    const result = await run(agent, 'hi', { stream: true });
++    await result.completed;
++
++    expect(agentToolEnd).toHaveBeenCalledOnce();
++    expect(agentToolEnd).toHaveBeenCalledWith(
++      result.state._context,
++      TEST_TOOL,
++      'Hello World',
++      { toolCall },
++    );
++    expect(agentEnd).toHaveBeenCalledOnce();
++    expect(agentEnd).toHaveBeenCalledWith(
++      result.state._context,
++      'Hello World',
++    );
++  });
++
+   it('emits agent_updated_stream_event with new agent on handoff', async () => {
+     class SimpleStreamingModel implements Model {
+       constructor(private resp: ModelResponse) {}

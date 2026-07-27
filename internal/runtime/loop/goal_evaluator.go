@@ -49,14 +49,21 @@ type GoalEvaluator interface {
 
 // ProviderGoalEvaluator evaluates goals with a tool-free provider request.
 type ProviderGoalEvaluator struct {
-	provider provider.Provider
-	model    string
+	provider    provider.Provider
+	model       string
+	serviceTier provider.ServiceTier
 }
 
 // NewProviderGoalEvaluatorWithModel creates an evaluator bound to a
 // conversation model. An empty model falls back to the provider default.
 func NewProviderGoalEvaluatorWithModel(p provider.Provider, model string) *ProviderGoalEvaluator {
-	return &ProviderGoalEvaluator{provider: p, model: strings.TrimSpace(model)}
+	return NewProviderGoalEvaluatorWithModelAndServiceTier(p, model, "")
+}
+
+// NewProviderGoalEvaluatorWithModelAndServiceTier binds auxiliary goal checks
+// to the conversation's model and provider scheduling contract.
+func NewProviderGoalEvaluatorWithModelAndServiceTier(p provider.Provider, model string, serviceTier provider.ServiceTier) *ProviderGoalEvaluator {
+	return &ProviderGoalEvaluator{provider: p, model: strings.TrimSpace(model), serviceTier: serviceTier}
 }
 
 // GoalEvaluatorForModel returns an immutable model-bound evaluator for a query
@@ -65,7 +72,7 @@ func (e *ProviderGoalEvaluator) GoalEvaluatorForModel(model string) GoalEvaluato
 	if e == nil {
 		return (*ProviderGoalEvaluator)(nil)
 	}
-	return NewProviderGoalEvaluatorWithModel(e.provider, model)
+	return NewProviderGoalEvaluatorWithModelAndServiceTier(e.provider, model, e.serviceTier)
 }
 
 func (e *ProviderGoalEvaluator) Evaluate(ctx context.Context, request GoalEvaluationRequest) (GoalEvaluationResult, error) {
@@ -86,11 +93,12 @@ func (e *ProviderGoalEvaluator) Evaluate(ctx context.Context, request GoalEvalua
 		model = e.provider.ModelID()
 	}
 	stream, err := e.provider.CreateStream(ctx, provider.Params{
-		Model:     model,
-		MaxTokens: goalEvaluatorMaxTokens,
-		System:    goalEvaluatorSystem,
-		Messages:  []types.Message{types.UserMessage(payload)},
-		Thinking:  &provider.ThinkingConfig{Enabled: false},
+		Model:       model,
+		MaxTokens:   goalEvaluatorMaxTokens,
+		System:      goalEvaluatorSystem,
+		Messages:    []types.Message{types.UserMessage(payload)},
+		Thinking:    &provider.ThinkingConfig{Enabled: false},
+		ServiceTier: e.serviceTier,
 	})
 	if err != nil {
 		return GoalEvaluationResult{}, i18n.WrapError(i18n.KeyLoopGoalEvaluatorProviderCallFailed, err)
@@ -179,14 +187,16 @@ type goalEvaluationTranscriptMessage struct {
 }
 
 type goalEvaluationTranscriptBlock struct {
-	Type      types.ContentType `json:"type"`
-	Text      string            `json:"text,omitempty"`
-	ID        string            `json:"id,omitempty"`
-	Name      string            `json:"name,omitempty"`
-	Input     map[string]any    `json:"input,omitempty"`
-	ToolUseID string            `json:"tool_use_id,omitempty"`
-	IsError   bool              `json:"is_error,omitempty"`
-	Outcome   types.ToolOutcome `json:"outcome,omitempty"`
+	Type      types.ContentType        `json:"type"`
+	Text      string                   `json:"text,omitempty"`
+	ID        string                   `json:"id,omitempty"`
+	Name      string                   `json:"name,omitempty"`
+	Input     map[string]any           `json:"input,omitempty"`
+	RawInput  string                   `json:"raw_input,omitempty"`
+	ToolType  types.ToolDefinitionType `json:"tool_type,omitempty"`
+	ToolUseID string                   `json:"tool_use_id,omitempty"`
+	IsError   bool                     `json:"is_error,omitempty"`
+	Outcome   types.ToolOutcome        `json:"outcome,omitempty"`
 }
 
 func marshalGoalEvaluationPayload(request GoalEvaluationRequest) (string, error) {
@@ -210,11 +220,12 @@ func marshalGoalEvaluationPayload(request GoalEvaluationRequest) (string, error)
 			case types.ToolUseBlock:
 				projected.Content = append(projected.Content, goalEvaluationTranscriptBlock{
 					Type: types.ContentTypeToolUse, ID: value.ID, Name: value.Name, Input: value.Input,
+					RawInput: value.RawInput, ToolType: value.ToolType,
 				})
 			case types.ToolResultBlock:
 				projected.Content = append(projected.Content, goalEvaluationTranscriptBlock{
 					Type: types.ContentTypeToolResult, Text: value.TextContent(), ToolUseID: value.ToolUseID,
-					IsError: value.IsError, Outcome: value.Outcome,
+					IsError: value.IsError, Outcome: value.Outcome, ToolType: value.ToolType,
 				})
 			case types.ImageBlock:
 				projected.Content = append(projected.Content, goalEvaluationTranscriptBlock{Type: types.ContentTypeImage, Text: "[image]"})

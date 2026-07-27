@@ -1,0 +1,198 @@
+{
+  "schema_version": "agentic-bench/report-input-v1",
+  "report": {
+    "title": "Codex 与 Luban Agentic Coding 对比报告（诊断预览）",
+    "subtitle": "当前文件只验证报告 pipeline 与已知 Fabric canary 优化趋势；没有本地 5 题 pilot 或 full 113 正式分数。",
+    "benchmark": "DeepSWE",
+    "benchmark_version": "v1.1",
+    "benchmark_contract_id": "deepswe-v1.1-pilot5-development",
+    "language": "zh-CN",
+    "baseline_agent_id": "codex",
+    "contender_agent_id": "luban",
+    "as_of": "2026-07-26T00:00:00Z"
+  },
+  "statistics": {
+    "confidence_level": 0.95,
+    "method": "paired-task-cluster-bootstrap-v1",
+    "resamples": 10000,
+    "seed": 20260726
+  },
+  "artifact_sources": [],
+  "diagnostic_experiments": [
+    {
+      "id": "diag-head-fabric",
+      "label": "Luban HEAD Fabric canary",
+      "class": "diagnostic_canary",
+      "description": "同一 Fabric 任务的重构前真实 HEAD 诊断；evaluator 通过 F2P 1/1、P2P 841/841。",
+      "source_note": "旧单题诊断，不满足 formal harness 的完整配对、重复和内容寻址工件协议；不可计入最终分数。",
+      "runs": [
+        {
+          "task_id": "danielmiessler__Fabric-2098",
+          "agent_id": "luban",
+          "variant": "head",
+          "provider": "openai",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "repetition": 0,
+          "passed": true,
+          "metrics": {
+            "wall_time_seconds": 526.433,
+            "llm_calls_started": 15,
+            "tool_bearing_rounds": 14,
+            "physical_tool_operations": 25,
+            "input_tokens": 350341,
+            "cached_input_tokens": 304640,
+            "output_tokens": 11290,
+            "comparable_cost": 0.719525,
+            "comparable_cost_basis": "same_gateway_frozen_rate_card_all_transport"
+          },
+          "tools": []
+        }
+      ]
+    },
+    {
+      "id": "diag-p0-native-fabric",
+      "label": "Luban P0 native Responses Fabric canary",
+      "class": "diagnostic_canary",
+      "description": "启用原生 Responses 与 xhigh 固定后的单题诊断；evaluator 通过 F2P 1/1、P2P 841/841。",
+      "source_note": "旧单题诊断，只能支撑同题机制趋势；provider 延迟噪声与执行环境不能外推到正式榜单。",
+      "runs": [
+        {
+          "task_id": "danielmiessler__Fabric-2098",
+          "agent_id": "luban",
+          "variant": "p0-native",
+          "provider": "openai",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "repetition": 0,
+          "passed": true,
+          "metrics": {
+            "wall_time_seconds": 304.391,
+            "llm_calls_started": 15,
+            "tool_bearing_rounds": 14,
+            "physical_tool_operations": 25,
+            "input_tokens": 314982,
+            "cached_input_tokens": 274432,
+            "output_tokens": 7240,
+            "comparable_cost": 0.557166,
+            "comparable_cost_basis": "same_gateway_frozen_rate_card_all_transport"
+          },
+          "tools": []
+        }
+      ]
+    },
+    {
+      "id": "diag-v2-fabric",
+      "label": "Luban Agentic V2 Fabric canary",
+      "class": "diagnostic_canary",
+      "description": "三工具 V2 内核的单题诊断；evaluator 通过 F2P 1/1、P2P 841/841。",
+      "source_note": "旧单题诊断并带显式水印；10 是模型可见 logical invocations，Inspect 的内部读取数没有冒充新的 provider calls。",
+      "runs": [
+        {
+          "task_id": "danielmiessler__Fabric-2098",
+          "agent_id": "luban",
+          "variant": "agentic-v2",
+          "provider": "openai",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "repetition": 0,
+          "passed": true,
+          "metrics": {
+            "wall_time_seconds": 154.065,
+            "llm_calls_started": 6,
+            "tool_bearing_rounds": 5,
+            "tool_invocations": 10,
+            "input_tokens": 160877,
+            "cached_input_tokens": 116224,
+            "output_tokens": 3964,
+            "comparable_cost": 0.400297,
+            "comparable_cost_basis": "same_gateway_frozen_rate_card_all_transport"
+          },
+          "tools": [
+            { "name": "Inspect", "calls": 8 },
+            { "name": "ApplyPatch", "calls": 1 },
+            { "name": "Run", "calls": 1 }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "diag-codex-fabric",
+      "label": "Codex Fabric canary",
+      "class": "diagnostic_canary",
+      "description": "Codex 在同一 Fabric 任务的旧诊断；evaluator 同样通过 F2P 1/1、P2P 841/841。",
+      "source_note": "Codex 的 9 是 CLI native events，不是 provider requests 或 Luban logical tool invocations；报告禁止跨口径算 2x。",
+      "runs": [
+        {
+          "task_id": "danielmiessler__Fabric-2098",
+          "agent_id": "codex",
+          "variant": "codex-native-events",
+          "provider": "openai",
+          "model": "gpt-5.6-sol",
+          "reasoning_effort": "xhigh",
+          "repetition": 0,
+          "passed": true,
+          "metrics": {
+            "wall_time_seconds": 237.170,
+            "native_events": 9,
+            "input_tokens": 349148,
+            "cached_input_tokens": 299776,
+            "output_tokens": 5388,
+            "comparable_cost": 0.558388,
+            "comparable_cost_basis": "same_gateway_frozen_rate_card_all_transport"
+          },
+          "tools": []
+        }
+      ]
+    }
+  ],
+  "optimization_ledger": {
+    "path": "diagnostic-optimization-ledger.json",
+    "sha256": "36ce82ae500452515993bb4fc52df6991114cb1d3deab5ea746b705ff31792d5"
+  },
+  "public_references": [
+    {
+      "id": "deepswe-gpt56-xhigh-4rep",
+      "benchmark": "DeepSWE",
+      "version": "v1.1",
+      "agent": "mini-swe-agent",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "xhigh",
+      "computed_artifact": "deepswe-gpt-5.6-sol-xhigh-public-v1",
+      "components": [],
+      "source_url": "https://deepswe.datacurve.ai/artifacts/v1.1/trials.json",
+      "accessed_at": "2026-07-26T00:00:00Z",
+      "notes": "所有数值均由本地双 SHA 锁定的 452-row projection 经 ScoreDeepSWEPublicCI 当场重算；不是手填分数，也不是本地 Codex harness 分数。"
+    },
+    {
+      "id": "aa-codex-gpt56-max",
+      "benchmark": "Artificial Analysis Coding Agent Index",
+      "version": "v1.3 / 321 tasks",
+      "agent": "Codex",
+      "model": "gpt-5.6-sol",
+      "reasoning_effort": "max（发布方未证明等同 xhigh）",
+      "components": [],
+      "source_url": "https://artificialanalysis.ai/agents/coding-agents/comparisons/codex-vs-grok-build",
+      "accessed_at": "2026-07-26T00:00:00Z",
+      "notes": "仅保留来源链接；由于没有本地 SHA 锁定的可重算工件，禁止在报告中呈现该页面的手填指标，也不做 paired difference。"
+    }
+  ],
+  "failure_annotations": [],
+  "reproduction": [
+    {
+      "label": "校验报告与 i18n",
+      "argv": ["go", "test", "./benchmark/agentic/report", "./i18n"]
+    },
+    {
+      "label": "从严格输入生成单文件报告",
+      "argv": ["go", "run", "./benchmark/agentic/report/cmd/reportgen", "--input", "benchmark/agentic/report/testdata/diagnostic-input.json", "--output", "benchmark/agentic/report/testdata/diagnostic-report.html"]
+    }
+  ],
+  "limitations": [
+    "四个本地数字均是同一 Fabric 题的旧诊断 canary，不是预注册 5 题 pilot，更不是 full 113 正式测评。",
+    "Codex native events、Luban logical tool invocations 与内部 physical operations 不是同一计量单位。",
+    "旧诊断没有逐请求 request-cache、reasoning token、provider reported cost 或完整工具时延覆盖；这些字段显示未提供。",
+    "公开 DeepSWE 4-rep 与 Artificial Analysis 行只作发布参考；没有逐题同协议 Codex xhigh 证据时不与本地结果配对。",
+    "最终全面超越结论只能由 full formal artifact bundle 触发。"
+  ]
+}

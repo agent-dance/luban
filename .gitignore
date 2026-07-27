@@ -30,3 +30,11 @@ dist/
 debug.test*
 /luban-code
 /luban
+
+# Local benchmark execution state and generated diagnostics
+/.tmp/
+/benchmark-results/**/raw/**/empty-home/
+/benchmark-results/**/raw/diagnostics/
+/benchmark-results/**/report.partial.html
+/benchmark-results/**/diagnostic-report.html
+/benchmark-results/**/*.log*

@@ -56,6 +56,84 @@ func TestParseArgsRuntimePromptSettings(t *testing.T) {
 	}
 }
 
+func TestParseArgsReasoningEffort(t *testing.T) {
+	opts, err := cli.ParseArgs([]string{"--reasoning-effort", "xhigh", "-p", "hi"})
+	if err != nil {
+		t.Fatalf("ParseArgs: %v", err)
+	}
+	if opts.ReasoningEffort != "xhigh" {
+		t.Fatalf("ReasoningEffort = %q, want xhigh", opts.ReasoningEffort)
+	}
+}
+
+func TestParseArgsPinnedModelAliases(t *testing.T) {
+	for _, flag := range []string{"--pinned-model", "--no-model-fallback"} {
+		opts, err := cli.ParseArgs([]string{flag, "-p", "hi"})
+		if err != nil {
+			t.Fatalf("ParseArgs(%q): %v", flag, err)
+		}
+		if !opts.PinnedModel {
+			t.Fatalf("PinnedModel = false for %s", flag)
+		}
+	}
+}
+
+func TestParseArgsServiceTierPin(t *testing.T) {
+	opts, err := cli.ParseArgs([]string{"--service-tier", "default", "-p", "hi"})
+	if err != nil {
+		t.Fatalf("ParseArgs: %v", err)
+	}
+	if opts.ServiceTier != "default" {
+		t.Fatalf("ServiceTier = %q, want default", opts.ServiceTier)
+	}
+	omitted, err := cli.ParseArgs([]string{"-p", "hi"})
+	if err != nil {
+		t.Fatalf("ParseArgs omitted service tier: %v", err)
+	}
+	if omitted.ServiceTier != "" {
+		t.Fatalf("omitted ServiceTier = %q, want empty", omitted.ServiceTier)
+	}
+	for _, value := range []string{"auto", "DEFAULT", " default "} {
+		if _, err := cli.ParseArgs([]string{"--service-tier", value, "-p", "hi"}); err == nil {
+			t.Fatalf("non-canonical service tier %q unexpectedly accepted", value)
+		}
+	}
+}
+
+func TestParseArgsResponsesWebSocketIsExplicitAndRequiresResponses(t *testing.T) {
+	enabled, err := cli.ParseArgs([]string{"--responses-websocket", "--api", "responses", "-p", "hi"})
+	if err != nil {
+		t.Fatalf("ParseArgs enabled: %v", err)
+	}
+	if !enabled.ResponsesWebSocket {
+		t.Fatal("ResponsesWebSocket = false, want explicit opt-in")
+	}
+
+	omitted, err := cli.ParseArgs([]string{"--api", "responses", "-p", "hi"})
+	if err != nil {
+		t.Fatalf("ParseArgs omitted: %v", err)
+	}
+	if omitted.ResponsesWebSocket {
+		t.Fatal("omitted ResponsesWebSocket unexpectedly enabled")
+	}
+
+	for _, api := range []string{"chat-completions", "messages"} {
+		if _, err := cli.ParseArgs([]string{"--responses-websocket", "--api", api, "-p", "hi"}); err == nil {
+			t.Fatalf("Responses WebSocket accepted conflicting API format %q", api)
+		}
+	}
+}
+
+func TestForceSandboxToolsImpliesSandbox(t *testing.T) {
+	opts, err := cli.ParseArgs([]string{"--force-sandbox-tools", "-p", "hi"})
+	if err != nil {
+		t.Fatalf("ParseArgs: %v", err)
+	}
+	if !opts.ForceSandboxTools || !opts.Sandbox {
+		t.Fatalf("force sandbox options = %#v", opts)
+	}
+}
+
 func TestParseArgsScreenReaderMode(t *testing.T) {
 	opts, err := cli.ParseArgs([]string{"--screen-reader"})
 	if err != nil {

@@ -87,14 +87,53 @@ type ToolPermissionRejectionMapper interface {
 	MapToolPermissionRejection(input map[string]any, toolUseID, message string) ToolResultBlock
 }
 
+// ToolDefinitionType identifies the provider wire contract for a client tool.
+// The zero value is the ordinary JSON function contract so existing providers
+// cannot accidentally opt into freeform input.
+type ToolDefinitionType string
+
+const (
+	ToolDefinitionTypeFunction ToolDefinitionType = ""
+	ToolDefinitionTypeCustom   ToolDefinitionType = "custom"
+)
+
+// ToolInputFormat constrains freeform custom-tool input on providers that
+// explicitly implement the contract. Grammar is currently the only supported
+// format because an unconstrained text tool would weaken local validation.
+type ToolInputFormat struct {
+	Type       string `json:"type"`
+	Syntax     string `json:"syntax"`
+	Definition string `json:"definition"`
+}
+
+// CustomToolDefinitionProvider is an opt-in contract implemented by tools
+// whose raw provider input must bypass JSON argument encoding. Returning false
+// keeps the tool on the ordinary function surface.
+type CustomToolDefinitionProvider interface {
+	CustomToolInputFormat() (ToolInputFormat, bool)
+}
+
+// CustomToolInputDecoder projects exact freeform provider input into the
+// ordinary local execution map. Permission checks, hooks, schema validation,
+// and Execute must all receive this single canonical projection.
+type CustomToolInputDecoder interface {
+	DecodeCustomToolInput(raw string) (map[string]any, error)
+}
+
 // ToolDefinition is the provider-facing tool contract. Strict is derived from
 // the input schema instead of a second independently maintained declaration.
+// InputSchema remains present for local validation even when Type is custom;
+// providers must serialize only Format for custom definitions.
 type ToolDefinition struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description"`
-	InputSchema JSONSchema `json:"input_schema"`
-	Strict      bool       `json:"strict,omitempty"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	InputSchema JSONSchema         `json:"input_schema"`
+	Strict      bool               `json:"strict,omitempty"`
+	Type        ToolDefinitionType `json:"type,omitempty"`
+	Format      *ToolInputFormat   `json:"format,omitempty"`
 }
+
+func (d ToolDefinition) IsCustom() bool { return d.Type == ToolDefinitionTypeCustom }
 
 // ServerToolDefinition is an API-hosted tool schema. It is intentionally
 // separate from ToolDefinition so ordinary Go client tools can never be
@@ -351,11 +390,21 @@ type ToolErrorCoverage struct {
 // ToolErrorRetry is an allowlisted recovery action. It cannot carry arbitrary
 // tool input, raw causes, or file content into the model-facing envelope.
 type ToolErrorRetry struct {
-	Action   string `json:"action"`
-	Tool     string `json:"tool"`
-	FilePath string `json:"file_path,omitempty"`
-	Offset   int    `json:"offset,omitempty"`
-	Limit    int    `json:"limit,omitempty"`
+	Action   string                    `json:"action"`
+	Tool     string                    `json:"tool"`
+	FilePath string                    `json:"file_path,omitempty"`
+	Offset   int                       `json:"offset,omitempty"`
+	Limit    int                       `json:"limit,omitempty"`
+	Requests []ToolErrorInspectRequest `json:"requests,omitempty"`
+}
+
+// ToolErrorInspectRequest is the allowlisted subset of Inspect's batch input
+// used by mutation recovery. It cannot smuggle arbitrary tool arguments.
+type ToolErrorInspectRequest struct {
+	ID     string           `json:"id"`
+	Kind   string           `json:"kind"`
+	Path   string           `json:"path"`
+	Ranges []ToolErrorRange `json:"ranges,omitempty"`
 }
 
 // ToolErrorData is the typed P0 file-tool error contract. Local renderers use
@@ -549,12 +598,20 @@ func applyToolResultContract(t Tool, block ToolResultBlock) ToolResultBlock {
 // ToDefinition converts a Tool interface to an API ToolDefinition
 func ToDefinition(t Tool) ToolDefinition {
 	schema := t.Schema()
-	return ToolDefinition{
+	definition := ToolDefinition{
 		Name:        t.Name(),
 		Description: t.Description(),
 		InputSchema: schema,
 		Strict:      schema.RejectsUnknownFields(),
 	}
+	if custom, ok := t.(CustomToolDefinitionProvider); ok {
+		if format, enabled := custom.CustomToolInputFormat(); enabled {
+			definition.Type = ToolDefinitionTypeCustom
+			definition.Format = &format
+			definition.Strict = false
+		}
+	}
+	return definition
 }
 
 // ToDefinitions converts a slice of Tools to API ToolDefinitions
@@ -603,11 +660,12 @@ func (m Message) MarshalJSON() ([]byte, error) {
 
 func (b ToolResultBlock) MarshalJSON() ([]byte, error) {
 	type toolResultJSON struct {
-		Type      ContentType `json:"type"`
-		ToolUseID string      `json:"tool_use_id"`
-		Content   any         `json:"content"`
-		IsError   bool        `json:"is_error,omitempty"`
-		Outcome   ToolOutcome `json:"outcome,omitempty"`
+		Type      ContentType        `json:"type"`
+		ToolUseID string             `json:"tool_use_id"`
+		Content   any                `json:"content"`
+		IsError   bool               `json:"is_error,omitempty"`
+		Outcome   ToolOutcome        `json:"outcome,omitempty"`
+		ToolType  ToolDefinitionType `json:"tool_type,omitempty"`
 	}
 
 	content := any(b.Content)
@@ -621,16 +679,18 @@ func (b ToolResultBlock) MarshalJSON() ([]byte, error) {
 		Content:   content,
 		IsError:   b.IsError,
 		Outcome:   b.Outcome,
+		ToolType:  b.ToolType,
 	})
 }
 
 func (b *ToolResultBlock) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Type      ContentType     `json:"type"`
-		ToolUseID string          `json:"tool_use_id"`
-		Content   json.RawMessage `json:"content"`
-		IsError   bool            `json:"is_error,omitempty"`
-		Outcome   ToolOutcome     `json:"outcome,omitempty"`
+		Type      ContentType        `json:"type"`
+		ToolUseID string             `json:"tool_use_id"`
+		Content   json.RawMessage    `json:"content"`
+		IsError   bool               `json:"is_error,omitempty"`
+		Outcome   ToolOutcome        `json:"outcome,omitempty"`
+		ToolType  ToolDefinitionType `json:"tool_type,omitempty"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -643,6 +703,7 @@ func (b *ToolResultBlock) UnmarshalJSON(data []byte) error {
 	b.ToolUseID = raw.ToolUseID
 	b.IsError = raw.IsError
 	b.Outcome = raw.Outcome
+	b.ToolType = raw.ToolType
 	b.Content = ""
 	b.ContentBlocks = nil
 	b.Data = nil
@@ -756,6 +817,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	// JSON is an external description, never a runtime capability. Clear any
 	// authority even when UnmarshalJSON reuses an existing Message value.
 	m.clearInternalControlProvenance()
+	m.ClearProviderContinuation()
 	m.ID = raw.ID
 	m.Role = raw.Role
 	m.IsMeta = raw.IsMeta

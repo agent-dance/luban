@@ -21,6 +21,7 @@ type CacheEditsBlock struct {
 type PinnedCacheEdits struct {
 	UserMessageIndex int
 	Block            CacheEditsBlock
+	ProofLedger      string
 }
 
 type CachedMicrocompactState struct {
@@ -35,6 +36,9 @@ type CachedMicrocompactResult struct {
 	Messages       []types.Message
 	Changed        bool
 	DeletedToolIDs []string
+	ReclaimedBytes int
+	ProofBytes     int
+	BytesSaved     int
 }
 
 func NewCachedMicrocompactState() *CachedMicrocompactState {
@@ -72,7 +76,7 @@ func CachedMicrocompact(messages []types.Message, cfg MicrocompactConfig, state 
 	}
 	ensureCachedMicrocompactState(state)
 
-	compactableIDs := collectCompactableToolIDs(messages)
+	compactableIDs := collectCompactableToolIDs(messages, cfg)
 	compactableSet := make(map[string]struct{}, len(compactableIDs))
 	for _, id := range compactableIDs {
 		compactableSet[id] = struct{}{}
@@ -134,10 +138,12 @@ func CachedMicrocompact(messages []types.Message, cfg MicrocompactConfig, state 
 		state.DeletedRefs[id] = struct{}{}
 	}
 	block := CacheEditsBlockForDeletes(deleted)
+	proofLedger, reclaimedBytes, proofBytes := cachedAgenticV2ProofLedger(messages, deleted)
 	if len(block.Edits) > 0 {
 		state.PinnedEdits = append(state.PinnedEdits, PinnedCacheEdits{
 			UserMessageIndex: pinnedIndex,
 			Block:            block,
+			ProofLedger:      proofLedger,
 		})
 	}
 
@@ -145,6 +151,9 @@ func CachedMicrocompact(messages []types.Message, cfg MicrocompactConfig, state 
 		Messages:       appendPinnedCacheEdits(messages, state.PinnedEdits),
 		Changed:        len(deleted) > 0,
 		DeletedToolIDs: deleted,
+		ReclaimedBytes: reclaimedBytes,
+		ProofBytes:     proofBytes,
+		BytesSaved:     max(reclaimedBytes-proofBytes, 0),
 	}
 }
 
@@ -178,47 +187,78 @@ func appendPinnedCacheEdits(messages []types.Message, pinned []PinnedCacheEdits)
 		}
 		msg := out[edit.UserMessageIndex]
 		content := append([]types.ContentBlock(nil), msg.Content...)
-		content = insertUnknownBlockAfterToolResults(content, types.UnknownBlock{
+		content = insertCacheCompactionBlocks(content, types.UnknownBlock{
 			Type: ContentTypeCacheEdits,
 			Raw:  raw,
-		})
+		}, edit.ProofLedger)
 		msg.Content = content
 		out[edit.UserMessageIndex] = msg
 	}
 	return out
 }
 
-func insertUnknownBlockAfterToolResults(content []types.ContentBlock, block types.ContentBlock) []types.ContentBlock {
+func insertCacheCompactionBlocks(content []types.ContentBlock, block types.ContentBlock, proofLedger string) []types.ContentBlock {
 	lastToolResult := -1
 	for i, item := range content {
 		if _, ok := item.(types.ToolResultBlock); ok {
 			lastToolResult = i
 		}
 	}
-	if lastToolResult >= 0 {
-		pos := lastToolResult + 1
-		content = append(content[:pos], append([]types.ContentBlock{block}, content[pos:]...)...)
-		if pos == len(content)-1 {
-			content = append(content, types.TextBlock{Type: types.ContentTypeText, Text: "."})
+	insertions := []types.ContentBlock{block}
+	if proofLedger != "" && !containsTextBlock(content, proofLedger) {
+		insertions = append(insertions, types.TextBlock{Type: types.ContentTypeText, Text: proofLedger})
+	}
+	pos := lastToolResult + 1
+	if lastToolResult < 0 {
+		pos = len(content) - 1
+		if pos < 0 {
+			pos = 0
 		}
-		return content
 	}
-	pos := len(content) - 1
-	if pos < 0 {
-		pos = 0
+	needsContinuation := pos == len(content)
+	out := make([]types.ContentBlock, 0, len(content)+len(insertions)+1)
+	out = append(out, content[:pos]...)
+	out = append(out, insertions...)
+	out = append(out, content[pos:]...)
+	if needsContinuation {
+		out = append(out, types.TextBlock{Type: types.ContentTypeText, Text: "."})
 	}
-	return append(content[:pos], append([]types.ContentBlock{block}, content[pos:]...)...)
+	return out
 }
 
-func collectCompactableToolIDs(messages []types.Message) []string {
+func containsTextBlock(content []types.ContentBlock, text string) bool {
+	for _, block := range content {
+		if value, ok := block.(types.TextBlock); ok && value.Text == text {
+			return true
+		}
+	}
+	return false
+}
+
+func collectCompactableToolIDs(messages []types.Message, cfg MicrocompactConfig) []string {
 	var ids []string
+	results := toolResultsByUseID(messages)
 	for _, msg := range messages {
-		if msg.Role != types.RoleAssistant {
+		if effectiveCompactionRole(msg) != types.RoleAssistant {
 			continue
 		}
 		for _, block := range msg.Content {
-			if tu, ok := block.(types.ToolUseBlock); ok && compactableTools[tu.Name] {
-				ids = append(ids, tu.ID)
+			if tu, ok := block.(types.ToolUseBlock); ok {
+				if legacyCompactableTools[tu.Name] {
+					ids = append(ids, tu.ID)
+					continue
+				}
+				if !cfg.AgenticV2ProofsEnabled || !isAgenticV2ProofTool(tu.Name) {
+					continue
+				}
+				result, exists := results[tu.ID]
+				if !exists {
+					continue
+				}
+				proof, ok := agenticV2ProofContent(tu.Name, result)
+				if ok && len(proof) < len(result.TextContent()) {
+					ids = append(ids, tu.ID)
+				}
 			}
 		}
 	}

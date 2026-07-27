@@ -2,6 +2,9 @@ package sandbox
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,7 +25,9 @@ func TestNoopBackend(t *testing.T) {
 
 	cfg := Config{
 		WorkDir: workDir,
-		Env:     []string{"FOO=bar"},
+		Environment: captureEnvironment(nil, NewEnvironmentPolicy(nil, map[string]string{
+			"FOO": "bar",
+		})),
 	}
 	cmd, err := b.Command(ctx, cfg, "echo", "hello")
 	if err != nil {
@@ -45,16 +50,23 @@ func TestNoopBackendIsNotRealSandboxCapability(t *testing.T) {
 	}
 }
 
-// TestNoopBackend_NilEnv verifies that nil Env leaves cmd.Env nil (inherit from parent).
-func TestNoopBackend_NilEnv(t *testing.T) {
+// TestNoopBackendZeroEnvironment verifies that a zero snapshot never leaves
+// cmd.Env nil, which would inherit every parent credential through os/exec.
+func TestNoopBackendZeroEnvironment(t *testing.T) {
+	t.Setenv("LUBAN_TEST_API_KEY", "noop-secret-sentinel")
 	ctx := context.Background()
 	b := NoopBackend{}
 	cmd, err := b.Command(ctx, Config{}, "echo")
 	if err != nil {
 		t.Fatalf("Command() error: %v", err)
 	}
-	if cmd.Env != nil {
-		t.Errorf("cmd.Env = %v, want nil (inherit from parent)", cmd.Env)
+	if cmd.Env == nil {
+		t.Fatal("cmd.Env is nil and would inherit the parent environment")
+	}
+	for _, entry := range cmd.Env {
+		if strings.Contains(entry, "noop-secret-sentinel") {
+			t.Fatal("NoopBackend leaked a filtered credential")
+		}
 	}
 }
 
@@ -222,11 +234,104 @@ func TestSafeEnv(t *testing.T) {
 		}
 	})
 
-	t.Run("nil input returns nil", func(t *testing.T) {
-		if result := SafeEnv(nil); result != nil {
-			t.Errorf("SafeEnv(nil) = %v, want nil", result)
+	t.Run("keeps common compiler settings", func(t *testing.T) {
+		env := []string{
+			"GOFLAGS=-mod=readonly", "GOMODCACHE=/cache/go", "CGO_ENABLED=1",
+			"CARGO_TARGET_DIR=/cache/cargo", "RUSTFLAGS=-Cdebuginfo=0",
+			"CC=clang", "CXX=clang++", "CMAKE_GENERATOR=Ninja",
+			"JAVA_HOME=/opt/jdk", "GRADLE_USER_HOME=/cache/gradle",
+			"NODE_OPTIONS=--max-old-space-size=4096", "PYTHONPATH=/workspace/lib",
+		}
+		filtered := SafeEnv(env)
+		for _, entry := range env {
+			if !contains(filtered, entry) {
+				t.Errorf("SafeEnv dropped build setting %q", entry)
+			}
 		}
 	})
+
+	t.Run("strips secret shaped names inside safe prefixes", func(t *testing.T) {
+		env := []string{
+			"NPM_CONFIG_AUTH_TOKEN=npm-secret",
+			"npm_config_password=npm-password",
+			"XDG_CLIENT_SECRET=xdg-secret",
+			"XDG_HTTP_AUTHORIZATION=authorization-secret",
+			"CMAKE_API_KEY=cmake-secret",
+			"CMAKE_SIGNING_KEY=cmake-key-secret",
+		}
+		filtered := SafeEnv(env)
+		if len(filtered) != 0 {
+			t.Fatalf("SafeEnv kept secret-shaped prefixed values: %v", filtered)
+		}
+	})
+
+	t.Run("nil input returns explicit empty environment", func(t *testing.T) {
+		if result := SafeEnv(nil); result == nil || len(result) != 0 {
+			t.Errorf("SafeEnv(nil) = %#v, want non-nil empty environment", result)
+		}
+	})
+}
+
+func TestEnvironmentPolicyExplicitDelegationAndOverride(t *testing.T) {
+	parent := []string{
+		"PATH=/usr/bin",
+		"OPENAI_API_KEY=host-secret",
+		"CUSTOM_BUILD_ROOT=/host/build",
+	}
+	policy := NewEnvironmentPolicy(
+		[]string{"OPENAI_API_KEY", "CUSTOM_BUILD_ROOT"},
+		map[string]string{"CUSTOM_BUILD_ROOT": "/override/build", "EMPTY_VALUE": ""},
+	)
+	snapshot := captureEnvironment(parent, policy)
+	entries := environmentSnapshotEntries(snapshot)
+	if !contains(entries, "OPENAI_API_KEY=host-secret") {
+		t.Fatal("explicit allowlist did not delegate the requested variable")
+	}
+	if !contains(entries, "CUSTOM_BUILD_ROOT=/override/build") {
+		t.Fatal("explicit override did not take precedence")
+	}
+	if !contains(entries, "EMPTY_VALUE=") {
+		t.Fatal("explicit empty override was dropped")
+	}
+	if strings.Contains(policy.Fingerprint(), "host-secret") || strings.Contains(policy.Fingerprint(), "/override/build") {
+		t.Fatal("environment policy fingerprint disclosed a raw value")
+	}
+}
+
+func environmentSnapshotEntries(snapshot EnvironmentSnapshot) []string {
+	command := &exec.Cmd{}
+	snapshot.Apply(command)
+	return command.Env
+}
+
+func TestEnvironmentSnapshotFingerprintBindsResolvedValues(t *testing.T) {
+	policy := NewEnvironmentPolicy([]string{"CUSTOM_BUILD_ROOT"}, nil)
+	first := captureEnvironment([]string{"CUSTOM_BUILD_ROOT=/one"}, policy)
+	second := captureEnvironment([]string{"CUSTOM_BUILD_ROOT=/two"}, policy)
+	if first.Fingerprint() == second.Fingerprint() {
+		t.Fatal("resolved environment fingerprints did not bind the delegated value")
+	}
+	if strings.Contains(first.Fingerprint(), "/one") || strings.Contains(second.Fingerprint(), "/two") {
+		t.Fatal("resolved environment fingerprint disclosed a raw value")
+	}
+}
+
+func TestEnvironmentAuthorityDebugAndJSONFormattingRedactsValues(t *testing.T) {
+	const secret = "formatting-secret-sentinel"
+	policy := NewEnvironmentPolicy(nil, map[string]string{"CUSTOM_BUILD_ROOT": secret})
+	snapshot := captureEnvironment(nil, policy)
+	encoded, err := json.Marshal(struct {
+		Policy   EnvironmentPolicy   `json:"policy"`
+		Snapshot EnvironmentSnapshot `json:"snapshot"`
+	}{Policy: policy, Snapshot: snapshot})
+	if err != nil {
+		t.Fatalf("marshal environment authority: %v", err)
+	}
+	config := Config{Environment: snapshot}
+	surfaces := fmt.Sprintf("%v\n%+v\n%#v\n%+v\n%#v\n%s", policy, snapshot, snapshot, config, config, encoded)
+	if strings.Contains(surfaces, secret) {
+		t.Fatal("environment authority formatting disclosed an override value")
+	}
 }
 
 // contains is a helper for TestSafeEnv.

@@ -10,14 +10,33 @@ func stripThinkingSignatures(messages []types.Message) []types.Message {
 	out := make([]types.Message, len(messages))
 	for i, msg := range messages {
 		out[i] = msg
+		out[i].ClearProviderContinuation()
 		if len(msg.Content) == 0 {
 			continue
 		}
 		out[i].Content = make([]types.ContentBlock, len(msg.Content))
 		for j, block := range msg.Content {
-			if thinking, ok := block.(types.ThinkingBlock); ok {
+			switch thinking := block.(type) {
+			case types.ThinkingBlock:
 				thinking.Signature = ""
+				thinking.SignatureKind = ""
+				thinking.SignatureModel = ""
+				thinking.ProviderItemID = ""
+				thinking.ProviderStatus = ""
 				out[i].Content[j] = thinking
+				continue
+			case *types.ThinkingBlock:
+				if thinking == nil {
+					out[i].Content[j] = thinking
+					continue
+				}
+				clone := *thinking
+				clone.Signature = ""
+				clone.SignatureKind = ""
+				clone.SignatureModel = ""
+				clone.ProviderItemID = ""
+				clone.ProviderStatus = ""
+				out[i].Content[j] = &clone
 				continue
 			}
 			out[i].Content[j] = block

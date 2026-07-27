@@ -2,6 +2,8 @@ package provider
 
 import (
 	"errors"
+	"io"
+	"net"
 	"testing"
 
 	"github.com/agent-dance/luban/types"
@@ -28,45 +30,6 @@ func TestAsAPIError_UnwrapsFallbackTriggeredError(t *testing.T) {
 	}
 }
 
-// --- isConnectionError ---
-
-func TestIsConnectionError_Positive(t *testing.T) {
-	cases := []string{
-		"connection refused",
-		"connection reset",
-		"connection closed",
-		"no such host",
-		"network is unreachable",
-		"i/o timeout",
-		"eof",
-		"broken pipe",
-		"tls handshake",
-		"dial tcp",
-		// uppercase should also match (caller lowercases before calling)
-		"Connection Refused", // NOTE: caller passes ToLower, but let's test via IsRetryable
-	}
-	for _, msg := range cases[:len(cases)-1] { // last one tested via IsRetryable
-		if !isConnectionError(msg) {
-			t.Errorf("isConnectionError(%q) want true", msg)
-		}
-	}
-}
-
-func TestIsConnectionError_Negative(t *testing.T) {
-	cases := []string{
-		"bad request",
-		"unauthorized",
-		"not found",
-		"internal server error",
-		"",
-	}
-	for _, msg := range cases {
-		if isConnectionError(msg) {
-			t.Errorf("isConnectionError(%q) want false", msg)
-		}
-	}
-}
-
 // --- IsRetryable ---
 
 func TestIsRetryable_Nil(t *testing.T) {
@@ -76,14 +39,14 @@ func TestIsRetryable_Nil(t *testing.T) {
 }
 
 func TestIsRetryable_ConnectionError(t *testing.T) {
-	err := errors.New("dial tcp: connection refused")
+	err := &net.DNSError{Err: "temporary resolver failure", IsTemporary: true}
 	if !IsRetryable(err) {
 		t.Error("connection error should be retryable")
 	}
 }
 
 func TestIsRetryable_EOF(t *testing.T) {
-	err := errors.New("unexpected eof")
+	err := io.ErrUnexpectedEOF
 	if !IsRetryable(err) {
 		t.Error("eof should be retryable")
 	}
@@ -112,8 +75,8 @@ func TestIsRetryable_APIError_408(t *testing.T) {
 
 func TestIsRetryable_APIError_409(t *testing.T) {
 	ae := &types.APIError{Status: 409}
-	if !IsRetryable(ae) {
-		t.Error("409 should be retryable")
+	if IsRetryable(ae) {
+		t.Error("untyped 409 should fail fast")
 	}
 }
 
@@ -161,15 +124,29 @@ func TestIsRetryable_APIError_400_Plain(t *testing.T) {
 
 func TestIsRetryable_APIError_400_MaxTokens(t *testing.T) {
 	ae := &types.APIError{Status: 400, Message: "max_tokens exceed context length"}
-	if !IsRetryable(ae) {
-		t.Error("max_tokens overflow 400 should be retryable")
+	if IsRetryable(ae) {
+		t.Error("max_tokens overflow requires request recovery, not blind retry")
 	}
 }
 
-func TestIsRetryable_APIError_StatusZero_ConnectionMsg(t *testing.T) {
+func TestIsRetryable_PermanentProblemTypesOverrideServerStatus(t *testing.T) {
+	cases := []*types.APIError{
+		{Status: 500, Type: "context_length_exceeded", Message: "context window exceeded"},
+		{Status: 500, Type: "insufficient_quota", Message: "billing quota exhausted"},
+		{Status: 500, Type: "model_not_found", Message: "unknown model"},
+		{Status: 500, Type: "authentication_error", Message: "invalid credential"},
+	}
+	for _, apiErr := range cases {
+		if IsRetryable(apiErr) {
+			t.Errorf("permanent problem retried: %+v", apiErr)
+		}
+	}
+}
+
+func TestIsRetryable_APIError_StatusZero_ConnectionMessageIsNotEvidence(t *testing.T) {
 	ae := &types.APIError{Status: 0, Message: "dial tcp: connection refused"}
-	if !IsRetryable(ae) {
-		t.Error("status=0 with connection error message should be retryable")
+	if IsRetryable(ae) {
+		t.Error("provider-controlled message must not authorize retry")
 	}
 }
 
@@ -177,5 +154,59 @@ func TestIsRetryable_APIError_StatusZero_RandomMsg(t *testing.T) {
 	ae := &types.APIError{Status: 0, Message: "unknown error"}
 	if IsRetryable(ae) {
 		t.Error("status=0 with non-connection message should NOT be retryable")
+	}
+}
+
+func TestClassifyAttemptErrorStructuredContract(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStage  types.ProviderErrorStage
+		wantClass  types.ProviderErrorClass
+		wantReplay types.ProviderReplaySafety
+		wantRetry  bool
+	}{
+		{
+			name:      "400 context is terminal",
+			err:       &types.APIError{Status: 400, Code: "context_length_exceeded", Type: "invalid_request_error"},
+			wantStage: types.ProviderErrorStageHeaders, wantClass: types.ProviderErrorClassContext,
+			wantReplay: types.ProviderReplayUnsafe,
+		},
+		{
+			name:      "429 throttle",
+			err:       &types.APIError{Status: 429, Code: "rate_limit_exceeded"},
+			wantStage: types.ProviderErrorStageHeaders, wantClass: types.ProviderErrorClassThrottle,
+			wantReplay: types.ProviderReplaySafe, wantRetry: true,
+		},
+		{
+			name:      "503 overload",
+			err:       &types.APIError{Status: 503, Type: "server_error"},
+			wantStage: types.ProviderErrorStageHeaders, wantClass: types.ProviderErrorClassOverload,
+			wantReplay: types.ProviderReplaySafe, wantRetry: true,
+		},
+		{
+			name:      "generic api error is permanent",
+			err:       &types.APIError{Type: "api_error", Message: "upstream disconnected"},
+			wantStage: types.ProviderErrorStageConnect, wantClass: types.ProviderErrorClassPermanent,
+			wantReplay: types.ProviderReplayUnsafe,
+		},
+		{
+			name:      "committed transport is unsafe unless explicitly proven",
+			err:       &types.APIError{Type: "stream_interrupted", Stage: types.ProviderErrorStageCommitted},
+			wantStage: types.ProviderErrorStageCommitted, wantClass: types.ProviderErrorClassTransport,
+			wantReplay: types.ProviderReplayUnsafe,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := ClassifyAttemptError(test.err)
+			if got.Stage != test.wantStage || got.Class != test.wantClass || got.ReplaySafety != test.wantReplay {
+				t.Fatalf("contract = %+v, want stage=%q class=%q replay=%q", got, test.wantStage, test.wantClass, test.wantReplay)
+			}
+			if got.Retryable() != test.wantRetry {
+				t.Fatalf("Retryable() = %t, want %t", got.Retryable(), test.wantRetry)
+			}
+		})
 	}
 }

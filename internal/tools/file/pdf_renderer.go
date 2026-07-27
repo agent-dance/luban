@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/agent-dance/luban/i18n"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
+	"github.com/agent-dance/luban/internal/store/secureio"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -158,9 +160,16 @@ func extractPDFPageImages(filePath string, firstPage, lastPage int, toolResultsD
 		return result, newPDFError(PDFErrorUnavailable, i18n.KeyToolPDFHelperRendererUnavailable)
 	}
 	if strings.TrimSpace(toolResultsDir) == "" {
-		toolResultsDir = filepath.Join(os.TempDir(), "luban-code", "tool-results")
+		cwd := "."
+		if current, cwdErr := os.Getwd(); cwdErr == nil && strings.TrimSpace(current) != "" {
+			cwd = current
+		}
+		toolResultsDir = filepath.Join(
+			storepaths.RuntimeSessionDir(cwd, strings.TrimSpace(os.Getenv("LUBAN_SESSION_ID"))),
+			"tool-results",
+		)
 	}
-	if err := os.MkdirAll(toolResultsDir, 0o755); err != nil {
+	if err := secureio.EnsurePrivateRuntimeDirectory(toolResultsDir); err != nil {
 		return result, i18n.WrapError(i18n.KeyToolPDFHelperCreateResultsDirectory, err)
 	}
 	dir, err := os.MkdirTemp(toolResultsDir, "pdf-*")

@@ -127,6 +127,7 @@ func TestForceCompactCleanupFailureRestoresExactPreimageAndFailureLifecycle(t *t
 		PinnedEdits: []compact.PinnedCacheEdits{{
 			UserMessageIndex: 1,
 			Block:            compact.CacheEditsBlock{Edits: []compact.CacheEdit{{Type: "clear_tool_uses_20250919", CacheReference: "tool-before-cleanup"}}},
+			ProofLedger:      `{"schema":"agentic-v2-cache-proof-ledger/v1","entries":[]}`,
 		}},
 	}
 	q.cachedMicrocompactState = cachedState

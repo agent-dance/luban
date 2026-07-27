@@ -1,0 +1,42 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785011121.749909,
+  "elapsed_seconds": 202.579,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 510952,
+    "cached_input_tokens": 447232,
+    "output_tokens": 7155,
+    "reasoning_output_tokens": 3940,
+    "cache_read_input_tokens": 447232,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 0.756866,
+  "tool_calls": 12,
+  "tool_calls_by_type": {
+    "command_execution": 11,
+    "file_change": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/plugins/ai/codex/codex.go",
+      "internal/plugins/ai/codex/codex_test.go"
+    ],
+    "additions": 94,
+    "deletions": 4
+  },
+  "final_text": "Implemented the Codex empty-response fix.\n\n- Prevents empty `response.completed` events from overwriting streamed text.\n- Falls back to delta output, then `output_text.done`.\n- Added regression tests for both response formats.\n- `gofmt` and `git diff --check` pass.\n- Package tests could not compile because the sandbox blocked Go’s external build cache. No network was used.",
+  "command_public": {
+    "executable": "codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  }
+}

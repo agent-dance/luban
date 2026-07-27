@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	"github.com/agent-dance/luban/internal/store/secureio"
 )
 
@@ -56,7 +57,7 @@ func newRepository(root string) (*repository, error) {
 	if err != nil {
 		return nil, newDomainError(errorKindStoreInvalid, err)
 	}
-	dir := filepath.Join(cleaned, ".luban-code", "schedule")
+	dir := storepaths.RuntimeServiceDir(cleaned, "schedule")
 	return &repository{
 		root:     cleaned,
 		dir:      dir,

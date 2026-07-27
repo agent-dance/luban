@@ -23,6 +23,7 @@ import (
 
 	"github.com/agent-dance/luban/hooks"
 	"github.com/agent-dance/luban/i18n"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	runtimestore "github.com/agent-dance/luban/internal/store/runtime"
 	"github.com/agent-dance/luban/internal/store/secureio"
 	"github.com/agent-dance/luban/types"
@@ -423,6 +424,7 @@ type BackgroundTaskManager struct {
 	sessions               map[string]*backgroundAgentSession
 	aliases                map[string]string
 	nextID                 int
+	projectRoot            string
 	outputDir              string
 	store                  *runtimestore.RuntimeTaskStore
 	lifecycle              *runtimestore.RuntimeLifecycle
@@ -478,13 +480,15 @@ func NewBackgroundTaskManager(cwd string) *BackgroundTaskManager {
 	if root == "" {
 		root = "."
 	}
-	outputDir := filepath.Join(root, ".luban-code", "task-output")
+	runtimeRoot := storepaths.RuntimeSessionDir(root, "")
+	outputDir := filepath.Join(runtimeRoot, "task-output")
 	_ = secureio.EnsurePrivateRuntimeDirectory(outputDir)
 	lifecycleCtx, lifecycleCancel := context.WithCancel(context.Background())
 	manager := &BackgroundTaskManager{
 		tasks:               make(map[string]*BackgroundTask),
 		sessions:            make(map[string]*backgroundAgentSession),
 		aliases:             make(map[string]string),
+		projectRoot:         root,
 		outputDir:           outputDir,
 		store:               runtimestore.NewRuntimeTaskStore(root),
 		lifecycle:           runtimestore.NewRuntimeLifecycle(root),
@@ -677,7 +681,9 @@ func (m *BackgroundTaskManager) SetProjectRoot(root string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	trimmed = filepath.Clean(trimmed)
-	m.outputDir = filepath.Join(trimmed, ".luban-code", "task-output")
+	runtimeRoot := storepaths.RuntimeSessionDir(trimmed, "")
+	m.projectRoot = trimmed
+	m.outputDir = filepath.Join(runtimeRoot, "task-output")
 	_ = secureio.EnsurePrivateRuntimeDirectory(m.outputDir)
 	m.store = runtimestore.NewRuntimeTaskStore(trimmed)
 	m.lifecycle = runtimestore.NewRuntimeLifecycle(trimmed)
@@ -734,12 +740,37 @@ func (m *BackgroundTaskManager) MarkAgentDetached(taskID string) bool {
 
 func (m *BackgroundTaskManager) currentTaskOriginLocked() *backgroundTaskOrigin {
 	return &backgroundTaskOrigin{
-		projectRoot:      filepath.Clean(strings.TrimSpace(filepath.Dir(filepath.Dir(m.outputDir)))),
+		projectRoot:      filepath.Clean(strings.TrimSpace(m.projectRoot)),
 		outputDir:        m.outputDir,
 		store:            m.store,
 		lifecycle:        m.lifecycle,
 		notificationSink: m.notificationSink,
 	}
+}
+
+func (m *BackgroundTaskManager) taskOriginForSessionLocked(sessionID string) *backgroundTaskOrigin {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return m.currentTaskOriginLocked()
+	}
+	root := filepath.Clean(strings.TrimSpace(m.projectRoot))
+	runtimeRoot := storepaths.RuntimeSessionDir(root, sessionID)
+	return &backgroundTaskOrigin{
+		projectRoot:      root,
+		outputDir:        filepath.Join(runtimeRoot, "task-output"),
+		store:            m.store,
+		lifecycle:        m.lifecycle,
+		notificationSink: m.notificationSink,
+	}
+}
+
+func (m *BackgroundTaskManager) taskOriginForContext(ctx context.Context) *backgroundTaskOrigin {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.taskOriginForSessionLocked(backgroundTaskOwnerSessionID(ctx))
 }
 
 func (m *BackgroundTaskManager) currentTaskOrigin() *backgroundTaskOrigin {
@@ -754,11 +785,12 @@ func (m *BackgroundTaskManager) currentTaskOrigin() *backgroundTaskOrigin {
 // CurrentProjectRoot returns the project namespace currently selected by the
 // manager. Task origins remain pinned separately when a task is launched.
 func (m *BackgroundTaskManager) CurrentProjectRoot() string {
-	origin := m.currentTaskOrigin()
-	if origin == nil {
+	if m == nil {
 		return ""
 	}
-	return origin.projectRoot
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return filepath.Clean(strings.TrimSpace(m.projectRoot))
 }
 
 func (m *BackgroundTaskManager) originForTask(task *BackgroundTask) *backgroundTaskOrigin {
@@ -1052,10 +1084,11 @@ func (m *BackgroundTaskManager) publishTaskStarted(origin *backgroundTaskOrigin,
 	}
 	if origin != nil && origin.lifecycle != nil {
 		base := runtimestore.RuntimeLifecycleEvent{
-			Type:     runtimestore.LifecycleTaskCreated,
-			EntityID: task.ID,
-			ToolName: lifecycleToolNameForTask(task.Type),
-			Status:   task.Status,
+			Type:      runtimestore.LifecycleTaskCreated,
+			SessionID: task.OwnerSessionID,
+			EntityID:  task.ID,
+			ToolName:  lifecycleToolNameForTask(task.Type),
+			Status:    task.Status,
 			Payload: map[string]any{
 				"type":        task.Type,
 				"description": task.Description,
@@ -1470,6 +1503,9 @@ func (m *BackgroundTaskManager) startShellTaskWithCompletion(parent context.Cont
 }
 
 func (m *BackgroundTaskManager) startShellTask(parent context.Context, command, description string, cmd *exec.Cmd, timeout time.Duration, completion func(error, int)) (*agentcontract.TaskSnapshot, error) {
+	if parent == nil {
+		parent = context.Background()
+	}
 	releaseWaiter, admitted := m.beginManagedWork()
 	if !admitted {
 		return nil, i18n.NewError(i18n.KeyToolNotificationManagerShuttingDown)
@@ -1487,7 +1523,7 @@ func (m *BackgroundTaskManager) startShellTask(parent context.Context, command, 
 		}
 	}()
 	m.mu.Lock()
-	origin := m.currentTaskOriginLocked()
+	origin := m.taskOriginForSessionLocked(backgroundTaskOwnerSessionID(parent))
 	taskID := m.nextTaskIDLocked(origin)
 	m.mu.Unlock()
 
@@ -1501,9 +1537,6 @@ func (m *BackgroundTaskManager) startShellTask(parent context.Context, command, 
 		return nil, i18n.WrapError(i18n.KeyToolBackgroundOutputOpenFailed, err)
 	}
 
-	if parent == nil {
-		parent = context.Background()
-	}
 	pinBackgroundTaskOriginHookContext(origin, parent)
 	taskCtx, cancel := m.managedContext(parent)
 	cmd.Stdout = outFile
@@ -1702,10 +1735,11 @@ func (m *BackgroundTaskManager) emitCompletionNotification(ctx context.Context, 
 	origin := m.originForTask(task)
 	if origin != nil && origin.lifecycle != nil {
 		base := runtimestore.RuntimeLifecycleEvent{
-			Type:     runtimestore.LifecycleTaskCompleted,
-			EntityID: task.ID,
-			ToolName: lifecycleToolNameForTask(task.Type),
-			Status:   status,
+			Type:      runtimestore.LifecycleTaskCompleted,
+			SessionID: task.OwnerSessionID,
+			EntityID:  task.ID,
+			ToolName:  lifecycleToolNameForTask(task.Type),
+			Status:    status,
 			Payload: map[string]any{
 				"type":      task.Type,
 				"exit_code": exitCode,
@@ -2297,20 +2331,24 @@ func (m *BackgroundTaskManager) ReplayPendingNotifications(ctx context.Context) 
 		return nil
 	}
 	defer releaseWork()
-	origin := m.currentTaskOrigin()
-	if origin == nil || origin.store == nil {
-		return nil
-	}
 	var errs []error
-	var notifications []agentcontract.RuntimeNotification
-	for _, record := range origin.store.List() {
-		notifications = append(notifications, runtimeTaskNotifications(record)...)
+	type pendingAtOrigin struct {
+		origin       *backgroundTaskOrigin
+		notification agentcontract.RuntimeNotification
+	}
+	var pending []pendingAtOrigin
+	for _, origin := range m.notificationReplayOrigins() {
+		for _, record := range origin.store.List() {
+			for _, notification := range runtimeTaskNotifications(record) {
+				pending = append(pending, pendingAtOrigin{origin: origin, notification: notification})
+			}
+		}
 	}
 	// Task start time is not notification order: long-running tasks may finish
 	// after shorter tasks from the same conversation. Rebuild each FIFO from
 	// the durable notification creation order after a restart.
-	sort.SliceStable(notifications, func(i, j int) bool {
-		left, right := notifications[i], notifications[j]
+	sort.SliceStable(pending, func(i, j int) bool {
+		left, right := pending[i].notification, pending[j].notification
 		if left.CreatedAt.Equal(right.CreatedAt) {
 			return left.ID < right.ID
 		}
@@ -2322,15 +2360,53 @@ func (m *BackgroundTaskManager) ReplayPendingNotifications(ctx context.Context) 
 		}
 		return left.CreatedAt.Before(right.CreatedAt)
 	})
-	for _, notification := range notifications {
+	for _, item := range pending {
+		notification := item.notification
 		if notification.DeliveredAt != nil {
 			continue
 		}
-		if err := m.deliverRuntimeNotificationAtOrigin(ctx, nil, notification, origin); err != nil {
+		if err := m.deliverRuntimeNotificationAtOrigin(ctx, nil, notification, item.origin); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func (m *BackgroundTaskManager) notificationReplayOrigins() []*backgroundTaskOrigin {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	origins := []*backgroundTaskOrigin{m.currentTaskOriginLocked()}
+	tasks := make([]*BackgroundTask, 0, len(m.tasks))
+	for _, task := range m.tasks {
+		tasks = append(tasks, task)
+	}
+	m.mu.Unlock()
+	for _, task := range tasks {
+		if task == nil {
+			continue
+		}
+		task.mu.RLock()
+		origin := task.origin
+		task.mu.RUnlock()
+		origins = append(origins, origin)
+	}
+
+	seen := make(map[string]struct{}, len(origins))
+	unique := make([]*backgroundTaskOrigin, 0, len(origins))
+	for _, origin := range origins {
+		if origin == nil || origin.store == nil {
+			continue
+		}
+		key := filepath.Clean(origin.store.StorageRoot())
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, origin)
+	}
+	return unique
 }
 
 type hookRuntimeNotificationSink struct {
@@ -2491,15 +2567,31 @@ func (m *BackgroundTaskManager) ResumeScheduledAgentTasks(parent context.Context
 	if parent == nil {
 		parent = context.Background()
 	}
-	origin := m.currentTaskOrigin()
+	origin := m.scheduledTaskOrigin(m.CurrentProjectRoot())
 	if origin == nil || origin.store == nil {
 		return fs.ErrInvalid
 	}
 	var resumeErr error
 	for _, record := range origin.store.List() {
 		if record.Type != agentcontract.TaskTypeLocalAgent || record.AgentInput == nil ||
-			record.TerminalReason != interruptedAgentTerminalReason ||
 			!strings.HasPrefix(record.BatchID, scheduledDeliveryBatchPrefix) {
+			continue
+		}
+		if record.TerminalReason != interruptedAgentTerminalReason && runtimeAgentRecordIsActive(record) && !runtimeTaskOwnerAlive(record.OwnerPID) {
+			finishedAt := time.Now().UTC()
+			code := -1
+			record.Status = "failed"
+			record.Outcome = agentcontract.RunOutcomeInterrupted
+			record.TerminalReason = interruptedAgentTerminalReason
+			record.FinishedAt = &finishedAt
+			record.ExitCode = &code
+			record.Error = ""
+			if err := origin.store.Save(record); err != nil {
+				resumeErr = errors.Join(resumeErr, err)
+				continue
+			}
+		}
+		if record.TerminalReason != interruptedAgentTerminalReason {
 			continue
 		}
 		deliveryID := strings.TrimPrefix(record.BatchID, scheduledDeliveryBatchPrefix)
@@ -2635,19 +2727,16 @@ func (m *BackgroundTaskManager) scheduledTaskOrigin(projectRoot string) *backgro
 	root := strings.TrimSpace(projectRoot)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	current := m.currentTaskOriginLocked()
 	if root == "" {
-		return current
+		root = m.projectRoot
 	}
 	root = filepath.Clean(root)
-	if current != nil && root == current.projectRoot {
-		return current
-	}
+	runtimeRoot := storepaths.RuntimeServiceDir(root, "scheduled-tasks")
 	return &backgroundTaskOrigin{
 		projectRoot:      root,
-		outputDir:        filepath.Join(root, ".luban-code", "task-output"),
-		store:            runtimestore.NewRuntimeTaskStore(root),
-		lifecycle:        runtimestore.NewRuntimeLifecycle(root),
+		outputDir:        filepath.Join(runtimeRoot, "task-output"),
+		store:            runtimestore.NewRuntimeTaskStoreAt(root, runtimeRoot),
+		lifecycle:        runtimestore.NewRuntimeLifecycleAt(root, runtimeRoot),
 		notificationSink: m.notificationSink,
 	}
 }
@@ -2672,7 +2761,7 @@ func (m *BackgroundTaskManager) StartAgentTask(parent context.Context, prompt, d
 		}
 	}()
 	m.mu.Lock()
-	origin := m.currentTaskOriginLocked()
+	origin := m.taskOriginForSessionLocked(backgroundTaskOwnerSessionID(parent))
 	taskID := m.nextTaskIDLocked(origin)
 	m.mu.Unlock()
 	pinBackgroundTaskOriginHookContext(origin, parent)

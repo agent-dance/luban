@@ -11,6 +11,7 @@ import (
 type sseEvent struct {
 	Type string // event type (from "event:" line)
 	Data string // data payload (from "data:" line)
+	Err  error  // scanner/transport failure; never provider-controlled content
 }
 
 const (
@@ -71,7 +72,7 @@ func parseSSEWithBuffer(r io.Reader, maxBufSize int) <-chan sseEvent {
 		}
 
 		if err := scanner.Err(); err != nil {
-			ch <- sseEvent{Type: "error", Data: fmt.Sprintf("SSE scanner error: %v", err)}
+			ch <- sseEvent{Type: "error", Data: fmt.Sprintf("SSE scanner error: %v", err), Err: err}
 		}
 	}()
 	return ch

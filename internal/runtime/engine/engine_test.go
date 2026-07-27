@@ -348,6 +348,38 @@ func TestQuery_SendsSystemPromptBlocks(t *testing.T) {
 	}
 }
 
+func TestQuery_SendsConfiguredUserContext(t *testing.T) {
+	p := &mockProvider{
+		name:      "mock",
+		modelID:   "mock-model",
+		responses: [][]types.StreamEvent{textEvents("ok")},
+	}
+	e, err := New(Config{
+		Provider:    p,
+		Sessions:    newMemorySessionManager(),
+		UserContext: prompt.UserContext{Instructions: "workspace instruction sentinel"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	ch, err := e.Query(context.Background(), QueryRequest{
+		SessionID: "user-context-session",
+		Message:   "hi",
+	})
+	if err != nil {
+		t.Fatalf("Query: %v", err)
+	}
+	_ = drainEvents(t, ch, 5*time.Second)
+
+	if len(p.lastParams.Messages) < 2 || !p.lastParams.Messages[0].IsMeta {
+		t.Fatalf("provider messages missing leading meta context: %#v", p.lastParams.Messages)
+	}
+	if !strings.Contains(p.lastParams.Messages[0].GetText(), "workspace instruction sentinel") {
+		t.Fatalf("provider meta context omitted workspace instructions: %q", p.lastParams.Messages[0].GetText())
+	}
+}
+
 func TestQuery_SendsConfiguredReasoningEffort(t *testing.T) {
 	p := &mockProvider{
 		name:      "mock",

@@ -179,12 +179,8 @@ func (b BwrapBackend) Command(ctx context.Context, cfg Config, name string, args
 	if cfg.WorkDir != "" {
 		cmd.Dir = cfg.WorkDir
 	}
-	// F4: filter environment to avoid leaking secrets.
-	if cfg.Env != nil {
-		cmd.Env = cfg.Env
-	} else {
-		cmd.Env = SafeEnv(os.Environ())
-	}
+	// F4: apply the same captured environment used by unsandboxed execution.
+	cfg.Environment.Apply(cmd)
 	return cmd, nil
 }
 

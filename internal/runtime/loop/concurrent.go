@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	executioncontract "github.com/agent-dance/luban/internal/contracts/execution"
 
@@ -126,6 +127,37 @@ type toolExecutionResults struct {
 	Reminders           []string
 	PreventContinuation bool
 	HookSummaries       []stream.HookSummaryEvent
+	Metrics             toolExecutionMetrics
+}
+
+// toolExecutionMetrics remains internal until query.go projects it into the
+// content-free stream.ToolRoundMetricsEvent envelope.
+type toolExecutionMetrics struct {
+	PhysicalChildOperations int
+	PeakFanout              int
+	BatchCount              int
+	QueueDuration           time.Duration
+	CriticalPathDuration    time.Duration
+	TotalChildLatency       time.Duration
+	ErrorCount              int
+	RevisionFusionCount     int
+	RevisionBarrierSkips    int
+	RevisionMismatchCount   int
+}
+
+func countToolResultErrors(results []types.ToolResultBlock) int {
+	errors := 0
+	for _, result := range results {
+		switch result.Outcome {
+		case types.ToolOutcomeFailed, types.ToolOutcomeDenied, types.ToolOutcomeCancelled, types.ToolOutcomeTimedOut:
+			errors++
+		default:
+			if result.IsError {
+				errors++
+			}
+		}
+	}
+	return errors
 }
 
 type toolHookCollectorKey struct{}
@@ -582,6 +614,11 @@ func inferredToolOutcome(result types.ToolResultBlock) types.ToolOutcome {
 }
 
 func executeToolsConcurrentlyDetailed(ctx context.Context, reg *registry.Registry, runner *hooks.Runner, permHandler permission.PermissionHandler, sessionID string, execContext executioncontract.ToolExecutionContext, toolUses []types.ToolUseBlock, onResult func(int, types.ToolResultBlock)) (toolExecutionResults, error) {
+	roundStarted := time.Now()
+	enqueuedAt := make([]time.Time, len(toolUses))
+	for index := range enqueuedAt {
+		enqueuedAt[index] = roundStarted
+	}
 	hookCollector := &toolHookCollector{}
 	ctx = withToolHookCollector(ctx, hookCollector)
 	results := make([]types.ToolResultBlock, len(toolUses))
@@ -589,8 +626,63 @@ func executeToolsConcurrentlyDetailed(ctx context.Context, reg *registry.Registr
 	var remindersMu sync.Mutex
 	preventContinuation := false
 	var preventMu sync.Mutex
+	var metricsMu sync.Mutex
+	metrics := toolExecutionMetrics{}
+	activeChildren := 0
+	metricsSnapshot := func() toolExecutionMetrics {
+		metricsMu.Lock()
+		out := metrics
+		metricsMu.Unlock()
+		out.CriticalPathDuration = time.Since(roundStarted)
+		out.ErrorCount = countToolResultErrors(results)
+		return out
+	}
 	currentResults := func() toolExecutionResults {
-		return toolExecutionResults{Results: results, Reminders: allReminders, PreventContinuation: preventContinuation, HookSummaries: hookCollector.drain()}
+		return toolExecutionResults{
+			Results: results, Reminders: allReminders, PreventContinuation: preventContinuation,
+			HookSummaries: hookCollector.drain(), Metrics: metricsSnapshot(),
+		}
+	}
+	executeMeasured := func(executionCtx context.Context, index int) (singleToolExecutionResult, error) {
+		startedAt := time.Now()
+		metricsMu.Lock()
+		metrics.QueueDuration += startedAt.Sub(enqueuedAt[index])
+		activeChildren++
+		if activeChildren > metrics.PeakFanout {
+			metrics.PeakFanout = activeChildren
+		}
+		metricsMu.Unlock()
+
+		executed, err := executeOneTool(executionCtx, reg, runner, permHandler, sessionID, execContext, toolUses[index])
+		elapsed := time.Since(startedAt)
+		physicalOperations, physicalLatency := measuredToolOperationFacts(reg, toolUses[index].Name, executed.Result, elapsed)
+		metricsMu.Lock()
+		metrics.PhysicalChildOperations += physicalOperations
+		metrics.TotalChildLatency += physicalLatency
+		activeChildren--
+		metricsMu.Unlock()
+		return executed, err
+	}
+	executeScheduled := func(executionCtx context.Context, index int) (singleToolExecutionResult, error) {
+		if index > 0 && isAdjacentRevisionFusion(reg, toolUses[index-1], toolUses[index]) {
+			boundContext, skipped := revisionBarrierExecutionContext(executionCtx, results[index-1], toolUses[index])
+			if skipped != nil {
+				skipped.ToolType = toolUses[index].ToolType
+				metricsMu.Lock()
+				metrics.RevisionBarrierSkips++
+				metricsMu.Unlock()
+				return singleToolExecutionResult{Result: *skipped}, nil
+			}
+			executionCtx = boundContext
+		}
+		executed, err := executeMeasured(executionCtx, index)
+		executed.Result.ToolType = toolUses[index].ToolType
+		if isRevisionMismatchResult(executed.Result) {
+			metricsMu.Lock()
+			metrics.RevisionMismatchCount++
+			metricsMu.Unlock()
+		}
+		return executed, err
 	}
 
 	type toolBatch struct {
@@ -613,6 +705,12 @@ func executeToolsConcurrentlyDetailed(ctx context.Context, reg *registry.Registr
 		}
 		batches = append(batches, batch)
 	}
+	metrics.BatchCount = len(batches)
+	for index := 1; index < len(toolUses); index++ {
+		if isAdjacentRevisionFusion(reg, toolUses[index-1], toolUses[index]) {
+			metrics.RevisionFusionCount++
+		}
+	}
 
 	type callbackMsg struct {
 		index  int
@@ -620,13 +718,25 @@ func executeToolsConcurrentlyDetailed(ctx context.Context, reg *registry.Registr
 	}
 
 	cancelledResult := func(i int) types.ToolResultBlock {
-		return cancelledToolResult(toolUses[i])
+		result := cancelledToolResult(toolUses[i])
+		result.ToolType = toolUses[i].ToolType
+		return result
 	}
 
 	fillRemainingCancelled := func(batchIndex int) {
 		for _, batch := range batches[batchIndex:] {
 			for _, i := range batch.indices {
-				results[i] = cancelledResult(i)
+				if i > 0 && isAdjacentRevisionFusion(reg, toolUses[i-1], toolUses[i]) {
+					_, skipped := revisionBarrierExecutionContext(ctx, results[i-1], toolUses[i])
+					if skipped != nil {
+						results[i] = *skipped
+						metrics.RevisionBarrierSkips++
+					} else {
+						results[i] = cancelledResult(i)
+					}
+				} else {
+					results[i] = cancelledResult(i)
+				}
 				if onResult != nil {
 					onResult(i, results[i])
 				}
@@ -645,7 +755,7 @@ func executeToolsConcurrentlyDetailed(ctx context.Context, reg *registry.Registr
 				return currentResults(), ctx.Err()
 			}
 
-			executed, err := executeOneTool(ctx, reg, runner, permHandler, sessionID, execContext, toolUses[i])
+			executed, err := executeScheduled(ctx, i)
 			allReminders = append(allReminders, executed.Reminders...)
 			preventContinuation = preventContinuation || executed.PreventContinuation
 			result := executed.Result
@@ -687,7 +797,7 @@ func executeToolsConcurrentlyDetailed(ctx context.Context, reg *registry.Registr
 					}
 					return
 				}
-				executed, err := executeOneTool(toolCtx, reg, runner, permHandler, sessionID, execContext, toolUses[i])
+				executed, err := executeScheduled(toolCtx, i)
 				if len(executed.Reminders) > 0 {
 					remindersMu.Lock()
 					allReminders = append(allReminders, executed.Reminders...)

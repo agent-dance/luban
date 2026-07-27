@@ -139,6 +139,9 @@ type CoreEngine struct {
 	sessions    SessionManager
 
 	permissionUpdateMu sync.Mutex
+	// providerUpdateMu serializes provider transitions while SetProvider takes
+	// an exclusive lease over every live QueryLoop mutation.
+	providerUpdateMu sync.Mutex
 	// skillSessionTxnMu linearizes the cross-resource transition that restores
 	// one bare-session override map and publishes its project conversation.
 	// It is never held across Prepare and never nests inside Manager.
@@ -1316,18 +1319,48 @@ func (e *CoreEngine) Provider() provider.Provider {
 // It also notifies all active QueryLoops to adapt their context window to the
 // new provider's capabilities (e.g. switching from 200K to 128K context).
 func (e *CoreEngine) SetProvider(p provider.Provider) {
-	e.providerRef.Swap(p)
-	e.cfg.Model = p.ModelID()
+	e.providerUpdateMu.Lock()
+	defer e.providerUpdateMu.Unlock()
 
-	// The ProviderRef is shared: all QueryLoops see the new provider immediately.
-	// We just need them to re-read the provider's capabilities and update their
-	// MaxContextTokens / ContextWindow accordingly.
-	e.convsMu.RLock()
-	defer e.convsMu.RUnlock()
-	for _, conv := range e.convs {
-		conv.mu.Lock()
-		conv.ql.AdaptContextWindow()
-		conv.mu.Unlock()
+	// Acquire every live conversation's mutation lease before publishing the
+	// new provider. This lets an in-flight query finish entirely on its original
+	// protocol and prevents its continuation state from racing the invalidation.
+	// Repeat because a conversation may be installed while leases are acquired;
+	// the final convsMu lock closes that insertion window before Swap.
+	releases := make(map[*conversation]func())
+	defer func() {
+		for _, release := range releases {
+			release()
+		}
+	}()
+	for {
+		e.convsMu.Lock()
+		missing := make([]*conversation, 0)
+		for _, conv := range e.convs {
+			if _, held := releases[conv]; !held {
+				missing = append(missing, conv)
+			}
+		}
+		if len(missing) == 0 {
+			e.providerRef.Swap(p)
+			e.cfg.Model = p.ModelID()
+			for _, conv := range e.convs {
+				conv.mu.Lock()
+				conv.ql.HandleProviderChange()
+				conv.mu.Unlock()
+			}
+			e.convsMu.Unlock()
+			return
+		}
+		e.convsMu.Unlock()
+
+		for _, conv := range missing {
+			release, err := conv.acquireMutation(context.Background())
+			if err != nil {
+				continue
+			}
+			releases[conv] = release
+		}
 	}
 }
 
@@ -1343,6 +1376,13 @@ func (e *CoreEngine) Sessions() SessionManager {
 
 // Shutdown cancels all in-flight queries, saves sessions, and marks the engine closed.
 func (e *CoreEngine) Shutdown(ctx context.Context) error {
+	// Startup can fail before CoreEngine construction while a typed nil is still
+	// retained behind the Engine interface. Shutdown is an idempotent lifecycle
+	// boundary, so an engine that was never initialized is already shut down.
+	if e == nil {
+		return nil
+	}
+
 	var firstErr error
 	e.shutdownOnce.Do(func() {
 		close(e.shutdownCh)
@@ -1529,6 +1569,9 @@ func (e *CoreEngine) getOrCreateConv(req QueryRequest) (*conversation, error) {
 	}
 
 	runtime := e.defaultRuntimeContext()
+	if req.SystemPromptOverride != "" {
+		runtime.GeneratedToolPrompt = false
+	}
 	if strings.TrimSpace(req.ProjectRoot) != "" {
 		runtime.ProjectRoot = strings.TrimSpace(req.ProjectRoot)
 	}
@@ -1600,11 +1643,15 @@ func sameRuntimeWorkspace(left, right string) bool {
 
 func (e *CoreEngine) defaultRuntimeContext() RuntimeContext {
 	return RuntimeContext{
-		SystemPrompt:       e.cfg.SystemPrompt,
-		SystemPromptBlocks: append([]prompt.SystemPromptBlock(nil), e.cfg.SystemPromptBlocks...),
-		HookRunner:         e.cfg.HookRunner,
-		ProjectRoot:        e.cfg.ProjectRoot,
-		CWD:                e.cfg.CWD,
+		SystemPrompt:        e.cfg.SystemPrompt,
+		SystemPromptBlocks:  append([]prompt.SystemPromptBlock(nil), e.cfg.SystemPromptBlocks...),
+		UserContext:         e.cfg.UserContext,
+		VisibleTools:        e.cfg.VisibleTools,
+		ToolPromptConfig:    e.cfg.ToolPromptConfig,
+		GeneratedToolPrompt: e.cfg.GeneratedToolPrompt,
+		HookRunner:          e.cfg.HookRunner,
+		ProjectRoot:         e.cfg.ProjectRoot,
+		CWD:                 e.cfg.CWD,
 	}
 }
 
@@ -1641,34 +1688,40 @@ func (e *CoreEngine) buildConvWithRuntime(sessionID, model, system string, syste
 	if goalRuntime != nil {
 		goalEvaluator = e.cfg.GoalEvaluator
 		if goalEvaluator == nil {
-			goalEvaluator = loop.NewProviderGoalEvaluatorWithModel(e.providerRef, model)
+			goalEvaluator = loop.NewProviderGoalEvaluatorWithModelAndServiceTier(e.providerRef, model, e.cfg.ServiceTier)
 		}
 	}
 	ql := loop.New(e.providerRef, e.cfg.Registry, loop.Config{
-		Model:             model,
-		System:            system,
-		SystemBlocks:      append([]prompt.SystemPromptBlock(nil), systemBlocks...),
-		GoalRuntime:       goalRuntime,
-		GoalEvaluator:     goalEvaluator,
-		MaxTokens:         e.cfg.MaxTokens,
-		TaskBudget:        e.cfg.TaskBudget,
-		MaxTurns:          maxTurns,
-		MaxContextTokens:  maxCtx,
-		MaxOutputTokens:   e.cfg.MaxTokens, // pass to ContextWindow for output reservation
-		HookRunner:        runtime.HookRunner,
-		SessionID:         sessionID,
-		CacheLineageID:    e.cacheLineageIDForProject(sessionID, projectDir),
-		SessionProjectDir: projectDir,
-		ProjectRoot:       runtime.ProjectRoot,
-		CWD:               runtime.CWD,
-		TranscriptPath:    e.transcriptPathForProject(sessionID, projectDir),
-		ReasoningEffort:   e.cfg.ReasoningEffort,
-		PermissionHandler: e.permission,
-		SkillManager:      e.cfg.SkillManager,
-		PlanState:         e.cfg.PlanState,
-		BackgroundTasks:   e.cfg.BackgroundTasks,
-		MCPState:          e.cfg.MCPState,
-		AgentDefinitions:  e.cfg.AgentDefinitions,
+		Model:               model,
+		System:              system,
+		SystemBlocks:        append([]prompt.SystemPromptBlock(nil), systemBlocks...),
+		UserContext:         runtime.UserContext,
+		VisibleTools:        runtime.VisibleTools,
+		ToolPromptConfig:    runtime.ToolPromptConfig,
+		GeneratedToolPrompt: runtime.GeneratedToolPrompt,
+		GoalRuntime:         goalRuntime,
+		GoalEvaluator:       goalEvaluator,
+		MaxTokens:           e.cfg.MaxTokens,
+		TaskBudget:          e.cfg.TaskBudget,
+		MaxTurns:            maxTurns,
+		MaxContextTokens:    maxCtx,
+		MaxOutputTokens:     e.cfg.MaxTokens, // pass to ContextWindow for output reservation
+		HookRunner:          runtime.HookRunner,
+		SessionID:           sessionID,
+		CacheLineageID:      e.cacheLineageIDForProject(sessionID, projectDir),
+		SessionProjectDir:   projectDir,
+		ProjectRoot:         runtime.ProjectRoot,
+		CWD:                 runtime.CWD,
+		TranscriptPath:      e.transcriptPathForProject(sessionID, projectDir),
+		ReasoningEffort:     e.cfg.ReasoningEffort,
+		ServiceTier:         e.cfg.ServiceTier,
+		PinnedModel:         e.cfg.PinnedModel,
+		PermissionHandler:   e.permission,
+		SkillManager:        e.cfg.SkillManager,
+		PlanState:           e.cfg.PlanState,
+		BackgroundTasks:     e.cfg.BackgroundTasks,
+		MCPState:            e.cfg.MCPState,
+		AgentDefinitions:    e.cfg.AgentDefinitions,
 	})
 
 	// Inject ResultStore: persist oversized tool results to disk so they don't
@@ -2103,6 +2156,10 @@ func (e *CoreEngine) UpdateRuntimeContext(ctx RuntimeContext) {
 	defer e.convsMu.Unlock()
 	e.cfg.SystemPrompt = ctx.SystemPrompt
 	e.cfg.SystemPromptBlocks = append([]prompt.SystemPromptBlock(nil), ctx.SystemPromptBlocks...)
+	e.cfg.UserContext = ctx.UserContext
+	e.cfg.VisibleTools = ctx.VisibleTools
+	e.cfg.ToolPromptConfig = ctx.ToolPromptConfig
+	e.cfg.GeneratedToolPrompt = ctx.GeneratedToolPrompt
 	e.cfg.HookRunner = ctx.HookRunner
 	e.cfg.ProjectRoot = ctx.ProjectRoot
 	e.cfg.CWD = ctx.CWD
@@ -2140,7 +2197,8 @@ func (e *CoreEngine) RebindWorkspaceRuntime(ctx context.Context, sessionID strin
 		return ErrWorkspaceRebindUnauthorized
 	}
 	conv.ql.QueueWorkspaceRuntime(loop.WorkspaceRuntimeUpdate{
-		System: runtime.SystemPrompt, SystemBlocks: runtime.SystemPromptBlocks,
+		System: runtime.SystemPrompt, SystemBlocks: runtime.SystemPromptBlocks, UserContext: runtime.UserContext,
+		VisibleTools: runtime.VisibleTools, ToolPromptConfig: runtime.ToolPromptConfig, GeneratedToolPrompt: runtime.GeneratedToolPrompt,
 		HookRunner:  runtime.HookRunner,
 		ProjectRoot: runtime.ProjectRoot, CWD: runtime.CWD,
 	})
@@ -2151,6 +2209,10 @@ func (e *CoreEngine) RebindWorkspaceRuntime(ctx context.Context, sessionID strin
 	// worktree transition. The existing conversation keeps its exact store key.
 	e.cfg.SystemPrompt = runtime.SystemPrompt
 	e.cfg.SystemPromptBlocks = append([]prompt.SystemPromptBlock(nil), runtime.SystemPromptBlocks...)
+	e.cfg.UserContext = runtime.UserContext
+	e.cfg.VisibleTools = runtime.VisibleTools
+	e.cfg.ToolPromptConfig = runtime.ToolPromptConfig
+	e.cfg.GeneratedToolPrompt = runtime.GeneratedToolPrompt
 	e.cfg.HookRunner = runtime.HookRunner
 	e.cfg.ProjectRoot = runtime.ProjectRoot
 	e.cfg.CWD = runtime.CWD
@@ -2164,6 +2226,7 @@ func (e *CoreEngine) SetSystemPrompt(systemPrompt prompt.SystemPrompt) {
 	defer e.convsMu.Unlock()
 	e.cfg.SystemPrompt = systemPrompt.JoinedText()
 	e.cfg.SystemPromptBlocks = append([]prompt.SystemPromptBlock(nil), systemPrompt...)
+	e.cfg.GeneratedToolPrompt = false
 }
 
 func currentGitBranch(cwd string) string {

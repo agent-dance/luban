@@ -3,6 +3,7 @@ package interaction
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agent-dance/luban/i18n"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
 	"github.com/agent-dance/luban/internal/store/secureio"
 )
 
@@ -84,7 +86,11 @@ func NewPlanState(projectRoot string) (*PlanState, error) {
 }
 
 func planStateFile(projectRoot string) string {
-	return filepath.Join(projectRoot, ".luban-code", "plan-mode.json")
+	return filepath.Join(storepaths.RuntimeServiceDir(projectRoot, "plan"), "plan-mode.json")
+}
+
+func planArtifactsDir(projectRoot string) string {
+	return filepath.Join(storepaths.RuntimeServiceDir(projectRoot, "plan"), "plans")
 }
 
 func preparePlanState(projectRoot string) (*PreparedPlanState, error) {
@@ -97,8 +103,15 @@ func preparePlanState(projectRoot string) (*PreparedPlanState, error) {
 		return nil, i18n.WrapError(i18n.KeyToolIndirectPlanStateResolveProjectRoot, err, projectRoot)
 	}
 	root = filepath.Clean(root)
+	info, err := os.Stat(root)
+	if err != nil {
+		return nil, i18n.WrapError(i18n.KeyToolIndirectPlanStateResolveProjectRoot, err, projectRoot)
+	}
+	if !info.IsDir() {
+		return nil, i18n.WrapError(i18n.KeyToolIndirectPlanStateResolveProjectRoot, fs.ErrInvalid, projectRoot)
+	}
 	prepared := &PreparedPlanState{projectRoot: root, stateFile: planStateFile(root)}
-	data, err := os.ReadFile(prepared.stateFile)
+	data, err := secureio.ReadPrivateRuntimeRegularFile(prepared.stateFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return prepared, nil
@@ -168,7 +181,7 @@ func (s *PlanState) persistLocked() error {
 	if strings.TrimSpace(s.stateFile) == "" {
 		return i18n.NewError(i18n.KeyToolIndirectPlanStateProjectRootRequired)
 	}
-	if err := os.MkdirAll(filepath.Dir(s.stateFile), 0755); err != nil {
+	if err := secureio.EnsurePrivateRuntimeDirectory(filepath.Dir(s.stateFile)); err != nil {
 		return err
 	}
 	body := persistedPlanState{
@@ -183,7 +196,7 @@ func (s *PlanState) persistLocked() error {
 	if err != nil {
 		return err
 	}
-	return secureio.AtomicWriteFile(s.stateFile, append(data, '\n'), 0o600)
+	return secureio.AtomicWritePrivateRuntimeFile(s.stateFile, append(data, '\n'))
 }
 
 // IsActive reports whether plan mode is currently active.

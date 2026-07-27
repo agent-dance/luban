@@ -1,0 +1,29 @@
+{
+  "instance_id": "kepano__defuddle-243",
+  "language": "ts",
+  "agent": "gold",
+  "resolved": false,
+  "elapsed_seconds": 470.066,
+  "image": "starryzhang/sweb.eval.x86_64.kepano_1776_defuddle-243",
+  "image_pull_exit_code": 0,
+  "rebuild_exit_code": 0,
+  "test_exit_code": 1,
+  "print_exit_code": 0,
+  "parsed_tests": 240,
+  "FAIL_TO_PASS": {
+    "expected": 1,
+    "passed": [
+      "Fixtures Tests should process fixture: 'elements--empty-table'"
+    ],
+    "failed": [],
+    "missing": []
+  },
+  "PASS_TO_PASS": {
+    "expected": 239,
+    "passed_count": 238,
+    "failed": [
+      "Performance parse time per fixture (total including DOM parsing)"
+    ],
+    "missing_count": 0
+  }
+}

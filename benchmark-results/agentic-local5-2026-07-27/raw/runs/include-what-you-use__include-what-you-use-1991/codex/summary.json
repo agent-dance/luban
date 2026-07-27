@@ -1,0 +1,49 @@
+{
+  "instance_id": "include-what-you-use__include-what-you-use-1991",
+  "language": "cpp",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785084891.182579,
+  "elapsed_seconds": 615.961,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 2223889,
+    "cached_input_tokens": 2102528,
+    "output_tokens": 14351,
+    "reasoning_output_tokens": 7461,
+    "cache_read_input_tokens": 2102528,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 2.088599,
+  "tool_calls": 35,
+  "tool_calls_by_type": {
+    "command_execution": 32,
+    "file_change": 3
+  },
+  "patch": {
+    "files_changed": 1,
+    "files": [
+      "iwyu.cc"
+    ],
+    "additions": 11,
+    "deletions": 1
+  },
+  "final_text": "Implemented the explicit function-template specialization dependency fix in [iwyu.cc](/private/tmp/luban-agent-benchmark-work/repos/include-what-you-use__include-what-you-use-1991/codex/iwyu.cc:1743). IWYU now retains the header declaring the primary template.\n\nAdded a focused `--check_also` regression test covering a deleted specialization.\n\nValidation:\n\n- Regression input compiles under C++11.\n- Test is discovered by the IWYU harness.\n- Whitespace checks pass.\n- Full IWYU tests couldn’t run because `LLVMConfig.cmake` is unavailable.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 37,
+  "llm_successful_calls": 37,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 608.717482,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

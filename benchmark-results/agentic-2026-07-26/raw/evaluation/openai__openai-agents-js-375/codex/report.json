@@ -1,0 +1,29 @@
+{
+  "instance_id": "openai__openai-agents-js-375",
+  "language": "ts",
+  "agent": "codex",
+  "resolved": true,
+  "elapsed_seconds": 208.518,
+  "image": "starryzhang/sweb.eval.x86_64.openai_1776_openai-agents-js-375",
+  "image_pull_exit_code": 0,
+  "test_patch_apply_exit_code": 0,
+  "solution_patch_apply_exit_code": 1,
+  "rebuild_exit_code": 0,
+  "test_exit_code": 1,
+  "print_exit_code": 0,
+  "parsed_tests": 369,
+  "FAIL_TO_PASS": {
+    "expected": 1,
+    "passed": [
+      "Runner.run (streaming) emits agent_end lifecycle event for streaming agents"
+    ],
+    "failed": [],
+    "missing": []
+  },
+  "PASS_TO_PASS": {
+    "expected": 366,
+    "passed_count": 366,
+    "failed": [],
+    "missing_count": 0
+  }
+}

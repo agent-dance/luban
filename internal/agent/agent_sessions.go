@@ -294,7 +294,7 @@ func (m *BackgroundTaskManager) registerAgentSession(agentID, alias, prompt, des
 	if err := runtimestore.ValidateTaskID(agentID); err != nil {
 		return nil, nil, err
 	}
-	origin := m.currentTaskOrigin()
+	origin := m.taskOriginForContext(launchContext)
 	if launchContext != nil {
 		pinBackgroundTaskOriginHookContext(origin, launchContext)
 	}
@@ -1042,6 +1042,7 @@ func (s *backgroundAgentSession) handleRequest(request agentRunRequest) {
 
 	transcriptWriter, closeTranscript := openAgentTranscriptWriterForRunIdentity(runID, agentTranscriptIdentity{
 		SessionID:    firstNonEmpty(s.task.OwnerSessionID, backgroundTaskOwnerSessionID(request.ctx)),
+		ProjectRoot:  s.task.OwnerProjectRoot,
 		ContextEpoch: agentTranscriptContextEpoch(request.ctx),
 		ActorID:      s.task.ID, ActorType: "agent", RunID: runID,
 	})

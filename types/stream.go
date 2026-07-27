@@ -42,6 +42,11 @@ type StreamEvent struct {
 	// Params.PreviousResponseID on the next request.
 	ResponseID string `json:"response_id,omitempty"`
 
+	// ProviderContinuation is an internal, non-projectable completion receipt.
+	// Only the query loop consumes it to attach private replay state to the
+	// committed assistant message. It must never enter machine/debug events.
+	ProviderContinuation *ProviderContinuation `json:"-"`
+
 	// SystemFingerprint identifies the provider-side serving configuration when
 	// the API exposes it. Cache diagnostics use it to distinguish prompt drift
 	// from a backend configuration change.
@@ -59,14 +64,23 @@ type ContentDelta struct {
 	Thinking string `json:"thinking,omitempty"`
 
 	// For thinking block start (signature needed for round-trip)
-	Signature string `json:"signature,omitempty"`
+	Signature      string                `json:"signature,omitempty"`
+	SignatureKind  ThinkingSignatureKind `json:"signature_kind,omitempty"`
+	SignatureModel string                `json:"signature_model,omitempty"`
+	ProviderStatus string                `json:"provider_status,omitempty"`
 
 	// For tool_use start
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
+	ID       string             `json:"id,omitempty"`
+	Name     string             `json:"name,omitempty"`
+	ToolType ToolDefinitionType `json:"tool_type,omitempty"`
 
 	// For tool_use input delta (partial JSON)
 	PartialJSON string `json:"partial_json,omitempty"`
+
+	// For custom-tool input deltas. Raw text remains separate from PartialJSON
+	// so the runtime can never silently reinterpret an invalid JSON fragment as
+	// a freeform patch (or vice versa).
+	PartialText string `json:"partial_text,omitempty"`
 
 	// For provider-hosted server tools. RawJSON preserves block variants and
 	// fields the common layer does not yet model.
@@ -83,6 +97,45 @@ type Usage struct {
 	CacheReadInputTokens     int             `json:"cache_read_input_tokens,omitempty"`
 	ServerToolUse            ServerToolUsage `json:"server_tool_use,omitempty"`
 }
+
+// ProviderErrorStage identifies the last provider-request boundary known to
+// have been crossed when an error was observed. The value is deliberately
+// transport-neutral so HTTP/SSE and Responses WebSocket attempts share one
+// retry contract.
+type ProviderErrorStage string
+
+const (
+	ProviderErrorStageConnect   ProviderErrorStage = "connect"
+	ProviderErrorStageHeaders   ProviderErrorStage = "headers"
+	ProviderErrorStageStream    ProviderErrorStage = "stream"
+	ProviderErrorStageCommitted ProviderErrorStage = "committed"
+)
+
+// ProviderErrorClass is the machine-actionable cause class used by the single
+// generation-scoped attempt controller. Provider diagnostics remain in Type,
+// Code, and Message; retry policy must not parse Message.
+type ProviderErrorClass string
+
+const (
+	ProviderErrorClassThrottle  ProviderErrorClass = "throttle"
+	ProviderErrorClassOverload  ProviderErrorClass = "overload"
+	ProviderErrorClassTransport ProviderErrorClass = "transport"
+	ProviderErrorClassContext   ProviderErrorClass = "context"
+	ProviderErrorClassAuth      ProviderErrorClass = "auth"
+	ProviderErrorClassQuota     ProviderErrorClass = "quota"
+	ProviderErrorClassPermanent ProviderErrorClass = "permanent"
+	ProviderErrorClassUnknown   ProviderErrorClass = "unknown"
+)
+
+// ProviderReplaySafety records whether replaying the complete logical
+// generation from committed local history is known to be side-effect safe.
+type ProviderReplaySafety string
+
+const (
+	ProviderReplaySafe      ProviderReplaySafety = "safe"
+	ProviderReplayAmbiguous ProviderReplaySafety = "ambiguous"
+	ProviderReplayUnsafe    ProviderReplaySafety = "unsafe"
+)
 
 // TotalInputTokens returns the complete prompt size processed by the model.
 func (u Usage) TotalInputTokens() int {
@@ -107,12 +160,16 @@ type ServerToolUsage struct {
 
 // APIError represents an error from the API
 type APIError struct {
-	Type          string `json:"type"`
-	Message       string `json:"message"`
-	Status        int    `json:"status,omitempty"`      // HTTP status code (0 = unknown)
-	RetryAfter    string `json:"retry_after,omitempty"` // Retry-After header value
-	OriginalModel string `json:"original_model,omitempty"`
-	FallbackModel string `json:"fallback_model,omitempty"`
+	Type          string               `json:"type"`
+	Code          string               `json:"code,omitempty"`
+	Message       string               `json:"message"`
+	Status        int                  `json:"status,omitempty"`      // HTTP status code (0 = unknown)
+	RetryAfter    string               `json:"retry_after,omitempty"` // Retry-After header value
+	Stage         ProviderErrorStage   `json:"stage,omitempty"`
+	Class         ProviderErrorClass   `json:"class,omitempty"`
+	ReplaySafety  ProviderReplaySafety `json:"replay_safety,omitempty"`
+	OriginalModel string               `json:"original_model,omitempty"`
+	FallbackModel string               `json:"fallback_model,omitempty"`
 }
 
 func (e *APIError) Error() string {

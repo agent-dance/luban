@@ -61,3 +61,23 @@ func readFileRetry(path string, offset, limit int) *types.ToolErrorRetry {
 	}
 	return &types.ToolErrorRetry{Action: action, Tool: "Read", FilePath: path, Offset: offset, Limit: limit}
 }
+
+func inspectFileRetry(path string, required []ReadLineRange) *types.ToolErrorRetry {
+	ranges := make([]types.ToolErrorRange, 0, len(required))
+	for _, lineRange := range mergeReadLineRanges(cloneReadLineRanges(required)) {
+		if lineRange.EndLine <= lineRange.StartLine {
+			continue
+		}
+		ranges = append(ranges, types.ToolErrorRange{
+			StartLine: lineRange.StartLine,
+			EndLine:   lineRange.EndLine - 1,
+		})
+	}
+	return &types.ToolErrorRetry{
+		Action: "inspect_batch",
+		Tool:   "Inspect",
+		Requests: []types.ToolErrorInspectRequest{{
+			ID: "patch_target", Kind: "read", Path: path, Ranges: ranges,
+		}},
+	}
+}

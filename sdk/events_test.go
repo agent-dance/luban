@@ -7,8 +7,20 @@ import (
 	"testing"
 
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/runtimeevent"
 	"github.com/agent-dance/luban/types"
 )
+
+type sdkExecutionEvidenceFixture struct{}
+
+func (sdkExecutionEvidenceFixture) ToolExecutionEvidence() runtimeevent.ToolExecutionEvidence {
+	return runtimeevent.ToolExecutionEvidence{
+		LogicalExecutionCommitted: true, RevisionSealDisposition: "committed_unverified",
+		PhysicalSteps: []runtimeevent.PhysicalToolStepEvidence{
+			{Ordinal: 0, StartedOffsetMS: 1, EndedOffsetMS: 4, DurationMS: 3, Outcome: "failed", StderrBytes: 17},
+		},
+	}
+}
 
 func TestEventAdapterStructuredRuntimeEvents(t *testing.T) {
 	a := newEventAdapter("session-structured", i18n.LangEN)
@@ -111,7 +123,8 @@ func TestEventAdapter_ToolUseSummaryEvent(t *testing.T) {
 	if !ok {
 		t.Fatalf("result = %T, want StreamlinedToolUseSummaryMsg", results[0])
 	}
-	if msg.ToolUseID != "toolu_123" || msg.ToolName != "Bash" || msg.Status != "completed" || msg.OutputSummary != "wrote file" {
+	if msg.ToolUseID != "toolu_123" || msg.ToolName != "Bash" || msg.Status != "completed" ||
+		msg.SchemaVersion != MachineEventSchemaVersion || msg.ContentRef == nil || msg.Metrics == nil || msg.Metrics.ContentBytes != len("wrote file") {
 		t.Fatalf("unexpected tool summary: %+v", msg)
 	}
 }
@@ -126,8 +139,8 @@ func TestEventAdapter_ToolEventsPreserveStableIdentityAndExplicitOutcome(t *test
 	if call.TurnID != callEvent.TurnID || call.ActorID != "agent-a" || call.ActorType != "reviewer" || call.WorkUnitID != "review-a" || call.SessionID != "session-sdk" {
 		t.Fatalf("tool call identity = %+v", call)
 	}
-	if call.Input["file_path"] != "/tmp/full" {
-		t.Fatalf("tool call input = %#v", call.Input)
+	if call.SchemaVersion != MachineEventSchemaVersion || call.InputRef == nil || call.Metrics == nil || call.Metrics.InputFieldCount != 1 {
+		t.Fatalf("tool call safe input projection = %#v", call)
 	}
 
 	resultEvent := callEvent
@@ -141,12 +154,31 @@ func TestEventAdapter_ToolEventsPreserveStableIdentityAndExplicitOutcome(t *test
 	if result.TurnID != resultEvent.TurnID || result.ActorID != "agent-a" || result.ActorType != "reviewer" || result.WorkUnitID != "review-a" || result.SessionID != "session-sdk" {
 		t.Fatalf("tool result identity = %+v", result)
 	}
-	if result.Outcome != ToolOutcomePartial || result.OutputSummary != "partial but usable" || result.Metadata["source"] != "disk" {
+	if result.Outcome != ToolOutcomePartial || result.ContentRef == nil || result.Metrics == nil ||
+		result.Metrics.ContentBytes != len("partial but usable") || result.Metrics.MetadataCount != 1 ||
+		result.RuntimeEvent == nil || result.RuntimeEvent.Outcome != ToolOutcomePartial {
 		t.Fatalf("tool result evidence/outcome = %+v", result)
 	}
 }
 
-func TestEventAdapterStreamlinedToolPayloadsAreBounded(t *testing.T) {
+func TestEventAdapterCorrelatesCompoundPhysicalExecutionEvidence(t *testing.T) {
+	a := newEventAdapter("session-physical", i18n.LangEN)
+	message := a.process(Event{Type: EventToolResult, ToolResult: &ToolResult{
+		ToolUseID: "toolu-compound", Outcome: ToolOutcomeFailed, Data: sdkExecutionEvidenceFixture{},
+	}})[0].(StreamlinedToolUseSummaryMsg)
+	if message.SchemaVersion != "machine-event/v2" || message.ToolUseID != "toolu-compound" || message.Metrics == nil ||
+		!message.Metrics.LogicalExecutionCommitted || message.Metrics.PhysicalChildOperations != 1 ||
+		message.Metrics.RevisionSealDisposition != "committed_unverified" || len(message.Metrics.PhysicalSteps) != 1 {
+		t.Fatalf("compound machine event = %#v", message)
+	}
+	step := message.Metrics.PhysicalSteps[0]
+	if step.Ordinal != 0 || step.StartedOffsetMS != 1 || step.EndedOffsetMS != 4 || step.DurationMS != 3 ||
+		step.Outcome != "failed" || step.StderrBytes != 17 || len(step.OperationID) != 64 {
+		t.Fatalf("compound physical step = %#v", step)
+	}
+}
+
+func TestEventAdapterToolPayloadsAreContentFreeBeforeSerialization(t *testing.T) {
 	a := newEventAdapter("session-sdk-bounded", i18n.LangEN)
 	large := strings.Repeat("界", 3_000)
 
@@ -161,12 +193,8 @@ func TestEventAdapterStreamlinedToolPayloadsAreBounded(t *testing.T) {
 			},
 		},
 	})[0].(StreamlinedToolUseSummaryMsg)
-	if call.Input["file_path"] != "/tmp/game.js" {
-		t.Fatalf("small routing field was not preserved: %#v", call.Input)
-	}
-	descriptor, ok := call.Input["content"].(map[string]any)
-	if !ok || descriptor["omitted"] != true || descriptor["bytes"] != len(large) {
-		t.Fatalf("large input descriptor = %#v", call.Input["content"])
+	if call.InputRef == nil || call.Metrics == nil || call.Metrics.InputFieldCount != 2 || call.Metrics.InputBytes == 0 {
+		t.Fatalf("safe input projection = %#v", call)
 	}
 
 	result := a.process(Event{
@@ -183,21 +211,55 @@ func TestEventAdapterStreamlinedToolPayloadsAreBounded(t *testing.T) {
 			},
 		},
 	})[0].(StreamlinedToolUseSummaryMsg)
-	if len(result.OutputSummary) > streamlinedOutputLimit || result.Metadata["output_truncated"] != "true" {
-		t.Fatalf("bounded output = %d bytes, metadata %#v", len(result.OutputSummary), result.Metadata)
-	}
-	if result.Metadata["exitCode"] != "0" || result.Metadata["truncated_metadata_keys"] != "stdout" {
-		t.Fatalf("bounded metadata = %#v", result.Metadata)
+	if result.ContentRef == nil || result.Metrics == nil || result.Metrics.ContentBytes != len(large) ||
+		result.Metrics.ContentBlockCount != 1 || !result.Metrics.DataPresent || result.Metrics.MetadataCount != 2 {
+		t.Fatalf("safe result projection = %#v", result)
 	}
 	encoded, err := json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes := len(encoded); bytes > 6_000 {
+	if bytes := len(encoded); bytes > 2_000 {
 		t.Fatalf("streamlined result grew to %d bytes", bytes)
 	}
-	if strings.Contains(string(encoded), "content_blocks") || strings.Contains(string(encoded), "original_file") {
+	if strings.Contains(string(encoded), large) || strings.Contains(string(encoded), "content_blocks") ||
+		strings.Contains(string(encoded), "original_file") || strings.Contains(string(encoded), "stdout") {
 		t.Fatalf("streamlined result leaked full structured payload: %s", encoded)
+	}
+}
+
+func TestEventAdapterRedactsShortNestedToolSecretsBeforeSerialization(t *testing.T) {
+	const secret = "token=sk-sdk-tool-secret"
+	a := newEventAdapter("session-sdk-safe", i18n.LangEN)
+	call := a.process(Event{Type: EventToolUse, ToolUse: &ToolUse{
+		ID: "toolu-safe", Name: "Bash",
+		Input: map[string]any{"command": secret, "nested": map[string]any{"authorization": []any{secret}}},
+	}})[0].(StreamlinedToolUseSummaryMsg)
+	source := &ToolResult{
+		ToolUseID: "toolu-safe", Content: secret,
+		ContentBlocks: []any{map[string]any{"text": secret, "nested": []any{map[string]any{"secret": secret}}}},
+		Data: map[string]any{
+			"OriginalFile": secret,
+			"nested":       map[string]any{"environment": []any{secret}},
+		},
+		Metadata: map[string]string{"authorization": secret},
+		Outcome:  ToolOutcomeSucceeded,
+	}
+	result := a.process(Event{Type: EventToolResult, ToolResult: source})[0].(StreamlinedToolUseSummaryMsg)
+	wire, err := json.Marshal([]any{call, result})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		secret, "sk-sdk-tool-secret", "OriginalFile", "authorization", "environment",
+		`"input"`, `"output_summary"`, `"content"`, `"content_blocks"`, `"data"`, `"metadata"`,
+	} {
+		if strings.Contains(string(wire), forbidden) {
+			t.Fatalf("SDK tool event leaked %q: %s", forbidden, wire)
+		}
+	}
+	if source.Content != secret || source.Data.(map[string]any)["OriginalFile"] != secret {
+		t.Fatalf("SDK projection mutated runtime tool result: %#v", source)
 	}
 }
 
@@ -238,11 +300,17 @@ func TestEventAdapterTextAndRuntimePayloadPreserveStableIdentity(t *testing.T) {
 	progressEvent := identity
 	progressEvent.Type = EventProgress
 	progressEvent.ToolUseID = "toolu-progress"
-	progressEvent.Progress = &RuntimeProgressEvent{Stage: "verify", Current: 1, Total: 2}
+	progressEvent.Progress = &RuntimeProgressEvent{
+		Stage: "agentic_flight", Current: 1, Total: 2, Disposition: "completed_verified",
+		Blocker: "ready", MutationEpoch: 4, VerifiedEpoch: 4,
+	}
 	stream := a.process(progressEvent)[0].(StreamEventMsg)
 	payload := stream.Event.(RuntimeEventPayload)
 	if payload.SessionID != "session-sdk-identity" || payload.TurnID != identity.TurnID || payload.ActorID != identity.ActorID || payload.ActorType != identity.ActorType || payload.WorkUnitID != identity.WorkUnitID || payload.ToolUseID != "toolu-progress" {
 		t.Fatalf("loop payload identity = %+v", payload)
+	}
+	if payload.Progress == nil || payload.Progress.Disposition != "completed_verified" || payload.Progress.Blocker != "ready" || payload.Progress.MutationEpoch != 4 || payload.Progress.VerifiedEpoch != 4 {
+		t.Fatalf("flight progress payload = %+v", payload.Progress)
 	}
 }
 
@@ -398,5 +466,53 @@ func TestEventAdapterForwardsLocalizedRawSafeRequestStatus(t *testing.T) {
 	unknownStatus := unknown.Event.(RuntimeEventPayload).RequestStatus
 	if unknownStatus.ErrorCode != "" || unknownStatus.ErrorMessage != "" {
 		t.Fatalf("unknown request error authority was forwarded: %+v", unknownStatus)
+	}
+}
+
+func TestRuntimePayloadUsesPerEventAllowlist(t *testing.T) {
+	const secret = "token=sk-runtime-payload-secret /private/workspace"
+	a := newEventAdapter("session-runtime-safe", i18n.LangEN)
+	tests := []Event{
+		{
+			Type: EventProgress, Text: secret, ProjectRoot: secret,
+			Metadata: map[string]any{"nested": []any{map[string]any{"authorization": secret}}},
+			Progress: &RuntimeProgressEvent{
+				Stage: "agentic_flight", Message: secret, Current: 1, Total: 2,
+				Disposition: "incomplete_unverified", Blocker: "verification_missing",
+				MutationEpoch: 2, VerifiedEpoch: 1, Metadata: map[string]any{"secret": secret},
+			},
+		},
+		{
+			Type: EventTombstone, Text: secret, ProjectRoot: secret, Metadata: map[string]any{"secret": secret},
+			Tombstone: &TombstoneEvent{Reason: "fallback", Summary: secret, Metadata: map[string]any{"nested": secret}},
+		},
+		{
+			Type: EventHookSummary, Text: secret, ProjectRoot: secret, Metadata: map[string]any{"secret": secret},
+			HookSummary: &HookSummaryEvent{HookExecutionID: "hook-safe", HookName: "PostToolUse", Status: "completed", Summary: secret, Metadata: map[string]any{"nested": secret}},
+		},
+		{
+			Type: EventCompactBoundary, Text: secret, ProjectRoot: secret, Metadata: map[string]any{"secret": secret},
+			Compact: &CompactBoundaryEvent{
+				BoundaryID: "boundary-safe", Trigger: "auto", PreCompactTokenCount: 20,
+				Summary: secret, UserDisplayMessage: secret, PreviousTailIdentifier: secret,
+				PreservedSegment: &PreservedSegmentMetadata{Anchor: secret},
+			},
+		},
+	}
+	for _, event := range tests {
+		messages := a.process(event)
+		if len(messages) != 1 {
+			t.Fatalf("%s messages = %#v", event.Type, messages)
+		}
+		wire, err := json.Marshal(messages[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(wire), secret) || strings.Contains(string(wire), "sk-runtime-payload-secret") || strings.Contains(string(wire), "authorization") {
+			t.Fatalf("%s bypassed runtime allowlist: %s", event.Type, wire)
+		}
+		if !strings.Contains(string(wire), `"schema_version":"`+MachineEventSchemaVersion+`"`) {
+			t.Fatalf("%s omitted machine schema version: %s", event.Type, wire)
+		}
 	}
 }

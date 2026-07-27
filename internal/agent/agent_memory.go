@@ -12,6 +12,8 @@ import (
 	"unicode"
 
 	"github.com/agent-dance/luban/internal/gitutil"
+	storepaths "github.com/agent-dance/luban/internal/store/paths"
+	"github.com/agent-dance/luban/internal/store/secureio"
 )
 
 const agentMemoryMaxBytes = 25_000
@@ -33,7 +35,7 @@ func loadAgentMemoryPrompt(agentType, scope, cwd string) string {
 	if err != nil || memoryDir == "" {
 		return ""
 	}
-	_ = os.MkdirAll(memoryDir, 0o755)
+	_ = secureio.EnsurePrivateRuntimeDirectory(memoryDir)
 	snapshotUpdate := initializeAgentMemoryFromSnapshotIfNeeded(agentType, cwd, memoryDir)
 
 	entrypoint := filepath.Join(memoryDir, "MEMORY.md")
@@ -80,15 +82,15 @@ func agentMemoryDir(agentType, scope, cwd string) (string, error) {
 		}
 		return filepath.Join(base, "agent-memory", dirName), nil
 	case "project":
-		root := agentMemoryCWD(cwd)
-		return filepath.Join(root, ".luban-code", "agent-memory", dirName), nil
+		root := agentMemoryCanonicalProjectRoot(cwd)
+		return filepath.Join(storepaths.RuntimeServiceDir(root, "agent-memory"), "project", dirName), nil
 	case "local":
 		if remoteBase := strings.TrimSpace(os.Getenv("LUBAN_CODE_REMOTE_MEMORY_DIR")); remoteBase != "" {
 			projectRoot := agentMemoryCanonicalProjectRoot(cwd)
 			return filepath.Join(filepath.Clean(remoteBase), "projects", sanitizeMemoryProjectPath(projectRoot), "agent-memory-local", dirName), nil
 		}
-		root := agentMemoryCWD(cwd)
-		return filepath.Join(root, ".luban-code", "agent-memory-local", dirName), nil
+		root := agentMemoryCanonicalProjectRoot(cwd)
+		return filepath.Join(storepaths.RuntimeServiceDir(root, "agent-memory"), "local", dirName), nil
 	default:
 		return "", fmt.Errorf("unsupported memory scope %q", scope)
 	}
@@ -224,11 +226,7 @@ func sanitizeAgentMemoryName(agentType string) string {
 }
 
 func readAgentMemoryEntrypoint(path string) string {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() {
-		return ""
-	}
-	data, err := os.ReadFile(path)
+	data, err := secureio.ReadPrivateRuntimeRegularFile(path)
 	if err != nil {
 		return ""
 	}
@@ -282,6 +280,7 @@ type agentMemorySyncedMeta struct {
 
 func initializeAgentMemoryFromSnapshotIfNeeded(agentType, cwd, memoryDir string) string {
 	snapshotDir := agentMemorySnapshotDir(agentType, cwd)
+	_ = secureio.EnsurePrivateRuntimeDirectory(snapshotDir)
 	meta := readAgentMemorySnapshotMeta(filepath.Join(snapshotDir, agentMemorySnapshotJSON))
 	if strings.TrimSpace(meta.UpdatedAt) == "" {
 		return ""
@@ -299,8 +298,8 @@ func initializeAgentMemoryFromSnapshotIfNeeded(agentType, cwd, memoryDir string)
 }
 
 func agentMemorySnapshotDir(agentType, cwd string) string {
-	root := agentMemoryCWD(cwd)
-	return filepath.Join(root, ".luban-code", agentMemorySnapshotBase, sanitizeAgentMemoryName(agentType))
+	root := agentMemoryCanonicalProjectRoot(cwd)
+	return filepath.Join(storepaths.RuntimeServiceDir(root, "agent-memory"), agentMemorySnapshotBase, sanitizeAgentMemoryName(agentType))
 }
 
 func readAgentMemorySnapshotMeta(path string) agentMemorySnapshotMeta {
@@ -316,7 +315,7 @@ func readAgentMemorySyncedMeta(path string) agentMemorySyncedMeta {
 }
 
 func readAgentMemoryJSON(path string, dest any) {
-	data, err := os.ReadFile(path)
+	data, err := secureio.ReadPrivateRuntimeRegularFile(path)
 	if err != nil {
 		return
 	}
@@ -341,18 +340,18 @@ func copyAgentMemorySnapshot(snapshotDir, memoryDir string) {
 	if err != nil {
 		return
 	}
-	_ = os.MkdirAll(memoryDir, 0o755)
+	_ = secureio.EnsurePrivateRuntimeDirectory(memoryDir)
 	for _, entry := range entries {
 		if entry.IsDir() || entry.Name() == agentMemorySnapshotJSON {
 			continue
 		}
 		src := filepath.Join(snapshotDir, entry.Name())
 		dst := filepath.Join(memoryDir, entry.Name())
-		data, err := os.ReadFile(src)
+		data, err := secureio.ReadPrivateRuntimeRegularFile(src)
 		if err != nil {
 			continue
 		}
-		_ = os.WriteFile(dst, data, 0o644)
+		_ = secureio.AtomicWritePrivateRuntimeFile(dst, data)
 	}
 }
 
@@ -361,8 +360,8 @@ func writeAgentMemorySyncedMeta(memoryDir, updatedAt string) {
 	if err != nil {
 		return
 	}
-	_ = os.MkdirAll(memoryDir, 0o755)
-	_ = os.WriteFile(filepath.Join(memoryDir, agentMemorySyncedJSON), data, 0o644)
+	_ = secureio.EnsurePrivateRuntimeDirectory(memoryDir)
+	_ = secureio.AtomicWritePrivateRuntimeFile(filepath.Join(memoryDir, agentMemorySyncedJSON), data)
 }
 
 func snapshotTimestampAfter(candidate, baseline string) bool {

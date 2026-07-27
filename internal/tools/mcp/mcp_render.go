@@ -60,6 +60,10 @@ func newMCPTextBlock(text string) types.ContentBlock {
 // renderMCPCallToolResult preserves MCP metadata and transforms content[]
 // items into typed blocks when the provider layer can consume them.
 func renderMCPCallToolResult(raw json.RawMessage, serverName, toolName string) types.ToolResult {
+	return renderMCPCallToolResultAt(raw, serverName, toolName, "")
+}
+
+func renderMCPCallToolResultAt(raw json.RawMessage, serverName, toolName, toolResultsDir string) types.ToolResult {
 	var env mcpToolsCallEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return mcpTextToolResult(string(raw), false, nil)
@@ -101,7 +105,7 @@ func renderMCPCallToolResult(raw json.RawMessage, serverName, toolName string) t
 			formatDescription = getMCPFormatDescription(resultType, inferMCPCompactSchemaFromRaw(mustMarshalRawArray(env.Content)))
 		}
 		for _, rawItem := range env.Content {
-			transformed := transformMCPResultContent(rawItem, serverName)
+			transformed := transformMCPResultContent(rawItem, serverName, toolResultsDir)
 			blocks = append(blocks, transformed.Blocks...)
 		}
 	}
@@ -109,7 +113,7 @@ func renderMCPCallToolResult(raw json.RawMessage, serverName, toolName string) t
 	if len(blocks) == 0 {
 		text := strings.TrimSpace(string(raw))
 		result := mcpTextToolResult(text, env.IsError, metadata)
-		return maybePersistLargeMCPResult(result, resultType, formatDescription, serverName, toolName)
+		return maybePersistLargeMCPResultAt(result, resultType, formatDescription, serverName, toolName, toolResultsDir)
 	}
 
 	metadata["mcp.resultType"] = resultType
@@ -119,10 +123,10 @@ func renderMCPCallToolResult(raw json.RawMessage, serverName, toolName string) t
 		IsError:       env.IsError,
 		Metadata:      metadata,
 	}
-	return maybePersistLargeMCPResult(result, resultType, formatDescription, serverName, toolName)
+	return maybePersistLargeMCPResultAt(result, resultType, formatDescription, serverName, toolName, toolResultsDir)
 }
 
-func transformMCPResultContent(raw json.RawMessage, serverName string) mcpTransformedContent {
+func transformMCPResultContent(raw json.RawMessage, serverName, toolResultsDir string) mcpTransformedContent {
 	var item mcpContentItem
 	if err := json.Unmarshal(raw, &item); err != nil {
 		return mcpTransformedContent{Blocks: []types.ContentBlock{newMCPTextBlock(string(raw))}, ContainsRaw: true}
@@ -132,14 +136,14 @@ func transformMCPResultContent(raw json.RawMessage, serverName string) mcpTransf
 	case "text":
 		return mcpTransformedContent{Blocks: []types.ContentBlock{newMCPTextBlock(renderMCPText(item.Text, item.MimeType))}}
 	case "image":
-		return mcpTransformedContent{Blocks: transformMCPImageData(firstNonEmptyMCP(item.Data, item.Blob), item.MimeType, serverName, toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceImage, serverName))}
+		return mcpTransformedContent{Blocks: transformMCPImageData(firstNonEmptyMCP(item.Data, item.Blob), item.MimeType, serverName, toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceImage, serverName), toolResultsDir)}
 	case "audio":
-		return mcpTransformedContent{Blocks: persistMCPBase64BlobToBlocks(firstNonEmptyMCP(item.Data, item.Blob), item.MimeType, serverName, toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceAudio, serverName))}
+		return mcpTransformedContent{Blocks: persistMCPBase64BlobToBlocks(firstNonEmptyMCP(item.Data, item.Blob), item.MimeType, serverName, toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceAudio, serverName), toolResultsDir)}
 	case "resource":
 		if item.Resource == nil {
 			return mcpTransformedContent{}
 		}
-		return mcpTransformedContent{Blocks: transformMCPResourceItem(*item.Resource, serverName)}
+		return mcpTransformedContent{Blocks: transformMCPResourceItem(*item.Resource, serverName, toolResultsDir)}
 	case "resource_link":
 		return mcpTransformedContent{Blocks: []types.ContentBlock{newMCPTextBlock(renderMCPResourceLink(item.Name, item.URI, item.Description))}}
 	default:
@@ -148,15 +152,15 @@ func transformMCPResultContent(raw json.RawMessage, serverName string) mcpTransf
 		}
 		if blob := firstNonEmptyMCP(item.Data, item.Blob); blob != "" {
 			if isMCPImageMime(item.MimeType) {
-				return mcpTransformedContent{Blocks: transformMCPImageData(blob, item.MimeType, serverName, toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceImage, serverName))}
+				return mcpTransformedContent{Blocks: transformMCPImageData(blob, item.MimeType, serverName, toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceImage, serverName), toolResultsDir)}
 			}
-			return mcpTransformedContent{Blocks: persistMCPBase64BlobToBlocks(blob, item.MimeType, serverName, toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceBlob, serverName))}
+			return mcpTransformedContent{Blocks: persistMCPBase64BlobToBlocks(blob, item.MimeType, serverName, toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceBlob, serverName), toolResultsDir)}
 		}
 		return mcpTransformedContent{Blocks: []types.ContentBlock{newMCPTextBlock(string(compactJSONRaw(raw)))}, ContainsRaw: true}
 	}
 }
 
-func transformMCPResourceItem(resource mcpResourceItem, serverName string) []types.ContentBlock {
+func transformMCPResourceItem(resource mcpResourceItem, serverName, toolResultsDir string) []types.ContentBlock {
 	var prefix string
 	if strings.TrimSpace(resource.URI) != "" {
 		prefix = toolRuntimeFormat(i18n.KeyToolRuntimeMCPSourceResourceAt, serverName, resource.URI)
@@ -170,15 +174,15 @@ func transformMCPResourceItem(resource mcpResourceItem, serverName string) []typ
 	if resource.Blob != "" {
 		if isMCPImageMime(resource.MimeType) {
 			blocks := []types.ContentBlock{newMCPTextBlock(strings.TrimSpace(prefix))}
-			blocks = append(blocks, transformMCPImageData(resource.Blob, resource.MimeType, serverName, prefix)...)
+			blocks = append(blocks, transformMCPImageData(resource.Blob, resource.MimeType, serverName, prefix, toolResultsDir)...)
 			return blocks
 		}
-		return persistMCPBase64BlobToBlocks(resource.Blob, resource.MimeType, serverName, prefix)
+		return persistMCPBase64BlobToBlocks(resource.Blob, resource.MimeType, serverName, prefix, toolResultsDir)
 	}
 	return []types.ContentBlock{newMCPTextBlock(strings.TrimSpace(prefix) + " " + mcpResourceSummary(resource))}
 }
 
-func transformMCPImageData(blob, mimeType, serverName, sourceDescription string) []types.ContentBlock {
+func transformMCPImageData(blob, mimeType, serverName, sourceDescription, toolResultsDir string) []types.ContentBlock {
 	clean := stripBase64Whitespace(blob)
 	raw, err := base64.StdEncoding.DecodeString(clean)
 	if err != nil {
@@ -186,12 +190,12 @@ func transformMCPImageData(blob, mimeType, serverName, sourceDescription string)
 	}
 	mediaType := normalizeMCPImageMime(mimeType)
 	if mediaType == "image/svg+xml" {
-		return persistMCPBlobToBlocks(raw, mimeType, serverName, sourceDescription)
+		return persistMCPBlobToBlocks(raw, mimeType, serverName, sourceDescription, toolResultsDir)
 	}
 	if len(raw) > toolbase.ModelImageMaxBytes {
 		resized, resizedType, resizeErr := toolbase.ResizeImageBytes(raw, mediaType, toolbase.ModelImageMaxBytes)
 		if resizeErr != nil {
-			return persistMCPBlobToBlocks(raw, mimeType, serverName, sourceDescription)
+			return persistMCPBlobToBlocks(raw, mimeType, serverName, sourceDescription, toolResultsDir)
 		}
 		raw = resized
 		mediaType = resizedType
@@ -200,17 +204,17 @@ func transformMCPImageData(blob, mimeType, serverName, sourceDescription string)
 	return []types.ContentBlock{toolbase.NewBase64ImageBlock(clean, mediaType)}
 }
 
-func persistMCPBase64BlobToBlocks(blob, mimeType, serverName, sourceDescription string) []types.ContentBlock {
+func persistMCPBase64BlobToBlocks(blob, mimeType, serverName, sourceDescription, toolResultsDir string) []types.ContentBlock {
 	raw, err := base64.StdEncoding.DecodeString(stripBase64Whitespace(blob))
 	if err != nil {
 		return []types.ContentBlock{newMCPTextBlock(toolRuntimeFormat(i18n.KeyToolRuntimeMCPInvalidBase64Binary, sourceDescription, err))}
 	}
-	return persistMCPBlobToBlocks(raw, mimeType, serverName, sourceDescription)
+	return persistMCPBlobToBlocks(raw, mimeType, serverName, sourceDescription, toolResultsDir)
 }
 
-func persistMCPBlobToBlocks(raw []byte, mimeType, serverName, sourceDescription string) []types.ContentBlock {
+func persistMCPBlobToBlocks(raw []byte, mimeType, serverName, sourceDescription, toolResultsDir string) []types.ContentBlock {
 	persistID := newMCPPersistID(serverName, "blob")
-	result := persistMCPBinaryContent(raw, mimeType, persistID)
+	result := persistMCPBinaryContentAt(raw, mimeType, persistID, toolResultsDir)
 	if result.Error != "" {
 		return []types.ContentBlock{newMCPTextBlock(toolRuntimeFormat(i18n.KeyToolRuntimeMCPBinarySaveFailed, sourceDescription, fallbackMCPMime(mimeType), len(raw), result.Error))}
 	}

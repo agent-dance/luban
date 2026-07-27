@@ -1,0 +1,57 @@
+{
+  "instance_id": "skim-rs__skim-1044",
+  "language": "rust",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785084892.205326,
+  "elapsed_seconds": 513.889,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1507136,
+    "cached_input_tokens": 1409280,
+    "output_tokens": 11802,
+    "reasoning_output_tokens": 5847,
+    "cache_read_input_tokens": 1409280,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 1.54798,
+  "tool_calls": 26,
+  "tool_calls_by_type": {
+    "command_execution": 21,
+    "file_change": 5
+  },
+  "patch": {
+    "files_changed": 9,
+    "files": [
+      "ARCHITECTURE.md",
+      "man/man1/sk.1",
+      "shell/completion.bash",
+      "shell/completion.fish",
+      "shell/completion.nu",
+      "shell/completion.zsh",
+      "src/options.rs",
+      "src/tui/mod.rs",
+      "tests/options.rs"
+    ],
+    "additions": 44,
+    "deletions": 18
+  },
+  "final_text": "Implemented FZF-compatible `--border=none` and `--border none`.\n\n- Normalizes `BorderType::None` to the existing borderless state, including tmux/zellij popups.\n- Added parsing regression coverage.\n- Updated shell completions, manpage, and architecture documentation.\n- `cargo fmt --check` and `git diff --check` pass.\n\nTests could not compile offline because `assert_enum_variants` is missing from the local Cargo cache; `cargo-nextest` is also unavailable.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 28,
+  "llm_successful_calls": 28,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 507.411336,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

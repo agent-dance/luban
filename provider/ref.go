@@ -22,6 +22,7 @@ type ProviderRef struct {
 	current       Provider
 	onChange      []func(Provider)
 	debugObserver DebugObserver
+	serviceTier   ServiceTier
 	debugSequence atomic.Uint64
 }
 
@@ -72,6 +73,40 @@ func (r *ProviderRef) SetDebugObserver(observer DebugObserver) {
 	r.debugObserver = observer
 }
 
+// SetServiceTier installs a process-wide request policy for calls routed
+// through this reference. Explicit per-call values remain visible to
+// validation, while omitted values inherit the pinned tier. This covers
+// compaction, goal evaluation, web helpers, and subagents that share the ref.
+func (r *ProviderRef) SetServiceTier(serviceTier ServiceTier) {
+	r.mu.Lock()
+	r.serviceTier = serviceTier
+	r.mu.Unlock()
+}
+
+// ApplyRequestPolicy projects process-wide request policy onto a parameter
+// snapshot without replacing an explicit per-call value. Callers that must
+// retain a Provider returned by Get can use this before invoking that exact
+// provider, avoiding policy bypass during auxiliary generations.
+func (r *ProviderRef) ApplyRequestPolicy(params Params) Params {
+	r.mu.RLock()
+	serviceTier := r.serviceTier
+	r.mu.RUnlock()
+	if params.ServiceTier == "" {
+		params.ServiceTier = serviceTier
+	}
+	return params
+}
+
+// Close releases the current provider transport. The application calls this
+// only after engines and background consumers have drained.
+func (r *ProviderRef) Close() error {
+	p := r.Get()
+	if closer, ok := p.(CloseProvider); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
 // ── Provider interface ──────────────────────────────────────────────────────
 
 // Name delegates to the current provider.
@@ -92,6 +127,10 @@ func (r *ProviderRef) CreateStream(ctx context.Context, params Params) (<-chan t
 	p := r.current
 	observer := r.debugObserver
 	r.mu.RUnlock()
+	params = r.ApplyRequestPolicy(params)
+	if err := ValidateParams(p, params); err != nil {
+		return nil, err
+	}
 	if observer == nil {
 		return p.CreateStream(ctx, params)
 	}
@@ -185,4 +224,5 @@ func (r *ProviderRef) Capabilities() ProviderCapabilities {
 var (
 	_ Provider           = (*ProviderRef)(nil)
 	_ CapabilityProvider = (*ProviderRef)(nil)
+	_ CloseProvider      = (*ProviderRef)(nil)
 )

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-dance.invalid/schemas/agentic-optimization-ledger-v1.json",
+  "title": "Agentic harness optimization ledger",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "entries"],
+  "properties": {
+    "schema_version": { "const": "agentic-bench/optimization-ledger-v1" },
+    "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "class": { "enum": ["diagnostic_canary", "pilot", "formal"] },
+    "endpoint": {
+      "type": "object", "additionalProperties": false, "required": ["experiment_id", "agent_id"],
+      "properties": { "experiment_id": { "$ref": "#/$defs/id" }, "agent_id": { "$ref": "#/$defs/id" } }
+    },
+    "implementation": {
+      "type": "object", "additionalProperties": false, "required": ["path", "sha256", "summary"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/sha256" },
+        "summary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "ablation": {
+      "type": "object", "additionalProperties": false, "required": ["status", "note"],
+      "properties": {
+        "status": { "enum": ["measured", "not_run", "not_applicable"] },
+        "endpoint": { "$ref": "#/$defs/endpoint" }, "note": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        { "if": { "properties": { "status": { "const": "measured" } } }, "then": { "required": ["endpoint"] } },
+        { "if": { "properties": { "status": { "enum": ["not_run", "not_applicable"] } } }, "then": { "not": { "required": ["endpoint"] } } }
+      ]
+    },
+    "metric": {
+      "enum": [
+        "pass_rate", "wall_time_seconds", "trial_duration_seconds", "llm_calls_started", "provider_rounds", "provider_errors",
+        "tool_bearing_rounds", "tool_invocations", "physical_tool_operations", "native_events", "tool_errors",
+		"input_tokens", "cached_input_tokens", "cache_write_input_tokens", "uncached_input_tokens", "output_tokens", "reasoning_output_tokens",
+        "token_weighted_cache_hit", "request_cache_hit", "comparable_cost", "provider_reported_cost"
+      ]
+    },
+    "entry": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "title", "summary", "design_defect", "mechanism", "value", "attribution_scope", "measurement_layer", "evidence_grade", "expected_effect", "observed_effect", "confounders", "risks", "implementation", "before", "after", "ablation", "metrics", "evidence_class"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" }, "title": { "type": "string", "minLength": 1 },
+        "summary": { "type": "string", "minLength": 1 }, "design_defect": { "type": "string", "minLength": 1 },
+        "mechanism": { "type": "string", "minLength": 1 },
+        "value": { "type": "string", "minLength": 1 },
+        "attribution_scope": { "enum": ["diagnostic_association", "causal_feature_ablation", "design_rationale"] },
+        "measurement_layer": { "enum": ["controller_end_to_end", "trial", "agent", "provider", "tool", "mixed"] },
+        "evidence_grade": { "enum": ["measured_ablation", "diagnostic_bundle", "not_run"] },
+        "expected_effect": { "type": "string", "minLength": 1 },
+        "observed_effect": { "type": "string", "minLength": 1 },
+        "confounders": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "risks": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "implementation": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/implementation" } },
+        "before": { "$ref": "#/$defs/endpoint" }, "after": { "$ref": "#/$defs/endpoint" },
+        "ablation": { "$ref": "#/$defs/ablation" },
+        "metrics": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/metric" } },
+        "evidence_class": { "$ref": "#/$defs/class" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "evidence_grade": { "const": "measured_ablation" } } },
+          "then": { "properties": {
+            "attribution_scope": { "const": "causal_feature_ablation" },
+            "ablation": { "properties": { "status": { "const": "measured" } } }
+          } }
+        },
+        {
+          "if": { "properties": { "evidence_grade": { "const": "diagnostic_bundle" } } },
+          "then": { "properties": {
+            "attribution_scope": { "const": "diagnostic_association" },
+            "ablation": { "properties": { "status": { "const": "not_run" } } }
+          } }
+        }
+      ]
+    }
+  }
+}

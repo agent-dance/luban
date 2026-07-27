@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -105,8 +104,8 @@ func (t *EnterPlanModeTool) MapToolResultToToolResultBlock(data any, toolUseID s
 // artifact. The directory is prepared so existing ExitPlanMode round-trips can
 // materialize the plan later with a simple write.
 func reservePlanFilePath(projectRoot string) (string, error) {
-	plansDir := filepath.Join(projectRoot, ".luban-code", "plans")
-	if err := os.MkdirAll(plansDir, 0755); err != nil {
+	plansDir := planArtifactsDir(projectRoot)
+	if err := secureio.EnsurePrivateRuntimeDirectory(plansDir); err != nil {
 		return "", i18n.WrapError(i18n.KeyToolPlanModeCreateDirectory, err, plansDir)
 	}
 	sessionID := newPlanSessionID()
@@ -135,15 +134,15 @@ func persistEditedPlan(projectRoot, originalPath, plan string) (string, error) {
 	if target == "" {
 		// No prior plan path — synthesise one under the plans dir so the
 		// curated content lives alongside other plan artifacts.
-		plansDir := filepath.Join(projectRoot, ".luban-code", "plans")
-		if err := os.MkdirAll(plansDir, 0755); err != nil {
+		plansDir := planArtifactsDir(projectRoot)
+		if err := secureio.EnsurePrivateRuntimeDirectory(plansDir); err != nil {
 			return "", i18n.WrapError(i18n.KeyToolPlanModeCreatePlans, err)
 		}
 		target = filepath.Join(plansDir, "plan-"+newPlanSessionID()+".md")
-	} else if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+	} else if err := secureio.EnsurePrivateRuntimeDirectory(filepath.Dir(target)); err != nil {
 		return "", i18n.WrapError(i18n.KeyToolPlanModeCreatePlanDirectory, err)
 	}
-	if err := secureio.AtomicWriteFile(target, []byte(plan), 0600); err != nil {
+	if err := secureio.AtomicWritePrivateRuntimeFile(target, []byte(plan)); err != nil {
 		return "", err
 	}
 	return target, nil

@@ -154,8 +154,8 @@ func TestBuildConversationForkEntriesKeepsUntrustedInternalLookalikes(t *testing
 
 func TestForkedSessionArgsPreserveInteractiveRuntime(t *testing.T) {
 	opts := cli.Options{
-		API: "responses", MaxTurns: 42, SystemPrompt: "be useful", AllowedDirs: []string{"/one", "/two"},
-		AllowAll: true, Sandbox: true, AllowedTools: "Read,Edit", DisallowedTools: "Bash",
+		API: "responses", ReasoningEffort: "xhigh", ServiceTier: "default", ResponsesWebSocket: true, PinnedModel: true, MaxTurns: 42, SystemPrompt: "be useful", AllowedDirs: []string{"/one", "/two"},
+		AllowAll: true, Sandbox: true, ForceSandboxTools: true, AllowedTools: "Read,Edit", DisallowedTools: "Bash",
 		ScreenReader: true, Language: "zh", OutputStyle: "concise",
 		AllowedDomains: "example.com", DisallowedDomains: "blocked.example",
 		DebugFile: "/tmp/deepseek-debug.jsonl",
@@ -163,8 +163,8 @@ func TestForkedSessionArgsPreserveInteractiveRuntime(t *testing.T) {
 	got := forkedSessionArgs(opts, "openai", "gpt-test", "fork-id")
 	want := []string{
 		"--session-id", "fork-id", "--provider", "openai", "--model", "gpt-test",
-		"--api", "responses", "--max-turns", "42", "--system-prompt", "be useful",
-		"--allowed-dir", "/one", "--allowed-dir", "/two", "--allow-all", "--sandbox",
+		"--api", "responses", "--reasoning-effort", "xhigh", "--service-tier", "default", "--responses-websocket", "--pinned-model", "--max-turns", "42", "--system-prompt", "be useful",
+		"--allowed-dir", "/one", "--allowed-dir", "/two", "--allow-all", "--sandbox", "--force-sandbox-tools",
 		"--allowed-tools", "Read,Edit", "--disallowed-tools", "Bash", "--screen-reader",
 		"--language", "zh", "--output-style", "concise", "--allowed-domains", "example.com",
 		"--disallowed-domains", "blocked.example", "--debug-file", "/tmp/deepseek-debug.fork-fork-id.jsonl",

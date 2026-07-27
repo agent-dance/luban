@@ -251,7 +251,7 @@ func verifyLiveCacheLineage(t *testing.T, spec liveCacheProviderSpec) {
 			t.Fatal(err)
 		}
 		deps.BindSessionIdentity(sessionID)
-		system := systemPrefix + "\n\n" + buildSystemPromptForCWD("", deps.Registry, projectDir)
+		system := systemPrefix + "\n\n" + buildWorkspacePrompt("", deps.Registry, projectDir).system
 		deps.AgentTool.System = system
 		query := loop.New(ref, deps.Registry, loop.Config{
 			Model:            spec.model,

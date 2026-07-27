@@ -1,0 +1,32 @@
+{
+  "instance_id": "wxt-dev__wxt-2267",
+  "language": "ts",
+  "agent": "luban",
+  "resolved": false,
+  "elapsed_seconds": 338.09,
+  "image": "starryzhang/sweb.eval.x86_64.wxt-dev_1776_wxt-2267",
+  "image_pull_exit_code": 0,
+  "test_patch_apply_exit_code": 0,
+  "solution_patch_apply_exit_code": 0,
+  "rebuild_exit_code": 0,
+  "test_exit_code": 1,
+  "print_exit_code": 0,
+  "parsed_tests": 805,
+  "FAIL_TO_PASS": {
+    "expected": 2,
+    "passed": [
+      "/testbed/packages/wxt/src/core/utils/__tests__/env.test.ts::Env Utils loadEnv should load env vars into the real `process.env`",
+      "/testbed/packages/wxt/src/core/utils/__tests__/env.test.ts::Env Utils loadEnv should override blank strings in process.env"
+    ],
+    "failed": [],
+    "missing": []
+  },
+  "PASS_TO_PASS": {
+    "expected": 799,
+    "passed_count": 798,
+    "failed": [
+      "/testbed/packages/wxt/e2e/tests/remote-code.test.ts::Remote Code should download \"url:*\" modules and include them in the final bundle"
+    ],
+    "missing_count": 0
+  }
+}

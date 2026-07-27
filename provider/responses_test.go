@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agent-dance/luban/prompt"
 	"github.com/agent-dance/luban/types"
@@ -659,8 +660,11 @@ func TestResponsesProviderEnablesParallelFunctionCalls(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			p := NewResponses(Config{APIKey: "test-key", BaseURL: srv.URL})
-			p.chatGPTCodexBackend = chatGPTBackend
+			semantics := ResponsesSemanticsOpenAIPublic
+			if chatGPTBackend {
+				semantics = ResponsesSemanticsOpenAICodex
+			}
+			p := NewResponses(Config{APIKey: "test-key", BaseURL: srv.URL, Model: "gpt-5.6-sol", ResponsesSemantics: semantics})
 			ch, err := p.CreateStream(context.Background(), Params{
 				Messages: []types.Message{types.UserMessage("run two agents")},
 				Tools: []types.ToolDefinition{{
@@ -672,8 +676,9 @@ func TestResponsesProviderEnablesParallelFunctionCalls(t *testing.T) {
 			}
 			for range ch {
 			}
-			if got, ok := capturedBody["parallel_tool_calls"].(bool); !ok || !got {
-				t.Fatalf("parallel_tool_calls = %#v, want true", capturedBody["parallel_tool_calls"])
+			wantParallel := !chatGPTBackend
+			if got, ok := capturedBody["parallel_tool_calls"].(bool); !ok || got != wantParallel {
+				t.Fatalf("parallel_tool_calls = %#v, want %v", capturedBody["parallel_tool_calls"], wantParallel)
 			}
 		})
 	}
@@ -735,6 +740,7 @@ func TestResponsesProviderStreamsMultipleFunctionCallsIndependently(t *testing.T
 // TestResponsesProvider_HTTPError tests handling of non-200 responses.
 func TestResponsesProvider_HTTPError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Retry-After", "2.5")
 		w.WriteHeader(http.StatusTooManyRequests)
 		w.Write([]byte(`{"error":{"message":"rate limited","type":"rate_limit_error"}}`))
 	}))
@@ -754,11 +760,15 @@ func TestResponsesProvider_HTTPError(t *testing.T) {
 	if !strings.Contains(err.Error(), "rate limited") {
 		t.Errorf("error = %q, want to contain 'rate limited'", err.Error())
 	}
+	apiErr, ok := AsAPIError(err)
+	if !ok || apiErr.RetryAfter != "2.5" {
+		t.Fatalf("Responses Retry-After = %#v, want only preserved value 2.5", apiErr)
+	}
 }
 
-// TestResponsesProvider_PreviousResponseIDInRequest verifies non-lite public
-// Responses chaining remains available without imposing a default output cap.
-func TestResponsesProvider_PreviousResponseIDInRequest(t *testing.T) {
+// TestResponsesProvider_StoreFalseIgnoresPreviousResponseID verifies stateless
+// public Responses never asks the service to retrieve declined storage.
+func TestResponsesProvider_StoreFalseIgnoresPreviousResponseID(t *testing.T) {
 	var capturedBody map[string]any
 
 	sseData := buildSSEStream([]sseEvent{
@@ -792,8 +802,8 @@ func TestResponsesProvider_PreviousResponseIDInRequest(t *testing.T) {
 		t.Fatalf("CreateStream: %v", err)
 	}
 
-	if capturedBody["previous_response_id"] != "resp_prev" {
-		t.Errorf("previous_response_id = %v, want %q", capturedBody["previous_response_id"], "resp_prev")
+	if _, ok := capturedBody["previous_response_id"]; ok {
+		t.Errorf("store=false request retained previous_response_id = %v", capturedBody["previous_response_id"])
 	}
 	if _, ok := capturedBody["max_output_tokens"]; ok {
 		t.Fatalf("default Responses request should omit max_output_tokens: %#v", capturedBody["max_output_tokens"])
@@ -823,6 +833,7 @@ func TestResponsesProvider_ChatGPTCodexHTTPFallbackUsesStoreFalseAndFullInput(t 
 	p := NewResponses(Config{
 		AuthToken: "chatgpt-access-token",
 		BaseURL:   srv.URL,
+		Model:     "gpt-5.5",
 	})
 	p.chatGPTCodexBackend = true
 
@@ -862,8 +873,8 @@ func TestResponsesProvider_ChatGPTCodexHTTPFallbackUsesStoreFalseAndFullInput(t 
 	if tools, ok := capturedBody["tools"].([]any); !ok || len(tools) != 0 {
 		t.Fatalf("tools = %#v, want empty array", capturedBody["tools"])
 	}
-	if include, ok := capturedBody["include"].([]any); !ok || len(include) != 0 {
-		t.Fatalf("include = %#v, want empty array", capturedBody["include"])
+	if include, ok := capturedBody["include"].([]any); !ok || len(include) != 1 || include[0] != "reasoning.encrypted_content" {
+		t.Fatalf("include = %#v, want encrypted reasoning", capturedBody["include"])
 	}
 	input, ok := capturedBody["input"].([]any)
 	if !ok {
@@ -943,6 +954,9 @@ func TestResponsesProvider_RequestBodyOmitsAdvancedParamsWhenUnset(t *testing.T)
 	})
 	if err != nil {
 		t.Fatalf("CreateStream: %v", err)
+	}
+	if got, ok := capturedBody["store"].(bool); !ok || got {
+		t.Fatalf("store = %#v, want false for compatible Responses", capturedBody["store"])
 	}
 
 	for _, key := range []string{"output_config", "reasoning", "tool_choice", "previous_response_id", "prompt_cache_key", "max_output_tokens"} {
@@ -1253,6 +1267,7 @@ func TestParseResponsesHTTPError(t *testing.T) {
 		{429, `{"error":{"message":"rate limited"}}`, "rate_limit_error"},
 		{503, `{"error":{"message":"overloaded"}}`, "overloaded_error"},
 		{400, `{"error":{"message":"bad request","type":"invalid_request_error"}}`, "invalid_request_error"},
+		{400, `{"error":{"message":"private detail","type":"invalid_request_error","code":"context_length_exceeded"}}`, "context_length_exceeded"},
 		{500, `not json`, "api_error"},
 	}
 
@@ -1339,7 +1354,8 @@ func TestResponsesProvider_PromptCacheKeyDisabledWhenOptOut(t *testing.T) {
 	}
 }
 
-func TestResponsesProvider_PromptCacheReusesIndependentSessions(t *testing.T) {
+func TestResponsesProvider_PromptCacheIsolatesIndependentSessionsAndReusesLineage(t *testing.T) {
+	t.Setenv("LUBAN_CODE_PROMPT_CACHE_SHARDS", "")
 	var captured []string
 	sseData := buildSSEStream([]sseEvent{
 		{Type: "response.created", Data: `{"id":"resp_cache_scope"}`},
@@ -1364,7 +1380,7 @@ func TestResponsesProvider_PromptCacheReusesIndependentSessions(t *testing.T) {
 		BaseURL:      srv.URL,
 		Model:        "gpt-5.6-sol",
 	})
-	for _, lineage := range []string{"session-a", "session-b"} {
+	for _, lineage := range []string{"session-a", "session-b", "session-a"} {
 		stream, err := p.CreateStream(context.Background(), Params{
 			System:         "stable shared prefix",
 			Messages:       []types.Message{types.UserMessage("hello")},
@@ -1377,11 +1393,16 @@ func TestResponsesProvider_PromptCacheReusesIndependentSessions(t *testing.T) {
 		for range stream {
 		}
 	}
-	if len(captured) != 2 || captured[0] == "" || captured[0] != captured[1] {
-		t.Fatalf("independent Responses sessions used different cache routes: %#v", captured)
+	if len(captured) != 3 || captured[0] == "" || captured[1] == "" || captured[0] == captured[1] {
+		t.Fatalf("independent Responses sessions were not isolated: %#v", captured)
 	}
-	if captured[0] == "session-a" || captured[0] == "session-b" {
-		t.Fatalf("Responses leaked conversation lineage as cache route: %q", captured[0])
+	if captured[2] != captured[0] {
+		t.Fatalf("resumed Responses lineage changed cache route: %#v", captured)
+	}
+	for _, key := range captured {
+		if key == "session-a" || key == "session-b" {
+			t.Fatalf("Responses leaked conversation lineage as cache route: %q", key)
+		}
 	}
 }
 
@@ -1405,6 +1426,9 @@ func TestResponsesProvider_PromptCacheRequestShape(t *testing.T) {
 		BaseURL:      srv.URL,
 		Model:        "gpt-5.6-sol",
 	})
+	// Isolate the documented public cache-body shape from the separate
+	// Responses Lite matrix covered below.
+	p.firstPartyEndpoint = false
 	p.publicAPIEndpoint = true
 	stream, err := p.CreateStream(context.Background(), Params{
 		SystemBlocks: []prompt.SystemPromptBlock{
@@ -1538,6 +1562,28 @@ func TestResponsesProvider_CustomEndpointRetriesUnsupportedOptionalField(t *test
 	}
 }
 
+func TestResponsesOptionalFieldFallbackConsumesSharedAttemptBudget(t *testing.T) {
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"detail":"Unsupported parameter: reasoning"}`))
+	}))
+	defer srv.Close()
+
+	p := NewResponses(Config{APIKey: "test-key", BaseURL: srv.URL, Model: "gpt-5.4-mini"})
+	controller := NewAttemptController(RetryConfig{MaxAttempts: 1, BaseDelay: time.Millisecond, MaxDelay: time.Millisecond})
+	_, err := CreateStreamAttempt(context.Background(), controller, p, Params{
+		Messages: []types.Message{types.UserMessage("hello")}, ReasoningEffort: "medium",
+	})
+	if !IsAttemptLimit(err) {
+		t.Fatalf("fallback error = %v, want shared attempt limit", err)
+	}
+	if requests != 1 {
+		t.Fatalf("Responses HTTP requests = %d, want controller cap of 1", requests)
+	}
+}
+
 func TestResponsesProvider_CustomEndpointDisablesStrictTools(t *testing.T) {
 	var capturedBody map[string]any
 	sseData := buildSSEStream([]sseEvent{
@@ -1601,9 +1647,10 @@ func TestResponsesProvider_GPT56ResponsesLiteRequest(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	p := NewResponses(Config{ProviderName: "openai", APIKey: "test-key", BaseURL: srv.URL, Model: "gpt-5.6-sol"})
-	p.firstPartyEndpoint = true
-	p.publicAPIEndpoint = true
+	p := NewResponses(Config{
+		ProviderName: "openai", APIKey: "test-key", BaseURL: srv.URL, Model: "gpt-5.6-sol",
+		ResponsesSemantics: ResponsesSemanticsOpenAICodex,
+	})
 	ch, err := p.CreateStream(context.Background(), Params{
 		SystemBlocks: []prompt.SystemPromptBlock{
 			{Text: "stable instructions", Cache: true},
@@ -1659,18 +1706,17 @@ func TestResponsesProvider_GPT56ResponsesLiteRequest(t *testing.T) {
 		t.Fatalf("developer prefix = %#v", developer)
 	}
 	developerContent, ok := developer["content"].([]any)
-	if !ok || len(developerContent) != 2 {
+	if !ok || len(developerContent) != 1 {
 		t.Fatalf("developer content = %#v", developer["content"])
 	}
-	if stable := developerContent[0].(map[string]any); stable["prompt_cache_breakpoint"] == nil {
-		t.Fatalf("stable developer prefix missing cache breakpoint: %#v", stable)
+	if stable := developerContent[0].(map[string]any); stable["prompt_cache_breakpoint"] != nil {
+		t.Fatalf("Codex Lite request unexpectedly used public Responses cache breakpoint: %#v", stable)
 	}
 	if key, _ := capturedBody["prompt_cache_key"].(string); !strings.HasPrefix(key, "pcu_") {
 		t.Fatalf("prompt_cache_key = %q, want user-scoped key", key)
 	}
-	cacheOptions, ok := capturedBody["prompt_cache_options"].(map[string]any)
-	if !ok || cacheOptions["mode"] != "implicit" || cacheOptions["ttl"] != "30m" {
-		t.Fatalf("prompt_cache_options = %#v", capturedBody["prompt_cache_options"])
+	if _, ok := capturedBody["prompt_cache_options"]; ok {
+		t.Fatalf("Codex Lite request unexpectedly used public Responses prompt_cache_options: %#v", capturedBody["prompt_cache_options"])
 	}
 	reasoning, ok := capturedBody["reasoning"].(map[string]any)
 	if !ok || reasoning["effort"] != "medium" || reasoning["context"] != "all_turns" {
@@ -1724,6 +1770,18 @@ func TestResponsesProvider_ResponseFailedTypedAPIError(t *testing.T) {
 			name:       "server error",
 			failedData: `{"response":{"error":{"message":"backend unavailable","code":"server_error","status_code":503}}}`,
 			wantType:   "server_error",
+			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name:       "context length exceeded",
+			failedData: `{"response":{"error":{"message":"private detail","code":"context_length_exceeded","status":400}}}`,
+			wantType:   "context_length_exceeded",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "context protocol code overrides conflicting status and prose",
+			failedData: `{"response":{"error":{"message":"previous response not found","code":"context_length_exceeded","status":503}}}`,
+			wantType:   "context_length_exceeded",
 			wantStatus: http.StatusServiceUnavailable,
 		},
 	}

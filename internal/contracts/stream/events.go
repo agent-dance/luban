@@ -17,6 +17,7 @@ const (
 	EventRequestFirstToken EventType = "request_first_token"
 	EventRequestEnd        EventType = "request_end"
 	EventRequestFailed     EventType = "request_failed"
+	EventToolRoundMetrics  EventType = "tool_round_metrics"
 	EventText              EventType = "text"
 	EventThinking          EventType = "thinking"
 	EventToolUse           EventType = "tool_use"
@@ -50,19 +51,20 @@ type Event struct {
 	ActorType   string                 `json:"actor_type,omitempty"`
 	WorkUnitID  string                 `json:"work_unit_id,omitempty"`
 
-	Error          *types.APIError       `json:"error,omitempty"`
-	ToolUseID      string                `json:"tool_use_id,omitempty"`
-	TerminalReason string                `json:"terminal_reason,omitempty"`
-	Metadata       map[string]any        `json:"metadata,omitempty"`
-	Compact        *CompactBoundaryEvent `json:"compact,omitempty"`
-	MaxTurns       *MaxTurnsEvent        `json:"max_turns,omitempty"`
-	Tombstone      *TombstoneEvent       `json:"tombstone,omitempty"`
-	ToolSummary    *ToolUseSummaryEvent  `json:"tool_summary,omitempty"`
-	HookSummary    *HookSummaryEvent     `json:"hook_summary,omitempty"`
-	Progress       *ProgressEvent        `json:"progress,omitempty"`
-	GoalStatus     *GoalStatusEvent      `json:"goal_status,omitempty"`
-	RequestStatus  *RequestStatusEvent   `json:"request_status,omitempty"`
-	RuntimeEvent   *types.RuntimeEvent   `json:"-"`
+	Error          *types.APIError        `json:"error,omitempty"`
+	ToolUseID      string                 `json:"tool_use_id,omitempty"`
+	TerminalReason string                 `json:"terminal_reason,omitempty"`
+	Metadata       map[string]any         `json:"metadata,omitempty"`
+	Compact        *CompactBoundaryEvent  `json:"compact,omitempty"`
+	MaxTurns       *MaxTurnsEvent         `json:"max_turns,omitempty"`
+	Tombstone      *TombstoneEvent        `json:"tombstone,omitempty"`
+	ToolSummary    *ToolUseSummaryEvent   `json:"tool_summary,omitempty"`
+	HookSummary    *HookSummaryEvent      `json:"hook_summary,omitempty"`
+	Progress       *ProgressEvent         `json:"progress,omitempty"`
+	GoalStatus     *GoalStatusEvent       `json:"goal_status,omitempty"`
+	RequestStatus  *RequestStatusEvent    `json:"request_status,omitempty"`
+	ToolRound      *ToolRoundMetricsEvent `json:"tool_round,omitempty"`
+	RuntimeEvent   *types.RuntimeEvent    `json:"-"`
 }
 
 // MarshalJSON rejects system warnings because a generic stream has no
@@ -77,13 +79,39 @@ func (e Event) MarshalJSON() ([]byte, error) {
 
 type RequestStatusEvent struct {
 	RequestID              string `json:"request_id"`
+	StartedAt              string `json:"started_at,omitempty"`
+	EndedAt                string `json:"ended_at,omitempty"`
 	Attempt                int    `json:"attempt,omitempty"`
 	MaxRetries             int    `json:"max_retries,omitempty"`
+	RetryCount             int    `json:"retry_count,omitempty"`
 	RetryDelayMilliseconds int64  `json:"retry_delay_ms,omitempty"`
 	RequestMilliseconds    int64  `json:"request_ms,omitempty"`
 	FirstTokenMilliseconds int64  `json:"first_token_ms,omitempty"`
 	TotalMilliseconds      int64  `json:"total_ms,omitempty"`
+	InputTokens            int    `json:"input_tokens,omitempty"`
+	CacheReadInputTokens   int    `json:"cache_read_input_tokens,omitempty"`
+	CacheWriteInputTokens  int    `json:"cache_write_input_tokens,omitempty"`
+	OutputTokens           int    `json:"output_tokens,omitempty"`
 	Error                  string `json:"error,omitempty"`
+}
+
+// ToolRoundMetricsEvent is a content-free performance projection for one
+// model-visible tool batch. It intentionally carries only counts, durations,
+// and correlation IDs: tool names, inputs, paths, commands, and outputs never
+// enter this envelope.
+type ToolRoundMetricsEvent struct {
+	RoundID                       string `json:"round_id"`
+	LogicalModelVisibleCalls      int    `json:"logical_model_visible_calls"`
+	PhysicalChildOperations       int    `json:"physical_child_operations"`
+	Fanout                        int    `json:"fanout"`
+	BatchCount                    int    `json:"batch_count,omitempty"`
+	QueueMilliseconds             int64  `json:"queue_ms"`
+	CriticalPathMilliseconds      int64  `json:"critical_path_ms"`
+	TotalChildLatencyMilliseconds int64  `json:"total_child_latency_ms"`
+	ErrorCount                    int    `json:"error_count"`
+	RevisionFusionCount           int    `json:"revision_fusion_count,omitempty"`
+	RevisionBarrierSkips          int    `json:"revision_barrier_skips,omitempty"`
+	RevisionMismatchCount         int    `json:"revision_mismatch_count,omitempty"`
 }
 
 type MaxTurnsEvent struct {
@@ -134,11 +162,15 @@ type HookSummaryEvent struct {
 }
 
 type ProgressEvent struct {
-	Stage    string         `json:"stage,omitempty"`
-	Message  string         `json:"message,omitempty"`
-	Current  int            `json:"current,omitempty"`
-	Total    int            `json:"total,omitempty"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Stage         string         `json:"stage,omitempty"`
+	Message       string         `json:"message,omitempty"`
+	Current       int            `json:"current,omitempty"`
+	Total         int            `json:"total,omitempty"`
+	Disposition   string         `json:"disposition,omitempty"`
+	Blocker       string         `json:"blocker,omitempty"`
+	MutationEpoch uint64         `json:"mutation_epoch,omitempty"`
+	VerifiedEpoch uint64         `json:"verified_epoch,omitempty"`
+	Metadata      map[string]any `json:"metadata,omitempty"`
 }
 
 type GoalStatusEvent struct {

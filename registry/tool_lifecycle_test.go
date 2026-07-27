@@ -66,7 +66,7 @@ func TestEnabledToolsKeepDeferredToolsButExcludeRuntimeDisabledTools(t *testing.
 
 	enabled := toolNames(reg.EnabledTools())
 	if !enabled["Read"] {
-		t.Fatal("deferred Read must remain in the enabled SDK/runtime tool pool")
+		t.Fatal("core Read must remain in the enabled SDK/runtime tool pool")
 	}
 	if !enabled["AskUserQuestion"] {
 		t.Fatal("deferred AskUserQuestion must remain in the enabled SDK/runtime tool pool")
@@ -79,8 +79,8 @@ func TestEnabledToolsKeepDeferredToolsButExcludeRuntimeDisabledTools(t *testing.
 	}
 
 	visible := toolNames(reg.VisibleTools(nil))
-	if visible["Read"] {
-		t.Fatal("deferred Read must stay out of the model-visible pool until loaded")
+	if !visible["Read"] {
+		t.Fatal("core Read must be visible without ToolSearch discovery")
 	}
 	if visible["AskUserQuestion"] {
 		t.Fatal("deferred AskUserQuestion must stay out of the model-visible pool until loaded")

@@ -97,7 +97,7 @@ func TestStreamRetryPreservesUsageReportedBeforeError(t *testing.T) {
 	prov := newParityFakeProvider([]parityProviderTurn{
 		{Events: []types.StreamEvent{
 			{Type: types.EventMessageStart, Usage: &types.Usage{InputTokens: first.InputTokens, CacheCreationInputTokens: first.CacheCreationInputTokens}},
-			{Type: types.EventError, Usage: &types.Usage{OutputTokens: first.OutputTokens}, Error: &types.APIError{Type: "api_error", Message: "upstream disconnected"}},
+			{Type: types.EventError, Usage: &types.Usage{OutputTokens: first.OutputTokens}, Error: &types.APIError{Type: "stream_interrupted", Message: "upstream disconnected"}},
 		}},
 		{Events: providerUsageTextEvents("recovered", final, types.StopReasonEndTurn)},
 	})

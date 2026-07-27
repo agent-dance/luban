@@ -699,9 +699,10 @@ func TestConvertToAnthropicMessages_ThinkingBlock(t *testing.T) {
 			Role: types.RoleAssistant,
 			Content: []types.ContentBlock{
 				types.ThinkingBlock{
-					Type:      types.ContentTypeThinking,
-					Thinking:  "Deep thoughts...",
-					Signature: "sig_xyz",
+					Type:          types.ContentTypeThinking,
+					Thinking:      "Deep thoughts...",
+					Signature:     "sig_xyz",
+					SignatureKind: types.ThinkingSignatureAnthropic,
 				},
 				types.TextBlock{Type: types.ContentTypeText, Text: "My answer."},
 			},

@@ -230,6 +230,9 @@ func hookMessages(messages []types.Message) []any {
 }
 
 func hookMessage(msg types.Message) any {
+	// Provider continuation state is wire-only. Hooks receive the visible
+	// projection, never encrypted signatures or provider-native replay items.
+	msg = stripThinkingSignatures([]types.Message{msg})[0]
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return map[string]any{

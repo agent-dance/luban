@@ -74,12 +74,12 @@ func TestFallbackTombstonesOrphanAndRetriesFallbackModel(t *testing.T) {
 
 	var sawTombstone bool
 	for _, evt := range events {
-		if evt.Type == stream.EventTombstone && evt.Tombstone != nil && evt.Tombstone.Reason == "model_fallback" {
+		if evt.Type == stream.EventTombstone && evt.Tombstone != nil && evt.Tombstone.Reason == uncommittedProviderResponseReason {
 			sawTombstone = true
 		}
 	}
 	if !sawTombstone {
-		t.Fatalf("missing fallback tombstone event: %+v", events)
+		t.Fatalf("missing uncommitted-response tombstone event: %+v", events)
 	}
 
 	for _, msg := range q.messages {
@@ -105,6 +105,46 @@ func TestFallbackTriggeredErrorFromCreateStreamUsesFallbackModel(t *testing.T) {
 	if len(prov.Calls) != 2 || prov.Calls[1].Model != "fallback-model" {
 		t.Fatalf("calls/models = %+v, want second fallback-model", prov.Calls)
 	}
+}
+
+func TestPinnedModelRejectsFallbackFromCreateStream(t *testing.T) {
+	prov := newParityFakeProvider([]parityProviderTurn{
+		{Error: &types.APIError{Type: "fallback_triggered", Message: "busy", OriginalModel: "primary-model", FallbackModel: "fallback-model"}},
+	})
+	q := New(prov, registry.New(), Config{MaxTurns: 1, Model: "primary-model", PinnedModel: true, MaxTokens: 1024})
+
+	err := q.Run(context.Background(), "hello", func(stream.Event) {})
+	if err == nil || !strings.Contains(err.Error(), "primary-model") || !strings.Contains(err.Error(), "fallback-model") {
+		t.Fatalf("Run error = %v, want pinned model contract failure", err)
+	}
+	if len(prov.Calls) != 1 || prov.Calls[0].Model != "primary-model" {
+		t.Fatalf("calls/models = %+v, want one primary-model request", prov.Calls)
+	}
+}
+
+func TestPinnedModelRejectsFallbackFromStream(t *testing.T) {
+	prov := newParityFakeProvider([]parityProviderTurn{{Events: fallbackStreamEvents()}})
+	q := New(prov, registry.New(), Config{MaxTurns: 1, Model: "primary-model", PinnedModel: true, MaxTokens: 1024})
+
+	var events []stream.Event
+	err := q.Run(context.Background(), "hello", func(event stream.Event) { events = append(events, event) })
+	if err == nil || !strings.Contains(err.Error(), "primary-model") || !strings.Contains(err.Error(), "fallback-model") {
+		t.Fatalf("Run error = %v, want pinned model contract failure", err)
+	}
+	if len(prov.Calls) != 1 || prov.Calls[0].Model != "primary-model" {
+		t.Fatalf("calls/models = %+v, want one primary-model request", prov.Calls)
+	}
+	for _, msg := range q.messages {
+		if strings.Contains(messageTextForTest(msg), "orphan text") || strings.Contains(messageTextForTest(msg), "orphan thinking") {
+			t.Fatalf("orphan pinned-fallback content persisted in transcript: %+v", q.messages)
+		}
+	}
+	for _, event := range events {
+		if event.Type == stream.EventTombstone {
+			return
+		}
+	}
+	t.Fatal("missing tombstone for rejected streamed fallback")
 }
 
 func TestFallbackRebindsGoalEvaluatorAndUsageEventModel(t *testing.T) {

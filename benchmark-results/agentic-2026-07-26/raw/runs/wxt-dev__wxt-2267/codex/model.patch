@@ -1,0 +1,16 @@
+diff --git a/packages/wxt/src/core/utils/env.ts b/packages/wxt/src/core/utils/env.ts
+index 38871ca..8f76ea3 100644
+--- a/packages/wxt/src/core/utils/env.ts
++++ b/packages/wxt/src/core/utils/env.ts
+@@ -41,5 +41,11 @@ export function loadEnv(mode: string, browser: TargetBrowser) {
+     processEnv,
+   });
+ 
++  // Expose dotenv values to config callbacks and other parts of WXT that read
++  // from `process.env`. Since `processEnv` was initialized with the existing
++  // environment above, dotenv-expand has already preserved any values set by
++  // the parent process.
++  Object.assign(process.env, parsed);
++
+   return parsed;
+ }

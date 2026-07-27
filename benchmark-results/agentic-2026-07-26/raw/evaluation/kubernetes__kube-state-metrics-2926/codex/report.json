@@ -1,0 +1,43 @@
+{
+  "instance_id": "kubernetes__kube-state-metrics-2926",
+  "language": "go",
+  "agent": "codex",
+  "resolved": false,
+  "elapsed_seconds": 276.725,
+  "image": "starryzhang/sweb.eval.x86_64.kubernetes_1776_kube-state-metrics-2926",
+  "image_pull_exit_code": 0,
+  "test_patch_apply_exit_code": 0,
+  "solution_patch_apply_exit_code": 1,
+  "rebuild_exit_code": 0,
+  "test_exit_code": 1,
+  "print_exit_code": 0,
+  "parsed_tests": 211,
+  "FAIL_TO_PASS": {
+    "expected": 15,
+    "passed": [],
+    "failed": [],
+    "missing": [
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias/canonical_key_takes_precedence_when_both_are_set",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestCustomResourceConfigFileDeprecatedAlias/deprecated_key_populates_alias_field",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestLabelsAllowListSet",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestMergeFieldSelectors",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestMetricSetSet",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceListSet",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceList_ExcludeNamespacesFieldSelector",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestNamespaceList_GetNamespaces",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestNodeFieldSelector",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/foo_command_line_argument",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/namespaces_command_line_argument",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestOptionsParse/resources_command_line_argument",
+      "k8s.io/kube-state-metrics/v2/pkg/options/TestResourceSetSet"
+    ]
+  },
+  "PASS_TO_PASS": {
+    "expected": 211,
+    "passed_count": 211,
+    "failed": [],
+    "missing_count": 0
+  }
+}

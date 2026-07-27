@@ -16,6 +16,8 @@ type Registry struct {
 	order              []string // preserve registration order
 	toolGenerations    map[string]uint64
 	nextToolGeneration uint64
+	catalogGeneration  uint64
+	modelToolProfile   ModelToolProfile
 	runtimeProvider    types.ToolRuntimeContextProvider
 	permissionGrantMu  sync.Mutex
 	permissionGrants   map[string]permissionGrantRecord
@@ -110,6 +112,10 @@ func (r *Registry) Register(tool types.Tool) {
 		r.nextToolGeneration++
 	}
 	r.toolGenerations[name] = r.nextToolGeneration
+	r.catalogGeneration++
+	if r.catalogGeneration == 0 {
+		r.catalogGeneration++
+	}
 	if _, exists := r.tools[name]; exists {
 		r.tools[name] = tool // update existing entry; order already recorded
 		return
@@ -130,6 +136,10 @@ func (r *Registry) Unregister(name string) bool {
 	}
 	delete(r.tools, name)
 	delete(r.toolGenerations, name)
+	r.catalogGeneration++
+	if r.catalogGeneration == 0 {
+		r.catalogGeneration++
+	}
 	kept := r.order[:0]
 	for _, registered := range r.order {
 		if registered != name {
@@ -324,6 +334,8 @@ func (r *Registry) Clone() *Registry {
 		order:              make([]string, len(r.order)),
 		toolGenerations:    make(map[string]uint64, len(r.toolGenerations)),
 		nextToolGeneration: r.nextToolGeneration,
+		catalogGeneration:  r.catalogGeneration,
+		modelToolProfile:   r.modelToolProfile,
 		runtimeProvider:    r.runtimeProvider,
 		permissionGrants:   make(map[string]permissionGrantRecord),
 	}
@@ -346,11 +358,13 @@ func (r *Registry) NewDerived() *Registry {
 	}
 	r.mu.RLock()
 	provider := r.runtimeProvider
+	profile := r.modelToolProfile
 	r.mu.RUnlock()
 	return &Registry{
 		tools:            make(map[string]types.Tool),
 		toolGenerations:  make(map[string]uint64),
 		permissionGrants: make(map[string]permissionGrantRecord),
+		modelToolProfile: profile,
 		runtimeProvider:  provider,
 	}
 }
