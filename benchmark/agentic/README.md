@@ -8,14 +8,22 @@
 
 ```bash
 go install ./benchmark/agentic/cmd/benchmark
+benchmark --task-size=5 --with-codex
 benchmark --task-size=5
 ```
 
 不安装时也可在仓库内执行：
 
 ```bash
+./bin/benchmark --task-size=5 --with-codex
 ./bin/benchmark --task-size=5
 ```
+
+首次执行或需要更新 Codex 对照时添加 `--with-codex`。该次运行会产出独立的
+Codex JSON/HTML 快照，并把它原子更新为后续测评的冻结基线。此后的默认命令只
+运行 Luban，不再启动或评测 Codex；对比报告会复用最近一次完整的 Codex 基线。
+若新的 Codex 运行或 gold oracle 证据不完整，旧基线不会被替换。较大
+`task-size` 不能复用覆盖题目较少的基线，必须通过 `--with-codex` 扩充。
 
 当前代表题库包含 5 道预注册的 SWE-bench-Live MultiLang 题目，因此
 `task-size` 接受 `1..5`；扩充固化 catalog 后，该上限会随之扩大。题目始终按
@@ -26,20 +34,33 @@ benchmark --task-size=5
 ```text
 benchmark-results/agentic-YYYY-MM-DD/run-YYYYMMDD-HHMMSS-nN/
 ├── benchmark.json
+├── codex-baseline.json   # 仅 --with-codex
+├── codex-report.html     # 仅 --with-codex
 ├── report.html
 └── raw/
 ```
+
+`benchmark-results/codex-baseline.json` 是当前基线的权威指针副本，
+`benchmark-results/codex-baseline.html` 是便于直接浏览的当前 Codex 报告；原始
+不可变快照仍保留在其来源运行目录。每份对比报告都记录该快照的相对路径、
+SHA-256、来源 run、固化时间、Codex CLI 自报版本和二进制 SHA-256。
+仓库当前初始基线来自 `agentic-2026-07-27-local5` 的最后一次完整 5 题运行：
+`codex-cli 0.144.6`，二进制 SHA-256
+`134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477`，严格得分
+`2/5`。其结构化快照和独立 HTML 已一并托管。
 
 `benchmark.json` 是结构化事实源。生成器会重新读取它，并套用
 `benchmark/agentic/localbench/report.html.tmpl` 生成 `report.html`，不会在 HTML
 生成代码中手填分数；报告内的工件链接全部是相对路径。
 
-本机入口会构建当前 Luban 源码、从 `PATH` 定位 Codex、从 Codex 的
-`config.toml` 与 `auth.json` 读取同一网关及凭据、按实际 Responses HTTP POST
-统计 LLM 调用、并发运行每道题的 Codex/Luban 配对，然后执行公开任务评测容器。
+本机入口会构建当前 Luban 源码、从 Codex 的 `config.toml` 与 `auth.json` 读取
+同一网关及凭据、按实际 Responses HTTP POST 统计 LLM 调用，然后执行公开任务
+评测容器。只有 `--with-codex` 才会从 `PATH` 定位 Codex、读取 `codex --version`
+并在每道题上并发运行 Codex/Luban；默认运行只执行 Luban，并在报告中明确标注
+Codex 是历史冻结基线，双方任务耗时不是同一墙钟区间的观测值。
 评测器优先使用本机 Docker daemon；若不可用，则自动使用正在运行的
 `agentic-deepswe-amd64` Lima VM 内的 Docker。运行前需要上述任一容器入口、
-Git、Python 3.11+、Codex 以及有效的 Codex 配置。
+Git、Python 3.11+ 以及有效的 Codex 配置；`--with-codex` 还要求 Codex CLI。
 
 该入口用于快速、非官方的本机对比；正式公开分数协议仍由下文的 v2 harness
 承担。

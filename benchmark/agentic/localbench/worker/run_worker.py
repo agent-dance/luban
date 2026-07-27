@@ -426,7 +426,9 @@ def main() -> int:
         origin = f"{parsed.scheme}://{parsed.hostname}" + (f":{parsed.port}" if parsed.port else "")
         output.write_text(json.dumps({"gateway_origin": origin}, indent=2) + "\n", encoding="utf-8")
         return 0
-    required = [args.catalog, args.result_root, args.work_root, args.task, args.agent, args.codex_bin, args.luban_bin]
+    required = [args.catalog, args.result_root, args.work_root, args.task, args.agent, args.luban_bin]
+    if args.agent == "codex":
+        required.append(args.codex_bin)
     if any(value is None for value in required):
         raise RuntimeError("worker_configuration_incomplete")
     catalog = load_catalog(Path(args.catalog))

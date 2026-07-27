@@ -10,11 +10,11 @@ import (
 )
 
 func TestParseOptionsAcceptsTaskSizeEqualsForm(t *testing.T) {
-	parsed, help, err := parseOptions(i18n.LangEN, []string{"--task-size=3"})
+	parsed, help, err := parseOptions(i18n.LangEN, []string{"--task-size=3", "--with-codex"})
 	if err != nil || help {
 		t.Fatalf("parseOptions() help=%t err=%v", help, err)
 	}
-	if parsed.taskSize != 3 || parsed.resultsRoot != "benchmark-results" || parsed.agentTimeout != 1800 || parsed.evaluatorTimeout != 2700 {
+	if parsed.taskSize != 3 || !parsed.withCodex || parsed.resultsRoot != "benchmark-results" || parsed.agentTimeout != 1800 || parsed.evaluatorTimeout != 2700 {
 		t.Fatalf("parseOptions() = %#v", parsed)
 	}
 }
@@ -36,6 +36,17 @@ func TestRunMainRejectsCatalogOverflowBeforeExecution(t *testing.T) {
 		t.Fatalf("runMain() = %d", code)
 	}
 	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "1") || !strings.Contains(stderr.String(), "5") {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestRunMainExplainsHowToCreateMissingCodexBaseline(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	arguments := []string{"--task-size=1", "--results-root", t.TempDir()}
+	if code := runMain(context.Background(), arguments, &stdout, &stderr); code != 1 {
+		t.Fatalf("runMain() = %d, stderr=%q", code, stderr.String())
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "--with-codex") {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

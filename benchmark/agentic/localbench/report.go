@@ -15,7 +15,7 @@ import (
 	"github.com/agent-dance/luban/i18n"
 )
 
-//go:embed report.html.tmpl
+//go:embed report.html.tmpl codex-report.html.tmpl
 var reportAssets embed.FS
 
 type reportLink struct {
@@ -49,6 +49,14 @@ type reportData struct {
 	SharedLuban     Aggregate
 	HasSharedPass   bool
 	SharedTaskCount int
+}
+
+type codexReportData struct {
+	Snapshot     CodexBaselineSnapshot
+	HTMLLanguage string
+	EvidencePath string
+	Aggregate    Aggregate
+	Tasks        []reportRun
 }
 
 func GenerateReport(inputPath, outputPath string, language i18n.Language) error {
@@ -93,6 +101,51 @@ func GenerateReport(inputPath, outputPath string, language i18n.Language) error 
 	}
 	committed = true
 	return nil
+}
+
+func GenerateCodexReport(snapshot CodexBaselineSnapshot, resultsRoot, outputPath string, language i18n.Language) error {
+	outputDir := filepath.Dir(outputPath)
+	sourceRoot := filepath.Join(resultsRoot, filepath.FromSlash(snapshot.SourceRunPath))
+	snapshotPath := filepath.Join(sourceRoot, currentCodexBaselineJSON)
+	if filepath.Clean(outputDir) == filepath.Clean(resultsRoot) {
+		snapshotPath = filepath.Join(resultsRoot, currentCodexBaselineJSON)
+	}
+	data := codexReportData{
+		Snapshot: snapshot, HTMLLanguage: languageCode(language),
+		EvidencePath: relativeLink(outputDir, snapshotPath), Aggregate: snapshot.Aggregate,
+	}
+	runs := make(map[string]RunSummary, len(snapshot.Runs))
+	for _, run := range snapshot.Runs {
+		runs[run.InstanceID] = run
+	}
+	evaluations := make(map[string]Evaluation, len(snapshot.Evaluations))
+	for _, evaluation := range snapshot.Evaluations {
+		evaluations[evaluation.InstanceID] = evaluation
+	}
+	for _, task := range snapshot.Tasks {
+		entry := reportRun{Task: task, Agent: "codex"}
+		if run, ok := runs[task.InstanceID]; ok {
+			copyValue := run
+			entry.Run = &copyValue
+			if run.Usage.InputTokens > 0 {
+				entry.CacheHitRatio = float64(run.Usage.CachedInputTokens) / float64(run.Usage.InputTokens)
+			}
+			for _, name := range []string{"summary.json", "events.jsonl", "provider-requests.jsonl", "model.patch"} {
+				target := filepath.Join(sourceRoot, filepath.FromSlash(run.EvidenceRoot), name)
+				entry.Links = append(entry.Links, reportLink{Label: name, Href: relativeLink(outputDir, target)})
+			}
+		}
+		if evaluation, ok := evaluations[task.InstanceID]; ok {
+			copyValue := evaluation
+			entry.Evaluation = &copyValue
+			target := filepath.Join(sourceRoot, filepath.FromSlash(evaluation.EvidenceRoot), "report.json")
+			entry.Links = append(entry.Links, reportLink{Label: "evaluation/report.json", Href: relativeLink(outputDir, target)})
+		}
+		data.Tasks = append(data.Tasks, entry)
+	}
+	return writeHTMLAtomic(outputPath, func(writer io.Writer) error {
+		return renderCodexReport(writer, data, language)
+	})
 }
 
 func loadResult(path string) (BenchmarkResult, error) {
@@ -176,7 +229,23 @@ func compileReport(result BenchmarkResult, outputDir, inputPath string, language
 }
 
 func renderReport(writer io.Writer, data reportData, language i18n.Language) error {
-	templateValue, err := template.New("benchmark-report").Funcs(template.FuncMap{
+	templateValue, err := template.New("benchmark-report").Funcs(reportTemplateFunctions(language)).ParseFS(reportAssets, "report.html.tmpl")
+	if err != nil {
+		return err
+	}
+	return templateValue.ExecuteTemplate(writer, "report.html.tmpl", data)
+}
+
+func renderCodexReport(writer io.Writer, data codexReportData, language i18n.Language) error {
+	templateValue, err := template.New("codex-report").Funcs(reportTemplateFunctions(language)).ParseFS(reportAssets, "codex-report.html.tmpl")
+	if err != nil {
+		return err
+	}
+	return templateValue.ExecuteTemplate(writer, "codex-report.html.tmpl", data)
+}
+
+func reportTemplateFunctions(language i18n.Language) template.FuncMap {
+	return template.FuncMap{
 		"tr":        func(key string) string { return i18n.Text(language, i18n.Key(key)) },
 		"tf":        func(key string, arguments ...any) string { return i18n.Format(language, i18n.Key(key), arguments...) },
 		"seconds":   secondsValue,
@@ -200,11 +269,43 @@ func renderReport(writer io.Writer, data reportData, language i18n.Language) err
 		},
 		"toolSummary": toolSummary,
 		"list":        func(values ...Aggregate) []Aggregate { return values },
-	}).ParseFS(reportAssets, "report.html.tmpl")
+	}
+}
+
+func writeHTMLAtomic(outputPath string, render func(io.Writer) error) error {
+	parent := filepath.Dir(outputPath)
+	if err := os.MkdirAll(parent, 0o755); err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(parent, ".benchmark-report-*.html")
 	if err != nil {
 		return err
 	}
-	return templateValue.ExecuteTemplate(writer, "report.html.tmpl", data)
+	temporaryPath := temporary.Name()
+	committed := false
+	defer func() {
+		_ = temporary.Close()
+		if !committed {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+	if err := render(temporary); err != nil {
+		return err
+	}
+	if err := temporary.Sync(); err != nil {
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(temporaryPath, 0o644); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, outputPath); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func toolSummary(values map[string]int) string {

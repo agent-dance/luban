@@ -22,7 +22,7 @@
   <div class="meta">
     <span class="pill"><code>{{.Result.Model}}</code> · <code>{{.Result.ReasoningEffort}}</code></span>
     <span class="pill"><code>{{.Result.Dataset}}@{{.Result.DatasetRevision}}</code></span>
-    <span class="pill"><code>{{.Result.GatewayOrigin}}</code></span>
+    <span class="pill"><code>gateway_sha256={{.Result.GatewaySHA256}}</code></span>
     <span class="pill"><code>{{.Result.EvaluatorEngine}}</code></span>
     <span class="pill"><code>tasks={{len .Result.Tasks}}</code></span>
     <span class="pill"><code>run_id={{.Result.RunID}}</code></span>
@@ -30,6 +30,7 @@
     <span class="pill {{if .Complete}}good{{else}}warn{{end}}">{{if .Complete}}{{tr "agentic.report.coverage.complete"}}{{else}}{{tr "agentic.report.coverage.partial"}}{{end}}</span>
   </div>
   <div class="callout warn">{{tr "benchmark.local.report.selection"}}</div>
+  {{if .Result.CodexBaseline.SnapshotSHA256}}{{if .Result.CodexBaseline.Refreshed}}<div class="callout"><strong>{{tf "benchmark.local.report.baseline_refreshed" .Result.CodexBaseline.CodexVersion .Result.CodexBaseline.SourceRunID (timeValue .Result.CodexBaseline.CapturedAt)}}</strong><br><a href="{{.Result.CodexBaseline.SnapshotPath}}"><code>sha256={{.Result.CodexBaseline.SnapshotSHA256}}</code></a></div>{{else}}<div class="callout"><strong>{{tf "benchmark.local.report.baseline_reused" .Result.CodexBaseline.CodexVersion .Result.CodexBaseline.SourceRunID (timeValue .Result.CodexBaseline.CapturedAt)}}</strong><br><a href="{{.Result.CodexBaseline.SnapshotPath}}"><code>sha256={{.Result.CodexBaseline.SnapshotSHA256}}</code></a></div>{{end}}{{end}}
   {{if not .Complete}}<div class="callout warn">{{tr "benchmark.local.report.partial_caveat"}}</div>{{end}}
 </header>
 
@@ -64,9 +65,9 @@
 
 <section class="section">
   <h2>{{tr "agentic.report.section.methodology"}}</h2>
-  <ul><li>{{tr "benchmark.local.report.selection"}}</li><li>{{tr "benchmark.local.report.llm_definition"}}</li><li>{{tr "benchmark.local.report.cost_definition"}}</li><li>{{tr "benchmark.local.report.tool_diagnostic"}}</li><li>{{tr "benchmark.local.report.concurrency"}}</li></ul>
-  <div class="table-wrap"><table><thead><tr><th>{{tr "agentic.report.header.agent"}}</th><th>{{tr "agentic.report.header.binary_sha"}}</th></tr></thead><tbody>{{range .Result.Binaries}}<tr><td><code>{{.Name}}</code></td><td><code>{{.SHA256}}</code></td></tr>{{end}}</tbody></table></div>
-  <p><code>benchmark --task-size={{len .Result.Tasks}}</code></p>
+  <ul><li>{{tr "benchmark.local.report.selection"}}</li><li>{{tr "benchmark.local.report.llm_definition"}}</li><li>{{tr "benchmark.local.report.cost_definition"}}</li><li>{{tr "benchmark.local.report.tool_diagnostic"}}</li><li>{{if .Result.CodexRequested}}{{tr "benchmark.local.report.concurrency"}}{{else}}{{tr "benchmark.local.report.historical_baseline"}}{{end}}</li></ul>
+  <div class="table-wrap"><table><thead><tr><th>{{tr "agentic.report.header.agent"}}</th><th>{{tr "benchmark.local.report.binary_version"}}</th><th>{{tr "agentic.report.header.binary_sha"}}</th></tr></thead><tbody>{{range .Result.Binaries}}<tr><td><code>{{.Name}}</code></td><td><code>{{.Version}}</code></td><td><code>{{.SHA256}}</code></td></tr>{{end}}</tbody></table></div>
+  <p><code>benchmark --task-size={{len .Result.Tasks}}{{if .Result.CodexRequested}} --with-codex{{end}}</code></p>
   <p class="note">{{tf "benchmark.local.report.generated_from" .EvidencePath}}</p>
 </section>
 <footer>{{tr "agentic.report.footer"}}</footer>

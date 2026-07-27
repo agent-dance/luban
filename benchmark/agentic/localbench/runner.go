@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ type Options struct {
 	RepositoryRoot   string
 	ResultsRoot      string
 	TaskSize         int
+	WithCodex        bool
 	AgentTimeout     int
 	EvaluatorTimeout int
 	Now              func() time.Time
@@ -34,11 +36,12 @@ type Options struct {
 }
 
 type Outcome struct {
-	RunRoot    string
-	ResultPath string
-	ReportPath string
-	LogPath    string
-	Complete   bool
+	RunRoot         string
+	ResultPath      string
+	ReportPath      string
+	CodexReportPath string
+	LogPath         string
+	Complete        bool
 }
 
 type PreparedEnvironment struct {
@@ -48,7 +51,7 @@ type PreparedEnvironment struct {
 }
 
 type Executor interface {
-	Prepare(context.Context, string, string) (PreparedEnvironment, error)
+	Prepare(context.Context, string, string, bool) (PreparedEnvironment, error)
 	RunAgent(context.Context, string, TaskSelection, string, int) (RunSummary, error)
 	Evaluate(context.Context, string, TaskSelection, string, int) (Evaluation, error)
 }
@@ -72,9 +75,20 @@ func Run(ctx context.Context, options Options, executor Executor, language i18n.
 	if err != nil {
 		return Outcome{}, err
 	}
+	resultsRoot, err := absoluteResultsRoot(options.ResultsRoot)
+	if err != nil {
+		return Outcome{}, err
+	}
+	var frozen *loadedCodexBaseline
+	if !options.WithCodex {
+		frozen, err = loadCodexBaseline(resultsRoot, tasks)
+		if err != nil {
+			return Outcome{}, err
+		}
+	}
 	startedLocal := options.Now()
 	started := startedLocal.UTC()
-	runRoot, runID, err := createRunRoot(options.ResultsRoot, startedLocal, options.TaskSize)
+	runRoot, runID, err := createRunRoot(resultsRoot, startedLocal, options.TaskSize)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -82,11 +96,15 @@ func Run(ctx context.Context, options Options, executor Executor, language i18n.
 		RunRoot: runRoot, ResultPath: filepath.Join(runRoot, "benchmark.json"),
 		ReportPath: filepath.Join(runRoot, "report.html"), LogPath: filepath.Join(runRoot, "execution.log"),
 	}
+	if options.WithCodex {
+		outcome.CodexReportPath = filepath.Join(runRoot, "codex-report.html")
+	}
 	result := BenchmarkResult{
 		SchemaVersion: ResultSchemaVersion, Status: "running", RunID: runID, StartedAt: started,
 		Dataset: DatasetName, DatasetRevision: DatasetRevision, SelectionPolicy: selectionPolicy,
 		Tasks: tasks, Model: ModelID, ReasoningEffort: ReasoningEffort,
-		AgentTimeout: options.AgentTimeout, EvaluatorTimeout: options.EvaluatorTimeout,
+		CodexRequested: options.WithCodex,
+		AgentTimeout:   options.AgentTimeout, EvaluatorTimeout: options.EvaluatorTimeout,
 		Pricing: FrozenPricing(),
 	}
 	persist := func() error { return writeJSONAtomic(outcome.ResultPath, result) }
@@ -94,13 +112,26 @@ func Run(ctx context.Context, options Options, executor Executor, language i18n.
 		return outcome, err
 	}
 	progress(options, i18n.KeyLocalBenchmarkPreparing, runID)
-	prepared, prepareErr := executor.Prepare(ctx, runRoot, options.RepositoryRoot)
+	prepared, prepareErr := executor.Prepare(ctx, runRoot, options.RepositoryRoot, options.WithCodex)
 	if prepareErr != nil {
 		result.Failures = append(result.Failures, Failure{Stage: "prepare", Code: "prepare_failed", EvidencePath: "execution.log"})
 	} else {
-		result.GatewayOrigin, result.EvaluatorEngine, result.Binaries = prepared.GatewayOrigin, prepared.EvaluatorEngine, prepared.Binaries
+		result.GatewaySHA256, result.EvaluatorEngine = gatewaySHA256(prepared.GatewayOrigin), prepared.EvaluatorEngine
+		result.Binaries = append(result.Binaries, prepared.Binaries...)
+		if frozen != nil {
+			if frozen.snapshot.GatewaySHA256 != result.GatewaySHA256 {
+				prepareErr = i18n.NewError(i18n.KeyLocalBenchmarkBaselineIncompatible)
+				result.Failures = append(result.Failures, Failure{Stage: "codex_baseline", Code: "gateway_mismatch", EvidencePath: frozen.reference.SnapshotPath})
+			} else {
+				result.CodexBaseline = baselineReference(runRoot, frozen, false)
+				result.Binaries = append([]BinaryIdentity{frozen.snapshot.Binary}, result.Binaries...)
+				seedCodexBaseline(&result, runRoot, frozen)
+			}
+		}
+	}
+	if prepareErr == nil {
 		for _, task := range tasks {
-			runs := runPair(ctx, options, executor, runRoot, task)
+			runs := runAgents(ctx, options, executor, runRoot, task)
 			for _, value := range runs {
 				if value.err != nil {
 					result.Failures = append(result.Failures, Failure{Stage: "agent", InstanceID: task.InstanceID, Agent: value.agent, Code: "agent_run_failed", EvidencePath: value.evidence})
@@ -118,7 +149,7 @@ func Run(ctx context.Context, options Options, executor Executor, language i18n.
 					result.Failures = append(result.Failures, Failure{Stage: "oracle", InstanceID: task.InstanceID, Agent: "gold", Code: "gold_oracle_failed", EvidencePath: filepath.ToSlash(filepath.Join(gold.EvidenceRoot, "report.json"))})
 				}
 			}
-			for _, agent := range []string{"codex", "luban"} {
+			for _, agent := range activeAgents(options.WithCodex) {
 				if !hasRun(result.Runs, task.InstanceID, agent) {
 					continue
 				}
@@ -141,8 +172,15 @@ func Run(ctx context.Context, options Options, executor Executor, language i18n.
 	result.CompletedAt = &completed
 	result.Aggregates = aggregateAll(result.Tasks, result.Runs, result.Evaluations)
 	result.SharedPass = sharedPassedTasks(result.Tasks, result.Evaluations)
+	var baselineErr error
+	if prepareErr == nil && options.WithCodex && codexBaselineCoverage(result) {
+		result.CodexBaseline, baselineErr = freezeCodexBaseline(result, resultsRoot, runRoot, language)
+		if baselineErr != nil {
+			result.Failures = append(result.Failures, Failure{Stage: "codex_baseline", Code: "baseline_write_failed"})
+		}
+	}
 	result.Status = "partial"
-	if prepareErr == nil && len(result.Failures) == 0 && completeCoverage(result) {
+	if prepareErr == nil && baselineErr == nil && len(result.Failures) == 0 && completeCoverage(result) && result.CodexBaseline.SnapshotSHA256 != "" {
 		result.Status = "complete"
 	}
 	if err := persist(); err != nil {
@@ -155,6 +193,9 @@ func Run(ctx context.Context, options Options, executor Executor, language i18n.
 	if prepareErr != nil {
 		return outcome, prepareErr
 	}
+	if baselineErr != nil {
+		return outcome, baselineErr
+	}
 	return outcome, nil
 }
 
@@ -165,10 +206,18 @@ type agentResult struct {
 	evidence string
 }
 
-func runPair(ctx context.Context, options Options, executor Executor, runRoot string, task TaskSelection) []agentResult {
-	values := make([]agentResult, 2)
+func activeAgents(withCodex bool) []string {
+	if withCodex {
+		return []string{"codex", "luban"}
+	}
+	return []string{"luban"}
+}
+
+func runAgents(ctx context.Context, options Options, executor Executor, runRoot string, task TaskSelection) []agentResult {
+	agents := activeAgents(options.WithCodex)
+	values := make([]agentResult, len(agents))
 	var wait sync.WaitGroup
-	for index, agent := range []string{"codex", "luban"} {
+	for index, agent := range agents {
 		progress(options, i18n.KeyLocalBenchmarkRunningAgent, agent, task.InstanceID)
 		wait.Add(1)
 		go func(index int, agent string) {
@@ -379,11 +428,12 @@ type LocalExecutor struct {
 	RuntimeRoot string
 	CatalogPath string
 	WorkRoot    string
+	Identities  map[string]BinaryIdentity
 }
 
 func NewLocalExecutor() *LocalExecutor { return &LocalExecutor{} }
 
-func (executor *LocalExecutor) Prepare(ctx context.Context, runRoot, repositoryRoot string) (PreparedEnvironment, error) {
+func (executor *LocalExecutor) Prepare(ctx context.Context, runRoot, repositoryRoot string, withCodex bool) (PreparedEnvironment, error) {
 	if err := os.MkdirAll(filepath.Join(runRoot, "raw", "setup"), 0o755); err != nil {
 		return PreparedEnvironment{}, err
 	}
@@ -397,9 +447,11 @@ func (executor *LocalExecutor) Prepare(ctx context.Context, runRoot, repositoryR
 	if err != nil {
 		return PreparedEnvironment{}, logCommandError(logFile, "python_lookup_failed", err)
 	}
-	executor.CodexBinary, err = exec.LookPath("codex")
-	if err != nil {
-		return PreparedEnvironment{}, logCommandError(logFile, "codex_lookup_failed", err)
+	if withCodex {
+		executor.CodexBinary, err = exec.LookPath("codex")
+		if err != nil {
+			return PreparedEnvironment{}, logCommandError(logFile, "codex_lookup_failed", err)
+		}
 	}
 	if _, err := exec.LookPath("git"); err != nil {
 		return PreparedEnvironment{}, logCommandError(logFile, "git_lookup_failed", err)
@@ -457,15 +509,28 @@ func (executor *LocalExecutor) Prepare(ctx context.Context, runRoot, repositoryR
 	if err := decodeJSONFile(evaluatorPath, &evaluator); err != nil {
 		return PreparedEnvironment{}, err
 	}
-	codexIdentity, err := hashBinary("codex", executor.CodexBinary)
-	if err != nil {
-		return PreparedEnvironment{}, err
-	}
 	lubanIdentity, err := hashBinary("luban", executor.LubanBinary)
 	if err != nil {
 		return PreparedEnvironment{}, err
 	}
-	return PreparedEnvironment{GatewayOrigin: provider.GatewayOrigin, EvaluatorEngine: evaluator.Engine, Binaries: []BinaryIdentity{codexIdentity, lubanIdentity}}, nil
+	lubanIdentity.Version = "workspace-build"
+	binaries := []BinaryIdentity{lubanIdentity}
+	if withCodex {
+		codexIdentity, identityErr := hashBinary("codex", executor.CodexBinary)
+		if identityErr != nil {
+			return PreparedEnvironment{}, identityErr
+		}
+		codexIdentity.Version, identityErr = binaryVersion(ctx, executor.CodexBinary)
+		if identityErr != nil {
+			return PreparedEnvironment{}, identityErr
+		}
+		binaries = append([]BinaryIdentity{codexIdentity}, binaries...)
+	}
+	executor.Identities = make(map[string]BinaryIdentity, len(binaries))
+	for _, identity := range binaries {
+		executor.Identities[identity.Name] = identity
+	}
+	return PreparedEnvironment{GatewayOrigin: provider.GatewayOrigin, EvaluatorEngine: evaluator.Engine, Binaries: binaries}, nil
 }
 
 func (executor *LocalExecutor) RunAgent(ctx context.Context, runRoot string, task TaskSelection, agent string, timeout int) (RunSummary, error) {
@@ -475,13 +540,19 @@ func (executor *LocalExecutor) RunAgent(ctx context.Context, runRoot string, tas
 	}
 	outputPath := filepath.Join(root, "summary.json")
 	logPath := filepath.Join(root, "worker.log")
-	args := []string{"--catalog", executor.CatalogPath, "--result-root", runRoot, "--work-root", executor.WorkRoot, "--task", task.InstanceID, "--agent", agent, "--codex-bin", executor.CodexBinary, "--luban-bin", executor.LubanBinary, "--timeout", fmt.Sprint(timeout), "--output", outputPath}
+	args := []string{"--catalog", executor.CatalogPath, "--result-root", runRoot, "--work-root", executor.WorkRoot, "--task", task.InstanceID, "--agent", agent, "--luban-bin", executor.LubanBinary, "--timeout", fmt.Sprint(timeout), "--output", outputPath}
+	if agent == "codex" {
+		args = append(args, "--codex-bin", executor.CodexBinary)
+	}
 	if err := executor.runWorker(ctx, "", logPath, filepath.Join(executor.RuntimeRoot, "run_worker.py"), args...); err != nil {
 		return RunSummary{}, err
 	}
 	var result RunSummary
 	if err := decodeJSONFile(outputPath, &result); err != nil {
 		return RunSummary{}, err
+	}
+	if identity, ok := executor.Identities[agent]; ok {
+		result.Binary = identity
 	}
 	return result, nil
 }
@@ -560,6 +631,22 @@ func hashBinary(name, path string) (BinaryIdentity, error) {
 		return BinaryIdentity{}, err
 	}
 	return BinaryIdentity{Name: name, SHA256: hex.EncodeToString(hash.Sum(nil))}, nil
+}
+
+func binaryVersion(ctx context.Context, path string) (string, error) {
+	command := exec.CommandContext(ctx, path, "--version")
+	raw, err := command.CombinedOutput()
+	if err != nil {
+		return "", err
+	}
+	version := strings.Join(strings.Fields(string(raw)), " ")
+	if version == "" {
+		return "", errors.New("binary version output is empty")
+	}
+	if len(version) > 200 {
+		version = version[:200]
+	}
+	return version, nil
 }
 
 // KeyTaskSizeRange keeps the local package independent of stringly typed keys.

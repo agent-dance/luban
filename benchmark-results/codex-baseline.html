@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>冻结 Codex 测评基线</title>
+<style>
+:root{--bg:#eef2f6;--paper:#fff;--ink:#15212d;--muted:#5b6978;--line:#d8e0e8;--brand:#075985;--soft:#e0f2fe;--good:#166534;--bad:#991b1b;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;--sans:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}@media(prefers-color-scheme:dark){:root{--bg:#091018;--paper:#111b25;--ink:#e7eef5;--muted:#9dabb9;--line:#2b3a48;--brand:#7dd3fc;--soft:#123348;--good:#86efac;--bad:#fca5a5}}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans)}main{width:min(1280px,calc(100% - 32px));margin:24px auto 60px}.hero,.section{margin:0 0 18px;padding:24px;border:1px solid var(--line);border-radius:16px;background:var(--paper)}.hero{padding:36px}.eyebrow{color:var(--brand);font-weight:800;letter-spacing:.09em;text-transform:uppercase}h1{margin:8px 0 12px;font-size:clamp(28px,4.4vw,52px);line-height:1.05}h2{margin:0 0 14px;font-size:24px}.subtitle,.note{color:var(--muted)}.meta,.links{display:flex;flex-wrap:wrap;gap:7px}.pill{padding:4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--bg);font-size:12px}.callout{margin:18px 0 0;padding:12px 14px;border-left:4px solid var(--brand);background:var(--soft)}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}.stat{padding:14px;border:1px solid var(--line);border-radius:11px}.stat strong{display:block;margin-top:4px;font-size:22px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{padding:9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--muted);font-size:12px}.num{text-align:right;white-space:nowrap}.good{color:var(--good);font-weight:800}.bad{color:var(--bad);font-weight:800}code{font:12px/1.5 var(--mono);overflow-wrap:anywhere}.links a{padding:2px 6px;border:1px solid var(--line);border-radius:5px;text-decoration:none;color:var(--brand)}footer{padding:18px;color:var(--muted);text-align:center}@media(max-width:760px){main{width:calc(100% - 14px);margin-top:7px}.hero,.section{padding:16px;border-radius:10px}.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<header class="hero">
+  <div class="eyebrow">Codex · Agentic Coding · 可复现计分卡</div>
+  <h1>冻结 Codex 测评基线</h1>
+  <p class="subtitle">来自 5 道代表性公开题目、可复用的 Codex 测评证据。</p>
+  <div class="meta">
+    <span class="pill"><code>codex-cli 0.144.6</code></span>
+    <span class="pill"><code>sha256=134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477</code></span>
+    <span class="pill"><code>gpt-5.6-sol · xhigh</code></span>
+    <span class="pill"><code>SWE-bench-Live/MultiLang@608f7ae9ab8ea1f9f0d030fe04562cf6bd1a0c8b</code></span>
+    <span class="pill"><code>gateway_sha256=18b87ef25c2d2a7fc4d24929b7b456178a4cadf37a2b1c5cd0d90d05a9362be6</code></span>
+    <span class="pill"><code>source_run=agentic-2026-07-27-local5</code></span>
+    <span class="pill"><code>2026-07-27T04:47:09Z</code></span>
+  </div>
+  <div class="callout">这是 codex-cli 0.144.6 的冻结基线，来源为 agentic-2026-07-27-local5，固化于 2026-07-27T04:47:09Z；在再次使用 --with-codex 运行 benchmark 前始终生效。</div>
+</header>
+
+<section class="section">
+  <h2>汇总结果</h2>
+  <div class="grid">
+    <div class="stat">任务通过率<strong>2/5 (40.0%)</strong></div>
+    <div class="stat">任务耗时<strong>38m 5.9s</strong><code>provider=37m 44.7s</code></div>
+    <div class="stat">LLM 调用（全部已开始且 generate=true 的推理）<strong>127</strong><code>2xx=127; non_2xx=0</code></div>
+    <div class="stat">按 token 加权的缓存命中率<strong>93.1%</strong></div>
+    <div class="stat">冻结的网关可比费率卡估算<strong>$6.7088</strong></div>
+  </div>
+</section>
+
+<section class="section">
+  <h2>逐题结果</h2>
+  <div class="table-wrap"><table><thead><tr><th>题目</th><th>结果</th><th class="num">任务耗时</th><th class="num">LLM 调用（全部已开始且 generate=true 的推理）</th><th class="num"><code>I / C / W / O</code></th><th class="num">按 token 加权的缓存命中率</th><th class="num">费用</th><th>证据</th></tr></thead><tbody>
+  <tr><td><code>danielmiessler__Fabric-2098</code><br><code>go</code></td><td><span class="good">通过</span></td><td class="num">5m 15.0s</td><td class="num">13</td><td class="num"><code>509785 / 450560 / 0 / 8553</code></td><td class="num">88.4%</td><td class="num">$0.7780</td><td><div class="links"><a href="agentic-2026-07-27/raw/runs/danielmiessler__Fabric-2098/codex/summary.json"><code>summary.json</code></a><a href="agentic-2026-07-27/raw/runs/danielmiessler__Fabric-2098/codex/events.jsonl"><code>events.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/danielmiessler__Fabric-2098/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/danielmiessler__Fabric-2098/codex/model.patch"><code>model.patch</code></a><a href="agentic-2026-07-27/raw/evaluation/danielmiessler__Fabric-2098/codex/report.json"><code>evaluation/report.json</code></a></div></td></tr><tr><td><code>openai__openai-agents-js-375</code><br><code>ts</code></td><td><span class="good">通过</span></td><td class="num">8m 41.9s</td><td class="num">30</td><td class="num"><code>1416883 / 1334016 / 0 / 12258</code></td><td class="num">94.2%</td><td class="num">$1.4491</td><td><div class="links"><a href="agentic-2026-07-27/raw/runs/openai__openai-agents-js-375/codex/summary.json"><code>summary.json</code></a><a href="agentic-2026-07-27/raw/runs/openai__openai-agents-js-375/codex/events.jsonl"><code>events.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/openai__openai-agents-js-375/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/openai__openai-agents-js-375/codex/model.patch"><code>model.patch</code></a><a href="agentic-2026-07-27/raw/evaluation/openai__openai-agents-js-375/codex/report.json"><code>evaluation/report.json</code></a></div></td></tr><tr><td><code>kubernetes__kube-state-metrics-2926</code><br><code>go</code></td><td><span class="bad">失败</span></td><td class="num">5m 19.1s</td><td class="num">19</td><td class="num"><code>637678 / 563968 / 0 / 6486</code></td><td class="num">88.4%</td><td class="num">$0.8451</td><td><div class="links"><a href="agentic-2026-07-27/raw/runs/kubernetes__kube-state-metrics-2926/codex/summary.json"><code>summary.json</code></a><a href="agentic-2026-07-27/raw/runs/kubernetes__kube-state-metrics-2926/codex/events.jsonl"><code>events.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/kubernetes__kube-state-metrics-2926/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/kubernetes__kube-state-metrics-2926/codex/model.patch"><code>model.patch</code></a><a href="agentic-2026-07-27/raw/evaluation/kubernetes__kube-state-metrics-2926/codex/report.json"><code>evaluation/report.json</code></a></div></td></tr><tr><td><code>skim-rs__skim-1044</code><br><code>rust</code></td><td><span class="bad">失败</span></td><td class="num">8m 33.9s</td><td class="num">28</td><td class="num"><code>1507136 / 1409280 / 0 / 11802</code></td><td class="num">93.5%</td><td class="num">$1.5480</td><td><div class="links"><a href="agentic-2026-07-27/raw/runs/skim-rs__skim-1044/codex/summary.json"><code>summary.json</code></a><a href="agentic-2026-07-27/raw/runs/skim-rs__skim-1044/codex/events.jsonl"><code>events.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/skim-rs__skim-1044/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/skim-rs__skim-1044/codex/model.patch"><code>model.patch</code></a><a href="agentic-2026-07-27/raw/evaluation/skim-rs__skim-1044/codex/report.json"><code>evaluation/report.json</code></a></div></td></tr><tr><td><code>include-what-you-use__include-what-you-use-1991</code><br><code>cpp</code></td><td><span class="bad">失败</span></td><td class="num">10m 16.0s</td><td class="num">37</td><td class="num"><code>2223889 / 2102528 / 0 / 14351</code></td><td class="num">94.5%</td><td class="num">$2.0886</td><td><div class="links"><a href="agentic-2026-07-27/raw/runs/include-what-you-use__include-what-you-use-1991/codex/summary.json"><code>summary.json</code></a><a href="agentic-2026-07-27/raw/runs/include-what-you-use__include-what-you-use-1991/codex/events.jsonl"><code>events.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/include-what-you-use__include-what-you-use-1991/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="agentic-2026-07-27/raw/runs/include-what-you-use__include-what-you-use-1991/codex/model.patch"><code>model.patch</code></a><a href="agentic-2026-07-27/raw/evaluation/include-what-you-use__include-what-you-use-1991/codex/report.json"><code>evaluation/report.json</code></a></div></td></tr>
+  </tbody></table></div>
+</section>
+
+<section class="section">
+  <h2>方法与证据分级</h2>
+  <ul><li>题库是从 SWE-bench-Live/MultiLang 固化的代表性子集；task-size 选择其中预注册顺序的前 N 道题。</li><li>LLM 调用按发往 Responses 端点的实际 HTTP POST 次数计数；单次响应中的并行工具调用不会增加该计数。</li><li>费用是在同一网关下按固化 token 价目表计算的非账单估算；不含本机算力和评测器成本。</li></ul>
+  <p><strong>Codex 版本:</strong> <code>codex-cli 0.144.6</code></p>
+  <p class="note">本 HTML 由 codex-baseline.json 与仓库内报告模板自动生成。</p>
+</section>
+<footer>由内容寻址的 Agentic 报告流水线生成 · 证据截至 %s · 单文件，无外部运行时依赖</footer>
+</main></body></html>

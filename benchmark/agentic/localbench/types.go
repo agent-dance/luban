@@ -3,11 +3,12 @@ package localbench
 import "time"
 
 const (
-	ResultSchemaVersion = "agentic-local-benchmark/v1"
-	DatasetName         = "SWE-bench-Live/MultiLang"
-	DatasetRevision     = "608f7ae9ab8ea1f9f0d030fe04562cf6bd1a0c8b"
-	ModelID             = "gpt-5.6-sol"
-	ReasoningEffort     = "xhigh"
+	ResultSchemaVersion        = "agentic-local-benchmark/v2"
+	CodexBaselineSchemaVersion = "agentic-local-codex-baseline/v1"
+	DatasetName                = "SWE-bench-Live/MultiLang"
+	DatasetRevision            = "608f7ae9ab8ea1f9f0d030fe04562cf6bd1a0c8b"
+	ModelID                    = "gpt-5.6-sol"
+	ReasoningEffort            = "xhigh"
 )
 
 var representativeOrder = []string{
@@ -40,8 +41,43 @@ func FrozenPricing() Pricing {
 }
 
 type BinaryIdentity struct {
-	Name   string `json:"name"`
-	SHA256 string `json:"sha256"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	SHA256  string `json:"sha256"`
+}
+
+type CodexBaselineReference struct {
+	SnapshotPath   string    `json:"snapshot_path"`
+	SnapshotSHA256 string    `json:"snapshot_sha256"`
+	SourceRunID    string    `json:"source_run_id"`
+	CapturedAt     time.Time `json:"captured_at"`
+	CodexVersion   string    `json:"codex_version"`
+	Refreshed      bool      `json:"refreshed"`
+}
+
+// CodexBaselineSnapshot is the frozen, reusable side of a comparison. Evidence
+// roots inside Runs and Evaluations are relative to SourceRunPath.
+type CodexBaselineSnapshot struct {
+	SchemaVersion    string          `json:"schema_version"`
+	SourceRunID      string          `json:"source_run_id"`
+	SourceRunPath    string          `json:"source_run_path"`
+	CapturedAt       time.Time       `json:"captured_at"`
+	Dataset          string          `json:"dataset"`
+	DatasetRevision  string          `json:"dataset_revision"`
+	SelectionPolicy  string          `json:"selection_policy"`
+	Tasks            []TaskSelection `json:"tasks"`
+	Model            string          `json:"model"`
+	ReasoningEffort  string          `json:"reasoning_effort"`
+	GatewaySHA256    string          `json:"gateway_sha256"`
+	EvaluatorEngine  string          `json:"evaluator_engine"`
+	AgentTimeout     int             `json:"agent_timeout_seconds"`
+	EvaluatorTimeout int             `json:"evaluator_timeout_seconds"`
+	Pricing          Pricing         `json:"pricing"`
+	Binary           BinaryIdentity  `json:"binary"`
+	Runs             []RunSummary    `json:"runs"`
+	Evaluations      []Evaluation    `json:"evaluations"`
+	GoldEvaluations  []Evaluation    `json:"gold_evaluations"`
+	Aggregate        Aggregate       `json:"aggregate"`
 }
 
 type Usage struct {
@@ -133,27 +169,29 @@ type Aggregate struct {
 }
 
 type BenchmarkResult struct {
-	SchemaVersion    string           `json:"schema_version"`
-	Status           string           `json:"status"`
-	RunID            string           `json:"run_id"`
-	StartedAt        time.Time        `json:"started_at"`
-	CompletedAt      *time.Time       `json:"completed_at,omitempty"`
-	Dataset          string           `json:"dataset"`
-	DatasetRevision  string           `json:"dataset_revision"`
-	SelectionPolicy  string           `json:"selection_policy"`
-	Tasks            []TaskSelection  `json:"tasks"`
-	Model            string           `json:"model"`
-	ReasoningEffort  string           `json:"reasoning_effort"`
-	GatewayOrigin    string           `json:"gateway_origin"`
-	EvaluatorEngine  string           `json:"evaluator_engine"`
-	AgentTimeout     int              `json:"agent_timeout_seconds"`
-	EvaluatorTimeout int              `json:"evaluator_timeout_seconds"`
-	Pricing          Pricing          `json:"pricing"`
-	Binaries         []BinaryIdentity `json:"binaries"`
-	Runs             []RunSummary     `json:"runs"`
-	Evaluations      []Evaluation     `json:"evaluations"`
-	GoldEvaluations  []Evaluation     `json:"gold_evaluations"`
-	Aggregates       []Aggregate      `json:"aggregates"`
-	SharedPass       []TaskSelection  `json:"shared_pass_tasks"`
-	Failures         []Failure        `json:"failures"`
+	SchemaVersion    string                 `json:"schema_version"`
+	Status           string                 `json:"status"`
+	RunID            string                 `json:"run_id"`
+	StartedAt        time.Time              `json:"started_at"`
+	CompletedAt      *time.Time             `json:"completed_at,omitempty"`
+	Dataset          string                 `json:"dataset"`
+	DatasetRevision  string                 `json:"dataset_revision"`
+	SelectionPolicy  string                 `json:"selection_policy"`
+	Tasks            []TaskSelection        `json:"tasks"`
+	Model            string                 `json:"model"`
+	ReasoningEffort  string                 `json:"reasoning_effort"`
+	CodexRequested   bool                   `json:"codex_requested"`
+	GatewaySHA256    string                 `json:"gateway_sha256"`
+	EvaluatorEngine  string                 `json:"evaluator_engine"`
+	AgentTimeout     int                    `json:"agent_timeout_seconds"`
+	EvaluatorTimeout int                    `json:"evaluator_timeout_seconds"`
+	Pricing          Pricing                `json:"pricing"`
+	Binaries         []BinaryIdentity       `json:"binaries"`
+	CodexBaseline    CodexBaselineReference `json:"codex_baseline"`
+	Runs             []RunSummary           `json:"runs"`
+	Evaluations      []Evaluation           `json:"evaluations"`
+	GoldEvaluations  []Evaluation           `json:"gold_evaluations"`
+	Aggregates       []Aggregate            `json:"aggregates"`
+	SharedPass       []TaskSelection        `json:"shared_pass_tasks"`
+	Failures         []Failure              `json:"failures"`
 }
