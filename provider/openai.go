@@ -40,6 +40,7 @@ const (
 type OpenAIProvider struct {
 	client                     *openai.Client
 	name                       string
+	baseURL                    string
 	model                      string
 	maxTokens                  int
 	dialect                    OpenAIDialect
@@ -88,8 +89,9 @@ type openAIChatRequestContextKey struct{}
 type retryAfterCaptureContextKey struct{}
 
 type retryAfterCapture struct {
-	mu    sync.Mutex
-	value string
+	mu        sync.Mutex
+	value     string
+	requestID string
 }
 
 func (c *retryAfterCapture) set(value string) {
@@ -110,6 +112,24 @@ func (c *retryAfterCapture) get() string {
 	return c.value
 }
 
+func (c *retryAfterCapture) setRequestID(value string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.requestID = strings.TrimSpace(value)
+	c.mu.Unlock()
+}
+
+func (c *retryAfterCapture) getRequestID() string {
+	if c == nil {
+		return ""
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.requestID
+}
+
 // retryAfterCaptureTransport retains only the Retry-After response field. The
 // go-openai SDK preserves status/body errors but discards response headers.
 type retryAfterCaptureTransport struct{ base http.RoundTripper }
@@ -119,8 +139,10 @@ func (t *retryAfterCaptureTransport) RoundTrip(req *http.Request) (*http.Respons
 	capture, _ := req.Context().Value(retryAfterCaptureContextKey{}).(*retryAfterCapture)
 	if response == nil {
 		capture.set("")
+		capture.setRequestID("")
 	} else {
 		capture.set(response.Header.Get("Retry-After"))
+		capture.setRequestID(providerRequestID(response.Header))
 	}
 	return response, err
 }
@@ -260,7 +282,8 @@ func (t *openAIChatRequestTransport) RoundTrip(req *http.Request) (*http.Respons
 	}
 	t.cacheRoutingRejections.remember(extensions.CacheMemoryKey)
 	_ = response.Body.Close()
-	if attemptErr := beginNestedTransportAttempt(req.Context(), nil); attemptErr != nil {
+	cause := parseResponsesHTTPError(response.StatusCode, responseBody)
+	if attemptErr := beginNestedTransportAttempt(req.Context(), cause); attemptErr != nil {
 		return nil, attemptErr
 	}
 	return t.base.RoundTrip(cloneRequestWithBody(req, fallbackBody))
@@ -460,6 +483,7 @@ func NewOpenAI(cfg Config) *OpenAIProvider {
 	return &OpenAIProvider{
 		client:                     openai.NewClientWithConfig(oaiCfg),
 		name:                       providerName,
+		baseURL:                    baseURL,
 		model:                      model,
 		maxTokens:                  maxTokens,
 		dialect:                    dialect,
@@ -567,13 +591,13 @@ func (p *OpenAIProvider) Capabilities() ProviderCapabilities {
 		serviceTier = CapabilitySupported
 	}
 	return ProviderCapabilities{
-		Thinking:     p.dialect == DialectDeepSeek, // DeepSeek supports thinking via <think> tags
+		Thinking:     p.dialect == DialectDeepSeek,
 		ToolUse:      true,
 		ServiceTier:  serviceTier,
 		CacheControl: false,
 		CacheRouting: p.cacheRouting,
 		SystemParts:  true,
-		Vision:       true,
+		Vision:       p.dialect != DialectDeepSeek,
 		MaxContext:   LookupMaxContext(p.model),
 	}
 }
@@ -589,7 +613,7 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 		model = p.model
 	}
 	developerProjection := openAIChatDeveloperProjectionFor(p.officialOpenAIChatEndpoint, p.dialect, model)
-	msgs := convertMessagesToOpenAIWithSystemAndDeveloperProjection(params, params.JoinedSystemPrompt(), developerProjection)
+	msgs := convertMessagesToOpenAIForDialect(params, params.JoinedSystemPrompt(), developerProjection, p.dialect)
 
 	maxTokens := params.MaxTokens
 	if params.MaxOutputTokensOverride > 0 {
@@ -665,10 +689,10 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 		}
 	}
 	if p.dialect == DialectDeepSeek {
-		extensions.ThinkingType = "disabled"
+		extensions.ThinkingType = "enabled"
 		extensions.UseMaxTokens = true
-		if params.Thinking != nil && params.Thinking.Enabled {
-			extensions.ThinkingType = "enabled"
+		if params.Thinking != nil && !params.Thinking.Enabled {
+			extensions.ThinkingType = "disabled"
 		}
 	}
 	if extensions.CacheRoutingKey != "" || extensions.PromptCachePolicy.Options || extensions.PromptCachePolicy.Retention != "" || extensions.ThinkingType != "" || extensions.UseMaxTokens {
@@ -679,6 +703,8 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 	if err != nil {
 		apiErr := parseOpenAIError(err)
 		apiErr.RetryAfter = retryAfter.get()
+		annotateProviderRequestError(apiErr, p.name, "chat-completions", p.baseURL+"/chat/completions", nil)
+		apiErr.RequestID = retryAfter.getRequestID()
 		return nil, i18n.WrapError(i18n.KeyProviderStreamCreateFailed, apiErr)
 	}
 
@@ -1110,6 +1136,15 @@ func convertMessagesToOpenAIWithSystemAndDeveloperProjection(
 	systemPrompt string,
 	developerProjection openAIChatDeveloperProjection,
 ) []openai.ChatCompletionMessage {
+	return convertMessagesToOpenAIForDialect(params, systemPrompt, developerProjection, DialectStandard)
+}
+
+func convertMessagesToOpenAIForDialect(
+	params Params,
+	systemPrompt string,
+	developerProjection openAIChatDeveloperProjection,
+	dialect OpenAIDialect,
+) []openai.ChatCompletionMessage {
 	var msgs []openai.ChatCompletionMessage
 	var pendingDeveloperReminders []string
 	flushDeveloperReminders := func() {
@@ -1147,7 +1182,7 @@ func convertMessagesToOpenAIWithSystemAndDeveloperProjection(
 			msgs = append(msgs, converted...)
 		case types.RoleAssistant:
 			flushDeveloperReminders()
-			msgs = append(msgs, convertAssistantMessage(msg))
+			msgs = append(msgs, convertAssistantMessageForDialect(msg, dialect))
 		case types.RoleDeveloper:
 			if text := msg.GetText(); text != "" {
 				if developerProjection == openAIChatDeveloperNative {
@@ -1362,9 +1397,29 @@ func buildOpenAIUserMessage(textParts []string, imageParts []types.ImageBlock) o
 // convertAssistantMessage converts an assistant message, including any tool_use
 // blocks into OpenAI's tool_calls format.
 func convertAssistantMessage(msg types.Message) openai.ChatCompletionMessage {
+	return convertAssistantMessageForDialect(msg, DialectStandard)
+}
+
+func convertAssistantMessageForDialect(msg types.Message, dialect OpenAIDialect) openai.ChatCompletionMessage {
 	oaiMsg := openai.ChatCompletionMessage{
 		Role:    openai.ChatMessageRoleAssistant,
 		Content: msg.GetText(),
+	}
+	if dialect == DialectDeepSeek {
+		var reasoning []string
+		for _, block := range msg.Content {
+			switch thinking := block.(type) {
+			case types.ThinkingBlock:
+				if thinking.Thinking != "" {
+					reasoning = append(reasoning, thinking.Thinking)
+				}
+			case *types.ThinkingBlock:
+				if thinking != nil && thinking.Thinking != "" {
+					reasoning = append(reasoning, thinking.Thinking)
+				}
+			}
+		}
+		oaiMsg.ReasoningContent = strings.Join(reasoning, "\n")
 	}
 
 	for _, tu := range msg.GetToolUses() {

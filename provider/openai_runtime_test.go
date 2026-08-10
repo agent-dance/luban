@@ -83,6 +83,22 @@ func TestResolveOpenAIAPIFormat(t *testing.T) {
 	}
 }
 
+func TestIsFirstPartyDeepSeekBaseURL(t *testing.T) {
+	for _, test := range []struct {
+		baseURL string
+		want    bool
+	}{
+		{baseURL: "https://api.deepseek.com", want: true},
+		{baseURL: "https://api.deepseek.com/v1/", want: true},
+		{baseURL: "https://gateway.example.com/v1", want: false},
+		{baseURL: "https://api.deepseek.com.proxy.example/v1", want: false},
+	} {
+		if got := isFirstPartyDeepSeekBaseURL(test.baseURL); got != test.want {
+			t.Fatalf("isFirstPartyDeepSeekBaseURL(%q) = %v, want %v", test.baseURL, got, test.want)
+		}
+	}
+}
+
 func TestOpenAIModelRoutingNegotiatesCompatibleGatewayProtocol(t *testing.T) {
 	r := NewProviderRegistry()
 	registerOpenAI(r)
@@ -379,6 +395,84 @@ func TestResolveCredentialConfigAddsCodexHeadersForOpenAIOAuth(t *testing.T) {
 	}
 	if got := cfg.Headers["X-OpenAI-Fedramp"]; got != "true" {
 		t.Fatalf("X-OpenAI-Fedramp = %q", got)
+	}
+}
+
+func TestOpenAIPublicProxyCredentialKeepsReasoningAndRelaxesStrictTools(t *testing.T) {
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		raw, _ := io.ReadAll(request.Body)
+		_ = json.Unmarshal(raw, &body)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(writer, buildSSEStream([]sseEvent{
+			{Type: "response.created", Data: `{"response":{"id":"resp"}}`},
+			{Type: "response.completed", Data: `{"response":{"id":"resp","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[]}}`},
+		}))
+	}))
+	defer server.Close()
+
+	store, err := NewCredentialStoreAt(t.TempDir() + "/auth.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Set(CredentialEntry{
+		Provider: "openai", AuthMethod: "api_key", APIKey: "meter-key",
+		BaseURL: server.URL, APIFormat: "responses", DisableStrictTools: true,
+		DisablePromptCacheOptions: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewProviderRegistry()
+	registry.catalog = DefaultCatalog()
+	registerBuiltinProviders(registry)
+	registry.SetCredentialStore(store)
+	config, err := ResolveCredentialConfig(registry, "openai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamProvider, err := registry.Create("openai", config, "gpt-5.6-sol")
+	if err != nil {
+		t.Fatal(err)
+	}
+	additionalProperties := false
+	stream, err := streamProvider.CreateStream(context.Background(), Params{
+		System: "stable system", Messages: []types.Message{types.UserMessage("hello")}, ReasoningEffort: "xhigh",
+		PromptCacheKey: "benchmark-lineage", UsePromptCache: true,
+		Tools: []types.ToolDefinition{{
+			Name: "Run", Description: "Run graph", Strict: true,
+			InputSchema: types.JSONSchema{
+				Type: "object", Properties: map[string]any{
+					"step": map[string]any{"oneOf": []any{
+						map[string]any{"type": "string"}, map[string]any{"type": "number"},
+					}},
+				}, Required: []string{"step"}, AdditionalProperties: &additionalProperties,
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range stream {
+	}
+
+	if !containsString(body["include"], "reasoning.encrypted_content") {
+		t.Fatalf("include = %#v", body["include"])
+	}
+	text, _ := body["text"].(map[string]any)
+	if text["verbosity"] != "low" {
+		t.Fatalf("text = %#v", body["text"])
+	}
+	if body["prompt_cache_key"] == nil || body["prompt_cache_options"] != nil || body["instructions"] != "stable system" {
+		t.Fatalf("cache compatibility envelope = %#v", body)
+	}
+	reasoning, _ := body["reasoning"].(map[string]any)
+	if reasoning["effort"] != "xhigh" || reasoning["context"] != "all_turns" {
+		t.Fatalf("reasoning = %#v", body["reasoning"])
+	}
+	tools, _ := body["tools"].([]any)
+	tool, _ := tools[0].(map[string]any)
+	if _, strict := tool["strict"]; strict {
+		t.Fatalf("strict compatibility override was ignored: %#v", tool)
 	}
 }
 

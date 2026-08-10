@@ -126,6 +126,15 @@ func (t *Tool) executeRequest(ctx context.Context, workspace workspaceSnapshot, 
 }
 
 func (t *Tool) executeReadRequest(ctx context.Context, workspace workspaceSnapshot, request normalizedRequest, result RequestResult, absPath string) completedRequest {
+	if info, err := os.Stat(absPath); err == nil && info.IsDir() {
+		result.Errors = []RequestError{newRequestErrorText(
+			"read_is_directory",
+			i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyToolInspectReadDirectory, result.Path),
+		)}
+		result.SourcePartial = true
+		result.PartialReason = "read_failed"
+		return completedRequest{result: result}
+	}
 	ranges := request.ranges
 	if len(ranges) == 0 {
 		ranges = []normalizedRange{{}}

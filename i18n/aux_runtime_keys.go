@@ -39,11 +39,13 @@ const (
 	KeyAuxPostSamplingBlocked       Key = "aux.hook.post_sampling_blocked"
 	KeyAuxPostSamplingBlockedReason Key = "aux.hook.post_sampling_blocked_reason"
 
-	KeyAuxSessionNoSessions Key = "aux.session.none"
-	KeyAuxSessionDeleted    Key = "aux.session.deleted"
-	KeyAuxSessionNotFound   Key = "aux.session.not_found"
-	KeyAuxSessionAmbiguous  Key = "aux.session.ambiguous"
-	KeyAuxSessionFailed     Key = "aux.session.failed"
+	KeyAuxSessionNoSessions           Key = "aux.session.none"
+	KeyAuxSessionDeleted              Key = "aux.session.deleted"
+	KeyAuxSessionNotFound             Key = "aux.session.not_found"
+	KeyAuxSessionAmbiguous            Key = "aux.session.ambiguous"
+	KeyAuxSessionMetadataCorrupt      Key = "aux.session.metadata_corrupt"
+	KeyAuxSessionMetadataIncompatible Key = "aux.session.metadata_incompatible"
+	KeyAuxSessionFailed               Key = "aux.session.failed"
 
 	KeyAuxEngineSessionNotFound Key = "aux.engine.session_not_found"
 	KeyAuxEngineSessionDeleted  Key = "aux.engine.session_deleted"
@@ -107,6 +109,8 @@ func init() {
 	addAux(KeyAuxSessionDeleted, "This session's history has been deleted.", "此会话的历史记录已被删除。", "Der Verlauf dieser Sitzung wurde gelöscht.", "このセッションの履歴は削除されています。", "이 세션의 기록이 삭제되었습니다.", "История этого сеанса удалена.")
 	addAux(KeyAuxSessionNotFound, "The requested session was not found.", "未找到请求的会话。", "Die angeforderte Sitzung wurde nicht gefunden.", "指定されたセッションが見つかりません。", "요청한 세션을 찾을 수 없습니다.", "Запрошенный сеанс не найден.")
 	addAux(KeyAuxSessionAmbiguous, "That session ID exists in more than one project. Select it by title or from the current project.", "该会话 ID 存在于多个项目中。请按标题选择，或从当前项目中选择。", "Diese Sitzungs-ID existiert in mehreren Projekten. Wähle sie über den Titel oder im aktuellen Projekt aus.", "そのセッション ID は複数のプロジェクトに存在します。タイトルまたは現在のプロジェクトから選択してください。", "해당 세션 ID가 여러 프로젝트에 있습니다. 제목이나 현재 프로젝트에서 선택하세요.", "Этот ID сеанса встречается в нескольких проектах. Выберите сеанс по названию или в текущем проекте.")
+	addAux(KeyAuxSessionMetadataCorrupt, "The current session metadata is damaged.", "当前会话的元数据已损坏。", "Die Metadaten der aktuellen Sitzung sind beschädigt.", "現在のセッションのメタデータが破損しています。", "현재 세션 메타데이터가 손상되었습니다.", "Метаданные текущего сеанса повреждены.")
+	addAux(KeyAuxSessionMetadataIncompatible, "The current session metadata was written by an incompatible version.", "当前会话的元数据由不兼容的版本写入。", "Die Metadaten der aktuellen Sitzung wurden von einer inkompatiblen Version geschrieben.", "現在のセッションのメタデータは互換性のないバージョンで書き込まれています。", "현재 세션 메타데이터가 호환되지 않는 버전에서 작성되었습니다.", "Метаданные текущего сеанса записаны несовместимой версией.")
 	addAux(KeyAuxSessionFailed, "The session operation failed.", "会话操作失败。", "Der Sitzungsvorgang ist fehlgeschlagen.", "セッション操作に失敗しました。", "세션 작업에 실패했습니다.", "Операция с сеансом завершилась ошибкой.")
 
 	addAux(KeyAuxEngineSessionNotFound, "The runtime could not find this session.", "运行时未找到此会话。", "Die Laufzeit konnte diese Sitzung nicht finden.", "ランタイムでこのセッションが見つかりません。", "런타임에서 이 세션을 찾을 수 없습니다.", "Среда выполнения не нашла этот сеанс.")

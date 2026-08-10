@@ -146,7 +146,7 @@ func resolveStartupReasoningEffort(explicit string, settings startupModelSetting
 
 	if catalog != nil {
 		if model, ok := catalog.ResolveForProvider(providerName, modelID); ok {
-			return provider.DefaultReasoningEffort(model.ReasoningEfforts)
+			return provider.DefaultReasoningEffortForModel(model)
 		}
 	}
 	return ""

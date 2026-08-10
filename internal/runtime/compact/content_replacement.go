@@ -238,6 +238,27 @@ func contentReplacementRecords(messages []types.Message, scope messagecontrol.Sc
 // StripContentReplacementBlocks removes session-local replacement records from
 // messages before they are sent to providers or compactors.
 func StripContentReplacementBlocks(messages []types.Message) []types.Message {
+	return stripLocalBlocks(messages, func(block types.ContentBlock) bool {
+		_, ok := block.(types.ContentReplacementBlock)
+		return ok
+	})
+}
+
+// StripProviderPrivateBlocks returns the model/hook projection of durable
+// history. Invalid tool-call diagnostics remain available to audit and resume
+// surfaces but must not be replayed as if they were assistant content.
+func StripProviderPrivateBlocks(messages []types.Message) []types.Message {
+	return stripLocalBlocks(messages, func(block types.ContentBlock) bool {
+		switch block.(type) {
+		case types.ContentReplacementBlock, types.InvalidToolUseBlock:
+			return true
+		default:
+			return false
+		}
+	})
+}
+
+func stripLocalBlocks(messages []types.Message, shouldStrip func(types.ContentBlock) bool) []types.Message {
 	changed := false
 	out := make([]types.Message, len(messages))
 	for i, msg := range messages {
@@ -247,7 +268,7 @@ func StripContentReplacementBlocks(messages []types.Message) []types.Message {
 		}
 		filtered := make([]types.ContentBlock, 0, len(msg.Content))
 		for _, block := range msg.Content {
-			if _, ok := block.(types.ContentReplacementBlock); ok {
+			if shouldStrip(block) {
 				changed = true
 				continue
 			}

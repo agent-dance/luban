@@ -178,7 +178,7 @@ func TestSummaryCompactorSuccess(t *testing.T) {
 	if !IsCompactBoundaryMessage(postCompact[0]) {
 		t.Error("expected compact boundary as first message")
 	}
-	if !strings.Contains(postCompact[1].GetText(), "This session is being continued") {
+	if !strings.Contains(postCompact[1].GetText(), "Earlier conversation content was compacted") {
 		t.Error("expected summary continuation message after boundary")
 	}
 	if !strings.Contains(postCompact[1].GetText(), "Summary of conversation") {

@@ -50,7 +50,7 @@ func TestFormatSessionUsageSummary(t *testing.T) {
 		InputTokens: 2500, OutputTokens: 180, CacheReadTokens: 1000, CumulativeCost: 0.0834, Known: true,
 		RoundUsageKnown: true, LastInputTokens: 1500, LastOutputTokens: 80, LastCacheReadTokens: 600,
 	}, true, i18n.LangEN)
-	want := "Session: in 2.5K · 40% cached · out 180 · $0.0834"
+	want := "Session total: in 2.5K · 40% cached · out 180 · $0.0834"
 	if got != want {
 		t.Fatalf("formatSessionUsageSummary() = %q, want %q", got, want)
 	}
@@ -60,7 +60,7 @@ func TestFormatSessionUsageSummaryUsesModelBillingCurrency(t *testing.T) {
 	got := formatSessionUsageCompactSummary(SessionUsage{
 		InputTokens: 2500, OutputTokens: 180, CacheReadTokens: 1000, CumulativeCost: 0.0834, Known: true,
 	}, true, i18n.LangZH, "CNY")
-	want := "会话：输入 2.5K · 缓存 40% · 输出 180 · ¥0.08"
+	want := "会话累计：输入 2.5K · 缓存 40% · 输出 180 · ¥0.08"
 	if got != want {
 		t.Fatalf("formatSessionUsageCompactSummary() = %q, want %q", got, want)
 	}
@@ -68,7 +68,7 @@ func TestFormatSessionUsageSummaryUsesModelBillingCurrency(t *testing.T) {
 
 func TestFormatSessionUsageSummary_DoesNotRoundPartialCacheHitToOneHundred(t *testing.T) {
 	got := formatSessionUsageSummary(SessionUsage{InputTokens: 2001, OutputTokens: 250, CacheReadTokens: 2000, CumulativeCost: 0.0834, Known: true}, true, i18n.LangEN)
-	want := "Session: in 2.0K · 99% cached · out 250 · $0.0834"
+	want := "Session total: in 2.0K · 99% cached · out 250 · $0.0834"
 	if got != want {
 		t.Fatalf("formatSessionUsageSummary() = %q, want %q", got, want)
 	}
@@ -76,7 +76,7 @@ func TestFormatSessionUsageSummary_DoesNotRoundPartialCacheHitToOneHundred(t *te
 
 func TestFormatSessionUsageSummary_ShowsOneHundredForExactFullCacheHit(t *testing.T) {
 	got := formatSessionUsageSummary(SessionUsage{InputTokens: 2000, OutputTokens: 250, CacheReadTokens: 2000, CumulativeCost: 0.0834, Known: true}, true, i18n.LangEN)
-	want := "Session: in 2.0K · 100% cached · out 250 · $0.0834"
+	want := "Session total: in 2.0K · 100% cached · out 250 · $0.0834"
 	if got != want {
 		t.Fatalf("formatSessionUsageSummary() = %q, want %q", got, want)
 	}
@@ -84,7 +84,7 @@ func TestFormatSessionUsageSummary_ShowsOneHundredForExactFullCacheHit(t *testin
 
 func TestFormatSessionUsageSummaryDoesNotPresentUnknownCostAsZero(t *testing.T) {
 	got := formatSessionUsageSummary(SessionUsage{InputTokens: 2000, OutputTokens: 250, CacheReadTokens: 1000, Known: true}, false, i18n.LangEN)
-	want := "Session: in 2.0K · 50% cached · out 250 · cost unknown"
+	want := "Session total: in 2.0K · 50% cached · out 250 · cost unknown"
 	if got != want {
 		t.Fatalf("formatSessionUsageSummary() = %q, want %q", got, want)
 	}
@@ -121,7 +121,7 @@ func TestBDDStatusBarCacheRateUsesDisplayedInputScope(t *testing.T) {
 			InputTokens: 2_500, OutputTokens: 180, CacheReadTokens: 1_000,
 			RoundUsageKnown: true, LastInputTokens: 400, LastCacheReadTokens: 100,
 		}, true, i18n.LangEN)
-		want := "S: in 2.5K · 40% cached · out 180 · $0.00"
+		want := "Total: in 2.5K · 40% cached · out 180 · $0.00"
 		if got != want {
 			t.Fatalf("Then session cache rate uses 1000/2500: got %q, want %q", got, want)
 		}
@@ -205,7 +205,7 @@ func TestRenderStatusBar_ShowsSessionSummaryWithoutPaused(t *testing.T) {
 	bar := root.renderStatusBar(120)
 	allText := collectElementText(bar)
 
-	if !strings.Contains(allText, "S: in 1.0K · 40% cached · out 250 · $0.08") {
+	if !strings.Contains(allText, "Total: in 1.0K · 40% cached · out 250 · $0.08") {
 		t.Fatalf("expected session summary in status bar, got %q", allText)
 	}
 	if !strings.Contains(allText, "●") {
@@ -235,7 +235,7 @@ func TestRenderStatusBarCostMatchesModelBillingCurrency(t *testing.T) {
 	state.SessionTotalCacheReadTokens.Set(400)
 
 	text := collectElementText(NewRootComponent(state, nil, nil).renderStatusBar(120))
-	if !strings.Contains(text, "会话：输入 1.0K · 缓存 40% · 输出 250 · ¥0.08") || strings.Contains(text, "$0.08") {
+	if !strings.Contains(text, "会话累计：输入 1.0K · 缓存 40% · 输出 250 · ¥0.08") || strings.Contains(text, "$0.08") {
 		t.Fatalf("status bar cost did not match model currency: %q", text)
 	}
 }
@@ -298,7 +298,7 @@ func TestRenderStatusBar_NarrowCopyKeepsSessionTotals(t *testing.T) {
 	text := collectElementText(root.renderStatusBar(160))
 	for _, want := range []string{
 		"20%",
-		"S: in 100.0K · 99% cached · out 300 · $0.00",
+		"Total: in 100.0K · 99% cached · out 300 · $0.00",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("status bar missing %q: %s", want, text)

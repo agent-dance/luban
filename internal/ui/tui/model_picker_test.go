@@ -289,6 +289,21 @@ func TestModelPickerEnterReasoningDefaultsToMedium(t *testing.T) {
 	}
 }
 
+func TestModelPickerEnterReasoningUsesModelDefault(t *testing.T) {
+	state := &ModelPickerState{Phase: PickerPhaseModel}
+	entry := ModelPickerEntry{
+		ModelID:                "deepseek-v4-flash",
+		ReasoningEfforts:       []string{"low", "high", "max"},
+		DefaultReasoningEffort: "high",
+	}
+
+	state.EnterReasoning(entry)
+
+	if got := state.selectedReasoningEffort(); got != "high" {
+		t.Fatalf("selected effort = %q, want high", got)
+	}
+}
+
 func TestReasoningEffortInfoMatchesCodexLabels(t *testing.T) {
 	tests := []struct {
 		effort string

@@ -1,0 +1,62 @@
+diff --git a/src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java b/src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java
+index 71d0cc0..1d9a90a 100644
+--- a/src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java
++++ b/src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java
+@@ -25,6 +25,7 @@ import jakarta.ws.rs.core.MediaType;
+ import jakarta.ws.rs.core.Response;
+ import jakarta.ws.rs.core.UriInfo;
+ import java.io.ByteArrayOutputStream;
++import java.net.URLDecoder;
+ import java.nio.charset.StandardCharsets;
+ import java.time.Instant;
+ import java.time.ZoneId;
+@@ -1042,13 +1043,9 @@ public class S3Controller {
+ 
+     private Response handleCopyObject(String copySource, String destBucket, String destKey,
+                                       String contentType, HttpHeaders httpHeaders) {
+-        String source = copySource.startsWith("/") ? copySource.substring(1) : copySource;
+-        int slashIndex = source.indexOf('/');
+-        if (slashIndex < 0) {
+-            throw new AwsException("InvalidArgument", "Invalid copy source: " + copySource, 400);
+-        }
+-        String sourceBucket = source.substring(0, slashIndex);
+-        String sourceKey = source.substring(slashIndex + 1);
++        String[] source = parseCopySource(copySource);
++        String sourceBucket = source[0];
++        String sourceKey = source[1];
+ 
+         S3Object copy = s3Service.copyObject(sourceBucket, sourceKey, destBucket, destKey,
+                 httpHeaders.getHeaderString("x-amz-metadata-directive"),
+@@ -1065,6 +1062,32 @@ public class S3Controller {
+         return Response.ok(xml).build();
+     }
+ 
++    static String[] parseCopySource(String copySource) {
++        String source = copySource.startsWith("/") ? copySource.substring(1) : copySource;
++        int slashIndex = source.indexOf('/');
++        if (slashIndex < 0) {
++            throw invalidCopySource(copySource);
++        }
++
++        try {
++            // CopySource is a URL-encoded path. URLDecoder implements form semantics where '+'
++            // means a space, so protect literal plus signs before decoding S3 path components.
++            String sourceBucket = decodeCopySourceComponent(source.substring(0, slashIndex));
++            String sourceKey = decodeCopySourceComponent(source.substring(slashIndex + 1));
++            return new String[]{sourceBucket, sourceKey};
++        } catch (IllegalArgumentException e) {
++            throw invalidCopySource(copySource);
++        }
++    }
++
++    private static String decodeCopySourceComponent(String value) {
++        return URLDecoder.decode(value.replace("+", "%2B"), StandardCharsets.UTF_8);
++    }
++
++    private static AwsException invalidCopySource(String copySource) {
++        return new AwsException("InvalidArgument", "Invalid copy source: " + copySource, 400);
++    }
++
+     private Response handleGetObjectAttributes(String bucket, String key, String versionId,
+                                                String objectAttributesHeader, Integer maxParts,
+                                                Integer partNumberMarker) {

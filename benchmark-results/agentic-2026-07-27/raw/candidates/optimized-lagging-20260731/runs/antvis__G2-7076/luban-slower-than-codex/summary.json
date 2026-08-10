@@ -1,0 +1,51 @@
+{
+  "instance_id": "antvis__G2-7076",
+  "language": "ts",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785585632.06603,
+  "elapsed_seconds": 444.155,
+  "timeout_seconds": 460,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 618324,
+    "cached_input_tokens": 510464,
+    "cache_read_input_tokens": 510464,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 10372,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.105692,
+  "tool_calls": 18,
+  "tool_calls_by_type": {
+    "Inspect": 11,
+    "Run": 4,
+    "ApplyPatch": 3
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "__tests__/integration/api-chart-on-series-tooltip.spec.ts",
+      "src/interaction/tooltip.ts"
+    ],
+    "additions": 57,
+    "deletions": 3
+  },
+  "final_text": "已完成修复并复审最终改动：\n\n- 修正离散 x 轴边界反解，避免 `tooltip:show` 返回前一个日期。\n- 连续型 x 轴逻辑保持不变。\n- 新增回归测试，明确断言选中 `2025-01-03` 时事件返回同一日期。\n- `git diff --check HEAD` 通过。\n\n运行测试及 TypeScript 检查受限：仓库依赖未安装，缺少 `cross-env`、`@antv/*` 等模块。未将静态检查视为运行时语义验证。",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v5",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 19,
+  "llm_successful_calls": 19,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 438.253517,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v5",
+    "sha256": "55d8d62d00a8f87ee9addd5607fef4bb34344aeeee7b5e708a764b1e34d9a447"
+  }
+}

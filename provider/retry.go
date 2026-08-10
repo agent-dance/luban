@@ -9,11 +9,17 @@ import (
 
 // RetryConfig controls retry behaviour.
 type RetryConfig struct {
-	// MaxAttempts is the total raw transport-call budget for one logical
-	// generation, including the initial call. The default is three.
+	// MaxAttempts is the total HTTP request-attempt budget used before a
+	// response stream is established. The default is five (the initial request
+	// plus four retries), matching Codex CLI's request_max_retries default.
 	MaxAttempts int
-	BaseDelay   time.Duration // default 1 s
-	MaxDelay    time.Duration // default 32 s
+	// StreamMaxAttempts is the independent response-stream budget. The default
+	// is six (the initial stream plus five reconnects), matching Codex CLI's
+	// stream_max_retries default. Keeping the budgets separate prevents a few
+	// connection failures from consuming all stream-recovery capacity.
+	StreamMaxAttempts int
+	BaseDelay         time.Duration // default 200 ms
+	MaxDelay          time.Duration // default 3.2 s for the bounded default budgets
 	// OnRetry is called before each retry attempt. nil = no logging.
 	// attempt is the one-based failed raw attempt that triggered the retry.
 	OnRetry func(attempt, maxRetries int, delay time.Duration, err error)
@@ -31,9 +37,10 @@ type RetryConfig struct {
 // DefaultRetryConfig returns the interactive LLM retry policy.
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxAttempts: 3,
-		BaseDelay:   time.Second,
-		MaxDelay:    32 * time.Second,
+		MaxAttempts:       defaultRequestMaxAttempts,
+		StreamMaxAttempts: defaultStreamMaxAttempts,
+		BaseDelay:         200 * time.Millisecond,
+		MaxDelay:          3200 * time.Millisecond,
 	}
 }
 
@@ -77,8 +84,8 @@ func (r *RetryProvider) Capabilities() ProviderCapabilities {
 // errors according to the RetryConfig.
 //
 // Retry strategy:
-//   - At most MaxAttempts raw calls across all provider/loop retry layers.
-//   - Bounded exponential full jitter with Retry-After support.
+//   - At most MaxAttempts HTTP calls while establishing this stream.
+//   - Exponential backoff with ±10% jitter and Retry-After support.
 //   - Permanent 4xx, context, quota, billing, and model errors fail fast.
 //   - A 401 can refresh credentials at most once, then retries without delay.
 //   - Context cancellation aborts the retry loop immediately.
@@ -91,11 +98,12 @@ func (r *RetryProvider) CreateStream(ctx context.Context, params Params) (<-chan
 		return nil, err
 	}
 
-	controller := attemptControllerFromContext(ctx)
-	if controller == nil {
-		controller = NewAttemptController(r.config)
-		ctx = WithAttemptController(ctx, controller)
-	}
+	// Request establishment has an independent budget from the query loop's
+	// stream-reconnect controller. This mirrors Codex CLI: request retries are
+	// handled by the HTTP client, while dropped streams are replayed by the turn
+	// loop. A fresh request controller is required for every stream attempt.
+	controller := NewAttemptController(r.config)
+	ctx = withRequestAttemptController(ctx, controller)
 
 	for {
 		if ctx.Err() != nil {
@@ -122,6 +130,13 @@ func (r *RetryProvider) CreateStream(ctx context.Context, params Params) (<-chan
 			}
 			return nil, err
 		}
+		// RetryDelay returns false for both permanent failures and an exhausted
+		// attempt budget. Preserve permanent errors exactly as returned by the
+		// provider; only retryable failures that cannot reserve another attempt
+		// are attempt-limit failures.
+		if !ClassifyAttemptError(err).Retryable() {
+			return nil, err
+		}
 		delay, retry := controller.RetryDelay(err)
 		if !retry {
 			return nil, controller.exhausted(err)
@@ -142,9 +157,6 @@ func (r *RetryProvider) computeDelay(attempt int, err error) time.Duration {
 	if retryAfter := parseRetryAfter(err, config.now()); retryAfter > delay {
 		delay = retryAfter
 	}
-	if delay > config.MaxDelay {
-		return config.MaxDelay
-	}
 	return delay
 }
 
@@ -158,5 +170,6 @@ func (r *RetryProvider) notifyRetry(ctx context.Context, controller *AttemptCont
 		MaxRetries: maxRetries,
 		Delay:      delay,
 		Err:        err,
+		Kind:       "request",
 	})
 }

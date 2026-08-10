@@ -315,11 +315,20 @@ type manualCompactionTestEngine struct {
 	err           error
 	usageEvent    *stream.Event
 	boundaryEvent *stream.Event
+	started       chan struct{}
+	release       <-chan struct{}
 }
 
 func (e *manualCompactionTestEngine) Sessions() engine.SessionManager { return e.sessions }
 
 func (e *manualCompactionTestEngine) Compact(_ context.Context, sessionID string, _ ...string) (engine.CompactResult, error) {
+	if e.started != nil {
+		close(e.started)
+		e.started = nil
+	}
+	if e.release != nil {
+		<-e.release
+	}
 	if e.err != nil {
 		return engine.CompactResult{}, e.err
 	}
@@ -330,6 +339,85 @@ func (e *manualCompactionTestEngine) Compact(_ context.Context, sessionID string
 	return engine.CompactResult{
 		Compacted: true, BeforeMessageCount: len(before), AfterMessageCount: len(e.after),
 	}, nil
+}
+
+func TestManualCompactionPublishesIndeterminateProgressBeforeEngineCompletes(t *testing.T) {
+	sessionID := "session-blocked-compact"
+	sessions := &sessionSwitcherTestSessions{messages: map[string][]types.Message{sessionID: {types.UserMessage("before")}}}
+	started, release := make(chan struct{}), make(chan struct{})
+	eng := &manualCompactionTestEngine{
+		sessions: sessions, after: []types.Message{types.UserMessage("after")},
+		started: started, release: release,
+	}
+	events := make(chan stream.Event, 16)
+	done := make(chan error, 1)
+	go func() {
+		done <- runManualCompactionEvents(context.Background(), eng, sessionID, "", func(event stream.Event) { events <- event })
+	}()
+	<-started
+	for index, want := range []string{"compact_accepted", "compact_preparing", "compact_summarizing"} {
+		select {
+		case event := <-events:
+			if event.Progress == nil || event.Progress.Stage != want {
+				t.Fatalf("live stage[%d] = %+v, want %q", index, event, want)
+			}
+		case <-time.After(100 * time.Millisecond):
+			t.Fatalf("live stage %q was not visible before the engine completed", want)
+		}
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("manual compaction completed before release: %v", err)
+	default:
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestManualCompactionUserCancelWinsProviderErrorRace(t *testing.T) {
+	sessionID := "session-cancel-error-race"
+	before := []types.Message{types.UserMessage("before")}
+	sessions := &sessionSwitcherTestSessions{messages: map[string][]types.Message{sessionID: before}}
+	started, release := make(chan struct{}), make(chan struct{})
+	providerErr := errors.New("response did not contain valid text")
+	eng := &manualCompactionTestEngine{sessions: sessions, err: providerErr, started: started, release: release}
+	ctx, cancel := context.WithCancel(context.Background())
+	var events []stream.Event
+	done := make(chan error, 1)
+	go func() {
+		done <- runManualCompactionEvents(ctx, eng, sessionID, "", func(event stream.Event) { events = append(events, event) })
+	}()
+	<-started
+	cancel()
+	close(release)
+	err := <-done
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("manual compaction error = %v, want cancellation to win provider error %v", err, providerErr)
+	}
+	terminalCancelled, terminalFailed, boundaries := 0, 0, 0
+	for _, event := range events {
+		if event.Type == stream.EventCompactBoundary {
+			boundaries++
+		}
+		if event.Progress == nil {
+			continue
+		}
+		switch event.Progress.Stage {
+		case "compact_cancelled":
+			terminalCancelled++
+		case "compact_failed":
+			terminalFailed++
+		}
+	}
+	if terminalCancelled != 1 || terminalFailed != 0 || boundaries != 0 {
+		t.Fatalf("cancel/error race projected cancelled=%d failed=%d boundaries=%d events=%+v", terminalCancelled, terminalFailed, boundaries, events)
+	}
+	after, loadErr := sessions.Load(sessionID)
+	if loadErr != nil || len(after) != 1 || after[0].GetText() != before[0].GetText() {
+		t.Fatalf("cancel/error race committed compacted history: after=%+v err=%v", after, loadErr)
+	}
 }
 
 func (e *manualCompactionTestEngine) CompactWithEvents(ctx context.Context, sessionID, customInstructions string, onEvent func(stream.Event)) (engine.CompactResult, error) {
@@ -1148,6 +1236,10 @@ type progressActivityRecorder struct {
 	events         []tuiapp.ActivityEvent
 	boundaryEpochs []uint64
 	boundaries     []stream.CompactBoundaryEvent
+	llmEpochs      []uint64
+	llmStages      []tuiapp.LLMCallStage
+	llmDetails     []string
+	llmInputBytes  []int
 }
 
 func (r *progressActivityRecorder) ActivityAtEpoch(epoch uint64, event tuiapp.ActivityEvent) {
@@ -1158,6 +1250,17 @@ func (r *progressActivityRecorder) ActivityAtEpoch(epoch uint64, event tuiapp.Ac
 func (r *progressActivityRecorder) CompactionBoundaryAtEpoch(epoch uint64, _ presentation.ToolEventContext, boundary stream.CompactBoundaryEvent) {
 	r.boundaryEpochs = append(r.boundaryEpochs, epoch)
 	r.boundaries = append(r.boundaries, boundary)
+}
+
+func (r *progressActivityRecorder) LLMActivityAtEpoch(epoch uint64, stage tuiapp.LLMCallStage, detail string, toolInputBytes ...int) {
+	r.llmEpochs = append(r.llmEpochs, epoch)
+	r.llmStages = append(r.llmStages, stage)
+	r.llmDetails = append(r.llmDetails, detail)
+	inputBytes := 0
+	if len(toolInputBytes) > 0 {
+		inputBytes = toolInputBytes[0]
+	}
+	r.llmInputBytes = append(r.llmInputBytes, inputBytes)
 }
 
 func (r *epochRejectingRecorder) AdmitContextGeneration(ctx presentation.ToolEventContext) bool {
@@ -1257,6 +1360,34 @@ func TestTUIEventHandlerMapsCompactionProgressToStableActivity(t *testing.T) {
 	}
 }
 
+func TestTUIEventHandlerProjectsToolInputAndPostToolActivityWithoutInputContent(t *testing.T) {
+	renderer := &progressActivityRecorder{}
+	base := presentation.ToolEventContext{SessionID: "session-progress", SessionEpoch: 9}
+	handle, cleanup := makeTUIEventHandler(renderer, nil, nil, base)
+	t.Cleanup(cleanup)
+
+	handle(stream.Event{Type: stream.EventProgress, TurnCount: 3, Progress: &stream.ProgressEvent{
+		Stage:    stream.ProgressStageLLMToolInput,
+		Metadata: map[string]any{"tool_name": "ApplyPatch", "tool_input_bytes": 10240, "partial_json": "must not be rendered"},
+	}})
+	handle(stream.Event{Type: stream.EventProgress, TurnCount: 3, Progress: &stream.ProgressEvent{
+		Stage: stream.ProgressStageLLMWaitingAfterTools,
+	}})
+
+	if len(renderer.llmStages) != 2 || renderer.llmStages[0] != tuiapp.LLMStageToolInput || renderer.llmStages[1] != tuiapp.LLMStageWaitingAfterTools {
+		t.Fatalf("LLM activity stages = %v", renderer.llmStages)
+	}
+	if renderer.llmDetails[0] != "ApplyPatch" || renderer.llmDetails[1] != "" || renderer.llmEpochs[0] != 9 || renderer.llmEpochs[1] != 9 {
+		t.Fatalf("LLM activity details/epochs = %v / %v", renderer.llmDetails, renderer.llmEpochs)
+	}
+	if renderer.llmInputBytes[0] != 10240 || renderer.llmInputBytes[1] != 0 {
+		t.Fatalf("LLM activity received-byte projection = %v", renderer.llmInputBytes)
+	}
+	if len(renderer.events) != 0 {
+		t.Fatalf("tool-input activity leaked into generic activity feed: %+v", renderer.events)
+	}
+}
+
 func TestTUIEventHandlerForwardsCompleteCompactionBoundary(t *testing.T) {
 	renderer := &progressActivityRecorder{}
 	base := presentation.ToolEventContext{SessionID: "session-progress", SessionEpoch: 9, TurnID: "turn-3"}
@@ -1306,16 +1437,26 @@ func TestManualCompactionEmitsOneStableLifecycleAndCompleteBoundary(t *testing.T
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(events) != 3 || events[0].Type != stream.EventProgress || events[1].Type != stream.EventCompactBoundary || events[2].Type != stream.EventProgress {
-		t.Fatalf("manual compaction event order = %+v, want start/boundary/end", events)
+	wantStages := []string{"compact_accepted", "compact_preparing", "compact_summarizing", "compact_installing", "compact_persisting"}
+	if len(events) != len(wantStages)+2 {
+		t.Fatalf("manual compaction event order = %+v, want stages/boundary/end", events)
 	}
-	if events[0].Progress.Stage != "compact_start" || events[2].Progress.Stage != "compact_end" {
-		t.Fatalf("manual compaction progress = %+v then %+v", events[0].Progress, events[2].Progress)
+	for index, want := range wantStages {
+		if events[index].Type != stream.EventProgress || events[index].Progress == nil || events[index].Progress.Stage != want {
+			t.Fatalf("manual compaction stage[%d] = %+v, want %q", index, events[index], want)
+		}
 	}
-	if events[0].TurnID == "" || events[0].TurnID != events[1].TurnID || events[1].TurnID != events[2].TurnID {
-		t.Fatalf("manual compaction identity is unstable: %+v", events)
+	boundaryIndex := len(wantStages)
+	terminalIndex := boundaryIndex + 1
+	if events[boundaryIndex].Type != stream.EventCompactBoundary || events[terminalIndex].Type != stream.EventProgress || events[terminalIndex].Progress.Stage != "compact_end" {
+		t.Fatalf("manual compaction terminal order = %+v, want boundary/end", events[boundaryIndex:])
 	}
-	boundary := events[1].Compact
+	for index := 1; index < len(events); index++ {
+		if events[0].TurnID == "" || events[index].TurnID != events[0].TurnID {
+			t.Fatalf("manual compaction identity is unstable: %+v", events)
+		}
+	}
+	boundary := events[boundaryIndex].Compact
 	if boundary == nil || boundary.Trigger != "manual" || boundary.PreCompactTokenCount != 1200 || boundary.PostCompactTokenCount != 320 || boundary.TruePostCompactTokenCount != 300 || boundary.PreviousTailIdentifier != "assistant:tail" || boundary.PreservedSegment == nil || boundary.PreservedSegment.Count != 1 {
 		t.Fatalf("manual compaction boundary = %+v", boundary)
 	}
@@ -1388,8 +1529,17 @@ func TestManualCompactionEmitsDistinctFailureAndCancellation(t *testing.T) {
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("manual compaction error = %v, want %v", err, tc.err)
 			}
-			if len(events) != 2 || events[1].Progress == nil || events[1].Progress.Stage != tc.wantStage || events[1].Progress.Metadata["error"] != tc.err.Error() {
+			wantStages := []string{"compact_accepted", "compact_preparing", "compact_summarizing", tc.wantStage}
+			if len(events) != len(wantStages) {
 				t.Fatalf("manual compaction terminal events = %+v", events)
+			}
+			for index, want := range wantStages {
+				if events[index].Progress == nil || events[index].Progress.Stage != want {
+					t.Fatalf("manual compaction stage[%d] = %+v, want %q", index, events[index], want)
+				}
+			}
+			if events[len(events)-1].Progress.Metadata["error"] != tc.err.Error() {
+				t.Fatalf("manual compaction terminal metadata = %+v", events[len(events)-1].Progress.Metadata)
 			}
 		})
 	}

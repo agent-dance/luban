@@ -85,6 +85,14 @@ func TestLLMWorkingShimmerMovesLeftToRight(t *testing.T) {
 	}
 }
 
+func TestLLMWorkingShimmerRefreshRateDoesNotExceedTenFPS(t *testing.T) {
+	const maximumFramesPerSecond = 10
+	minimumInterval := time.Second / maximumFramesPerSecond
+	if llmWorkingShimmerFrameInterval < minimumInterval {
+		t.Fatalf("shimmer interval %v exceeds %d frames per second", llmWorkingShimmerFrameInterval, maximumFramesPerSecond)
+	}
+}
+
 func TestLLMWorkingShimmerTrueColorBlendsForegroundTowardBackground(t *testing.T) {
 	runes := []rune("Working")
 	palette := llmWorkingShimmerPalette{
@@ -176,16 +184,134 @@ func TestBeginLLMWorkIsVisibleBeforeProviderRequestStarts(t *testing.T) {
 	root := NewRootComponent(state, nil, nil)
 	now := time.Unix(100, 0)
 	status.WorkStartedAt = now.Add(-5200 * time.Millisecond)
+	status.StageStartedAt = status.WorkStartedAt
 	root.now = func() time.Time { return now }
 	element := root.renderLLMStatus(status)
 	text := collectElementText(element)
-	for _, want := range []string{"• 工作中", "(5.2s • Ctrl+C 中断)", "建立连接 —", "首 token —"} {
+	for _, want := range []string{"• 准备模型请求", "阶段 5.2s", "(5.2s • Ctrl+C 中断)", "建立连接 —", "首 token —"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("pre-provider working status omitted %q: %q", want, text)
 		}
 	}
 	if strings.Contains(text, "总耗时") {
 		t.Fatalf("working status retained duplicate total-duration metric: %q", text)
+	}
+}
+
+func TestLLMActivityStageShowsElapsedTimeAndHonestSlowHint(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangZH)
+	started := time.Unix(100, 0)
+	state.SetLLMCall(&LLMCallStatus{
+		Phase: LLMCallWorking, Stage: LLMStageToolInput, StageDetail: "ApplyPatch",
+		StageStartedAt: started, WorkStartedAt: started.Add(-5 * time.Second),
+	})
+	root := NewRootComponent(state, nil, nil)
+	root.now = func() time.Time { return started.Add(45 * time.Second) }
+	text := collectElementText(root.renderLLMStatus(state.LLMCall.Get()))
+	for _, want := range []string{"正在生成 ApplyPatch 的工具输入", "阶段 45.0s", "此阶段耗时较长", "Ctrl+C 中断"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("long tool-input stage omitted %q: %q", want, text)
+		}
+	}
+	if strings.Contains(text, "%") {
+		t.Fatalf("indeterminate model activity invented a percentage: %q", text)
+	}
+}
+
+func TestLLMToolInputActivityShowsOnlyObservedReceivedBytes(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		bytes int
+		want  string
+	}{
+		{name: "one byte", bytes: 1, want: "已接收工具输入 1 B"},
+		{name: "ten kibibytes", bytes: 10 * 1024, want: "已接收工具输入 10.0 KiB"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			state := NewAppState()
+			state.Language.Set(i18n.LangZH)
+			started := time.Unix(100, 0)
+			state.SetLLMCall(&LLMCallStatus{
+				Phase: LLMCallWorking, Stage: LLMStageToolInput, StageDetail: "ApplyPatch",
+				ToolInputBytes: test.bytes, StageStartedAt: started, WorkStartedAt: started,
+			})
+			text := collectElementText(NewRootComponent(state, nil, nil).renderLLMStatus(state.LLMCall.Get()))
+			if !strings.Contains(text, test.want) {
+				t.Fatalf("tool-input status omitted %q: %q", test.want, text)
+			}
+			if strings.Contains(text, "%") {
+				t.Fatalf("tool-input status invented completion percentage: %q", text)
+			}
+		})
+	}
+}
+
+func TestLLMToolInputByteUpdatesDoNotResetStageElapsedTime(t *testing.T) {
+	state := NewAppState()
+	started := time.Unix(100, 0)
+	state.SetLLMCall(&LLMCallStatus{
+		Phase: LLMCallWorking, Stage: LLMStageToolInput, StageDetail: "ApplyPatch",
+		ToolInputBytes: 1, StageStartedAt: started,
+	})
+	if !state.setLLMActivityAt(LLMStageToolInput, "ApplyPatch", started.Add(10*time.Second), 10*1024) {
+		t.Fatal("larger observed byte count did not update activity state")
+	}
+	got := state.LLMCall.Get()
+	if got.ToolInputBytes != 10*1024 || !got.StageStartedAt.Equal(started) {
+		t.Fatalf("byte update reset stage timer: %+v", got)
+	}
+}
+
+func TestLLMActivityReducerDoesNotResetElapsedTimeForStreamingDeltas(t *testing.T) {
+	state := NewAppState()
+	started := time.Unix(100, 0)
+	state.SetLLMCall(&LLMCallStatus{
+		Phase: LLMCallWorking, Stage: LLMStageThinking, StageStartedAt: started,
+	})
+	if state.setLLMActivityAt(LLMStageThinking, "", started.Add(5*time.Second)) {
+		t.Fatal("same-stage streaming delta changed activity state")
+	}
+	if got := state.LLMCall.Get().StageStartedAt; !got.Equal(started) {
+		t.Fatalf("same-stage streaming delta reset timer to %s", got)
+	}
+	if !state.setLLMActivityAt(LLMStageResponse, "", started.Add(8*time.Second)) {
+		t.Fatal("observed response transition did not advance activity state")
+	}
+	got := state.LLMCall.Get()
+	if got.Stage != LLMStageResponse || !got.StageStartedAt.Equal(started.Add(8*time.Second)) {
+		t.Fatalf("response activity state = %+v", got)
+	}
+}
+
+func TestLLMRequestAndContentEventsAdvanceObservedStages(t *testing.T) {
+	state := NewAppState()
+	state.SessionID.Set("session")
+	state.SessionEpoch.Set(1)
+	state.BeginLLMWork()
+	renderer := &TuiRenderer{state: state, enqueue: func(fn func()) bool { fn(); return true }}
+
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestStart, stream.RequestStatusEvent{RequestID: "request-1"})
+	if got := state.LLMCall.Get().Stage; got != LLMStageWaitingFirstToken {
+		t.Fatalf("request-start stage = %q", got)
+	}
+	renderer.LLMActivityAtEpoch(1, LLMStageToolInput, "Inspect")
+	if got := state.LLMCall.Get(); got.Stage != LLMStageToolInput || got.StageDetail != "Inspect" {
+		t.Fatalf("tool-input stage = %+v", got)
+	}
+	renderer.LLMActivityAtEpoch(1, LLMStageToolExecution, "Inspect")
+	renderer.LLMActivityAtEpoch(1, LLMStageWaitingAfterTools, "")
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestStart, stream.RequestStatusEvent{RequestID: "request-2"})
+	if got := state.LLMCall.Get().Stage; got != LLMStageWaitingAfterTools {
+		t.Fatalf("post-tool request stage = %q", got)
+	}
+	renderer.ThinkingAtEpoch(1, "reasoning")
+	if got := state.LLMCall.Get().Stage; got != LLMStageThinking {
+		t.Fatalf("thinking stage = %q", got)
+	}
+	renderer.TextAtEpoch(1, "answer")
+	if got := state.LLMCall.Get().Stage; got != LLMStageResponse {
+		t.Fatalf("response stage = %q", got)
 	}
 }
 
@@ -196,15 +322,95 @@ func TestLLMRequestRetryStatusShowsProblemAttemptDelayAndCause(t *testing.T) {
 	state.Language.Set(i18n.LangZH)
 	renderer := &TuiRenderer{state: state, enqueue: func(fn func()) bool { fn(); return true }}
 	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestRetry, stream.RequestStatusEvent{
-		RequestID: "request-1", Attempt: 2, MaxRetries: 10, RetryDelayMilliseconds: 2000, Error: "connection reset",
+		RequestID: "request-1", Attempt: 2, MaxRetries: 10, RetryDelayMilliseconds: 2000, RetryKind: "stream", Error: "connection reset",
 	})
 
 	status := state.LLMCall.Get()
 	text := collectElementText(NewRootComponent(state, nil, nil).renderLLMStatus(status))
-	for _, want := range []string{"LLM API 请求出错", "第 2/10 次重试", "2.0s 后继续", "connection reset"} {
+	for _, want := range []string{"正在重连 2/10", "2.0s 后继续", "问题：connection reset"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("retry status omitted %q: %q", want, text)
 		}
+	}
+	if strings.Contains(text, "LLM API 请求出错") {
+		t.Fatalf("retry status used a generic header instead of the actionable reconnect state: %q", text)
+	}
+}
+
+func TestLLMRequestRetryProblemPersistsUntilReplacementRequestProducesOutput(t *testing.T) {
+	state := NewAppState()
+	state.SessionID.Set("session")
+	state.SessionEpoch.Set(1)
+	state.Language.Set(i18n.LangEN)
+	renderer := &TuiRenderer{state: state, enqueue: func(fn func()) bool { fn(); return true }}
+
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestRetry, stream.RequestStatusEvent{
+		RequestID: "failed-request", Attempt: 1, MaxRetries: 5, RetryDelayMilliseconds: 200,
+		RetryKind: "stream", Error: "idle timeout waiting for SSE",
+	})
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestStart, stream.RequestStatusEvent{
+		RequestID: "replacement-request", Attempt: 2, MaxRetries: 5, RequestMilliseconds: 30,
+	})
+
+	status := state.LLMCall.Get()
+	if status == nil || status.RequestID != "replacement-request" || status.Phase != LLMCallRetrying || status.Error != "idle timeout waiting for SSE" {
+		t.Fatalf("replacement request hid retry problem before output: %+v", status)
+	}
+	text := collectElementText(NewRootComponent(state, nil, nil).renderLLMStatus(status))
+	for _, want := range []string{"Reconnecting 1/5", "Problem: idle timeout waiting for SSE"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("persistent retry status omitted %q: %q", want, text)
+		}
+	}
+
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestFirstToken, stream.RequestStatusEvent{
+		RequestID: "replacement-request", FirstTokenMilliseconds: 450,
+	})
+	if recovered := state.LLMCall.Get(); recovered == nil || recovered.Phase != LLMCallWorking || !recovered.HasFirstToken {
+		t.Fatalf("first output did not clear retry problem state: %+v", recovered)
+	}
+}
+
+func TestLLMRequestRetryRendersProblemOnDedicatedNarrowTerminalRow(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangEN)
+	status := &LLMCallStatus{
+		Phase: LLMCallRetrying, Attempt: 2, MaxRetries: 5, RetryKind: "stream",
+		RetryDelay: 400 * time.Millisecond, Error: "connection reset by provider",
+	}
+	rendered := renderElementText(NewRootComponent(state, nil, nil).renderLLMStatus(status), 36, 2)
+	lines := strings.Split(rendered, "\n")
+	if len(lines) < 2 || !strings.Contains(lines[0], "Reconnecting 2/5") || !strings.Contains(lines[1], "Problem: connection reset") {
+		t.Fatalf("narrow retry status did not reserve a problem row:\n%s", rendered)
+	}
+}
+
+func TestLLMWorkingStatusRetainsCurrentStreamAttempt(t *testing.T) {
+	state := NewAppState()
+	state.SessionID.Set("session")
+	state.SessionEpoch.Set(1)
+	state.Language.Set(i18n.LangEN)
+	renderer := &TuiRenderer{state: state, enqueue: func(fn func()) bool { fn(); return true }}
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestStart, stream.RequestStatusEvent{
+		RequestID: "request-3", Attempt: 3, MaxRetries: 5, RequestMilliseconds: 25,
+	})
+	status := state.LLMCall.Get()
+	text := collectElementText(NewRootComponent(state, nil, nil).renderLLMStatus(status))
+	if !strings.Contains(text, "Attempt 3/6") {
+		t.Fatalf("working status hid current stream attempt: %q", text)
+	}
+}
+
+func TestLLMRequestRetryKindDistinguishesRequestRetry(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangEN)
+	status := &LLMCallStatus{
+		Phase: LLMCallRetrying, Attempt: 1, MaxRetries: 4, RetryKind: "request",
+		RetryDelay: 200 * time.Millisecond, Error: "temporary failure",
+	}
+	text := collectElementText(NewRootComponent(state, nil, nil).renderLLMStatus(status))
+	if !strings.Contains(text, "Request retry 1/4") {
+		t.Fatalf("request retry kind was not rendered: %q", text)
 	}
 }
 
@@ -252,5 +458,104 @@ func TestLLMRequestEndStaysWorkingAcrossToolUseUntilQuerySettlement(t *testing.T
 	state.ClearLLMCall()
 	if state.LLMCall.Get() != nil {
 		t.Fatal("query settlement did not clear the working status")
+	}
+}
+
+func TestLLMWorkingStatusAlignsWithModeStatusBar(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangEN)
+	root := NewRootComponent(state, nil, nil)
+	status := &LLMCallStatus{Phase: LLMCallWorking, WorkStartedAt: time.Unix(99, 0)}
+	root.now = func() time.Time { return time.Unix(100, 0) }
+
+	firstVisibleColumn := func(element *gtui.Element) int {
+		buffer := gtui.NewBuffer(80, 1)
+		element.Render(buffer, 80, 1)
+		for column := 0; column < 80; column++ {
+			if r := buffer.Cell(column, 0).Rune; r != 0 && r != ' ' {
+				return column
+			}
+		}
+		return -1
+	}
+	if working, mode := firstVisibleColumn(root.renderLLMStatus(status)), firstVisibleColumn(root.renderStatusBar(80)); working != 0 || mode != 0 {
+		t.Fatalf("working/mode first visible columns = %d/%d, want 0/0", working, mode)
+	}
+}
+
+func TestAssistantReplyUsesBulletHangingIndentAndDuration(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangEN)
+	root := NewRootComponent(state, nil, nil)
+	element := root.renderMessage(Message{
+		Kind: MsgAssistant, Text: "first paragraph wraps onto another line because it is deliberately long\n\nsecond paragraph",
+		WorkDuration: 8*time.Minute + 2*time.Second,
+	})
+	buffer := gtui.NewBuffer(32, 8)
+	element.Render(buffer, 32, 8)
+	rendered := buffer.String()
+	if buffer.Cell(0, 0).Rune != '●' || buffer.Cell(1, 0).Rune != ' ' {
+		t.Fatalf("assistant bullet row does not start at column zero: %q", rendered)
+	}
+	for row := 1; row < 3; row++ {
+		if r := buffer.Cell(0, row).Rune; r != 0 && r != ' ' {
+			t.Fatalf("assistant continuation row %d escaped hanging indent: %q", row, rendered)
+		}
+		if r := buffer.Cell(1, row).Rune; r != 0 && r != ' ' {
+			t.Fatalf("assistant continuation row %d escaped bullet width: %q", row, rendered)
+		}
+	}
+	if !strings.Contains(rendered, "Worked for 8m 02s") {
+		t.Fatalf("assistant completion duration missing: %q", rendered)
+	}
+	durationRow := strings.Index(rendered, "Worked for 8m 02s") / (buffer.Width() + 1)
+	if durationRow < 0 || buffer.Cell(buffer.Width()-1, durationRow).Rune != '─' {
+		t.Fatalf("assistant completion rule did not extend to the right edge: %q", rendered)
+	}
+}
+
+func TestClearLLMCallAttachesDurationOnlyToLatestReplyFromCurrentWork(t *testing.T) {
+	state := NewAppState()
+	started := time.Unix(100, 0)
+	state.Messages.Set([]Message{
+		{Kind: MsgAssistant, Text: "old", Timestamp: started.Add(-time.Minute)},
+		{Kind: MsgAssistant, Text: "current", Timestamp: started.Add(time.Second)},
+	})
+	state.SetLLMCall(&LLMCallStatus{Phase: LLMCallWorking, WorkStartedAt: started})
+	state.clearLLMCallAt(started.Add(8*time.Minute+2*time.Second), "")
+
+	messages := state.Messages.Get()
+	if messages[0].WorkDuration != 0 || messages[1].WorkDuration != 8*time.Minute+2*time.Second {
+		t.Fatalf("assistant work durations = %s/%s", messages[0].WorkDuration, messages[1].WorkDuration)
+	}
+	if state.LLMCall.Get() != nil {
+		t.Fatal("completed work status was not cleared")
+	}
+}
+
+func TestClearLLMCallWithoutCurrentReplyDoesNotAnnotateHistory(t *testing.T) {
+	state := NewAppState()
+	started := time.Unix(100, 0)
+	state.Messages.Set([]Message{{Kind: MsgAssistant, Text: "old", Timestamp: started.Add(-time.Second)}})
+	state.SetLLMCall(&LLMCallStatus{Phase: LLMCallWorking, WorkStartedAt: started})
+	state.clearLLMCallAt(started.Add(time.Minute))
+	if got := state.Messages.Get()[0].WorkDuration; got != 0 {
+		t.Fatalf("old assistant reply received current work duration %s", got)
+	}
+}
+
+func TestFormatAssistantWorkDurationUsesClockLikeUnits(t *testing.T) {
+	tests := []struct {
+		duration time.Duration
+		want     string
+	}{
+		{duration: 8 * time.Second, want: "8s"},
+		{duration: 8*time.Minute + 2*time.Second, want: "8m 02s"},
+		{duration: time.Hour + 2*time.Minute + 3*time.Second, want: "1h 02m 03s"},
+	}
+	for _, test := range tests {
+		if got := formatAssistantWorkDuration(test.duration); got != test.want {
+			t.Fatalf("formatAssistantWorkDuration(%s) = %q, want %q", test.duration, got, test.want)
+		}
 	}
 }

@@ -45,17 +45,17 @@ func TestSkillsLayoutUnicodeSingleLineTruncationPreservesGraphemes(t *testing.T)
 	}
 }
 
-func TestSkillsLayoutUnicodeNFCAndAtomicFallbackMatchRendererCells(t *testing.T) {
+func TestSkillsLayoutUnicodeNFCPreservesGraphemeClusters(t *testing.T) {
 	if got := normalizeSkillsPanelLine("e\u0301"); got != "é" {
 		t.Fatalf("composable combining sequence=%q, want NFC é", got)
 	}
 	for _, input := range []string{"👩🏽\u200d💻", "✈️", "x\u0301"} {
 		got := normalizeSkillsPanelLine(input)
-		if got != "�" || strings.Contains(got, "…") {
-			t.Fatalf("mismatched cluster %q was not replaced atomically: %q", input, got)
+		if got == "�" || strings.Contains(got, "…") {
+			t.Fatalf("valid grapheme cluster %q was discarded: %q", input, got)
 		}
 		if skillsPanelCellWidth(got) != uniseg.StringWidth(got) {
-			t.Fatalf("fallback width disagrees for %q", got)
+			t.Fatalf("renderer width disagrees for %q", got)
 		}
 	}
 }

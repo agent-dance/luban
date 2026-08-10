@@ -546,6 +546,105 @@ func checkpointStateFixture(t *testing.T, identity SessionIdentity, persisted []
 	return state
 }
 
+func checkpointPaginationStateFixture(t *testing.T, identity SessionIdentity) (*AppState, []types.Message) {
+	t.Helper()
+	const toolUseID = "inspect-page"
+	persisted := []types.Message{types.UserMessage("Inspect the next page.")}
+	state := checkpointStateFixture(t, identity, persisted)
+	ctx := ToolEventContext{
+		SessionID: identity.SessionID, TurnID: "turn-1", ActorID: "assistant",
+		WorkUnitID: "foreground", Outcome: OutcomePartial,
+	}
+	if err := state.ApplyToolCall(ctx, types.ToolUseBlock{
+		Type: types.ContentTypeToolUse, ID: toolUseID, Name: "Inspect", Input: map[string]any{"offset": 0},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ApplyToolResult(ctx, types.ToolResultBlock{
+		Type: types.ContentTypeToolResult, ToolUseID: toolUseID, Content: "page one", Outcome: types.ToolOutcomePartial,
+		Completeness: types.ToolResultCompleteness{
+			Source: types.ToolResultCompletenessComplete,
+			View:   types.ToolResultCompletenessPagination,
+			Pagination: &types.ToolResultPagination{
+				Offset: 0, Limit: 1, NextOffset: 1, HasMore: true,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return state, persisted
+}
+
+func mutateSessionViewCheckpointPayload(t *testing.T, root string, count int, digest string, mutate func(map[string]any)) {
+	t.Helper()
+	path := sessionViewCheckpointPath(root, count, digest)
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var envelope sessionViewCheckpointEnvelope
+	if err := json.Unmarshal(encoded, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(envelope.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	mutate(payload)
+	envelope.Payload, err = json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payloadDigest := sha256.Sum256(envelope.Payload)
+	envelope.PayloadSHA256 = hex.EncodeToString(payloadDigest[:])
+	encoded, err = json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeSessionViewManifestCheckpointVersionForTest(t *testing.T, root string, version int) {
+	t.Helper()
+	manifest, ok, err := readSessionViewManifest(root)
+	if err != nil || !ok {
+		t.Fatalf("read manifest = ok %v err %v", ok, err)
+	}
+	manifest.CheckpointVersion = version
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sessionViewManifestPath(root), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func downgradeSessionViewCheckpointToV5(t *testing.T, root string, transcript []types.Message) {
+	t.Helper()
+	digest, err := sessionViewTranscriptDigest(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutateSessionViewCheckpointPayload(t, root, len(transcript), digest, func(payload map[string]any) {
+		payload["version"] = sessionViewCheckpointOldestReadableVersion
+		messages, ok := payload["messages"].([]any)
+		if !ok {
+			t.Fatalf("checkpoint messages = %T", payload["messages"])
+		}
+		for _, rawMessage := range messages {
+			message, ok := rawMessage.(map[string]any)
+			if !ok {
+				t.Fatalf("checkpoint message = %T", rawMessage)
+			}
+			delete(message, "Completeness")
+		}
+	})
+	writeSessionViewManifestCheckpointVersionForTest(t, root, sessionViewCheckpointOldestReadableVersion)
+}
+
 func renderCheckpointFrame(state *AppState, width, height int) *gtui.Buffer {
 	root := NewRootComponent(state, nil, nil)
 	root.syncSessionViewFromState()
@@ -873,6 +972,88 @@ func TestSessionViewCheckpointResumeRestoresExactSemanticFrame(t *testing.T) {
 	}
 }
 
+func TestSessionViewCheckpointV6RoundTripPreservesPaginationCompleteness(t *testing.T) {
+	identity := SessionIdentity{Namespace: "/workspace", SessionID: "pagination-v6", Epoch: 1}
+	source, persisted := checkpointPaginationStateFixture(t, identity)
+	root := t.TempDir()
+	if err := SaveSessionViewCheckpoint(root, source, persisted); err != nil {
+		t.Fatal(err)
+	}
+	manifest, capable, err := readSessionViewManifest(root)
+	if err != nil || !capable {
+		t.Fatalf("read v6 manifest = capable %v err %v", capable, err)
+	}
+	if manifest.CheckpointVersion != sessionViewCheckpointVersion {
+		t.Fatalf("manifest checkpoint version = %d, want %d", manifest.CheckpointVersion, sessionViewCheckpointVersion)
+	}
+	digest, err := sessionViewTranscriptDigest(persisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, ok, err := readSessionViewCheckpoint(root, len(persisted), digest)
+	if err != nil || !ok {
+		t.Fatalf("read v6 checkpoint = ok %v err %v", ok, err)
+	}
+	if checkpoint.Version != sessionViewCheckpointVersion {
+		t.Fatalf("checkpoint version = %d, want %d", checkpoint.Version, sessionViewCheckpointVersion)
+	}
+
+	loaded, restored, err := LoadSessionViewCheckpoint(root, persisted, identity)
+	if err != nil || !restored {
+		t.Fatalf("load v6 checkpoint = restored %v err %v", restored, err)
+	}
+	assertRestoredPaginationIsNotAlert(t, loaded.Projection.Messages)
+}
+
+func TestSessionViewCheckpointRestoresV5PaginationWithoutAlert(t *testing.T) {
+	identity := SessionIdentity{Namespace: "/workspace", SessionID: "pagination-v5", Epoch: 1}
+	source, persisted := checkpointPaginationStateFixture(t, identity)
+	root := t.TempDir()
+	if err := SaveSessionViewCheckpoint(root, source, persisted); err != nil {
+		t.Fatal(err)
+	}
+	downgradeSessionViewCheckpointToV5(t, root, persisted)
+
+	loaded, restored, err := LoadSessionViewCheckpoint(root, persisted, identity)
+	if err != nil || !restored {
+		t.Fatalf("load v5 checkpoint = restored %v err %v", restored, err)
+	}
+	assertRestoredPaginationIsNotAlert(t, loaded.Projection.Messages)
+
+	digest, err := sessionViewTranscriptDigest(persisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	upgraded, ok, err := readSessionViewCheckpoint(root, len(persisted), digest)
+	if err != nil || !ok {
+		t.Fatalf("read upgraded v5 checkpoint = ok %v err %v", ok, err)
+	}
+	if upgraded.Version != sessionViewCheckpointVersion {
+		t.Fatalf("in-memory checkpoint version = %d, want %d", upgraded.Version, sessionViewCheckpointVersion)
+	}
+}
+
+func assertRestoredPaginationIsNotAlert(t *testing.T, messages []Message) {
+	t.Helper()
+	var pagination *Message
+	for index := range messages {
+		if messages[index].ToolUseID == "inspect-page" {
+			pagination = &messages[index]
+			break
+		}
+	}
+	if pagination == nil {
+		t.Fatalf("pagination message missing: %+v", messages)
+	}
+	if !observationIsNormalPagination(pagination.Outcome, pagination.Completeness) || pagination.IsError {
+		t.Fatalf("pagination completeness restored as error: %+v", pagination)
+	}
+	segment := newTranscriptToolSegment(messages)
+	if segment.Alert || segment.IssueCount != 0 {
+		t.Fatalf("restored pagination became an alert: %+v", segment)
+	}
+}
+
 func TestSessionViewCheckpointReprojectsTranscriptWhenLanguageChanges(t *testing.T) {
 	persisted := checkpointTranscriptFixture()
 	identity := SessionIdentity{Namespace: "/workspace", SessionID: "language-change", Epoch: 1}
@@ -1155,6 +1336,40 @@ func TestSessionViewCheckpointRejectsOutOfOrderCapturePublication(t *testing.T) 
 	}
 }
 
+func TestSessionViewCheckpointV5MigrationKeepsOutOfOrderPublicationTransactional(t *testing.T) {
+	identity := SessionIdentity{Namespace: "/workspace", SessionID: "capture-order-v5", Epoch: 1}
+	state, persisted := checkpointPaginationStateFixture(t, identity)
+	state.SetInteractionDraft("older view")
+	older, err := CaptureSessionViewCheckpoint(state, persisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SetInteractionDraft("newer view")
+	newer, err := CaptureSessionViewCheckpoint(state, persisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := SaveSessionViewCapture(root, newer); err != nil {
+		t.Fatal(err)
+	}
+	downgradeSessionViewCheckpointToV5(t, root, persisted)
+
+	err = SaveSessionViewCapture(root, older)
+	info, ok := i18n.DescribeSemanticError(err)
+	if !ok || info.Key != i18n.KeyTUISessionViewStaleCapture {
+		t.Fatalf("out-of-order v5 capture error = %v (%+v, %v)", err, info, ok)
+	}
+	loaded, restored, err := LoadSessionViewCheckpoint(root, persisted, identity)
+	if err != nil || !restored {
+		t.Fatalf("load newest v5 capture = restored %v err %v", restored, err)
+	}
+	if got := loaded.Interaction.InputDraft; got != "newer view" {
+		t.Fatalf("stale publication replaced newer v5 view: %q", got)
+	}
+	assertRestoredPaginationIsNotAlert(t, loaded.Projection.Messages)
+}
+
 func TestSessionViewCheckpointCapableSessionRejectsMissingCurrentPayload(t *testing.T) {
 	persisted := checkpointTranscriptFixture()
 	identity := SessionIdentity{Namespace: "/workspace", SessionID: "missing-payload", Epoch: 1}
@@ -1201,7 +1416,7 @@ func TestSessionViewCheckpointRejectsUnsupportedVersionsAndIdentityMismatch(t *t
 	if err != nil || !ok {
 		t.Fatalf("read current checkpoint = ok %v err %v", ok, err)
 	}
-	for _, version := range []int{sessionViewCheckpointVersion - 1, 99} {
+	for _, version := range []int{sessionViewCheckpointOldestReadableVersion - 1, 99} {
 		checkpoint.Version = version
 		if err := writeSessionViewCheckpoint(root, checkpoint); err != nil {
 			t.Fatal(err)
@@ -1211,6 +1426,29 @@ func TestSessionViewCheckpointRejectsUnsupportedVersionsAndIdentityMismatch(t *t
 		} else if info, ok := i18n.DescribeSemanticError(err); !ok || info.Key != i18n.KeyTUISessionViewUnsupportedVersion {
 			t.Fatalf("checkpoint version %d error = %v (%+v, %v)", version, err, info, ok)
 		}
+	}
+}
+
+func TestSessionViewCheckpointRejectsFutureVersionBeforeUnknownFields(t *testing.T) {
+	persisted := checkpointTranscriptFixture()
+	identity := SessionIdentity{Namespace: "/workspace", SessionID: "future-version", Epoch: 1}
+	state := checkpointStateFixture(t, identity, persisted)
+	root := t.TempDir()
+	if err := SaveSessionViewCheckpoint(root, state, persisted); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := sessionViewTranscriptDigest(persisted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutateSessionViewCheckpointPayload(t, root, len(persisted), digest, func(payload map[string]any) {
+		payload["version"] = sessionViewCheckpointVersion + 1
+		payload["future_schema_field"] = true
+	})
+	if _, ok, err := readSessionViewCheckpoint(root, len(persisted), digest); ok || err == nil {
+		t.Fatalf("future checkpoint accepted: ok=%v err=%v", ok, err)
+	} else if info, described := i18n.DescribeSemanticError(err); !described || info.Key != i18n.KeyTUISessionViewUnsupportedVersion {
+		t.Fatalf("future checkpoint error = %v (%+v, %v)", err, info, described)
 	}
 }
 

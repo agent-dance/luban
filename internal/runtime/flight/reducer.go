@@ -277,7 +277,7 @@ func validateToolFacts(facts ToolExecutionFacts) error {
 	if !validExecutionOutcome(facts.ExecutionOutcome) {
 		return transitionError(ErrorInvalidFacts)
 	}
-	if !facts.Invoked && (facts.ExecutionOutcome == ExecutionSucceeded || facts.MutationOutcome != MutationNone ||
+	if !facts.Invoked && (facts.ExecutionOutcome == ExecutionSucceeded || facts.MutationOutcome != MutationNone || facts.NoMutationProven ||
 		facts.VerificationKind != VerificationNone || facts.BeforeDigest != "" || facts.AfterDigest != "" ||
 		facts.EvidenceDigest != "" || facts.VerificationConfigDigest != "" || len(facts.Files) != 0) {
 		return transitionError(ErrorInvalidFacts)
@@ -308,7 +308,11 @@ func validateToolFacts(facts ToolExecutionFacts) error {
 	if facts.MutationOutcome == MutationCommitted && facts.AfterDigest == "" {
 		return transitionError(ErrorInvalidFacts)
 	}
-	if facts.Invoked && facts.EffectScope.permitsWorkspaceMutation() && facts.MutationOutcome == MutationNone &&
+	if facts.NoMutationProven && (!facts.Invoked || !facts.EffectScope.permitsWorkspaceMutation() ||
+		facts.MutationOutcome != MutationNone || facts.ExecutionOutcome != ExecutionFailed) {
+		return transitionError(ErrorInvalidFacts)
+	}
+	if facts.Invoked && facts.EffectScope.permitsWorkspaceMutation() && facts.MutationOutcome == MutationNone && !facts.NoMutationProven &&
 		(facts.BeforeDigest == "" || facts.AfterDigest == "" || facts.BeforeDigest != facts.AfterDigest) {
 		return transitionError(ErrorInvalidFacts)
 	}

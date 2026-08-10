@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,7 +18,16 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
-const maxResponsesCustomToolInputBytes = 16 << 20
+const (
+	// Tool arguments are model output, not trusted request data. Keep a broad
+	// fallback for uncommon tools while terminating the two compact agentic-v2
+	// control envelopes before a degenerate generation can stream megabytes of
+	// padding or repeated glob fragments.
+	maxResponsesToolInputBytes        = 256 << 10
+	maxResponsesInspectToolInputBytes = 32 << 10
+	maxResponsesRunToolInputBytes     = 64 << 10
+	maxResponsesApplyPatchInputBytes  = 1 << 20
+)
 
 // ResponsesProvider implements Provider for the OpenAI Responses API (/v1/responses).
 // It is stateless. Every request disables provider storage and replays the
@@ -23,28 +35,30 @@ const maxResponsesCustomToolInputBytes = 16 << 20
 // as opaque encrypted items; response IDs remain observable evidence but are
 // never treated as retrievable state while store=false.
 type ResponsesProvider struct {
-	mu                  sync.RWMutex
-	name                string
-	baseURL             string
-	apiKey              string
-	model               string
-	maxTokens           int
-	timeout             time.Duration
-	headers             map[string]string
-	semantics           ResponsesSemantics
-	chatGPTCodexBackend bool
-	firstPartyEndpoint  bool
-	publicAPIEndpoint   bool
-	disableStrictTools  bool
-	cacheRouting        CacheRoutingMode
-	cacheUserNamespace  string
-	cacheRoutingShards  int
-	responsesWebSocket  CapabilitySupport
-	unsupportedFields   sync.Map
-	client              *http.Client
-	wsMu                sync.Mutex
-	wsSessions          map[string]*responsesWebSocketSession
-	wsCredentialEpoch   uint64
+	mu                        sync.RWMutex
+	name                      string
+	baseURL                   string
+	apiKey                    string
+	model                     string
+	maxTokens                 int
+	timeout                   time.Duration
+	headers                   map[string]string
+	semantics                 ResponsesSemantics
+	chatGPTCodexBackend       bool
+	firstPartyEndpoint        bool
+	publicAPIEndpoint         bool
+	disableStrictTools        bool
+	disablePromptCacheOptions bool
+	cacheRouting              CacheRoutingMode
+	cacheUserNamespace        string
+	cacheRoutingShards        int
+	responsesWebSocket        CapabilitySupport
+	forceHTTPFallback         bool
+	unsupportedFields         sync.Map
+	client                    *http.Client
+	wsMu                      sync.Mutex
+	wsSessions                map[string]*responsesWebSocketSession
+	wsCredentialEpoch         uint64
 }
 
 // NewResponses creates a Provider for the OpenAI Responses API.
@@ -82,33 +96,34 @@ func NewResponses(cfg Config) *ResponsesProvider {
 	semantics := resolveResponsesSemantics(cfg, baseURL)
 
 	return &ResponsesProvider{
-		name:                providerName,
-		baseURL:             baseURL,
-		apiKey:              bearerToken,
-		model:               model,
-		maxTokens:           maxTokens,
-		timeout:             timeout,
-		headers:             cloneHeaders(cfg.Headers),
-		semantics:           semantics,
-		chatGPTCodexBackend: semantics == ResponsesSemanticsOpenAICodex,
-		firstPartyEndpoint:  semantics == ResponsesSemanticsOpenAIPublic || semantics == ResponsesSemanticsOpenAICodex,
-		publicAPIEndpoint:   semantics == ResponsesSemanticsOpenAIPublic,
-		disableStrictTools:  cfg.DisableStrictTools,
-		cacheRouting:        cacheRoutingModeForResponses(cfg.CacheRoutingPreference),
-		cacheUserNamespace:  cacheUserNamespace,
-		cacheRoutingShards:  promptCacheRoutingShardCount(cfg.ProviderName),
-		responsesWebSocket:  normalizeCapabilitySupport(cfg.ResponsesWebSocket),
-		wsCredentialEpoch:   1,
+		name:                      providerName,
+		baseURL:                   baseURL,
+		apiKey:                    bearerToken,
+		model:                     model,
+		maxTokens:                 maxTokens,
+		timeout:                   timeout,
+		headers:                   cloneHeaders(cfg.Headers),
+		semantics:                 semantics,
+		chatGPTCodexBackend:       semantics == ResponsesSemanticsOpenAICodex,
+		firstPartyEndpoint:        semantics == ResponsesSemanticsOpenAIPublic || semantics == ResponsesSemanticsOpenAICodex,
+		publicAPIEndpoint:         semantics == ResponsesSemanticsOpenAIPublic,
+		disableStrictTools:        cfg.DisableStrictTools,
+		disablePromptCacheOptions: cfg.DisablePromptCacheOptions,
+		cacheRouting:              cacheRoutingModeForResponses(cfg.CacheRoutingPreference, semantics),
+		cacheUserNamespace:        cacheUserNamespace,
+		cacheRoutingShards:        promptCacheRoutingShardCount(cfg.ProviderName),
+		responsesWebSocket:        normalizeCapabilitySupport(cfg.ResponsesWebSocket),
+		wsCredentialEpoch:         1,
 		// A request-wide Client.Timeout killed healthy long-running xhigh
 		// reasoning at 600 seconds. Bound connection/header silence here; the
-		// response body has its own byte-progress watchdog below.
+		// response body has its own semantic-progress watchdog below.
 		client: newResponsesHTTPClient(timeout),
 	}
 }
 
 func resolveResponsesSemantics(cfg Config, baseURL string) ResponsesSemantics {
 	switch cfg.ResponsesSemantics {
-	case ResponsesSemanticsOpenAIPublic, ResponsesSemanticsOpenAICodex, ResponsesSemanticsCompatible:
+	case ResponsesSemanticsOpenAIPublic, ResponsesSemanticsOpenAICodex, ResponsesSemanticsDeepSeek, ResponsesSemanticsCompatible:
 		return cfg.ResponsesSemantics
 	}
 	if strings.TrimSpace(cfg.AuthToken) != "" {
@@ -117,6 +132,9 @@ func resolveResponsesSemantics(cfg Config, baseURL string) ResponsesSemantics {
 	if providerName := CanonicalProviderName(cfg.ProviderName); providerName != "" {
 		if providerName == "openai" {
 			return ResponsesSemanticsOpenAIPublic
+		}
+		if providerName == "deepseek" {
+			return ResponsesSemanticsDeepSeek
 		}
 		return ResponsesSemanticsCompatible
 	}
@@ -132,9 +150,12 @@ func resolveResponsesSemantics(cfg Config, baseURL string) ResponsesSemantics {
 	return ResponsesSemanticsCompatible
 }
 
-func cacheRoutingModeForResponses(preference CacheRoutingPreference) CacheRoutingMode {
+func cacheRoutingModeForResponses(preference CacheRoutingPreference, semantics ResponsesSemantics) CacheRoutingMode {
 	if preference == CacheRoutingOff {
 		return CacheRoutingNone
+	}
+	if semantics == ResponsesSemanticsDeepSeek {
+		return CacheRoutingDeepSeekUserID
 	}
 	return CacheRoutingPromptCacheKey
 }
@@ -168,6 +189,8 @@ func (p *ResponsesProvider) ApplyCredentialConfig(cfg Config) {
 	p.firstPartyEndpoint = p.semantics == ResponsesSemanticsOpenAIPublic || p.semantics == ResponsesSemanticsOpenAICodex
 	p.publicAPIEndpoint = p.semantics == ResponsesSemanticsOpenAIPublic
 	p.disableStrictTools = cfg.DisableStrictTools
+	p.disablePromptCacheOptions = cfg.DisablePromptCacheOptions
+	p.cacheRouting = cacheRoutingModeForResponses(cfg.CacheRoutingPreference, p.semantics)
 	p.cacheUserNamespace = promptCacheUserNamespace(cfg)
 	p.cacheRoutingShards = promptCacheRoutingShardCount(cfg.ProviderName)
 	p.responsesWebSocket = normalizeCapabilitySupport(cfg.ResponsesWebSocket)
@@ -191,17 +214,18 @@ func (p *ResponsesProvider) Capabilities() ProviderCapabilities {
 	model := p.model
 	semantics := p.semantics
 	responsesWebSocket := p.responsesWebSocket
+	forceHTTPFallback := p.forceHTTPFallback
 	cacheRouting := p.cacheRouting
 	p.mu.RUnlock()
 	customTools := CapabilityUnsupported
 	if supportsOpenAIResponsesCustomTools(semantics, model) {
 		customTools = CapabilitySupported
 	}
-	if semantics != ResponsesSemanticsOpenAIPublic {
+	if semantics != ResponsesSemanticsOpenAIPublic || forceHTTPFallback {
 		responsesWebSocket = CapabilityUnsupported
 	}
 	return ProviderCapabilities{
-		Thinking:           false,
+		Thinking:           semantics == ResponsesSemanticsDeepSeek,
 		ToolUse:            true,
 		CustomTools:        customTools,
 		ResponsesWebSocket: responsesWebSocket,
@@ -209,9 +233,25 @@ func (p *ResponsesProvider) Capabilities() ProviderCapabilities {
 		CacheControl:       false,
 		CacheRouting:       cacheRouting,
 		SystemParts:        true,
-		Vision:             true,
+		Vision:             semantics != ResponsesSemanticsDeepSeek,
 		MaxContext:         LookupMaxContext(model),
 	}
+}
+
+// TryFallbackTransport permanently disables Responses WebSocket transport for
+// this provider instance and clears its connection-local continuation state.
+// A fresh HTTP request will replay the complete committed local history.
+func (p *ResponsesProvider) TryFallbackTransport() (from, to string, activated bool) {
+	p.mu.Lock()
+	if p.forceHTTPFallback || p.responsesWebSocket != CapabilitySupported ||
+		p.semantics != ResponsesSemanticsOpenAIPublic || !p.publicAPIEndpoint {
+		p.mu.Unlock()
+		return "", "", false
+	}
+	p.forceHTTPFallback = true
+	p.mu.Unlock()
+	p.resetResponsesWebSocketSessions()
+	return "WebSocket", "HTTPS", true
 }
 
 func serviceTierCapabilityForResponses(semantics ResponsesSemantics) CapabilitySupport {
@@ -236,6 +276,9 @@ func (p *ResponsesProvider) CreateStream(ctx context.Context, params Params) (<-
 		}
 		if !safeHTTPFallback {
 			return nil, err
+		}
+		if attemptErr := beginNestedTransportAttempt(ctx, err); attemptErr != nil {
+			return nil, attemptErr
 		}
 	}
 	return p.createResponsesHTTPStream(ctx, params, profile)
@@ -293,14 +336,24 @@ func (p *ResponsesProvider) createResponsesHTTPStream(ctx context.Context, param
 			if field := unsupportedResponsesRequestField(bodyBytes, body); field != "" {
 				p.rememberUnsupportedField(model, field)
 				delete(body, field)
-				cause := parseResponsesHTTPError(resp.StatusCode, bodyBytes, resp.Header.Get("Retry-After"))
+				cause := annotateProviderRequestError(
+					parseResponsesHTTPError(resp.StatusCode, bodyBytes, resp.Header.Get("Retry-After")),
+					profile.providerName, "responses", endpoint, resp.Header,
+				)
 				if attemptErr := beginNestedTransportAttempt(ctx, cause); attemptErr != nil {
 					return nil, attemptErr
 				}
 				continue
 			}
 		}
-		return nil, parseResponsesHTTPError(resp.StatusCode, bodyBytes, resp.Header.Get("Retry-After"))
+		apiErr := annotateProviderRequestError(
+			parseResponsesHTTPError(resp.StatusCode, bodyBytes, resp.Header.Get("Retry-After")),
+			profile.providerName, "responses", endpoint, resp.Header,
+		)
+		if profile.customEndpointLocation && responsesEndpointUnavailable(apiErr) {
+			apiErr.SuggestedAPIFormat = "chat-completions"
+		}
+		return nil, apiErr
 	}
 
 	watchdogBody := newStreamWatchdogBody(resp.Body, responsesStreamWatchdogConfig())
@@ -406,7 +459,9 @@ func processResponsesStreamForRequest(ctx context.Context, body io.Reader, ch ch
 	if len(serviceTiers) > 0 {
 		expectedServiceTier = serviceTiers[0]
 	}
-	processResponsesEventsForRequest(ctx, body, parseSSE(body), ch, requestModel, semantics, responsesLite, false, expectedServiceTier)
+	parserCtx, cancelParser := context.WithCancel(ctx)
+	defer cancelParser()
+	processResponsesEventsForRequest(ctx, body, parseResponsesSSE(parserCtx, body), ch, requestModel, semantics, responsesLite, false, expectedServiceTier)
 }
 
 // processResponsesEventsForRequest is the transport-neutral Responses reducer.
@@ -436,18 +491,21 @@ func processResponsesEventsForRequest(
 
 	// Track output items by their index for mapping to stream events
 	type outputItem struct {
-		itemType       string // "message", "function_call", "custom_tool_call", "reasoning"
-		blockIdx       int    // our block index for StreamEvent
-		callID         string
-		name           string
-		providerItemID string
-		providerStatus string
-		signature      string
-		stopped        bool
-		customInput    strings.Builder
-		customFinal    *string
+		itemType           string // "message", "function_call", "custom_tool_call", "reasoning"
+		blockIdx           int    // our block index for StreamEvent
+		callID             string
+		name               string
+		providerItemID     string
+		providerStatus     string
+		signature          string
+		stopped            bool
+		functionInputBytes int
+		functionFinal      *string
+		customInput        strings.Builder
+		customFinal        *string
 	}
 	outputItems := make(map[int]*outputItem) // keyed by output_index
+	completedOutputItems := make(map[int]json.RawMessage)
 	nextBlockIdx := 0
 	messageStarted := false
 
@@ -455,6 +513,11 @@ func processResponsesEventsForRequest(
 	for sse := range events {
 		if ctx.Err() != nil {
 			return
+		}
+		if sse.Err == nil {
+			if watchdog, ok := activity.(*streamWatchdogBody); ok {
+				watchdog.markActivity()
+			}
 		}
 
 		// Some proxies (e.g. codex-lb) emit SSE without an "event:" line,
@@ -509,7 +572,7 @@ func processResponsesEventsForRequest(
 
 			if data.Item.Type == "function_call" || data.Item.Type == "custom_tool_call" {
 				item.callID = data.Item.CallID
-				item.name = data.Item.Name
+				item.name = responsesLocalToolNameForSemantics(semantics, data.Item.Name, data.Item.Type == "custom_tool_call")
 				toolType := types.ToolDefinitionTypeFunction
 				if data.Item.Type == "custom_tool_call" {
 					toolType = types.ToolDefinitionTypeCustom
@@ -519,10 +582,12 @@ func processResponsesEventsForRequest(
 					Type:  types.EventContentBlockStart,
 					Index: item.blockIdx,
 					ContentBlock: &types.ContentDelta{
-						Type:     types.ContentTypeToolUse,
-						ID:       data.Item.CallID,
-						Name:     data.Item.Name,
-						ToolType: toolType,
+						Type:           types.ContentTypeToolUse,
+						ID:             data.Item.CallID,
+						Name:           item.name,
+						ToolType:       toolType,
+						ProviderItemID: item.providerItemID,
+						ProviderStatus: data.Item.Status,
 					},
 				}) {
 					return
@@ -592,12 +657,6 @@ func processResponsesEventsForRequest(
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
 			}
-			if data.Delta != "" {
-				if watchdog, ok := activity.(*streamWatchdogBody); ok {
-					watchdog.markOutputActive()
-				}
-			}
-
 			item := outputItems[data.OutputIndex]
 			idx := 0
 			if item != nil {
@@ -625,12 +684,6 @@ func processResponsesEventsForRequest(
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
 			}
-			if data.Delta.Text != "" {
-				if watchdog, ok := activity.(*streamWatchdogBody); ok {
-					watchdog.markOutputActive()
-				}
-			}
-
 			item := outputItems[data.OutputIndex]
 			idx := 0
 			if item != nil {
@@ -655,21 +708,22 @@ func processResponsesEventsForRequest(
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
 			}
-			if data.Delta != "" {
-				if watchdog, ok := activity.(*streamWatchdogBody); ok {
-					watchdog.markOutputActive()
-				}
-			}
-
 			item := outputItems[data.OutputIndex]
-			idx := 0
-			if item != nil {
-				idx = item.blockIdx
+			if item == nil || item.itemType != "function_call" || item.stopped {
+				sendResponsesToolInputProtocolError(send)
+				completedNormally = true
+				return
 			}
+			if item.functionInputBytes+len(data.Delta) > responsesToolInputLimit(item.name) {
+				sendResponsesToolInputLimitError(send)
+				completedNormally = true
+				return
+			}
+			item.functionInputBytes += len(data.Delta)
 
 			if !send(types.StreamEvent{
 				Type:  types.EventContentBlockDelta,
-				Index: idx,
+				Index: item.blockIdx,
 				Delta: &types.ContentDelta{
 					Type:        "input_json_delta",
 					PartialJSON: data.Delta,
@@ -692,17 +746,12 @@ func processResponsesEventsForRequest(
 				completedNormally = true
 				return
 			}
-			if item.customInput.Len()+len(data.Delta) > maxResponsesCustomToolInputBytes {
-				sendResponsesCustomToolProtocolError(send)
+			if item.customInput.Len()+len(data.Delta) > responsesToolInputLimit(item.name) {
+				sendResponsesToolInputLimitError(send)
 				completedNormally = true
 				return
 			}
 			item.customInput.WriteString(data.Delta)
-			if data.Delta != "" {
-				if watchdog, ok := activity.(*streamWatchdogBody); ok {
-					watchdog.markOutputActive()
-				}
-			}
 			if !send(types.StreamEvent{
 				Type:  types.EventContentBlockDelta,
 				Index: item.blockIdx,
@@ -719,29 +768,58 @@ func processResponsesEventsForRequest(
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
 				continue
 			}
-			if data.Delta != "" {
-				if watchdog, ok := activity.(*streamWatchdogBody); ok {
-					watchdog.markOutputActive()
-				}
-			}
-
 			item := outputItems[data.OutputIndex]
 			idx := 0
 			if item != nil {
 				idx = item.blockIdx
 			}
 			if data.Delta != "" {
+				thinkingKind := types.ThinkingKindRaw
+				if eventType == "response.reasoning_summary_text.delta" {
+					thinkingKind = types.ThinkingKindSummary
+				}
 				if !send(types.StreamEvent{
 					Type:  types.EventContentBlockDelta,
 					Index: idx,
-					Delta: &types.ContentDelta{Type: "thinking_delta", Thinking: data.Delta},
+					Delta: &types.ContentDelta{Type: "thinking_delta", Thinking: data.Delta, ThinkingKind: thinkingKind},
 				}) {
 					return
 				}
 			}
 
 		case "response.function_call_arguments.done":
-			// No action needed — block_stop will handle finalization
+			var data struct {
+				OutputIndex int     `json:"output_index"`
+				ItemID      string  `json:"item_id"`
+				Arguments   *string `json:"arguments"`
+			}
+			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
+				continue
+			}
+			item := outputItems[data.OutputIndex]
+			if item == nil || item.itemType != "function_call" || item.stopped || data.Arguments == nil ||
+				(data.ItemID != "" && item.providerItemID != "" && data.ItemID != item.providerItemID) {
+				sendResponsesToolInputProtocolError(send)
+				completedNormally = true
+				return
+			}
+			if len(*data.Arguments) > responsesToolInputLimit(item.name) {
+				sendResponsesToolInputLimitError(send)
+				completedNormally = true
+				return
+			}
+			finalArguments := *data.Arguments
+			item.functionFinal = &finalArguments
+			if !send(types.StreamEvent{
+				Type:  types.EventContentBlockDelta,
+				Index: item.blockIdx,
+				Delta: &types.ContentDelta{
+					Type: "tool_state_final", ID: item.callID, Name: item.name,
+					ToolType: types.ToolDefinitionTypeFunction, PartialJSON: finalArguments,
+				},
+			}) {
+				return
+			}
 
 		case "response.custom_tool_call_input.done":
 			var data struct {
@@ -757,7 +835,12 @@ func processResponsesEventsForRequest(
 				completedNormally = true
 				return
 			}
-			if len(*data.Input) > maxResponsesCustomToolInputBytes || (item.customInput.Len() > 0 && item.customInput.String() != *data.Input) {
+			if len(*data.Input) > responsesToolInputLimit(item.name) {
+				sendResponsesToolInputLimitError(send)
+				completedNormally = true
+				return
+			}
+			if item.customInput.Len() > 0 && item.customInput.String() != *data.Input {
 				sendResponsesCustomToolProtocolError(send)
 				completedNormally = true
 				return
@@ -776,6 +859,13 @@ func processResponsesEventsForRequest(
 			}
 
 		case "response.output_item.done":
+			var rawData struct {
+				OutputIndex int             `json:"output_index"`
+				Item        json.RawMessage `json:"item"`
+			}
+			if err := json.Unmarshal([]byte(sse.Data), &rawData); err == nil && len(rawData.Item) > 0 {
+				completedOutputItems[rawData.OutputIndex] = append(json.RawMessage(nil), rawData.Item...)
+			}
 			var data struct {
 				OutputIndex int `json:"output_index"`
 				Item        struct {
@@ -795,7 +885,14 @@ func processResponsesEventsForRequest(
 
 			item := outputItems[data.OutputIndex]
 			if item == nil && (data.Item.Type == "function_call" || data.Item.Type == "custom_tool_call") {
-				item = &outputItem{itemType: data.Item.Type, blockIdx: data.OutputIndex, callID: data.Item.CallID, name: data.Item.Name}
+				item = &outputItem{
+					itemType:       data.Item.Type,
+					blockIdx:       data.OutputIndex,
+					callID:         data.Item.CallID,
+					name:           responsesLocalToolNameForSemantics(semantics, data.Item.Name, data.Item.Type == "custom_tool_call"),
+					providerItemID: data.Item.ID,
+					providerStatus: data.Item.Status,
+				}
 				outputItems[data.OutputIndex] = item
 				toolType := types.ToolDefinitionTypeFunction
 				if data.Item.Type == "custom_tool_call" {
@@ -805,10 +902,12 @@ func processResponsesEventsForRequest(
 					Type:  types.EventContentBlockStart,
 					Index: item.blockIdx,
 					ContentBlock: &types.ContentDelta{
-						Type:     types.ContentTypeToolUse,
-						ID:       data.Item.CallID,
-						Name:     data.Item.Name,
-						ToolType: toolType,
+						Type:           types.ContentTypeToolUse,
+						ID:             data.Item.CallID,
+						Name:           item.name,
+						ToolType:       toolType,
+						ProviderItemID: data.Item.ID,
+						ProviderStatus: data.Item.Status,
 					},
 				}) {
 					return
@@ -842,7 +941,7 @@ func processResponsesEventsForRequest(
 					completedNormally = true
 					return
 				}
-				if item.itemType == "reasoning" && encryptedReasoning {
+				if item.itemType == "reasoning" {
 					changed := false
 					if data.Item.ID != "" {
 						changed = changed || data.Item.ID != item.providerItemID
@@ -852,32 +951,60 @@ func processResponsesEventsForRequest(
 						changed = changed || data.Item.Status != item.providerStatus
 						item.providerStatus = data.Item.Status
 					}
-					if data.Item.EncryptedContent != "" {
+					if encryptedReasoning && data.Item.EncryptedContent != "" {
 						changed = changed || data.Item.EncryptedContent != item.signature
 						item.signature = data.Item.EncryptedContent
 					}
-					if changed && item.signature != "" {
+					if changed {
+						deltaType := "thinking_state_final"
+						if encryptedReasoning {
+							deltaType = "signature_delta"
+						}
+						delta := &types.ContentDelta{
+							Type:           types.ContentType(deltaType),
+							ID:             item.providerItemID,
+							ProviderStatus: item.providerStatus,
+						}
+						if encryptedReasoning && item.signature != "" {
+							delta.Signature = item.signature
+							delta.SignatureKind = types.ThinkingSignatureOpenAIEncryptedReasoning
+							delta.SignatureModel = requestModel
+						}
 						if !send(types.StreamEvent{
 							Type:  types.EventContentBlockDelta,
 							Index: item.blockIdx,
-							Delta: &types.ContentDelta{
-								Type:           "signature_delta",
-								ID:             item.providerItemID,
-								Signature:      item.signature,
-								SignatureKind:  types.ThinkingSignatureOpenAIEncryptedReasoning,
-								SignatureModel: requestModel,
-								ProviderStatus: item.providerStatus,
-							},
+							Delta: delta,
 						}) {
 							return
 						}
 					}
 				} else if item.itemType == "function_call" {
+					if data.Item.ID != "" {
+						item.providerItemID = data.Item.ID
+					}
+					if data.Item.Status != "" {
+						item.providerStatus = data.Item.Status
+					}
 					if data.Item.CallID != "" {
 						item.callID = data.Item.CallID
 					}
 					if data.Item.Name != "" {
-						item.name = data.Item.Name
+						item.name = responsesLocalToolNameForSemantics(semantics, data.Item.Name, false)
+					}
+					if data.Item.Arguments != nil && len(*data.Item.Arguments) > responsesToolInputLimit(item.name) {
+						sendResponsesToolInputLimitError(send)
+						completedNormally = true
+						return
+					}
+					if data.Item.Arguments != nil && item.functionFinal != nil && *data.Item.Arguments != *item.functionFinal {
+						sendResponsesToolInputProtocolError(send)
+						completedNormally = true
+						return
+					}
+					if item.callID == "" || item.name == "" || (data.Item.Status != "" && data.Item.Status != "completed") {
+						sendResponsesToolInputProtocolError(send)
+						completedNormally = true
+						return
 					}
 					if data.Item.Arguments != nil && !send(types.StreamEvent{
 						Type:  types.EventContentBlockDelta,
@@ -896,9 +1023,14 @@ func processResponsesEventsForRequest(
 						item.callID = data.Item.CallID
 					}
 					if data.Item.Name != "" {
-						item.name = data.Item.Name
+						item.name = responsesLocalToolNameForSemantics(semantics, data.Item.Name, true)
 					}
-					if data.Item.Status != "completed" || item.callID == "" || item.name == "" || data.Item.Input == nil || len(*data.Item.Input) > maxResponsesCustomToolInputBytes {
+					if data.Item.Input != nil && len(*data.Item.Input) > responsesToolInputLimit(item.name) {
+						sendResponsesToolInputLimitError(send)
+						completedNormally = true
+						return
+					}
+					if data.Item.Status != "completed" || item.callID == "" || item.name == "" || data.Item.Input == nil {
 						sendResponsesCustomToolProtocolError(send)
 						completedNormally = true
 						return
@@ -940,7 +1072,7 @@ func processResponsesEventsForRequest(
 			// For message output items, the content_part.done signals text block end
 			// But we let output_item.done handle the EventContentBlockStop
 
-		case "response.completed":
+		case "response.completed", "response.incomplete":
 			var data struct {
 				Response struct {
 					ID          string `json:"id"`
@@ -962,20 +1094,26 @@ func processResponsesEventsForRequest(
 				} `json:"response"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				// response.completed is critical — don't silently swallow parse errors
+				parseKey := i18n.KeyProviderResponsesCompletedParseFailed
+				if eventType == "response.incomplete" {
+					parseKey = i18n.KeyProviderResponsesIncompleteParseFailed
+				}
 				send(types.StreamEvent{
 					Type: types.EventError,
 					Error: &types.APIError{
 						Type: "parse_error",
 						Message: i18n.Format(
 							i18n.DetectOrLoadLanguage(),
-							i18n.KeyProviderResponsesCompletedParseFailed,
+							parseKey,
 							err,
 						),
 					},
 				})
 				completedNormally = true // don't also emit stream_interrupted
 				return
+			}
+			if eventType == "response.incomplete" && data.Response.Status == "" {
+				data.Response.Status = "incomplete"
 			}
 			// Preserve usage even when a contract-bound request is rejected for
 			// scheduling drift; the provider may already have billed this attempt.
@@ -1002,8 +1140,27 @@ func processResponsesEventsForRequest(
 				completedNormally = true
 				return
 			}
+			responseOutput := data.Response.Output
+			if len(responseOutput) == 0 && len(completedOutputItems) > 0 {
+				responseOutput = make([]json.RawMessage, len(completedOutputItems))
+				for outputIndex := range responseOutput {
+					rawOutput, ok := completedOutputItems[outputIndex]
+					if !ok {
+						send(types.StreamEvent{
+							Type: types.EventError,
+							Error: &types.APIError{
+								Type:    "invalid_continuation",
+								Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesContinuationInvalid),
+							},
+						})
+						completedNormally = true
+						return
+					}
+					responseOutput[outputIndex] = rawOutput
+				}
+			}
 			hasCustomToolCall := false
-			for outputIndex, rawOutput := range data.Response.Output {
+			for outputIndex, rawOutput := range responseOutput {
 				var output struct {
 					Type string `json:"type"`
 				}
@@ -1027,7 +1184,7 @@ func processResponsesEventsForRequest(
 			// Store response ID for next turn's chaining
 			responseID := data.Response.ID
 			continuation, continuationErr := buildResponsesContinuation(
-				data.Response.Output, requestModel, data.Response.Model, data.Response.Status, semantics, responsesLite,
+				responseOutput, requestModel, data.Response.Model, data.Response.Status, semantics, responsesLite,
 			)
 			if continuationErr != nil {
 				send(types.StreamEvent{
@@ -1043,7 +1200,7 @@ func processResponsesEventsForRequest(
 
 			// Determine stop reason from output items
 			sr := types.StopReasonEndTurn
-			for _, rawOutput := range data.Response.Output {
+			for _, rawOutput := range responseOutput {
 				var out struct {
 					Type string `json:"type"`
 				}
@@ -1052,7 +1209,7 @@ func processResponsesEventsForRequest(
 					break
 				}
 			}
-			if data.Response.Status == "incomplete" ||
+			if eventType == "response.incomplete" || data.Response.Status == "incomplete" ||
 				data.Response.IncompleteDetails.Reason == "max_output_tokens" ||
 				data.Response.IncompleteDetails.Reason == "max_tokens" {
 				sr = types.StopReasonMaxTokens
@@ -1106,7 +1263,8 @@ func processResponsesEventsForRequest(
 				status = data.Response.StatusCode
 			}
 			code := data.Response.Error.Code
-			errType, status := classifyResponsesAPIError(code, errMsg, status)
+			errType, status := classifyResponsesFailedError(code, errMsg, status)
+			retryAfter := responsesFailedRetryAfter(code, errMsg)
 			if connectionScopedContinuation && errType == "previous_response_not_found" {
 				errType, status = "stream_interrupted", 0
 				code = errType
@@ -1119,6 +1277,7 @@ func processResponsesEventsForRequest(
 					Code:         code,
 					Message:      errMsg,
 					Status:       status,
+					RetryAfter:   retryAfter,
 					Stage:        types.ProviderErrorStageStream,
 					ReplaySafety: types.ProviderReplaySafe,
 				},
@@ -1127,6 +1286,11 @@ func processResponsesEventsForRequest(
 			return
 
 		case "error":
+			if errors.Is(sse.Err, errResponsesFunctionCallDeltaLineTooLarge) {
+				sendResponsesToolInputLimitError(send)
+				completedNormally = true
+				return
+			}
 			if idle, ok := streamIdleTimeoutFromError(sse.Err); ok {
 				send(types.StreamEvent{
 					Type: types.EventError,
@@ -1231,6 +1395,46 @@ func sendResponsesCustomToolProtocolError(send func(types.StreamEvent) bool) {
 	})
 }
 
+func sendResponsesToolInputProtocolError(send func(types.StreamEvent) bool) {
+	send(types.StreamEvent{
+		Type: types.EventError,
+		Error: &types.APIError{
+			Type:    "invalid_tool_call",
+			Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCustomToolCallInvalid),
+		},
+	})
+}
+
+// A runaway argument stream is an uncommitted generation failure, so replay is
+// safe. Classifying it as a transport interruption reuses the generation-scoped
+// retry budget while closing the response body immediately; the caller never
+// accumulates the oversized JSON and no tool side effect can have started.
+func sendResponsesToolInputLimitError(send func(types.StreamEvent) bool) {
+	send(types.StreamEvent{
+		Type: types.EventError,
+		Error: &types.APIError{
+			Type:         "stream_interrupted",
+			Code:         "tool_arguments_too_large",
+			Message:      i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeResponsesStreamIncomplete),
+			Stage:        types.ProviderErrorStageStream,
+			ReplaySafety: types.ProviderReplaySafe,
+		},
+	})
+}
+
+func responsesToolInputLimit(name string) int {
+	switch name {
+	case "Inspect":
+		return maxResponsesInspectToolInputBytes
+	case "Run":
+		return maxResponsesRunToolInputBytes
+	case "ApplyPatch":
+		return maxResponsesApplyPatchInputBytes
+	default:
+		return maxResponsesToolInputBytes
+	}
+}
+
 // ── Message conversion for Responses API ────────────────────────────────────
 
 func outputConfigBody(taskBudget *TaskBudget) map[string]any {
@@ -1292,6 +1496,42 @@ func classifyResponsesAPIError(code, _ string, status int) (string, int) {
 		return errCode, status
 	}
 	return "api_error", status
+}
+
+// classifyResponsesFailedError preserves the protocol-level evidence carried by
+// response.failed. When the provider omits a usable code and status, the event
+// still proves that an uncommitted streaming generation failed upstream. That
+// is materially different from an unclassified request/API error: the query
+// loop can safely discard its partial blocks and replay the complete generation.
+func classifyResponsesFailedError(code, message string, status int) (string, int) {
+	errType, normalizedStatus := classifyResponsesAPIError(code, message, status)
+	if errType == "api_error" && normalizedStatus == 0 {
+		return "response_failed", 0
+	}
+	return errType, normalizedStatus
+}
+
+var responsesRateLimitRetryAfterPattern = regexp.MustCompile(`(?i)try again in\s*(\d+(?:\.\d+)?)\s*(s|ms|seconds?)`)
+
+// responsesFailedRetryAfter mirrors Codex CLI's structured response.failed
+// handling. Some Responses endpoints carry the retry delay only in the
+// rate_limit_exceeded message instead of an HTTP Retry-After header.
+func responsesFailedRetryAfter(code, message string) string {
+	if !strings.EqualFold(strings.TrimSpace(code), "rate_limit_exceeded") {
+		return ""
+	}
+	matches := responsesRateLimitRetryAfterPattern.FindStringSubmatch(message)
+	if len(matches) != 3 {
+		return ""
+	}
+	value, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil || value <= 0 {
+		return ""
+	}
+	if strings.EqualFold(matches[2], "ms") {
+		value /= 1000
+	}
+	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
 // convertMessagesToResponsesAPIForParams converts messages to Responses input,
@@ -1509,12 +1749,34 @@ func convertAssistantMessageToResponsesAPI(msg types.Message) []any {
 // the function_call it authorized; moving text or calls around it changes the
 // official stateless Responses history.
 func convertAssistantMessageToResponsesAPIForModel(msg types.Message, model string) []any {
+	return convertAssistantMessageToResponsesAPIForSemantics(msg, model, ResponsesSemanticsCompatible)
+}
+
+func convertAssistantMessageToResponsesAPIForSemantics(msg types.Message, model string, semantics ResponsesSemantics) []any {
 	var items []any
+	hasDeepSeekToolTurn := false
+	if semantics == ResponsesSemanticsDeepSeek {
+		for _, block := range msg.Content {
+			if _, ok := block.(types.ToolUseBlock); ok {
+				hasDeepSeekToolTurn = true
+				break
+			}
+		}
+	}
 	for _, block := range msg.Content {
 		switch value := block.(type) {
 		case types.ThinkingBlock:
 			if item, ok := openAIEncryptedReasoningInput(value, model); ok {
 				items = append(items, item)
+			} else if semantics == ResponsesSemanticsDeepSeek && hasDeepSeekToolTurn &&
+				value.Thinking != "" && value.Kind != types.ThinkingKindSummary {
+				items = append(items, map[string]any{
+					"type": "reasoning",
+					"content": []map[string]string{{
+						"type": "reasoning_text",
+						"text": value.Thinking,
+					}},
+				})
 			}
 		case types.TextBlock:
 			if value.Text != "" {
@@ -1530,7 +1792,7 @@ func convertAssistantMessageToResponsesAPIForModel(msg types.Message, model stri
 				}
 				items = append(items, map[string]any{
 					"type": "custom_tool_call", "call_id": value.ID,
-					"name": value.Name, "input": value.RawInput,
+					"name": responsesToolNameForSemantics(semantics, value.Name, true), "input": value.RawInput,
 				})
 				continue
 			}

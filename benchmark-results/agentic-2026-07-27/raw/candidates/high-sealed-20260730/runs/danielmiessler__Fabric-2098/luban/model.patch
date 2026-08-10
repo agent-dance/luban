@@ -1,0 +1,74 @@
+diff --git a/internal/plugins/ai/codex/codex.go b/internal/plugins/ai/codex/codex.go
+index b1b531f..81854a6 100644
+--- a/internal/plugins/ai/codex/codex.go
++++ b/internal/plugins/ai/codex/codex.go
+@@ -243,7 +243,14 @@ func (c *Client) Send(ctx context.Context, msgs []*chat.ChatCompletionMessage, o
+ 		return "", err
+ 	}
+ 	if completedResp != nil {
+-		return c.ExtractText(completedResp), nil
++		// The Codex backend can omit output from the response.completed
++		// payload even though it already sent the generated text as delta
++		// events. Prefer the completed response when it contains text (it
++		// may also contain citations), but do not discard collected deltas
++		// when that payload is empty.
++		if completedText := c.ExtractText(completedResp); completedText != "" {
++			return completedText, nil
++		}
+ 	}
+ 
+ 	return builder.String(), nil
+diff --git a/internal/plugins/ai/codex/codex_test.go b/internal/plugins/ai/codex/codex_test.go
+index 5989956..9b330fa 100644
+--- a/internal/plugins/ai/codex/codex_test.go
++++ b/internal/plugins/ai/codex/codex_test.go
+@@ -429,6 +429,49 @@ func TestSendIncludesSourcesFromAnnotatedResponse(t *testing.T) {
+ 	}
+ }
+ 
++func TestSendFallsBackToDeltasWhenCompletedResponseHasNoOutput(t *testing.T) {
++	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path != "/responses" {
++			http.NotFound(w, r)
++			return
++		}
++
++		w.Header().Set("Content-Type", "text/event-stream")
++		flusher, ok := w.(http.Flusher)
++		if !ok {
++			t.Fatalf("response writer does not implement http.Flusher")
++		}
++		fmt.Fprintf(w, "data: %s\n\n", marshalJSON(t, map[string]any{
++			"type":  string(constant.ResponseOutputTextDelta("").Default()),
++			"delta": "hello from codex",
++		}))
++		flusher.Flush()
++		fmt.Fprintf(w, "data: %s\n\n", marshalJSON(t, map[string]any{
++			"type": "response.completed",
++			"response": map[string]any{
++				"output": []any{},
++			},
++		}))
++		flusher.Flush()
++		fmt.Fprint(w, "data: [DONE]\n\n")
++	}))
++	defer apiServer.Close()
++
++	client := newConfiguredTestClient(t, apiServer.URL, "acct_empty_completed", testJWT("acct_empty_completed", time.Now().Add(time.Hour)))
++
++	message, err := client.Send(context.Background(), []*chat.ChatCompletionMessage{
++		{Role: chat.ChatMessageRoleUser, Content: "Hello"},
++	}, &domain.ChatOptions{
++		Model: "gpt-5.4",
++	})
++	if err != nil {
++		t.Fatalf("Send() error = %v", err)
++	}
++	if message != "hello from codex" {
++		t.Fatalf("Send() = %q, want %q", message, "hello from codex")
++	}
++}
++
+ func TestSendStreamReadsCodexSSE(t *testing.T) {
+ 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 		if r.URL.Path != "/responses" {

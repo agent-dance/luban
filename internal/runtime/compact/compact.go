@@ -441,12 +441,16 @@ type SummaryCompactor struct {
 	CustomInstructions string               // user-specified compact instructions; "" = default
 	KeepRecent         int
 	TranscriptPath     string // readable persisted transcript path for compact summaries
-	AttachmentProvider PostCompactAttachmentProvider
-	SessionID          string
-	CWD                string
-	HookRunner         *hooks.Runner
-	OnProgress         func(CompactProgressEvent)
-	OnTelemetry        func(CompactionTelemetryEvent)
+	// TranscriptPathResolver refreshes content-addressed audit references at
+	// compaction time. When set, its result is authoritative and the static path
+	// is never used as a stale fallback.
+	TranscriptPathResolver func() string
+	AttachmentProvider     PostCompactAttachmentProvider
+	SessionID              string
+	CWD                    string
+	HookRunner             *hooks.Runner
+	OnProgress             func(CompactProgressEvent)
+	OnTelemetry            func(CompactionTelemetryEvent)
 }
 
 // CompactProgressEvent reports coarse compaction lifecycle progress to callers.
@@ -682,7 +686,7 @@ func (s *SummaryCompactor) PartialCompactConversation(ctx context.Context, allMe
 
 	counter := NewContextWindow(0)
 	preCompactTokenCount := counter.EstimateMessages(allMessages)
-	summaryMessage := NewCompactSummaryMessage(GetPartialCompactUserSummaryMessage(summary, direction, strings.TrimSpace(s.TranscriptPath)))
+	summaryMessage := NewCompactSummaryMessage(GetPartialCompactUserSummaryMessage(summary, direction, s.usableTranscriptPath()))
 	preservedStart := pivotIndex
 	if direction == PartialCompactDirectionFrom {
 		preservedStart = 0
@@ -886,7 +890,7 @@ func (s *SummaryCompactor) CompactWithTrigger(ctx context.Context, messages []ty
 	}
 
 	preservedTail := messages[tailStart:]
-	summaryMessage := NewCompactSummaryMessage(GetCompactUserSummaryMessage(summary, true, strings.TrimSpace(s.TranscriptPath), false))
+	summaryMessage := NewCompactSummaryMessage(GetCompactUserSummaryMessage(summary, true, s.usableTranscriptPath(), false))
 	boundary := NewCompactBoundaryMessage(CompactBoundaryMetadata{
 		Trigger:                   trigger,
 		PreCompactTokenCount:      preCompactTokenCount,

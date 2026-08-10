@@ -79,6 +79,8 @@ func (r *Repository) ResolveLatest(currentProjectDir string) (Ref, error) {
 		store := r.StoreForProjectDir(trimmed)
 		if latest, err := store.Latest(); err == nil {
 			return Ref{ID: latest, ProjectDir: trimmed}, nil
+		} else if !errors.Is(err, ErrNoSessions) {
+			return Ref{}, err
 		}
 	}
 

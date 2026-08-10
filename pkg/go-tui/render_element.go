@@ -46,12 +46,15 @@ func bufferRowToANSI(buf *Buffer, row int, esc *escBuilder, caps Capabilities) s
 			styleSet = true
 		}
 
-		// Emit the rune (zero rune = empty cell, render as space).
-		r := c.Rune
-		if r == 0 {
-			r = ' '
+		// Emit the complete grapheme (zero rune = empty cell, render as space).
+		if c.Rune == 0 {
+			esc.WriteRune(' ')
+		} else {
+			esc.WriteRune(c.Rune)
+			if c.Tail != "" {
+				esc.WriteString(c.Tail)
+			}
 		}
-		esc.WriteRune(r)
 	}
 
 	// Reset at end so styling doesn't bleed.

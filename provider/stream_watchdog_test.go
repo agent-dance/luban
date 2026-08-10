@@ -28,8 +28,8 @@ func TestResponsesStreamWatchdogBeforeFirstOutput(t *testing.T) {
 		close(events)
 	}()
 
-	// response.created is transport activity, but not a model output token. The
-	// longer initial phase must remain in force until a non-empty delta arrives.
+	// response.created is a complete SSE event and therefore renews the stream
+	// activity deadline even though it is not a model output token.
 	if _, err := io.WriteString(writer, "event: response.created\ndata: {\"id\":\"resp_wait\"}\n\n"); err != nil {
 		t.Fatalf("write response.created: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestResponsesStreamWatchdogBeforeFirstOutput(t *testing.T) {
 	if gotErr == nil || gotErr.Type != "stream_idle_timeout" {
 		t.Fatalf("terminal error = %#v, want stream_idle_timeout", gotErr)
 	}
-	if elapsed := time.Since(started); elapsed < 15*time.Millisecond || elapsed > 250*time.Millisecond {
+	if elapsed := time.Since(started); elapsed < 5*time.Millisecond || elapsed > 250*time.Millisecond {
 		t.Fatalf("initial watchdog elapsed = %s, want bounded idle deadline", elapsed)
 	}
 }
@@ -102,11 +102,11 @@ func TestResponsesStreamWatchdogAfterOutputUsesActiveDeadline(t *testing.T) {
 		t.Fatalf("active watchdog elapsed = %s; initial deadline was used", elapsed)
 	}
 	if !IsRetryable(gotErr) {
-		t.Fatal("stream_idle_timeout must consume the shared replay budget")
+		t.Fatal("stream_idle_timeout must consume the stream-reconnect budget")
 	}
 }
 
-func TestStreamWatchdogCountsSSEHeartbeatsAsProgress(t *testing.T) {
+func TestStreamWatchdogHeartbeatsDoNotExtendFirstOutputDeadline(t *testing.T) {
 	reader, writer := io.Pipe()
 	watchdog := newStreamWatchdogBody(reader, streamWatchdogConfig{
 		initialIdle: 35 * time.Millisecond,
@@ -123,28 +123,106 @@ func TestStreamWatchdogCountsSSEHeartbeatsAsProgress(t *testing.T) {
 		readDone <- err
 	}()
 
-	// The total stream duration exceeds initialIdle several times, but every raw
-	// SSE comment is evidence that the transport is alive.
-	for range 7 {
-		if _, err := io.WriteString(writer, ": keep-alive\n\n"); err != nil {
-			t.Fatalf("write heartbeat: %v", err)
-		}
-		time.Sleep(12 * time.Millisecond)
+	started := time.Now()
+	if _, err := io.WriteString(writer, ": keep-alive\n\n"); err != nil {
+		t.Fatalf("write first heartbeat: %v", err)
 	}
-	if err := writer.Close(); err != nil {
-		t.Fatalf("close writer: %v", err)
+	time.Sleep(20 * time.Millisecond)
+	if _, err := io.WriteString(writer, ": keep-alive\n\n"); err != nil {
+		t.Fatalf("write second heartbeat: %v", err)
 	}
 	select {
 	case err := <-readDone:
-		if err != nil {
-			var idle *StreamIdleTimeoutError
-			if errors.As(err, &idle) {
-				t.Fatalf("healthy heartbeat stream timed out: %v", err)
-			}
-			t.Fatalf("read heartbeat stream: %v", err)
+		var idle *StreamIdleTimeoutError
+		if !errors.As(err, &idle) || idle.Phase != streamWatchdogAwaitingOutput {
+			t.Fatalf("heartbeat stream error = %#v, want initial idle timeout", err)
+		}
+		if elapsed := time.Since(started); elapsed < 25*time.Millisecond || elapsed > 250*time.Millisecond {
+			t.Fatalf("heartbeat deadline elapsed = %s, want original initial deadline", elapsed)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("heartbeat stream did not finish")
+		t.Fatal("heartbeats extended the first-output deadline")
+	}
+}
+
+func TestStreamWatchdogHeartbeatsDoNotExtendActiveOutputDeadline(t *testing.T) {
+	reader, writer := io.Pipe()
+	watchdog := newStreamWatchdogBody(reader, streamWatchdogConfig{
+		initialIdle: 300 * time.Millisecond,
+		activeIdle:  50 * time.Millisecond,
+	})
+	t.Cleanup(func() {
+		_ = watchdog.Close()
+		_ = writer.Close()
+	})
+
+	readDone := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(io.Discard, watchdog)
+		readDone <- err
+	}()
+
+	watchdog.markActivity()
+	started := time.Now()
+	if _, err := io.WriteString(writer, ": keep-alive\n\n"); err != nil {
+		t.Fatalf("write first active heartbeat: %v", err)
+	}
+	time.Sleep(35 * time.Millisecond)
+	if _, err := io.WriteString(writer, ": keep-alive\n\n"); err != nil {
+		t.Fatalf("write second active heartbeat: %v", err)
+	}
+	select {
+	case err := <-readDone:
+		var idle *StreamIdleTimeoutError
+		if !errors.As(err, &idle) || idle.Phase != streamWatchdogActive {
+			t.Fatalf("active heartbeat stream error = %#v, want active idle timeout", err)
+		}
+		if elapsed := time.Since(started); elapsed < 40*time.Millisecond || elapsed > 80*time.Millisecond {
+			t.Fatalf("active heartbeat deadline elapsed = %s, want original stream-activity deadline", elapsed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("heartbeats extended the active-output deadline")
+	}
+}
+
+func TestResponsesStreamWatchdogRenewsOnEveryCompleteEvent(t *testing.T) {
+	reader, writer := io.Pipe()
+	watchdog := newStreamWatchdogBody(reader, streamWatchdogConfig{
+		initialIdle: 300 * time.Millisecond,
+		activeIdle:  50 * time.Millisecond,
+	})
+	t.Cleanup(func() {
+		_ = watchdog.Close()
+		_ = writer.Close()
+	})
+
+	events := make(chan types.StreamEvent, 32)
+	go func() {
+		(&ResponsesProvider{}).processResponsesStream(context.Background(), watchdog, events)
+		close(events)
+	}()
+
+	prefix := "event: response.created\ndata: {\"id\":\"resp_progress\"}\n\n"
+	if _, err := io.WriteString(writer, prefix); err != nil {
+		t.Fatalf("write first lifecycle event: %v", err)
+	}
+	started := time.Now()
+	time.Sleep(35 * time.Millisecond)
+	if _, err := io.WriteString(writer, "event: response.in_progress\ndata: {\"type\":\"response.in_progress\"}\n\n"); err != nil {
+		t.Fatalf("write second lifecycle event: %v", err)
+	}
+
+	var gotErr *types.APIError
+	for event := range events {
+		if event.Type == types.EventError {
+			gotErr = event.Error
+		}
+	}
+	if gotErr == nil || gotErr.Type != "stream_idle_timeout" {
+		t.Fatalf("terminal error = %#v, want stream_idle_timeout", gotErr)
+	}
+	if elapsed := time.Since(started); elapsed < 70*time.Millisecond || elapsed > 250*time.Millisecond {
+		t.Fatalf("renewed activity deadline elapsed = %s, want second event to renew active timeout", elapsed)
 	}
 }
 
@@ -162,6 +240,17 @@ func TestResponsesClientHasNoRequestWideTimeout(t *testing.T) {
 	}
 }
 
+func TestResponsesClientUsesBoundedDefaultResponseHeaderTimeout(t *testing.T) {
+	p := NewResponses(Config{})
+	transport, ok := p.client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport = %T, want *http.Transport", p.client.Transport)
+	}
+	if transport.ResponseHeaderTimeout != defaultResponsesInitialIdleTimeout {
+		t.Fatalf("ResponseHeaderTimeout = %s, want %s", transport.ResponseHeaderTimeout, defaultResponsesInitialIdleTimeout)
+	}
+}
+
 func TestResponsesStreamWatchdogConfigIsBounded(t *testing.T) {
 	t.Setenv(responsesInitialIdleTimeoutEnv, "999999999")
 	t.Setenv(responsesActiveIdleTimeoutEnv, "999999999")
@@ -175,5 +264,15 @@ func TestResponsesStreamWatchdogConfigIsBounded(t *testing.T) {
 	config = responsesStreamWatchdogConfig()
 	if config.initialIdle != defaultResponsesInitialIdleTimeout || config.activeIdle != defaultResponsesActiveIdleTimeout {
 		t.Fatalf("fallback config = %+v", config)
+	}
+}
+
+func TestResponsesStreamWatchdogUnifiedConfigMatchesCodexPolicy(t *testing.T) {
+	t.Setenv(responsesStreamIdleTimeoutEnv, "1750")
+	t.Setenv(responsesInitialIdleTimeoutEnv, "100")
+	t.Setenv(responsesActiveIdleTimeoutEnv, "200")
+	config := responsesStreamWatchdogConfig()
+	if config.initialIdle != 1750*time.Millisecond || config.activeIdle != 1750*time.Millisecond {
+		t.Fatalf("unified stream idle config = %+v, want 1.75s for both phases", config)
 	}
 }

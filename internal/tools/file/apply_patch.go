@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/agent-dance/luban/i18n"
@@ -80,7 +81,8 @@ type ApplyPatchResult struct {
 	Files        []ApplyPatchFileStat `json:"files"`
 	Summary      ApplyPatchSummary    `json:"summary"`
 
-	revision workspacerevision.Receipt
+	parameterBytes int
+	revision       workspacerevision.Receipt
 }
 
 // CompactionProof retains the committed mutation totals, CAS disposition, and
@@ -150,17 +152,20 @@ func (t *ApplyPatchTool) SetAllowedDirs(dirs []string) {
 func (t *ApplyPatchTool) Name() string { return "ApplyPatch" }
 
 func (t *ApplyPatchTool) Description() string {
+	var description string
 	if t != nil && t.CustomToolInput {
-		return toolPromptText(i18n.KeyToolApplyPatchCustomDescription)
+		description = toolPromptText(i18n.KeyToolApplyPatchCustomDescription)
+	} else {
+		description = toolPromptText(i18n.KeyToolApplyPatchDescription)
 	}
-	return toolPromptText(i18n.KeyToolApplyPatchDescription)
+	return strings.TrimSpace(description + " " + toolPromptText(i18n.KeyToolApplyPatchPreflightRules))
 }
 
 func (t *ApplyPatchTool) Schema() types.JSONSchema {
 	return types.StrictObjectSchema(map[string]any{
 		"patch": map[string]any{
 			"type":        "string",
-			"description": toolPromptText(i18n.KeyToolApplyPatchInputPatchDescription),
+			"description": strings.TrimSpace(toolPromptText(i18n.KeyToolApplyPatchInputPatchDescription) + " " + toolPromptText(i18n.KeyToolApplyPatchPreflightRules)),
 		},
 	}, "patch")
 }
@@ -361,7 +366,7 @@ func (t *ApplyPatchTool) Execute(ctx context.Context, input map[string]any) (typ
 			return applyPatchRevisionReceiptResult(), nil
 		}
 	}
-	return applyPatchSuccessResult(targets, revision)
+	return applyPatchSuccessResult(targets, revision, len(in.Patch))
 }
 
 func (t *ApplyPatchTool) resolveTargets(parsed parsedApplyPatch) (string, []applyPatchPlan, *applyPatchTargetFailure) {
@@ -698,13 +703,16 @@ func applyPatchRevisionReceiptResult() types.ToolResult {
 	}
 }
 
-func applyPatchSuccessResult(plans []applyPatchPlan, revision workspacerevision.Receipt) (types.ToolResult, error) {
+func applyPatchSuccessResult(plans []applyPatchPlan, revision workspacerevision.Receipt, parameterBytes ...int) (types.ToolResult, error) {
 	result := ApplyPatchResult{
 		Status:       "success",
 		ChangedPaths: make([]string, 0, len(plans)),
 		Files:        make([]ApplyPatchFileStat, 0, len(plans)),
 		Summary:      ApplyPatchSummary{Files: len(plans)},
 		revision:     revision,
+	}
+	if len(parameterBytes) > 0 && parameterBytes[0] > 0 {
+		result.parameterBytes = parameterBytes[0]
 	}
 	for _, plan := range plans {
 		stat := ApplyPatchFileStat{
@@ -735,13 +743,21 @@ func (t *ApplyPatchTool) MapToolResultToToolResultBlock(data any, toolUseID stri
 			Content: toolRuntimeText(i18n.KeyToolApplyPatchInvalidResult), IsError: true,
 		}
 	}
+	receipt := toolRuntimeFormat(
+		i18n.KeyToolApplyPatchSuccess,
+		result.Summary.Files, result.Summary.Additions, result.Summary.Deletions,
+	)
 	return types.ToolResultBlock{
 		Type: types.ContentTypeToolResult, ToolUseID: toolUseID,
-		Content: toolRuntimeFormat(
-			i18n.KeyToolApplyPatchSuccess,
-			result.Summary.Files, result.Summary.Additions, result.Summary.Deletions,
-		),
-		Data: result,
+		Content: receipt,
+		Data:    result,
+		Metadata: map[string]string{
+			"apply_patch.parameter_bytes": strconv.Itoa(result.parameterBytes),
+			"apply_patch.changed_files":   strconv.Itoa(result.Summary.Files),
+			"apply_patch.additions":       strconv.Itoa(result.Summary.Additions),
+			"apply_patch.deletions":       strconv.Itoa(result.Summary.Deletions),
+			"apply_patch.receipt_bytes":   strconv.Itoa(len(receipt)),
+		},
 	}
 }
 

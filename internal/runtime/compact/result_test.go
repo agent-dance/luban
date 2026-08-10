@@ -3,6 +3,8 @@ package compact
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -109,12 +111,16 @@ func TestSummaryCompactorRepeatedCompactSummarizesAfterLatestBoundary(t *testing
 }
 
 func TestSummaryCompactorSummaryIncludesTranscriptPathWhenProvided(t *testing.T) {
+	transcriptPath := filepath.Join(t.TempDir(), "session.jsonl")
+	if err := os.WriteFile(transcriptPath, []byte("{\"role\":\"user\"}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	sc := &SummaryCompactor{
 		SummarizeMessages: func(_ context.Context, _ []types.Message, _ string) (string, error) {
 			return "new summary", nil
 		},
 		KeepRecent:     1,
-		TranscriptPath: "/tmp/session.jsonl",
+		TranscriptPath: transcriptPath,
 	}
 	msgs := []types.Message{
 		types.UserMessage("old one"),
@@ -130,7 +136,7 @@ func TestSummaryCompactorSummaryIncludesTranscriptPathWhenProvided(t *testing.T)
 	if len(postCompact) < 2 {
 		t.Fatalf("expected boundary and summary, got %d messages", len(postCompact))
 	}
-	if !strings.Contains(postCompact[1].GetText(), "read the full transcript at: /tmp/session.jsonl") {
+	if !strings.Contains(postCompact[1].GetText(), "read the full transcript at: "+transcriptPath) {
 		t.Fatalf("summary missing transcript path: %q", postCompact[1].GetText())
 	}
 }

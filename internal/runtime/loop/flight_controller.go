@@ -27,6 +27,7 @@ const (
 	flightDispositionIncompleteUnverified   = "incomplete_unverified"
 	flightDispositionBlockedRuntime         = "blocked_runtime"
 	flightDispositionBlockedRepeatedFailure = "blocked_repeated_failure"
+	flightInvestigationNudgeThreshold       = 4
 )
 
 type agenticFlightTerminalAction uint8
@@ -50,8 +51,10 @@ type agenticFlightController struct {
 	state                 flight.FlightState
 	currentRevision       workspacerevision.Receipt
 	deferredMutationEpoch flight.Epoch
+	deferredBlocker       flight.CompletionBlocker
 	deferred              bool
 	mutationAttempted     bool
+	verificationAttempted flight.Epoch
 	nextExecutionSequence uint64
 	pendingExecutions     map[string]agenticFlightExecutionIntent
 }
@@ -157,16 +160,26 @@ func (controller *agenticFlightController) observeToolRound(toolUses []types.Too
 			return err
 		}
 		controller.state = next
+		if toolUse.Name == "Run" && facts.Invoked && controller.state.MutationEpoch > 0 {
+			controller.verificationAttempted = controller.state.MutationEpoch
+		}
 		delete(controller.pendingExecutions, toolUse.ID)
 		if toolUse.Name == "ApplyPatch" {
 			controller.currentRevision = revision
 			controller.deferredMutationEpoch = 0
+			controller.deferredBlocker = ""
 			controller.deferred = false
 		}
 		if effects.MutationAdvanced && toolUse.Name != "ApplyPatch" {
 			controller.currentRevision = revision
-			controller.deferredMutationEpoch = 0
-			controller.deferred = false
+			// An unsealed Run leaves the workspace digest unknown. Preserve an
+			// existing workspace-unknown nudge across further unsealed attempts so
+			// each speculative retry cannot buy another completion round.
+			if controller.state.WorkspaceDigestKnown {
+				controller.deferredMutationEpoch = 0
+				controller.deferredBlocker = ""
+				controller.deferred = false
+			}
 		}
 		if effects.ReceiptDisposition == flight.ReceiptIssued && effects.Receipt != nil {
 			verificationEvidence = effects.Receipt.EvidenceDigest
@@ -250,6 +263,9 @@ func (controller *agenticFlightController) executionFacts(toolUse types.ToolUseB
 			// ApplyPatch is transactional: a complete business failure has
 			// either not started or has proven rollback. Partial/cancelled
 			// outcomes above remain conservative MutationPossible facts.
+			if facts.Invoked {
+				facts.NoMutationProven = true
+			}
 			if facts.Invoked && controller.state.WorkspaceDigestKnown {
 				facts.BeforeDigest = before
 				facts.AfterDigest = before
@@ -375,8 +391,27 @@ func (controller *agenticFlightController) requestFinal() (agenticFlightTerminal
 	if blocker == flight.CompletionRepeatedFailure {
 		return controller.blockRepeatedFailure()
 	}
-	if !controller.deferred || controller.deferredMutationEpoch != controller.state.MutationEpoch {
+	// An unknown workspace has already lost the revision authority required by
+	// the verifier. Another model turn cannot restore that authority by reading
+	// or rerunning commands, and in production traces the recovery prompt caused
+	// receipt-chasing patches long after the requested fix was complete. Preserve
+	// the assistant's truthful final text and stop immediately with an explicit
+	// incomplete disposition. A later user query can start from fresh authority.
+	if blocker == flight.CompletionWorkspaceUnknown {
+		return controller.blockIncomplete(blocker)
+	}
+	// Once this exact mutation epoch has actually reached Run, another model
+	// turn cannot improve the truthful final answer merely by chasing a missing
+	// verification receipt. Preserve the attempt (pass, fail, timeout, or
+	// unavailable dependency) and stop when the model finalizes. A new mutation
+	// advances the epoch and earns one fresh verification opportunity.
+	if controller.verificationAttempted == controller.state.MutationEpoch && controller.state.MutationEpoch > 0 {
+		return controller.blockIncomplete(blocker)
+	}
+	if !controller.deferred ||
+		controller.deferredMutationEpoch != controller.state.MutationEpoch || controller.deferredBlocker != blocker {
 		controller.deferredMutationEpoch = controller.state.MutationEpoch
+		controller.deferredBlocker = blocker
 		controller.deferred = true
 		return agenticFlightTerminalDecision{
 			Action: agenticFlightTerminalContinue, Disposition: flightDispositionVerificationRequired,
@@ -384,7 +419,11 @@ func (controller *agenticFlightController) requestFinal() (agenticFlightTerminal
 		}, nil
 	}
 
-	next, _, err = flight.Reduce(controller.state, flight.TerminalRequested{Disposition: flight.TerminalBlocked})
+	return controller.blockIncomplete(blocker)
+}
+
+func (controller *agenticFlightController) blockIncomplete(blocker flight.CompletionBlocker) (agenticFlightTerminalDecision, error) {
+	next, _, err := flight.Reduce(controller.state, flight.TerminalRequested{Disposition: flight.TerminalBlocked})
 	if err != nil {
 		return agenticFlightTerminalDecision{}, err
 	}
@@ -458,8 +497,79 @@ func (controller *agenticFlightController) blockRuntime() (agenticFlightTerminal
 	return decision, nil
 }
 
-func (controller *agenticFlightController) verificationMessage(q *QueryLoop) types.Message {
-	message := types.UserMessage(i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopVisibleFlightVerificationRequired))
+func (controller *agenticFlightController) verificationMessage(q *QueryLoop, blocker flight.CompletionBlocker) types.Message {
+	key := i18n.KeyLoopVisibleFlightVerificationRequired
+	if blocker == flight.CompletionWorkspaceUnknown {
+		key = i18n.KeyLoopVisibleFlightWorkspaceUnknown
+	}
+	message := types.UserMessage(i18n.Text(i18n.DetectOrLoadLanguage(), key))
+	message.IsMeta = true
+	message.InternalKind = types.InternalMessageKindFlightVerification
+	return q.sealRuntimeControlMessage(message)
+}
+
+type agenticInvestigationTracker struct {
+	preMutationInspects        int
+	mutationAttempted          bool
+	verificationAttempted      bool
+	investigationNudged        bool
+	verificationConvergeNudged bool
+}
+
+func (tracker *agenticInvestigationTracker) observe(toolUses []types.ToolUseBlock, results []types.ToolResultBlock) {
+	if tracker == nil {
+		return
+	}
+	byID := make(map[string]types.ToolResultBlock, len(results))
+	for _, result := range results {
+		byID[result.ToolUseID] = result
+	}
+	for _, toolUse := range toolUses {
+		switch toolUse.Name {
+		case "ApplyPatch":
+			tracker.mutationAttempted = true
+		case "Run":
+			if result, ok := byID[toolUse.ID]; ok && tracker.mutationAttempted && flightToolInvoked(toolUse.Name, result) {
+				tracker.verificationAttempted = true
+			}
+		case "Inspect":
+			// This hook runs only after the executor returned a protocol-complete
+			// tool round. Count the investigation intent even when Inspect itself
+			// reported a bounded business error: another broad query still costs a
+			// model turn and is exactly what the one-shot nudge must converge.
+			if !tracker.mutationAttempted {
+				tracker.preMutationInspects++
+			}
+		}
+	}
+}
+
+func (tracker *agenticInvestigationTracker) takeNudge() bool {
+	if tracker == nil || tracker.investigationNudged || tracker.mutationAttempted ||
+		tracker.preMutationInspects < flightInvestigationNudgeThreshold {
+		return false
+	}
+	tracker.investigationNudged = true
+	return true
+}
+
+func (tracker *agenticInvestigationTracker) takeVerificationConvergenceNudge() bool {
+	if tracker == nil || tracker.verificationConvergeNudged || !tracker.verificationAttempted {
+		return false
+	}
+	tracker.verificationConvergeNudged = true
+	return true
+}
+
+func investigationMessage(q *QueryLoop) types.Message {
+	message := types.UserMessage(i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopVisibleFlightInvestigationNudge))
+	message.IsMeta = true
+	message.InternalKind = types.InternalMessageKindFlightVerification
+	return q.sealRuntimeControlMessage(message)
+}
+
+func verificationConvergenceMessage(q *QueryLoop) types.Message {
+	message := types.UserMessage(i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopVisibleFlightVerificationConvergence))
 	message.IsMeta = true
 	message.InternalKind = types.InternalMessageKindFlightVerification
 	return q.sealRuntimeControlMessage(message)

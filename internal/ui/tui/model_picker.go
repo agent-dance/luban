@@ -63,21 +63,22 @@ type ProviderPickerEntry struct {
 
 // ModelPickerEntry represents a single model in the picker overlay.
 type ModelPickerEntry struct {
-	Provider          string // e.g. "anthropic"
-	ModelID           string // e.g. "claude-sonnet-4-20250514"
-	DisplayName       string // e.g. "Claude Sonnet 4"
-	Description       string // one-line guidance shown beside the model ID
-	ContextK          string // e.g. "200K"
-	ContextTokens     int
-	ContextOverridden bool
-	CostIn            float64 // cost per 1M input tokens
-	CostOut           float64 // cost per 1M output tokens
-	CostCurrency      string  // ISO 4217 billing currency
-	CanReason         bool
-	CanSeeImages      bool
-	ReasoningEfforts  []string // selectable effort tiers; empty = no second-level picker
-	ReasoningEffort   string   // chosen effort tier when applying a selection
-	IsDefault         bool
+	Provider               string // e.g. "anthropic"
+	ModelID                string // e.g. "claude-sonnet-4-20250514"
+	DisplayName            string // e.g. "Claude Sonnet 4"
+	Description            string // one-line guidance shown beside the model ID
+	ContextK               string // e.g. "200K"
+	ContextTokens          int
+	ContextOverridden      bool
+	CostIn                 float64 // cost per 1M input tokens
+	CostOut                float64 // cost per 1M output tokens
+	CostCurrency           string  // ISO 4217 billing currency
+	CanReason              bool
+	CanSeeImages           bool
+	ReasoningEfforts       []string // selectable effort tiers; empty = no second-level picker
+	DefaultReasoningEffort string   // provider-documented default tier
+	ReasoningEffort        string   // chosen effort tier when applying a selection
+	IsDefault              bool
 }
 
 type reasoningEffortInfo struct {
@@ -309,7 +310,7 @@ func (s *ModelPickerState) EnterReasoning(entry ModelPickerEntry) {
 	s.ReasoningModel = entry
 	s.ReasoningSelected = 0
 	if entry.ReasoningEffort == "" {
-		entry.ReasoningEffort = DefaultReasoningEffort(entry.ReasoningEfforts)
+		entry.ReasoningEffort = defaultReasoningEffortForEntry(entry)
 		s.ReasoningModel = entry
 	}
 	for i, effort := range entry.ReasoningEfforts {
@@ -331,6 +332,16 @@ func (s *ModelPickerState) selectedReasoningEffort() string {
 
 func DefaultReasoningEffort(efforts []string) string {
 	return provider.DefaultReasoningEffort(efforts)
+}
+
+func defaultReasoningEffortForEntry(entry ModelPickerEntry) string {
+	configured := strings.TrimSpace(entry.DefaultReasoningEffort)
+	for _, effort := range entry.ReasoningEfforts {
+		if effort == configured {
+			return configured
+		}
+	}
+	return DefaultReasoningEffort(entry.ReasoningEfforts)
 }
 
 // ReasoningEffortInfoInLanguage returns localized first-party labels while

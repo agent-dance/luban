@@ -15,13 +15,13 @@ func (s *tuiInputScheduler) Submit(text string, captureImages func() []tui.Image
 func TestTUIInputSchedulerQueuesAndDrainsFIFO(t *testing.T) {
 	var launched []func()
 	var ran []tuiInputSubmission
-	var counts []int
+	var queues [][]string
 	scheduler := newTUIInputScheduler(
 		func(fn func()) bool { launched = append(launched, fn); return true },
 		nil,
 		func(input tuiInputSubmission) { ran = append(ran, input) },
 		nil,
-		func(count int) { counts = append(counts, count) },
+		func(queued []string) { queues = append(queues, append([]string(nil), queued...)) },
 	)
 
 	if queued := scheduler.Submit("first", nil); queued {
@@ -54,8 +54,9 @@ func TestTUIInputSchedulerQueuesAndDrainsFIFO(t *testing.T) {
 	if !ran[1].imagesCaptured || len(ran[1].images) != 1 || ran[1].images[0].ID != 7 {
 		t.Fatalf("queued image capture = %+v", ran[1])
 	}
-	if !reflect.DeepEqual(counts, []int{1, 2, 1, 0, 0}) {
-		t.Fatalf("queue counts = %#v", counts)
+	wantQueues := [][]string{{"second"}, {"second", "third"}, {"third"}, nil, nil}
+	if !reflect.DeepEqual(queues, wantQueues) {
+		t.Fatalf("queue snapshots = %#v, want %#v", queues, wantQueues)
 	}
 }
 
@@ -130,30 +131,38 @@ func TestTUIInputSchedulerRejectsBusySubmissionWhenQueueDisabled(t *testing.T) {
 	launched[0]()
 }
 
-func TestDefaultTUIComposerAdmissionDoesNotImplicitlyQueue(t *testing.T) {
+func TestDefaultTUIComposerAdmissionQueuesWhenBusy(t *testing.T) {
 	var launched []func()
 	var captured int
+	var ran []tuiInputSubmission
 	scheduler := newTUIInputScheduler(
 		func(fn func()) bool { launched = append(launched, fn); return true },
 		nil,
-		func(tuiInputSubmission) {},
+		func(input tuiInputSubmission) { ran = append(ran, input) },
 		nil,
 		nil,
 	)
-	if accepted, queued := scheduler.TrySubmit("active", nil, false); !accepted || queued {
+	if accepted, queued := scheduler.TrySubmit("active", nil, true); !accepted || queued {
 		t.Fatalf("initial admission accepted=%v queued=%v", accepted, queued)
 	}
 	if accepted, queued := scheduler.TrySubmit("draft", func() []tui.ImageAttachment {
 		captured++
 		return []tui.ImageAttachment{{ID: 1}}
-	}, false); accepted || queued {
+	}, true); !accepted || !queued {
 		t.Fatalf("busy composer admission accepted=%v queued=%v", accepted, queued)
 	}
-	if captured != 0 {
-		t.Fatalf("rejected busy admission consumed composer attachments %d times", captured)
+	if captured != 1 {
+		t.Fatalf("queued busy admission captured composer attachments %d times, want 1", captured)
 	}
 	if len(launched) != 1 {
 		t.Fatalf("busy composer admission launched %d workers", len(launched))
 	}
 	launched[0]()
+	if len(launched) != 2 {
+		t.Fatalf("queued composer admission launches after active completion = %d, want 2", len(launched))
+	}
+	launched[1]()
+	if len(ran) != 2 || ran[1].text != "draft" || !ran[1].imagesCaptured || len(ran[1].images) != 1 || ran[1].images[0].ID != 1 {
+		t.Fatalf("queued composer submission = %+v", ran)
+	}
 }

@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -9,6 +10,24 @@ import (
 	"github.com/agent-dance/luban/internal/runtime/compact"
 	"github.com/agent-dance/luban/types"
 )
+
+func TestCompactCommandPreservesCancellationOutcome(t *testing.T) {
+	r := commands.NewRegistry()
+	commands.RegisterBuiltins(r)
+	ql := &stubQL{messages: []types.Message{types.UserMessage("old user"), types.AssistantMessage("old assistant")}}
+	var presentations []commands.CommandPresentation
+	err := r.Find("compact").Execute(&commands.Context{
+		QueryLoop: ql, OnEvent: func(string) {},
+		OnCommandPresentation: func(event commands.CommandPresentation) { presentations = append(presentations, event) },
+		CompactFunc:           func(string) error { return context.Canceled },
+	}, "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("compact error = %v, want preserved context.Canceled", err)
+	}
+	if len(presentations) != 2 || presentations[1].Outcome != commands.CommandOutcomeCancelled {
+		t.Fatalf("compact presentations = %+v, want one cancelled terminal outcome", presentations)
+	}
+}
 
 func TestCompactCommandParityFailureSurfacesError(t *testing.T) {
 	r := commands.NewRegistry()

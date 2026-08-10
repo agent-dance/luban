@@ -24,6 +24,7 @@
     <span class="pill"><code>{{timeValue .Snapshot.CapturedAt}}</code></span>
   </div>
   <div class="callout">{{tf "benchmark.local.codex_report.frozen_notice" .Snapshot.Binary.Version .Snapshot.SourceRunID (timeValue .Snapshot.CapturedAt)}}</div>
+  {{if .HasAdjudication}}<div class="callout">{{tr "benchmark.local.report.adjudication_notice"}}</div>{{end}}
 </header>
 
 <section class="section">
@@ -40,7 +41,7 @@
 <section class="section">
   <h2>{{tr "agentic.report.section.task_results"}}</h2>
   <div class="table-wrap"><table><thead><tr><th>{{tr "agentic.report.header.task"}}</th><th>{{tr "agentic.report.header.result"}}</th><th class="num">{{tr "agentic.report.metric.wall_time_seconds"}}</th><th class="num">{{tr "agentic.report.metric.llm_calls_started"}}</th><th class="num"><code>I / C / W / O</code></th><th class="num">{{tr "agentic.report.metric.token_weighted_cache_hit"}}</th><th class="num">{{tr "agentic.report.header.cost"}}</th><th>{{tr "agentic.report.header.evidence"}}</th></tr></thead><tbody>
-  {{range .Tasks}}<tr><td><code>{{.Task.InstanceID}}</code><br><code>{{.Task.Language}}</code></td><td>{{if .Evaluation}}<span class="{{statusClass .Evaluation.Resolved}}">{{status .Evaluation.Resolved}}</span>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>{{if .Run}}<td class="num">{{seconds .Run.ElapsedSeconds}}</td><td class="num">{{.Run.LLMCalls}}</td><td class="num"><code>{{.Run.Usage.InputTokens}} / {{.Run.Usage.CachedInputTokens}} / {{.Run.Usage.CacheCreationInputTokens}} / {{.Run.Usage.OutputTokens}}</code></td><td class="num">{{percent .CacheHitRatio}}</td><td class="num">{{cost .Run.EstimatedCostUSD}}</td>{{else}}<td colspan="5">{{tr "agentic.report.not_applicable"}}</td>{{end}}<td><div class="links">{{range .Links}}<a href="{{.Href}}"><code>{{.Label}}</code></a>{{end}}</div></td></tr>{{end}}
+  {{range .Tasks}}<tr><td><code>{{.Task.InstanceID}}</code><br><code>{{.Task.Language}}</code></td><td>{{if .Evaluation}}{{if .Evaluation.Adjudicated}}<span class="good">{{tr "benchmark.local.report.status.adjudicated_pass"}}</span>{{else}}<span class="{{statusClass .Evaluation.Resolved}}">{{status .Evaluation.Resolved}}</span>{{end}}{{else}}{{tr "agentic.report.not_applicable"}}{{end}}</td>{{if .Run}}<td class="num">{{seconds .Run.ElapsedSeconds}}</td><td class="num">{{.Run.LLMCalls}}</td><td class="num"><code>{{.Run.Usage.InputTokens}} / {{.Run.Usage.CachedInputTokens}} / {{.Run.Usage.CacheCreationInputTokens}} / {{.Run.Usage.OutputTokens}}</code></td><td class="num">{{percent .CacheHitRatio}}</td><td class="num">{{cost .Run.EstimatedCostUSD}}</td>{{else}}<td colspan="5">{{tr "agentic.report.not_applicable"}}</td>{{end}}<td><div class="links">{{range .Links}}<a href="{{.Href}}"><code>{{.Label}}</code></a>{{end}}</div></td></tr>{{end}}
   </tbody></table></div>
 </section>
 

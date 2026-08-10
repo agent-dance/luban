@@ -9,6 +9,7 @@ const (
 	KeyProviderCustomToolsUnsupported      Key = "provider.runtime.custom_tools_unsupported"
 	KeyProviderCustomToolDefinitionInvalid Key = "provider.runtime.custom_tool_definition_invalid"
 	KeyProviderRetryExceededWithoutCause   Key = "provider.runtime.retry_exceeded_without_cause"
+	KeyProviderRetryExceededWithCause      Key = "provider.runtime.retry_exceeded_with_cause"
 	KeyProviderUnknown                     Key = "provider.runtime.unknown"
 	KeyProviderBedrockInvalidBaseURL       Key = "provider.runtime.bedrock.invalid_base_url"
 	KeyProviderVertexProjectRequired       Key = "provider.runtime.vertex.project_required"
@@ -79,7 +80,9 @@ func init() {
 		"Custom 도구 %q의 자유 형식 grammar 정의가 올바르지 않거나 지원되지 않습니다",
 		"Custom-инструмент %q содержит недопустимое или неподдерживаемое определение grammar для свободного ввода")
 	add(KeyProviderRetryExceededWithoutCause,
-		"Maximum retry count (%d) exceeded", "已超过最大重试次数（%d）", "Maximale Anzahl von Wiederholungen (%d) überschritten", "最大再試行回数（%d）を超えました", "최대 재시도 횟수(%d)를 초과했습니다", "Превышено максимальное число повторов (%d)")
+		"Retry limit reached (retry attempts: %d)", "已达到重试上限（实际重试：%d 次）", "Wiederholungslimit erreicht (Wiederholungsversuche: %d)", "再試行上限に達しました（再試行回数：%d）", "재시도 한도에 도달했습니다(재시도 횟수: %d)", "Достигнут предел повторов (число повторных попыток: %d)")
+	add(KeyProviderRetryExceededWithCause,
+		"Retry limit reached (retry attempts: %d): %v", "已达到重试上限（实际重试：%d 次）：%v", "Wiederholungslimit erreicht (Wiederholungsversuche: %d): %v", "再試行上限に達しました（再試行回数：%d）：%v", "재시도 한도에 도달했습니다(재시도 횟수: %d): %v", "Достигнут предел повторов (число повторных попыток: %d): %v")
 	add(KeyProviderUnknown,
 		"Unknown Provider %q; choose one of: %s", "未知 Provider %q；请选择以下选项之一：%s", "Unbekannter Provider %q; wähle einen der folgenden: %s", "不明な Provider %q です。次のいずれかを選択してください: %s", "알 수 없는 Provider %q입니다. 다음 중 하나를 선택하세요: %s", "Неизвестный Provider %q; выберите один из следующих: %s")
 	add(KeyProviderBedrockInvalidBaseURL,

@@ -25,7 +25,7 @@ func TestResponsesStatelessEncryptedReasoningRoundTripPreservesItemOrder(t *test
 		{Type: "response.output_item.added", Data: `{"output_index":1,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"Inspect","status":"in_progress"}}`},
 		{Type: "response.function_call_arguments.delta", Data: `{"output_index":1,"delta":"{\"path\":\".\"}"}`},
 		{Type: "response.output_item.done", Data: `{"output_index":1,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"Inspect","status":"completed","arguments":"{\"path\":\".\"}"}}`},
-		{Type: "response.completed", Data: `{"response":{"id":"resp_1","model":"gpt-5.6-sol","status":"completed","usage":{"input_tokens":30,"output_tokens":8},"output":[{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"` + encrypted + `","status":"completed"},{"type":"function_call","id":"fc_1","call_id":"call_1","name":"Inspect","status":"completed","arguments":"{\"path\":\".\"}"}]}}`},
+		{Type: "response.completed", Data: `{"response":{"id":"resp_1","model":"gpt-5.6-sol","status":"completed","usage":{"input_tokens":30,"output_tokens":8},"output":[]}}`},
 	})
 	secondStream := buildSSEStream([]sseEvent{
 		{Type: "response.created", Data: `{"response":{"id":"resp_2","model":"gpt-5.6-sol"}}`},
@@ -145,13 +145,37 @@ func TestResponsesStatelessEncryptedReasoningRoundTripPreservesItemOrder(t *test
 			}
 		}
 		if kind == "function_call" {
-			if item["id"] != "fc_1" || item["status"] != "completed" || item["arguments"] != `{"path":"."}` {
-				t.Fatalf("function-call replay shape = %#v", item)
+			if item["call_id"] != "call_1" || item["name"] != "Inspect" || item["arguments"] != `{"path":"."}` || item["id"] != nil || item["status"] != nil {
+				t.Fatalf("function-call stateless shape = %#v", item)
 			}
+		}
+		if kind == "function_call_output" && item["call_id"] != "call_1" {
+			t.Fatalf("function-call output shape = %#v", item)
 		}
 	}
 	if want := []string{"reasoning", "function_call", "function_call_output"}; !reflect.DeepEqual(ordered, want) {
 		t.Fatalf("replay order = %v, want %v; input=%#v", ordered, want, input)
+	}
+}
+
+func TestProjectResponsesHTTPToolCallsAcceptsAlreadySemanticCall(t *testing.T) {
+	input := []any{
+		map[string]any{
+			"type": "custom_tool_call", "call_id": "call_patch",
+			"name": "ApplyPatch", "input": "*** Begin Patch\n*** End Patch",
+		},
+		map[string]any{
+			"type": "custom_tool_call_output", "call_id": "call_patch",
+			"output": "cancelled",
+		},
+	}
+
+	projected, err := projectResponsesHTTPToolCalls(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(projected, input) {
+		t.Fatalf("already-semantic call changed: %#v", projected)
 	}
 }
 
@@ -199,6 +223,42 @@ func TestResponsesSemanticsProfileMakesDirectAndProxyBodiesIdentical(t *testing.
 	}
 	if directLite != "" || proxyLite != "" {
 		t.Fatalf("public Responses unexpectedly used Lite headers direct=%q proxy=%q", directLite, proxyLite)
+	}
+}
+
+func TestOpenAIPublicResponsesUsesLowTextVerbosityWithoutLoweringReasoning(t *testing.T) {
+	var body map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		raw, _ := io.ReadAll(request.Body)
+		_ = json.Unmarshal(raw, &body)
+		writer.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(writer, buildSSEStream([]sseEvent{
+			{Type: "response.created", Data: `{"response":{"id":"resp"}}`},
+			{Type: "response.completed", Data: `{"response":{"id":"resp","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[]}}`},
+		}))
+	}))
+	defer server.Close()
+
+	responses := NewResponses(Config{
+		ProviderName: "openai", ResponsesSemantics: ResponsesSemanticsOpenAIPublic,
+		APIKey: "key", BaseURL: server.URL, Model: "gpt-5.6-sol",
+	})
+	stream, err := responses.CreateStream(context.Background(), Params{
+		Messages: []types.Message{types.UserMessage("hello")}, ReasoningEffort: "xhigh",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range stream {
+	}
+
+	text, _ := body["text"].(map[string]any)
+	if text["verbosity"] != "low" {
+		t.Fatalf("text = %#v, want low verbosity", body["text"])
+	}
+	reasoning, _ := body["reasoning"].(map[string]any)
+	if reasoning["effort"] != "xhigh" || reasoning["context"] != "all_turns" {
+		t.Fatalf("reasoning = %#v, want unchanged xhigh/all_turns", body["reasoning"])
 	}
 }
 

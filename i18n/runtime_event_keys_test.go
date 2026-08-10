@@ -15,7 +15,7 @@ func TestRuntimeEventKeysCoverEveryLanguage(t *testing.T) {
 		KeyRuntimeToolInputValidation, KeyRuntimeStreamingToolDiscarded,
 		KeyRuntimeParallelToolCancelled, KeyRuntimeParallelNamedToolCancelled,
 		KeyRuntimePromptTooLong, KeyRuntimeModelFallback, KeyRuntimeTransientAPIError,
-		KeyRuntimeStreamInterruptedPartial, KeyRuntimeStreamRetryFullHistory,
+		KeyRuntimeStreamInterruptedPartial, KeyRuntimeStreamRetryFullHistory, KeyRuntimeStreamTransportFallback,
 		KeyRuntimeResponseTruncated, KeyRuntimeResponseRetryMaxTokens, KeyRuntimeResponseRecovery,
 		KeyRuntimeTokenBudgetContinuation, KeyRuntimeTokenBudgetDiminishing,
 		KeyRuntimeGoalLoadMaxTokens, KeyRuntimeGoalLoadFailed, KeyRuntimeGoalEvaluatorUnavailable,
@@ -51,5 +51,8 @@ func TestRuntimeEventEnglishContractContracts(t *testing.T) {
 	}
 	if got := Format(LangEN, KeyRuntimeToolPlanDenied, "Write"); !strings.Contains(got, "plan mode") {
 		t.Fatalf("plan denial = %q", got)
+	}
+	if got := Format(LangZH, KeyRuntimeStreamRetryFullHistory, 2, 5, "400ms"); got != "stream 失败；第 2/5 次重连将在 400ms 后使用完整消息历史进行" {
+		t.Fatalf("stream retry = %q", got)
 	}
 }

@@ -145,6 +145,7 @@ func (r *JSONRenderer) RenderRequestMetrics(ctx presentation.ToolEventContext, p
 		"max_retries":              status.MaxRetries,
 		"retry_count":              status.RetryCount,
 		"retry_delay_ms":           status.RetryDelayMilliseconds,
+		"retry_kind":               status.RetryKind,
 		"request_ms":               status.RequestMilliseconds,
 		"first_token_ms":           status.FirstTokenMilliseconds,
 		"total_ms":                 status.TotalMilliseconds,

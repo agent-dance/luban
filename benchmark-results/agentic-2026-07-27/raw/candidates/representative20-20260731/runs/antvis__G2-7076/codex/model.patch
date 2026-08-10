@@ -1,0 +1,25 @@
+diff --git a/src/interaction/tooltip.ts b/src/interaction/tooltip.ts
+index 4c82910..243d0e4 100644
+--- a/src/interaction/tooltip.ts
++++ b/src/interaction/tooltip.ts
+@@ -1049,14 +1049,18 @@ export function seriesTooltip(
+       // X in focus may related multiple points when dataset is large,
+       // so we need to find the first x to show tooltip.
+       const firstX = filteredSeriesData[0]?.[0].x;
+-      const transformedX = firstX ?? abstractX(focus);
++      // The selected series value is already mapped by the scale. Inverting it
++      // as an ordinal range boundary would select the preceding domain value.
++      const x = defined(firstX)
++        ? scale.x.invert(firstX)
++        : invert(scale.x, abstractX(focus), true);
+ 
+       emitter.emit('tooltip:show', {
+         ...event,
+         nativeEvent: true,
+         data: {
+           ...tooltipData,
+-          data: { x: invert(scale.x, transformedX, true) },
++          data: { x },
+         },
+       });
+     },

@@ -199,9 +199,6 @@ func normalizeRequest(request Request) (normalizedRequest, error) {
 		return normalizedRequest{}, localizedError(i18n.KeyToolInspectUnsupportedKind, request.Kind)
 	}
 	path := strings.TrimSpace(request.Path)
-	if kind == KindRead && path == "" {
-		return normalizedRequest{}, localizedError(i18n.KeyToolInspectPathRequired)
-	}
 	if path == "" {
 		path = "."
 	}

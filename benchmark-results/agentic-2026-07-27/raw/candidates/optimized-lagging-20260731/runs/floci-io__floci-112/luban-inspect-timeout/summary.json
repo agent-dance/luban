@@ -1,0 +1,46 @@
+{
+  "instance_id": "floci-io__floci-112",
+  "language": "java",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785495870.478982,
+  "elapsed_seconds": 220.294,
+  "timeout_seconds": 220,
+  "timed_out": true,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 85415,
+    "cached_input_tokens": 55296,
+    "cache_read_input_tokens": 55296,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 4808,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.322483,
+  "tool_calls": 6,
+  "tool_calls_by_type": {
+    "Inspect": 6
+  },
+  "patch": {
+    "files_changed": 0,
+    "files": [],
+    "additions": 0,
+    "deletions": 0
+  },
+  "final_text": "Root cause is confirmed: the destination key arrives decoded through the request path, but `x-amz-copy-source` is split and looked up while still UTF-8 percent-encoded. I’ll decode the header as an S3 URI path (while preserving literal `+`) before parsing bucket/key, and cover the SDK-style encoded Japanese source key end to end.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v4",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 7,
+  "llm_successful_calls": 7,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 218.907413,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v4",
+    "sha256": "3b6068d8c6e4efc1e8569cb36fd2fa5568585db9a3dba58333eda68c22023277"
+  }
+}

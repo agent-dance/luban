@@ -12,9 +12,13 @@ func TestRunVerificationClassifier(t *testing.T) {
 		{name: "targeted go tests", step: compiledRunStep{argv: []string{"go", "test", "./internal/app"}}, want: runVerificationTargetedTest},
 		{name: "go vet", step: compiledRunStep{argv: []string{"go", "vet", "./..."}}, want: runVerificationStaticAnalysis},
 		{name: "go build", step: compiledRunStep{argv: []string{"go", "build", "./..."}}, want: runVerificationBuild},
+		{name: "gofmt diff", step: compiledRunStep{argv: []string{"gofmt", "-d", "source.go"}}, want: runVerificationStaticAnalysis},
+		{name: "gofmt write", step: compiledRunStep{argv: []string{"gofmt", "-w", "source.go"}}, want: runVerificationNone},
 		{name: "pytest", step: compiledRunStep{argv: []string{"pytest", "tests/test_api.py"}}, want: runVerificationTargetedTest},
 		{name: "package lint", step: compiledRunStep{argv: []string{"npm", "run", "lint"}}, want: runVerificationStaticAnalysis},
 		{name: "cargo check", step: compiledRunStep{argv: []string{"cargo", "check"}}, want: runVerificationStaticAnalysis},
+		{name: "project Maven wrapper", step: compiledRunStep{argv: []string{"./mvnw", "test"}}, want: runVerificationTargetedTest},
+		{name: "project Gradle wrapper", step: compiledRunStep{argv: []string{"./gradlew", "check"}}, want: runVerificationTargetedTest},
 		{name: "wrapped tests", step: compiledRunStep{argv: []string{"timeout", "30", "go", "test", "./..."}}, want: runVerificationFullTest},
 		{name: "strict shell tests", step: compiledRunStep{useShell: true, shellScript: "go test ./..."}, want: runVerificationFullTest},
 		{name: "compound shell tests", step: compiledRunStep{useShell: true, shellScript: "cd internal/app && go test ./..."}, want: runVerificationNone},
@@ -51,6 +55,9 @@ func TestRunVerificationClassifierRejectsMaskedExitStatus(t *testing.T) {
 	}
 	if got := classifyRunStepVerification(compiledRunStep{argv: []string{"/tmp/fake/go", "test", "./..."}}); got != runVerificationNone {
 		t.Fatalf("path-selected verifier classified as %q", got)
+	}
+	if got := classifyRunStepVerification(compiledRunStep{argv: []string{"../mvnw", "test"}}); got != runVerificationNone {
+		t.Fatalf("parent-selected wrapper classified as %q", got)
 	}
 }
 

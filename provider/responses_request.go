@@ -1,8 +1,11 @@
 package provider
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/agent-dance/luban/i18n"
 )
 
 type responsesTransport uint8
@@ -25,43 +28,55 @@ func normalizeCapabilitySupport(value CapabilitySupport) CapabilitySupport {
 // refresh may mutate the provider while a response is streaming; one request
 // must never mix endpoints, authentication generations, or wire semantics.
 type responsesRequestProfile struct {
-	baseURL             string
-	apiKey              string
-	defaultModel        string
-	headers             map[string]string
-	semantics           ResponsesSemantics
-	chatGPTCodexBackend bool
-	firstPartyEndpoint  bool
-	publicAPIEndpoint   bool
-	disableStrictTools  bool
-	cacheRouting        CacheRoutingMode
-	cacheUserNamespace  string
-	cacheRoutingShards  int
-	webSocketCapability CapabilitySupport
-	credentialEpoch     uint64
-	timeoutClient       *http.Client
+	providerName              string
+	baseURL                   string
+	apiKey                    string
+	defaultModel              string
+	maxTokens                 int
+	headers                   map[string]string
+	semantics                 ResponsesSemantics
+	chatGPTCodexBackend       bool
+	firstPartyEndpoint        bool
+	publicAPIEndpoint         bool
+	customEndpointLocation    bool
+	disableStrictTools        bool
+	disablePromptCacheOptions bool
+	cacheRouting              CacheRoutingMode
+	cacheUserNamespace        string
+	cacheRoutingShards        int
+	webSocketCapability       CapabilitySupport
+	credentialEpoch           uint64
+	timeoutClient             *http.Client
 }
 
 func (p *ResponsesProvider) snapshotRequestProfile() responsesRequestProfile {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return responsesRequestProfile{
-		baseURL:             p.baseURL,
-		apiKey:              p.apiKey,
-		defaultModel:        p.model,
-		headers:             cloneHeaders(p.headers),
-		semantics:           p.semantics,
-		chatGPTCodexBackend: p.chatGPTCodexBackend,
-		firstPartyEndpoint:  p.firstPartyEndpoint,
-		publicAPIEndpoint:   p.publicAPIEndpoint,
-		disableStrictTools:  p.disableStrictTools,
-		cacheRouting:        p.cacheRouting,
-		cacheUserNamespace:  p.cacheUserNamespace,
-		cacheRoutingShards:  p.cacheRoutingShards,
-		webSocketCapability: p.responsesWebSocket,
-		credentialEpoch:     p.wsCredentialEpoch,
-		timeoutClient:       p.client,
+	profile := responsesRequestProfile{
+		providerName:              p.name,
+		baseURL:                   p.baseURL,
+		apiKey:                    p.apiKey,
+		defaultModel:              p.model,
+		maxTokens:                 p.maxTokens,
+		headers:                   cloneHeaders(p.headers),
+		semantics:                 p.semantics,
+		chatGPTCodexBackend:       p.chatGPTCodexBackend,
+		firstPartyEndpoint:        p.firstPartyEndpoint,
+		publicAPIEndpoint:         p.publicAPIEndpoint,
+		customEndpointLocation:    !isFirstPartyOpenAIResponsesBaseURL(p.baseURL),
+		disableStrictTools:        p.disableStrictTools,
+		disablePromptCacheOptions: p.disablePromptCacheOptions,
+		cacheRouting:              p.cacheRouting,
+		cacheUserNamespace:        p.cacheUserNamespace,
+		cacheRoutingShards:        p.cacheRoutingShards,
+		webSocketCapability:       p.responsesWebSocket,
+		credentialEpoch:           p.wsCredentialEpoch,
+		timeoutClient:             p.client,
 	}
+	if p.forceHTTPFallback {
+		profile.webSocketCapability = CapabilityUnsupported
+	}
+	return profile
 }
 
 func (profile responsesRequestProfile) modelFor(params Params) string {
@@ -95,15 +110,15 @@ func (p *ResponsesProvider) buildResponsesRequestBody(
 	systemPrompt := params.JoinedSystemPrompt()
 	model := profile.modelFor(params)
 	responsesLite := profile.chatGPTCodexBackend && isOpenAIResponsesLiteModel(model)
-	if definitionsHaveCustomTools(params.Tools) && (!supportsOpenAIResponsesCustomTools(profile.semantics, model) || responsesLite) {
+	if definitionsHaveCustomTools(params.Tools) && (!responsesCustomToolDefinitionsSupported(profile.semantics, model, params.Tools) || responsesLite) {
 		return nil, "", false, unsupportedCustomToolsError(p, params)
 	}
 
-	body := map[string]any{
-		"model": model,
-		"store": false,
+	body := map[string]any{"model": model}
+	if profile.semantics != ResponsesSemanticsDeepSeek {
+		body["store"] = false
 	}
-	if params.ServiceTier != "" {
+	if profile.semantics != ResponsesSemanticsDeepSeek && params.ServiceTier != "" {
 		body["service_tier"] = string(params.ServiceTier)
 	}
 	if transport == responsesTransportWebSocket {
@@ -113,6 +128,12 @@ func (p *ResponsesProvider) buildResponsesRequestBody(
 	}
 	if profile.firstPartyEndpoint {
 		body["include"] = []string{"reasoning.encrypted_content"}
+	}
+	// Match the Codex coding-client envelope. Low controls user-visible prose,
+	// not reasoning effort, and materially reduces output tokens without
+	// weakening the model's requested analysis tier.
+	if (profile.publicAPIEndpoint || profile.semantics == ResponsesSemanticsDeepSeek) && !responsesLite {
+		body["text"] = map[string]string{"verbosity": "low"}
 	}
 	if profile.chatGPTCodexBackend || responsesLite {
 		prevID = ""
@@ -125,10 +146,21 @@ func (p *ResponsesProvider) buildResponsesRequestBody(
 	}
 	if profile.publicAPIEndpoint && !responsesLite && params.MaxOutputTokensOverride > 0 {
 		body["max_output_tokens"] = params.MaxOutputTokensOverride
+	} else if profile.semantics == ResponsesSemanticsDeepSeek && !responsesLite {
+		maxOutputTokens := params.MaxTokens
+		if maxOutputTokens <= 0 {
+			maxOutputTokens = profile.maxTokens
+		}
+		if params.MaxOutputTokensOverride > 0 {
+			maxOutputTokens = params.MaxOutputTokensOverride
+		}
+		if maxOutputTokens > 0 {
+			body["max_output_tokens"] = maxOutputTokens
+		}
 	}
 
 	cacheKey := scopedPromptCacheKey(profile.cacheUserNamespace, params.PromptCacheKey, model, profile.cacheRoutingShards)
-	promptCacheEnabled := profile.publicAPIEndpoint && profile.cacheRouting == CacheRoutingPromptCacheKey && params.UsePromptCache && cacheKey != ""
+	promptCacheEnabled := profile.publicAPIEndpoint && !profile.disablePromptCacheOptions && profile.cacheRouting == CacheRoutingPromptCacheKey && params.UsePromptCache && cacheKey != ""
 	cachePolicy := openAIPromptCachePolicy{}
 	if promptCacheEnabled {
 		cachePolicy = applyOpenAIPromptCachePolicy(body, model)
@@ -157,6 +189,12 @@ func (p *ResponsesProvider) buildResponsesRequestBody(
 	input, err := convertMessagesToResponsesAPIForRequest(conversionParams, prevID, profile.semantics, responsesLite)
 	if err != nil {
 		return nil, "", false, err
+	}
+	if transport == responsesTransportHTTP && profile.semantics == ResponsesSemanticsOpenAIPublic {
+		input, err = projectResponsesHTTPToolCalls(input)
+		if err != nil {
+			return nil, "", false, err
+		}
 	}
 	if cacheableDeveloperInput != nil {
 		input = append([]any{cacheableDeveloperInput}, input...)
@@ -201,37 +239,123 @@ func (p *ResponsesProvider) buildResponsesRequestBody(
 		case "any":
 			body["tool_choice"] = "required"
 		case "tool":
+			custom := responseToolChoiceType(params.Tools, params.ToolChoice.Name) == "custom"
 			body["tool_choice"] = map[string]string{
 				"type": responseToolChoiceType(params.Tools, params.ToolChoice.Name),
-				"name": params.ToolChoice.Name,
+				"name": responsesToolNameForSemantics(profile.semantics, params.ToolChoice.Name, custom),
 			}
 		default:
 			body["tool_choice"] = "auto"
 		}
 	}
-	if prevID != "" {
+	if profile.semantics != ResponsesSemanticsDeepSeek && prevID != "" {
 		body["previous_response_id"] = prevID
 	}
 	if profile.cacheRouting == CacheRoutingPromptCacheKey && params.UsePromptCache && cacheKey != "" {
 		body["prompt_cache_key"] = cacheKey
 	}
-	if !profile.chatGPTCodexBackend && !responsesLite && params.Truncation != "" {
+	if profile.cacheRouting == CacheRoutingDeepSeekUserID && params.UsePromptCache {
+		user := profile.cacheUserNamespace
+		if user == "" {
+			user = cacheKey
+		}
+		if user = deepSeekCacheUserID(user); user != "" {
+			body["user"] = user
+		}
+	}
+	if profile.semantics != ResponsesSemanticsDeepSeek && !profile.chatGPTCodexBackend && !responsesLite && params.Truncation != "" {
 		body["truncation"] = params.Truncation
 	}
-	if params.ReasoningEffort != "" || responsesLite {
+	reasoningEffort := params.ReasoningEffort
+	if profile.semantics == ResponsesSemanticsDeepSeek && params.Thinking != nil && !params.Thinking.Enabled {
+		reasoningEffort = "none"
+	}
+	if reasoningEffort != "" || responsesLite {
 		reasoning := map[string]string{}
-		if params.ReasoningEffort != "" {
-			reasoning["effort"] = reasoningEffortForRequest(params.ReasoningEffort)
+		if reasoningEffort != "" {
+			reasoning["effort"] = reasoningEffortForRequest(reasoningEffort)
 		}
 		if profile.firstPartyEndpoint {
 			reasoning["context"] = "all_turns"
 		}
 		body["reasoning"] = reasoning
 	}
-	if outputConfig := outputConfigBody(params.TaskBudget); !responsesLite && len(outputConfig) > 0 {
+	if outputConfig := outputConfigBody(params.TaskBudget); profile.semantics != ResponsesSemanticsDeepSeek && !responsesLite && len(outputConfig) > 0 {
 		body["output_config"] = outputConfig
 	}
 
 	p.omitUnsupportedFields(model, body)
 	return body, model, responsesLite, nil
+}
+
+// projectResponsesHTTPToolCalls strips provider item identity from completed
+// calls when their outputs are replayed on stateless HTTP. Encrypted reasoning
+// remains provider-native, while calls use the semantic full-history shape
+// accepted with store=false. WebSocket continuation instead sends only new
+// items behind previous_response_id.
+func projectResponsesHTTPToolCalls(input []any) ([]any, error) {
+	outputCallIDs := make(map[string]struct{})
+	for _, raw := range input {
+		item, ok := responsesInputItemMap(raw)
+		if !ok {
+			continue
+		}
+		switch item["type"] {
+		case "function_call_output", "custom_tool_call_output":
+			if callID, _ := item["call_id"].(string); callID != "" {
+				outputCallIDs[callID] = struct{}{}
+			}
+		}
+	}
+	if len(outputCallIDs) == 0 {
+		return input, nil
+	}
+
+	projected := append([]any(nil), input...)
+	projectedCalls := make(map[string]struct{}, len(outputCallIDs))
+	for index, raw := range projected {
+		item, ok := responsesInputItemMap(raw)
+		if !ok {
+			continue
+		}
+		switch item["type"] {
+		case "function_call", "custom_tool_call":
+			callID, _ := item["call_id"].(string)
+			if _, matched := outputCallIDs[callID]; !matched {
+				continue
+			}
+			semantic := map[string]any{
+				"type": item["type"], "call_id": callID,
+				"name": item["name"],
+			}
+			if item["type"] == "custom_tool_call" {
+				semantic["input"] = item["input"]
+			} else {
+				semantic["arguments"] = item["arguments"]
+			}
+			projected[index] = semantic
+			projectedCalls[callID] = struct{}{}
+		}
+	}
+	for callID := range outputCallIDs {
+		if _, ok := projectedCalls[callID]; !ok {
+			return nil, i18n.NewError(i18n.KeyProviderResponsesContinuationInvalid)
+		}
+	}
+	return projected, nil
+}
+
+func responsesInputItemMap(raw any) (map[string]any, bool) {
+	if item, ok := raw.(map[string]any); ok {
+		return item, true
+	}
+	encoded, ok := raw.(json.RawMessage)
+	if !ok {
+		return nil, false
+	}
+	var item map[string]any
+	if len(encoded) == 0 || json.Unmarshal(encoded, &item) != nil {
+		return nil, false
+	}
+	return item, true
 }

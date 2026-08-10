@@ -23,7 +23,7 @@ func TestBDDUncompactedSessionAccumulatesEveryRequest(t *testing.T) {
 	recordTurn(tracker, 1_500, 60, 700, 0, time.Second)
 
 	got := renderedSession(t, tracker)
-	if !strings.Contains(got, "Session: in 2.5K") {
+	if !strings.Contains(got, "Session total: in 2.5K") {
 		t.Fatalf("Then session input is cumulative: %q", got)
 	}
 	if strings.Contains(got, "Req:") || strings.Contains(got, "Last request") {
@@ -178,7 +178,7 @@ func TestBDDResumeKnownAndLegacyCompactionBaselines(t *testing.T) {
 		tracker.RestoreSession("claude-opus-4-5", 4_100, 310, 1_650, 0, 0, 0.1, true)
 		tracker.RestoreCompactionBaselineState(true, false, 0, 0)
 		got := renderedSession(t, tracker)
-		if !strings.Contains(got, "Session: in 4.1K") || strings.Contains(got, "0 (4.1K total)") {
+		if !strings.Contains(got, "Session total: in 4.1K") || strings.Contains(got, "0 (4.1K total)") {
 			t.Fatalf("Then legacy data shows only the reliable session total: %q", got)
 		}
 	})

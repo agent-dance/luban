@@ -21,11 +21,11 @@ func (t *ApplyPatchTool) CheckPermissions(_ context.Context, input map[string]an
 	}
 	in, err := types.DecodeStrictToolInput[ApplyPatchInput](input)
 	if err != nil {
-		return applyPatchInvalidPermission("invalid_input"), nil
+		return applyPatchUnparseablePermission(input), nil
 	}
 	parsed, parseErr := parseApplyPatch(in.Patch)
 	if parseErr != nil {
-		return applyPatchInvalidPermission(parseErr.Reason), nil
+		return applyPatchUnparseablePermission(input), nil
 	}
 	paths, resolveErr := resolveApplyPatchPermissionPaths(parsed, request.Runtime, t)
 	if resolveErr != nil {
@@ -74,6 +74,19 @@ func (t *ApplyPatchTool) CheckPermissions(_ context.Context, input map[string]an
 		return types.ToolPermissionResult{Behavior: types.PermissionBehaviorAllow, UpdatedInput: input}, nil
 	}
 	return applyPatchAskPermission(paths, paths[0], input, false), nil
+}
+
+// applyPatchUnparseablePermission deliberately allows execution to continue
+// only after the same deterministic parser used by Execute has rejected the
+// input. Execute will therefore return the localized, structured
+// file.apply_patch.parse result before resolving or writing any target. This
+// keeps input diagnostics out of the permission-denial channel without
+// weakening path-policy checks for any syntactically valid patch.
+func applyPatchUnparseablePermission(input map[string]any) types.ToolPermissionResult {
+	return types.ToolPermissionResult{
+		Behavior:     types.PermissionBehaviorAllow,
+		UpdatedInput: input,
+	}
 }
 
 func resolveApplyPatchPermissionPaths(parsed parsedApplyPatch, runtime types.ToolRuntimeContext, tool *ApplyPatchTool) ([]string, *applyPatchTargetFailure) {

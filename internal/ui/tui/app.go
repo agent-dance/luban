@@ -299,6 +299,9 @@ func (a *App) Stop() {
 
 // Close restores terminal state. Must be called after Run returns.
 func (a *App) Close() error {
+	if a.root != nil {
+		a.root.cleanupOpenedImages()
+	}
 	return a.tuiApp.Close()
 }
 

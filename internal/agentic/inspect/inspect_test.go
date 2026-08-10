@@ -38,6 +38,22 @@ func (p testRuntimeProvider) ToolRuntimeContext() types.ToolRuntimeContext {
 	return cloneRuntimeContext(p.runtime)
 }
 
+func TestInspectEmptyPathDefaultsToRepositoryRootForAllKinds(t *testing.T) {
+	for _, request := range []Request{
+		{ID: "read", Kind: KindRead},
+		{ID: "search", Kind: KindSearch, Pattern: "needle"},
+		{ID: "glob", Kind: KindGlob, Pattern: "*.go"},
+	} {
+		normalized, err := normalizeRequest(request)
+		if err != nil {
+			t.Fatalf("normalize %s: %v", request.Kind, err)
+		}
+		if normalized.path != "." {
+			t.Fatalf("normalize %s path = %q, want repository root", request.Kind, normalized.path)
+		}
+	}
+}
+
 func TestInspectMixedBatchIsStableAndRecordsSearchEvidence(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "alpha.go")
@@ -104,6 +120,60 @@ func TestInspectMixedBatchIsStableAndRecordsSearchEvidence(t *testing.T) {
 	}
 }
 
+func TestInspectDirectoryReadSurfacesPrecisePartialFailure(t *testing.T) {
+	root := t.TempDir()
+	writeInspectFixture(t, filepath.Join(root, "first.txt"), "first\n")
+	writeInspectFixture(t, filepath.Join(root, "second.txt"), "second\n")
+	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, nil)
+	result, err := tool.Execute(context.Background(), map[string]any{
+		"requests": []any{
+			map[string]any{"id": "root", "kind": KindRead, "path": "."},
+			map[string]any{"id": "first", "kind": KindRead, "path": "first.txt"},
+			map[string]any{"id": "second", "kind": KindRead, "path": "second.txt"},
+		},
+	})
+	if err != nil || result.IsError || result.Outcome != types.ToolOutcomePartial {
+		t.Fatalf("Inspect result=%+v err=%v", result, err)
+	}
+	output, ok := result.Data.(Result)
+	if !ok || len(output.Requests) != 3 {
+		t.Fatalf("Inspect data=%T %+v", result.Data, result.Data)
+	}
+	failed := output.Requests[0]
+	if failed.ID != "root" || failed.Kind != KindRead || failed.Path != "." ||
+		len(failed.Errors) != 1 || failed.Errors[0].Code != "read_is_directory" ||
+		!strings.Contains(failed.Errors[0].Message, ".") {
+		t.Fatalf("directory diagnostic=%+v", failed)
+	}
+	if result.Metadata["inspect.partial_failure_count"] != "1" ||
+		result.Metadata["inspect.successful_request_count"] != "2" {
+		t.Fatalf("partial metadata=%+v", result.Metadata)
+	}
+	var failures []partialFailure
+	if err := json.Unmarshal([]byte(result.Metadata["inspect.partial_failures"]), &failures); err != nil || len(failures) != 1 {
+		t.Fatalf("partial failure envelope=%q err=%v", result.Metadata["inspect.partial_failures"], err)
+	}
+	if got := failures[0]; got.RequestID != "root" || got.Kind != KindRead || got.Path != "." ||
+		got.Code != "read_is_directory" || got.Message == "" {
+		t.Fatalf("partial failure=%+v", got)
+	}
+
+	var wire struct {
+		Requests []struct {
+			ID           string              `json:"id"`
+			Path         string              `json:"path"`
+			ErrorDetails []modelRequestError `json:"error_details"`
+		} `json:"requests"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &wire); err != nil || len(wire.Requests) != 3 {
+		t.Fatalf("model wire=%q err=%v", result.Content, err)
+	}
+	if wire.Requests[0].ID != "root" || wire.Requests[0].Path != "." || len(wire.Requests[0].ErrorDetails) != 1 ||
+		wire.Requests[0].ErrorDetails[0].Code != "read_is_directory" || wire.Requests[0].ErrorDetails[0].Message == "" {
+		t.Fatalf("model directory diagnostic=%+v", wire.Requests[0])
+	}
+}
+
 func TestInspectToolContractIsEagerReadOnlyAndStrict(t *testing.T) {
 	tool := New(nil, nil)
 	metadata := tool.ToolMetadata(nil)
@@ -116,6 +186,52 @@ func TestInspectToolContractIsEagerReadOnlyAndStrict(t *testing.T) {
 	discovery := registry.DiscoveryMetadata(tool)
 	if !discovery.AlwaysLoad || registry.IsDeferredTool(tool) {
 		t.Fatalf("Inspect discovery metadata = %+v", discovery)
+	}
+}
+
+func TestInspectPartialDiagnosticsCountFailedRequestsNotErrorEntries(t *testing.T) {
+	metadata := inspectPartialDiagnosticMetadata(batchResult{requests: []completedRequest{
+		{result: RequestResult{ID: "failed", Kind: KindRead, Path: "broken.txt", Errors: []RequestError{
+			{Code: "read_failed", Message: "first cause"},
+			{Code: "source_truncated", Message: "second cause"},
+		}}},
+		{result: RequestResult{ID: "ok", Kind: KindRead, Path: "ok.txt"}},
+	}})
+	if metadata["inspect.partial_failure_count"] != "1" {
+		t.Fatalf("failed request count = %q, want 1", metadata["inspect.partial_failure_count"])
+	}
+	if metadata["inspect.successful_request_count"] != "1" {
+		t.Fatalf("successful request count = %q, want 1", metadata["inspect.successful_request_count"])
+	}
+	var failures []partialFailure
+	if err := json.Unmarshal([]byte(metadata["inspect.partial_failures"]), &failures); err != nil || len(failures) != 2 {
+		t.Fatalf("failure details = %q, want both error entries (err=%v)", metadata["inspect.partial_failures"], err)
+	}
+}
+
+func TestInspectSchemaProjectsRuntimeCollectionAndStringLimits(t *testing.T) {
+	schema := New(nil, nil).Schema()
+	requests, ok := schema.Properties["requests"].(map[string]any)
+	if !ok || requests["maxItems"] != maximumRequests {
+		t.Fatalf("requests schema = %#v", requests)
+	}
+	request, ok := requests["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("request item schema = %#v", requests["items"])
+	}
+	properties, ok := request["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("request properties = %#v", request["properties"])
+	}
+	for name, maximum := range map[string]int{"id": maximumRequestID, "path": maximumPath, "pattern": maximumPattern} {
+		property, propertyOK := properties[name].(map[string]any)
+		if !propertyOK || property["maxLength"] != maximum {
+			t.Fatalf("%s schema = %#v", name, property)
+		}
+	}
+	ranges, ok := properties["ranges"].(map[string]any)
+	if !ok || ranges["maxItems"] != maximumRanges {
+		t.Fatalf("ranges schema = %#v", ranges)
 	}
 }
 

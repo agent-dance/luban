@@ -1,0 +1,73 @@
+diff --git a/libcaf_net/caf/net/abstract_actor_shell.cpp b/libcaf_net/caf/net/abstract_actor_shell.cpp
+index 22cbf81..7b90738 100644
+--- a/libcaf_net/caf/net/abstract_actor_shell.cpp
++++ b/libcaf_net/caf/net/abstract_actor_shell.cpp
+@@ -26,7 +26,7 @@ abstract_actor_shell::abstract_actor_shell(actor_config& cfg,
+   : super(cfg), manager_(owner, add_ref) {
+   mailbox_.try_block();
+   resume_ = make_action([this] {
+-    for (;;) {
++    while (!terminated()) {
+       if (!consume_message() && try_block_mailbox())
+         return;
+     }
+@@ -52,7 +52,7 @@ void abstract_actor_shell::quit(error reason) {
+ // -- mailbox access -----------------------------------------------------------
+ 
+ mailbox_element_ptr abstract_actor_shell::next_message() {
+-  if (!mailbox_.blocked())
++  if (!terminated() && !mailbox_.blocked())
+     return mailbox_.pop_front();
+   return nullptr;
+ }
+diff --git a/libcaf_net/caf/net/abstract_actor_shell.hpp b/libcaf_net/caf/net/abstract_actor_shell.hpp
+index 9e63798..c304468 100644
+--- a/libcaf_net/caf/net/abstract_actor_shell.hpp
++++ b/libcaf_net/caf/net/abstract_actor_shell.hpp
+@@ -76,7 +76,7 @@ public:
+   }
+ 
+   /// Dequeues and returns the next message from the mailbox or returns
+-  /// `nullptr` if the mailbox is empty.
++  /// `nullptr` if the mailbox is empty or closed.
+   mailbox_element_ptr next_message();
+ 
+   /// Tries to put the mailbox into the `blocked` state, causing the next
+diff --git a/libcaf_net/caf/net/actor_shell.test.cpp b/libcaf_net/caf/net/actor_shell.test.cpp
+index 6270752..c45d562 100644
+--- a/libcaf_net/caf/net/actor_shell.test.cpp
++++ b/libcaf_net/caf/net/actor_shell.test.cpp
+@@ -203,6 +203,33 @@ TEST("actor shells can send request messages") {
+   check_eq(to_string_view(buf), msg);
+ }
+ 
++TEST("actor shells stop processing when a timeout handler quits") {
++  scoped_actor self{sys};
++  auto self_hdl = actor_cast<actor>(self);
++  auto cb = [self_hdl](app_t* app) {
++    app->self->mail(get_atom_v)
++      .request(self_hdl, 10ms)
++      .then([](const std::string&) {}, [app](const error& err) {
++        app->self->quit(err);
++      });
++  };
++  auto& mpx = sys.network_manager().mpx();
++  auto app = app_t::make(actor{self}, cb);
++  auto transport = net::octet_stream::transport::make(fd1, std::move(app));
++  auto mgr = net::socket_manager::make(&mpx, std::move(transport));
++  require(mpx.start(mgr));
++  fd1.id = net::invalid_socket_id;
++  actor hdl;
++  self->receive([&hdl](actor& x) { hdl = x; },
++                after(1s) >> [this] { fail("shell did not send its handle"); });
++  require(hdl);
++  self->monitor(hdl);
++  self->receive([this](const down_msg& msg) {
++    check_eq(msg.reason, make_error(sec::request_timeout));
++  },
++                after(1s) >> [this] { fail("shell did not terminate"); });
++}
++
+ TEST("actor shells can use flows") {
+   scoped_actor self{sys};
+   auto self_hdl = actor_cast<actor>(self);

@@ -3,6 +3,7 @@ package shell
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"path/filepath"
 	"strings"
 
 	"mvdan.cc/sh/v3/syntax"
@@ -40,16 +41,39 @@ func runVerificationAttestation(plan *compiledRunPlan) (kind, configDigest strin
 
 func classifyRunStepVerification(step compiledRunStep) string {
 	if !step.useShell {
-		if len(step.argv) == 0 || strings.ContainsAny(step.argv[0], `/\\`) {
+		if len(step.argv) == 0 {
 			return runVerificationNone
 		}
-		return classifyRunVerificationArgv(step.argv)
+		argv := step.argv
+		if strings.ContainsAny(argv[0], `/\\`) {
+			wrapper, ok := trustedProjectVerificationWrapper(argv[0])
+			if !ok {
+				return runVerificationNone
+			}
+			argv = append([]string{wrapper}, argv[1:]...)
+		}
+		return classifyRunVerificationArgv(argv)
 	}
 	argv, ok := strictSimpleVerificationShell(step.shellScript)
 	if !ok {
 		return runVerificationNone
 	}
 	return classifyRunVerificationArgv(argv)
+}
+
+func trustedProjectVerificationWrapper(command string) (string, bool) {
+	switch filepath.ToSlash(strings.TrimSpace(command)) {
+	case "./mvnw":
+		return "mvnw", true
+	case "./gradlew":
+		return "gradlew", true
+	case "./mvnw.cmd":
+		return "mvnw", true
+	case "./gradlew.bat":
+		return "gradlew", true
+	default:
+		return "", false
+	}
 }
 
 func strictSimpleVerificationShell(script string) ([]string, bool) {
@@ -139,6 +163,13 @@ func classifyRunVerificationArgv(argv []string) string {
 			return runVerificationStaticAnalysis
 		case "build":
 			return runVerificationBuild
+		}
+	case "gofmt":
+		// gofmt is a read-only formatting check unless -w is present. The
+		// revision-safe executor still snapshots the workspace around it, so
+		// profile/output flags cannot silently manufacture source changes.
+		if !containsRunArgument(args, "-w") {
+			return runVerificationStaticAnalysis
 		}
 	case "pytest", "py.test", "nosetests", "nosetests3", "jest", "vitest", "mocha", "ava", "rspec", "ctest", "tox":
 		return runVerificationTargetedTest

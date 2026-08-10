@@ -98,6 +98,46 @@ func TestTermRendererCacheBreakDebugDefaultSilent(t *testing.T) {
 	}
 }
 
+func TestTermRendererCacheUsageStartsAfterStreamedResponseLine(t *testing.T) {
+	var output bytes.Buffer
+	renderer := NewTermRenderer(&output)
+
+	renderer.Text("PRINT_RESUME_OK")
+	renderer.Usage(&types.Usage{InputTokens: 13_000, CacheReadInputTokens: 13_000})
+
+	got := output.String()
+	if !strings.HasPrefix(got, "PRINT_RESUME_OK\n") {
+		t.Fatalf("cache usage was joined to streamed response: %q", got)
+	}
+	if strings.HasPrefix(got, "PRINT_RESUME_OK\n\n") {
+		t.Fatalf("cache usage gained an extra blank line: %q", got)
+	}
+}
+
+func TestTermRendererCacheUsagePreservesExistingLineBoundary(t *testing.T) {
+	var output bytes.Buffer
+	renderer := NewTermRenderer(&output)
+
+	renderer.Text("READY\n")
+	renderer.Usage(&types.Usage{InputTokens: 13_000, CacheReadInputTokens: 13_000})
+
+	if got := output.String(); !strings.HasPrefix(got, "READY\n") || strings.HasPrefix(got, "READY\n\n") {
+		t.Fatalf("existing streamed response boundary was not preserved: %q", got)
+	}
+}
+
+func TestTermRendererSilentUsageDoesNotMutateStreamedResponse(t *testing.T) {
+	var output bytes.Buffer
+	renderer := NewTermRenderer(&output)
+
+	renderer.Text("NO_CACHE_RECEIPT")
+	renderer.Usage(&types.Usage{InputTokens: 13_000})
+
+	if got := output.String(); got != "NO_CACHE_RECEIPT" {
+		t.Fatalf("silent usage changed streamed response: %q", got)
+	}
+}
+
 func TestTermRendererCostSummaryUsesBillingCurrency(t *testing.T) {
 	var output bytes.Buffer
 	NewTermRenderer(&output).CostSummaryInCurrency(0.003, 0.125, "CNY", 1200, 450)

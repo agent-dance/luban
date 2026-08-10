@@ -189,8 +189,8 @@ func TestCompactionSummaryProviderFakes(t *testing.T) {
 				t.Fatalf("provider calls = %d, want 1", len(tt.fake.Calls))
 			}
 			call := tt.fake.Calls[0]
-			if call.System != CompactSystemPrompt {
-				t.Fatalf("system prompt = %q, want compact system prompt", call.System)
+			if !strings.HasPrefix(call.System, CompactSystemPrompt) || !strings.Contains(call.System, "Your task is to create a detailed summary") {
+				t.Fatalf("system prompt is missing the compact contract: %q", call.System)
 			}
 			if call.MaxTokens != CompactMaxOutputTokens {
 				t.Fatalf("max tokens = %d, want %d", call.MaxTokens, CompactMaxOutputTokens)
@@ -311,10 +311,13 @@ func assertTask03StructuredSummaryGolden(t *testing.T) {
 		t.Fatalf("structured summary should explicitly disable thinking, got %#v", call.Thinking)
 	}
 	if len(call.Messages) != len(input)+1 {
-		t.Fatalf("structured summary messages = %d, want input plus compact prompt", len(call.Messages))
+		t.Fatalf("structured summary messages = %d, want %d conversation messages plus runtime request", len(call.Messages), len(input))
 	}
-	if !strings.Contains(call.Messages[len(call.Messages)-1].GetText(), "Additional Instructions") {
-		t.Fatalf("custom instructions missing from final compact prompt: %q", call.Messages[len(call.Messages)-1].GetText())
+	if !strings.Contains(call.Messages[len(call.Messages)-1].GetText(), `kind="summarization_request"`) {
+		t.Fatalf("runtime summary request missing: %#v", call.Messages[len(call.Messages)-1])
+	}
+	if !strings.Contains(call.System, "Additional Instructions") {
+		t.Fatalf("custom instructions missing from isolated compact prompt: %q", call.System)
 	}
 }
 

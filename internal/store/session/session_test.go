@@ -2,6 +2,7 @@ package session
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"os"
@@ -329,7 +330,6 @@ func TestFileStoreCacheLineageDefaultsAndSurvivesPartialMetadataUpdates(t *testi
 func TestFileStoreRejectsObsoleteSessionMetadata(t *testing.T) {
 	const timestamp = `"2026-07-25T00:00:00Z"`
 	tests := map[string]string{
-		"missing schema":  `{"id":"obsolete","cache_lineage_id":"obsolete","created_at":` + timestamp + `,"updated_at":` + timestamp + `}`,
 		"missing lineage": `{"schema_version":"session-meta/v1","id":"obsolete","created_at":` + timestamp + `,"updated_at":` + timestamp + `}`,
 		"mismatched ID":   `{"schema_version":"session-meta/v1","id":"other","cache_lineage_id":"obsolete","created_at":` + timestamp + `,"updated_at":` + timestamp + `}`,
 		"unknown field":   `{"schema_version":"session-meta/v1","id":"obsolete","cache_lineage_id":"obsolete","created_at":` + timestamp + `,"updated_at":` + timestamp + `,"legacy_value":true}`,
@@ -351,6 +351,112 @@ func TestFileStoreRejectsObsoleteSessionMetadata(t *testing.T) {
 				t.Fatal("obsolete metadata unexpectedly loaded")
 			}
 		})
+	}
+}
+
+func TestFileStoreLoadsAndLazilyMigratesKnownLegacyMetadata(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	const sessionID = "legacy"
+	if err := store.Save(sessionID, []types.Message{types.UserMessage("legacy transcript")}); err != nil {
+		t.Fatal(err)
+	}
+	legacy := `{
+  "id":"legacy",
+  "cache_lineage_id":"legacy",
+  "title":"legacy title",
+  "created_at":"2026-07-25T00:00:00Z",
+  "updated_at":"2026-07-25T01:00:00Z",
+  "usage":{"input_tokens":17,"output_tokens":5},
+  "presentation":{"version":3,"input_cursor_set":true,"permission_mode":"ask"},
+  "activities":[{"id":"obsolete-projection"}],
+  "evidence":[{"observation_id":"obsolete-evidence"}]
+}`
+	if err := os.WriteFile(store.metaPath(sessionID), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	meta, err := store.GetMeta(sessionID)
+	if err != nil {
+		t.Fatalf("load legacy metadata: %v", err)
+	}
+	if meta.SchemaVersion != sessionMetaSchemaV1 || meta.Title != "legacy title" ||
+		meta.Usage == nil || meta.Usage.InputTokens != 17 || meta.Presentation == nil ||
+		meta.Presentation.PermissionMode != "ask" {
+		t.Fatalf("legacy metadata was not normalized: %+v", meta)
+	}
+	if meta.FirstWriterBuild != nil || meta.LastWriterBuild != nil {
+		t.Fatalf("legacy read fabricated writer fingerprints: %+v", meta)
+	}
+
+	if err := store.SaveMeta(sessionID, SessionMeta{Title: "migrated title"}); err != nil {
+		t.Fatalf("lazy migration: %v", err)
+	}
+	migrated, err := os.ReadFile(store.metaPath(sessionID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(migrated, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := fields["activities"]; exists {
+		t.Fatal("legacy activities survived migration")
+	}
+	if _, exists := fields["evidence"]; exists {
+		t.Fatal("legacy evidence survived migration")
+	}
+	meta, err = store.GetMeta(sessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.Title != "migrated title" || meta.FirstWriterBuild == nil || meta.LastWriterBuild == nil {
+		t.Fatalf("migrated metadata is incomplete: %+v", meta)
+	}
+}
+
+func TestFileStoreListIsolatesCorruptAndIncompatibleMetadata(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	for _, id := range []string{"good", "corrupt", "future"} {
+		if err := store.Save(id, []types.Message{types.UserMessage(id)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(store.metaPath("corrupt"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.metaPath("future"), []byte(`{"schema_version":"session-meta/v2"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	items, err := store.List()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].ID != "good" {
+		t.Fatalf("isolated list = %+v, want only good session", items)
+	}
+	if _, err := store.GetMeta("corrupt"); !errors.Is(err, ErrCorruptSessionMetadata) {
+		t.Fatalf("precise corrupt lookup = %v", err)
+	}
+	if _, err := store.GetMeta("future"); !errors.Is(err, ErrIncompatibleSessionMetadata) {
+		t.Fatalf("precise incompatible lookup = %v", err)
+	}
+}
+
+func TestFileStoreListDoesNotHideMetadataPathSafetyFailure(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	const sessionID = "unsafe-meta"
+	if err := store.Save(sessionID, []types.Message{types.UserMessage("safe transcript")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(store.metaPath(sessionID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(store.metaPath(sessionID), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.List(); !errors.Is(err, fs.ErrInvalid) {
+		t.Fatalf("List metadata path safety error = %v, want fs.ErrInvalid", err)
 	}
 }
 

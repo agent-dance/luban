@@ -93,7 +93,7 @@ func NewVertex(ctx context.Context, cfg VertexConfig) (*VertexProvider, error) {
 		return nil, fmt.Errorf("%s", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderVertexProjectRequired))
 	}
 
-	// RetryProvider/AttemptController owns the generation budget; disable the
+	// RetryProvider/AttemptController owns the request budget; disable the
 	// Anthropic SDK's independent two-retry loop.
 	opts := []option.RequestOption{option.WithMaxRetries(0)}
 	if cfg.Timeout > 0 {

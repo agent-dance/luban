@@ -1304,12 +1304,13 @@ func TestCompactCustomInstructionsAffectPrompt(t *testing.T) {
 	p.mu.Lock()
 	params := p.lastParams
 	p.mu.Unlock()
-	if len(params.Messages) == 0 {
-		t.Fatal("compact provider received no messages")
+	if !strings.Contains(params.System, "focus on task_12 acceptance") {
+		t.Fatalf("compact system prompt missing custom instructions: %q", params.System)
 	}
-	promptText := params.Messages[len(params.Messages)-1].GetText()
-	if !strings.Contains(promptText, "focus on task_12 acceptance") {
-		t.Fatalf("compact prompt missing custom instructions: %q", promptText)
+	for index, message := range params.Messages {
+		if strings.Contains(message.GetText(), "focus on task_12 acceptance") {
+			t.Fatalf("compact custom instructions leaked into conversation message %d (%s): %q", index, message.Role, message.GetText())
+		}
 	}
 }
 

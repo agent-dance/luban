@@ -200,3 +200,33 @@ func TestMessageWithToolUseMarshalRoundTrip(t *testing.T) {
 		t.Errorf("expected tool name 'Bash', got '%s'", uses[0].Name)
 	}
 }
+
+func TestMessageWithInvalidToolUseAndThinkingKindRoundTrip(t *testing.T) {
+	msg := Message{
+		Role: RoleAssistant,
+		Content: []ContentBlock{
+			ThinkingBlock{Type: ContentTypeThinking, Thinking: "summary", Kind: ThinkingKindSummary, ProviderStatus: "completed"},
+			InvalidToolUseBlock{
+				Type: ContentTypeInvalidToolUse, ID: "call_bad", Name: "Inspect",
+				RawInput: "{", InputBytes: 1, InputDigest: "sha256:test",
+				FailureKind: ToolInputFailureInvalidJSON, Recoverable: true,
+			},
+		},
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Message
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	thinking, ok := decoded.Content[0].(ThinkingBlock)
+	if !ok || thinking.Kind != ThinkingKindSummary || thinking.ProviderStatus != "completed" {
+		t.Fatalf("thinking round trip = %#v", decoded.Content[0])
+	}
+	invalid := decoded.GetInvalidToolUses()
+	if len(invalid) != 1 || invalid[0].Name != "Inspect" || invalid[0].FailureKind != ToolInputFailureInvalidJSON || !invalid[0].Recoverable {
+		t.Fatalf("invalid tool round trip = %#v", invalid)
+	}
+}

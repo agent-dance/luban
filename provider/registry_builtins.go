@@ -144,15 +144,16 @@ func registerOpenAI(r *ProviderRegistry) {
 			return NewUnconfiguredProvider("openai", model, "OPENAI_API_KEY", ""), nil
 		}
 		providerCfg := Config{
-			ProviderName:           "openai",
-			ResponsesSemantics:     ResponsesSemanticsOpenAIPublic,
-			ResponsesWebSocket:     normalizeCapabilitySupport(cfg.ResponsesWebSocket),
-			APIKey:                 apiKey,
-			AuthToken:              authToken,
-			BaseURL:                firstNonEmpty(cfg.BaseURL, os.Getenv("OPENAI_BASE_URL")),
-			Model:                  model,
-			Headers:                cloneHeaders(cfg.Headers),
-			CacheRoutingPreference: cfg.CacheRoutingPreference,
+			ProviderName:              "openai",
+			ResponsesSemantics:        ResponsesSemanticsOpenAIPublic,
+			ResponsesWebSocket:        normalizeCapabilitySupport(cfg.ResponsesWebSocket),
+			APIKey:                    apiKey,
+			AuthToken:                 authToken,
+			BaseURL:                   firstNonEmpty(cfg.BaseURL, os.Getenv("OPENAI_BASE_URL")),
+			Model:                     model,
+			Headers:                   cloneHeaders(cfg.Headers),
+			DisablePromptCacheOptions: cfg.DisablePromptCacheOptions,
+			CacheRoutingPreference:    cfg.CacheRoutingPreference,
 		}
 		// Transport location is not a capability signal. A content-blind proxy
 		// for OpenAI public Responses must preserve the exact strict tool body;
@@ -303,7 +304,7 @@ func registerDeepSeek(r *ProviderRegistry) {
 		EnvKey:         "DEEPSEEK_API_KEY",
 		AuthMethods:    []string{"api_key"},
 		Popularity:     50,
-		DefaultBaseURL: "https://api.deepseek.com/v1",
+		DefaultBaseURL: brand.DeepSeekBaseURL,
 	}, func(cfg Config, modelOverride string) (Provider, error) {
 		apiKey := cfg.APIKey
 		if apiKey == "" {
@@ -319,13 +320,31 @@ func registerDeepSeek(r *ProviderRegistry) {
 		if apiKey == "" {
 			return NewUnconfiguredProvider(brand.DeepSeekProvider, model, "DEEPSEEK_API_KEY", ""), nil
 		}
-		raw := NewOpenAI(Config{
-			ProviderName:           "deepseek",
-			APIKey:                 apiKey,
-			BaseURL:                firstNonEmpty(cfg.BaseURL, envOrDefault("DEEPSEEK_BASE_URL", brand.DeepSeekBaseURL)),
-			Model:                  model,
-			CacheRoutingPreference: cfg.CacheRoutingPreference,
-		})
+		baseURL := firstNonEmpty(cfg.BaseURL, envOrDefault("DEEPSEEK_BASE_URL", brand.DeepSeekBaseURL))
+		apiFormat := normalizeOpenAIAPIFormat(firstNonEmpty(cfg.APIFormat, os.Getenv("DEEPSEEK_API")))
+		if apiFormat == "" && isFirstPartyDeepSeekBaseURL(baseURL) {
+			apiFormat = modelCatalogOpenAIAPIFormat(r.catalog, brand.DeepSeekProvider, model)
+		}
+		if apiFormat == "" && isFirstPartyDeepSeekBaseURL(baseURL) {
+			apiFormat = modelCatalogOpenAIAPIFormat(DefaultCatalog(), brand.DeepSeekProvider, model)
+		}
+		providerCfg := Config{
+			ProviderName:              brand.DeepSeekProvider,
+			APIFormat:                 apiFormat,
+			ResponsesSemantics:        ResponsesSemanticsDeepSeek,
+			APIKey:                    apiKey,
+			BaseURL:                   baseURL,
+			Model:                     model,
+			MaxTokens:                 cfg.MaxTokens,
+			Headers:                   cloneHeaders(cfg.Headers),
+			DisableStrictTools:        cfg.DisableStrictTools,
+			DisablePromptCacheOptions: cfg.DisablePromptCacheOptions,
+			CacheRoutingPreference:    cfg.CacheRoutingPreference,
+		}
+		if apiFormat == "responses" {
+			return NewRetryProvider(NewResponses(providerCfg), DefaultRetryConfig()), nil
+		}
+		raw := NewOpenAI(providerCfg)
 		return NewRetryProvider(raw, DefaultRetryConfig()), nil
 	})
 }

@@ -36,15 +36,17 @@ func TestStructuredSummarizerEmitsCompactionDebugExchange(t *testing.T) {
 	if request.Metadata["trigger"] != "auto" {
 		t.Fatalf("debug metadata = %#v", request.Metadata)
 	}
-	if request.Request.System != CompactSystemPrompt {
+	if !strings.HasPrefix(request.Request.System, CompactSystemPrompt) {
 		t.Fatalf("system prompt = %q", request.Request.System)
 	}
 	if len(request.Request.Messages) != 3 {
-		t.Fatalf("request message count = %d, want 3", len(request.Request.Messages))
+		t.Fatalf("request message count = %d, want 2 conversation messages plus runtime request", len(request.Request.Messages))
 	}
-	lastPrompt := request.Request.Messages[len(request.Request.Messages)-1].GetText()
-	if !strings.Contains(lastPrompt, "focus on tests") || !strings.Contains(lastPrompt, "Your task is to create a detailed summary") {
-		t.Fatalf("compact prompt missing instructions:\n%s", lastPrompt)
+	if !strings.Contains(request.Request.Messages[2].GetText(), `kind="summarization_request"`) {
+		t.Fatalf("runtime summary request missing: %#v", request.Request.Messages[2])
+	}
+	if !strings.Contains(request.Request.System, "focus on tests") || !strings.Contains(request.Request.System, "Your task is to create a detailed summary") {
+		t.Fatalf("compact prompt missing instructions:\n%s", request.Request.System)
 	}
 	if response.Response == nil || response.Response.Message == nil || !strings.Contains(response.Response.Message.GetText(), "compressed history") {
 		t.Fatalf("debug response = %#v", response.Response)

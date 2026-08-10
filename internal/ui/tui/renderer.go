@@ -190,6 +190,7 @@ func (r *TuiRenderer) TextAtEpoch(epoch uint64, s string) {
 	turnCount := r.currentTurn
 	r.briefMu.Unlock()
 	r.queueEpochUpdate(epoch, func() {
+		r.state.SetLLMActivity(LLMStageResponse, "")
 		r.state.AppendOrStreamTextForTurn(s, turnCount)
 	})
 }
@@ -201,6 +202,7 @@ func (r *TuiRenderer) TextAtContext(ctx presentation.ToolEventContext, s string)
 	turnCount := r.currentTurn
 	r.briefMu.Unlock()
 	r.queueContextUpdate(ctx, func() {
+		r.state.SetLLMActivity(LLMStageResponse, "")
 		r.state.AppendOrStreamTextForTurn(s, turnCount)
 	})
 }
@@ -228,6 +230,7 @@ func (r *TuiRenderer) ThinkingAtEpoch(epoch uint64, s string) {
 	turnCount := r.currentTurn
 	r.briefMu.Unlock()
 	r.queueEpochUpdate(epoch, func() {
+		r.state.SetLLMActivity(LLMStageThinking, "")
 		r.finalizeCurrentStream()
 		r.state.AppendOrMergeThinkingForTurn(s, turnCount)
 	})
@@ -238,6 +241,7 @@ func (r *TuiRenderer) ThinkingAtContext(ctx presentation.ToolEventContext, s str
 	turnCount := r.currentTurn
 	r.briefMu.Unlock()
 	r.queueContextUpdate(ctx, func() {
+		r.state.SetLLMActivity(LLMStageThinking, "")
 		r.finalizeCurrentStream()
 		r.state.AppendOrMergeThinkingForTurn(s, turnCount)
 	})
@@ -372,6 +376,7 @@ func (r *TuiRenderer) RenderToolCall(ctx presentation.ToolEventContext, call typ
 			observability.RecordGenerationDrop(observability.GenerationSurfaceTUITool)
 			return
 		}
+		r.state.SetLLMActivity(LLMStageToolExecution, call.Name)
 		r.finalizeCurrentStream()
 		if err := r.state.ApplyToolCall(toolObservationContext(ctx, OutcomeRunning), call); err != nil {
 			r.state.AppendMessage(Message{Kind: MsgError, Text: i18n.Format(r.state.Language.Get(), i18n.KeyRuntimeToolCallPresentation, err), Timestamp: time.Now(), ToolUseID: call.ID, WorkUnitID: ctx.WorkUnitID, ActorID: ctx.ActorID})
@@ -789,6 +794,14 @@ func (r *TuiRenderer) LLMRequestStatusAtContext(ctx presentation.ToolEventContex
 	r.queueContextUpdate(ctx, func() { r.applyLLMRequestStatus(eventType, event) })
 }
 
+func (r *TuiRenderer) LLMActivityAtEpoch(epoch uint64, stage LLMCallStage, detail string, toolInputBytes ...int) {
+	r.queueEpochUpdate(epoch, func() { r.state.SetLLMActivity(stage, detail, toolInputBytes...) })
+}
+
+func (r *TuiRenderer) LLMActivityAtContext(ctx presentation.ToolEventContext, stage LLMCallStage, detail string, toolInputBytes ...int) {
+	r.queueContextUpdate(ctx, func() { r.state.SetLLMActivity(stage, detail, toolInputBytes...) })
+}
+
 func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event stream.RequestStatusEvent) {
 	now := time.Now()
 	current := r.state.LLMCall.Get()
@@ -798,8 +811,32 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 	}
 	switch eventType {
 	case stream.EventRequestStart:
+		if current != nil && current.Phase == LLMCallRetrying {
+			// Match Codex's StreamError status lifecycle: keep the reconnect
+			// header and underlying problem visible while the replacement request
+			// waits for output. The new request ID is still adopted so its first
+			// token can prove recovery and clear the problem state.
+			updated := *current
+			updated.RequestID = event.RequestID
+			updated.RequestDuration = time.Duration(event.RequestMilliseconds) * time.Millisecond
+			updated.HasRequestDuration = true
+			updated.TotalDuration = time.Duration(event.TotalMilliseconds) * time.Millisecond
+			updated.UpdatedAt = now
+			updated.WorkStartedAt = workStartedAt
+			r.state.SetLLMCall(&updated)
+			return
+		}
+		stage := LLMStageWaitingFirstToken
+		stageStartedAt := now
+		if current != nil && (current.Stage == LLMStageToolExecution || current.Stage == LLMStageWaitingAfterTools) {
+			stage = LLMStageWaitingAfterTools
+			if current.Stage == stage && !current.StageStartedAt.IsZero() {
+				stageStartedAt = current.StageStartedAt
+			}
+		}
 		r.state.SetLLMCall(&LLMCallStatus{
-			RequestID: event.RequestID, Phase: LLMCallWorking,
+			RequestID: event.RequestID, Phase: LLMCallWorking, Stage: stage, StageStartedAt: stageStartedAt,
+			Attempt: event.Attempt, MaxRetries: event.MaxRetries,
 			RequestDuration: time.Duration(event.RequestMilliseconds) * time.Millisecond, HasRequestDuration: true,
 			TotalDuration: time.Duration(event.TotalMilliseconds) * time.Millisecond, UpdatedAt: now, WorkStartedAt: workStartedAt,
 		})
@@ -807,7 +844,7 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 		r.state.SetLLMCall(&LLMCallStatus{
 			RequestID: event.RequestID, Phase: LLMCallRetrying, Attempt: event.Attempt, MaxRetries: event.MaxRetries,
 			RetryDelay: time.Duration(event.RetryDelayMilliseconds) * time.Millisecond, TotalDuration: time.Duration(event.TotalMilliseconds) * time.Millisecond,
-			UpdatedAt: now, WorkStartedAt: workStartedAt, Error: event.Error,
+			UpdatedAt: now, WorkStartedAt: workStartedAt, Error: event.Error, RetryKind: event.RetryKind,
 		})
 	case stream.EventRequestFirstToken:
 		if current == nil || current.RequestID != event.RequestID {
@@ -819,6 +856,14 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 		updated.HasFirstToken = true
 		updated.TotalDuration = time.Duration(event.TotalMilliseconds) * time.Millisecond
 		updated.UpdatedAt = now
+		if updated.Stage == LLMStagePreparing || updated.Stage == LLMStageWaitingFirstToken {
+			// The first-token metric proves the wait ended, but does not say
+			// whether the content is reasoning, text, or tool input. The next
+			// content event supplies that honest stage boundary.
+			updated.Stage = ""
+			updated.StageDetail = ""
+			updated.StageStartedAt = time.Time{}
+		}
 		r.state.SetLLMCall(&updated)
 	case stream.EventRequestFailed:
 		if current == nil || current.RequestID != event.RequestID {
@@ -834,6 +879,13 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 		// A completed stream may be a tool-use response. Keep the execution
 		// status visible across tool work and subsequent model requests; the
 		// query's terminal settlement is the sole clearing boundary.
+		if current != nil && current.RequestID == event.RequestID && current.Phase == LLMCallRetrying {
+			updated := *current
+			updated.Phase = LLMCallWorking
+			updated.TotalDuration = time.Duration(event.TotalMilliseconds) * time.Millisecond
+			updated.UpdatedAt = now
+			r.state.SetLLMCall(&updated)
+		}
 	}
 }
 
@@ -861,6 +913,9 @@ func (r *TuiRenderer) CompactionProgressAtEpoch(epoch uint64, ctx presentation.T
 	r.queueEpochUpdate(epoch, func() {
 		if !r.AdmitContextGeneration(ctx) {
 			observability.RecordGenerationDrop(observability.GenerationSurfaceTUITool)
+			return
+		}
+		if !r.state.ApplyCompactionProgress(ctx.SessionID, epoch, progress) {
 			return
 		}
 		trigger := compactionMetadataString(progress.Metadata, "trigger", "unknown")
@@ -905,11 +960,19 @@ func (r *TuiRenderer) CompactionProgressAtEpoch(epoch uint64, ctx presentation.T
 				}
 			}
 		}
+		message := progress.Message
+		if stage, _, ok := compactionProgressStage(progress.Stage); ok {
+			if stage == CompactionProgressCompleted || stage == CompactionProgressFailed || stage == CompactionProgressCancelled {
+				message = i18n.TUIOutcomeLabel(r.state.Language.Get(), string(stage))
+			} else {
+				message = compactProgressStageText(r.state.Language.Get(), stage)
+			}
+		}
 		_ = r.state.ApplyActivity(ActivityEvent{
 			ID: activityID, SessionID: ctx.SessionID, Epoch: epoch, TurnID: turnID, WorkUnitID: ctx.WorkUnitID,
 			Actor: ActivityActor{ID: ctx.ActorID, Type: ctx.ActorType}, Kind: ActivityBackground,
 			Name: i18n.Text(r.state.Language.Get(), i18n.KeyRuntimeContextCompaction), Phase: ActivityPhaseExecuting, Lifecycle: lifecycle, Outcome: outcome,
-			Progress: ActivityProgress{Current: progress.Current, Total: progress.Total, Message: progress.Message}, Control: control,
+			Progress: ActivityProgress{Current: progress.Current, Total: progress.Total, Message: message}, Control: control,
 		})
 	})
 }
@@ -924,6 +987,7 @@ func (r *TuiRenderer) CompactionBoundaryAtEpoch(epoch uint64, ctx presentation.T
 		if !r.state.MarkSessionCompactedBoundary(boundaryIdentity) {
 			return
 		}
+		r.state.ApplyCompactionBoundary(ctx.SessionID, epoch, boundary)
 		trigger := strings.ToLower(strings.TrimSpace(boundary.Trigger))
 		if trigger == "" {
 			trigger = "unknown"

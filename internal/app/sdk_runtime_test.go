@@ -119,14 +119,14 @@ func TestSDKRequestStatusAdapterMapsEveryPhaseWithoutRawError(t *testing.T) {
 				RequestStatus: &stream.RequestStatusEvent{
 					RequestID: "request-9", StartedAt: "2026-07-26T00:00:00Z", EndedAt: "2026-07-26T00:00:01Z",
 					Attempt: 2, MaxRetries: 3, RetryCount: 1,
-					RetryDelayMilliseconds: 250, RequestMilliseconds: 40,
+					RetryDelayMilliseconds: 250, RetryKind: "stream", RequestMilliseconds: 40,
 					FirstTokenMilliseconds: 80, TotalMilliseconds: 120,
 					InputTokens: 100, CacheReadInputTokens: 70, CacheWriteInputTokens: 10, OutputTokens: 20,
 					Error: secret,
 				},
 			})
 			status := event.RequestStatus
-			if status == nil || status.RequestID != "request-9" || status.Phase != string(test.eventType) || status.Status != test.status || status.Attempt != 2 || status.MaxAttempts != 4 || status.RetryCount != 1 {
+			if status == nil || status.RequestID != "request-9" || status.Phase != string(test.eventType) || status.Status != test.status || status.Attempt != 2 || status.MaxAttempts != 4 || status.RetryCount != 1 || status.RetryKind != "stream" {
 				t.Fatalf("request status = %+v", status)
 			}
 			if status.StartedAt == "" || status.EndedAt == "" || status.InputTokens != 100 || status.CacheReadInputTokens != 70 || status.CacheWriteInputTokens != 10 || status.OutputTokens != 20 {

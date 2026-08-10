@@ -121,13 +121,19 @@ type FileFact struct {
 // contiguous: concurrent results must be reordered before Reduce, and replay
 // must retain the original sequence rather than allocate a new one.
 type ToolExecutionFacts struct {
-	ToolID                   string              `json:"tool_id"`
-	IntentID                 string              `json:"intent_id,omitempty"`
-	ExecutionSequence        uint64              `json:"execution_sequence"`
-	Invoked                  bool                `json:"invoked"`
-	EffectScope              EffectScope         `json:"effect_scope"`
-	ExecutionOutcome         ExecutionOutcome    `json:"execution_outcome"`
-	MutationOutcome          MutationOutcome     `json:"mutation_outcome"`
+	ToolID            string           `json:"tool_id"`
+	IntentID          string           `json:"intent_id,omitempty"`
+	ExecutionSequence uint64           `json:"execution_sequence"`
+	Invoked           bool             `json:"invoked"`
+	EffectScope       EffectScope      `json:"effect_scope"`
+	ExecutionOutcome  ExecutionOutcome `json:"execution_outcome"`
+	MutationOutcome   MutationOutcome  `json:"mutation_outcome"`
+	// NoMutationProven is a trusted scheduler assertion that a transactional
+	// workspace-write action completed without changing the workspace even when
+	// no concrete workspace digest is currently available. It does not reconcile
+	// an unknown workspace digest; it only prevents a proven rollback/no-start
+	// outcome from being treated as a possible mutation.
+	NoMutationProven         bool                `json:"no_mutation_proven,omitempty"`
 	VerificationKind         VerificationKind    `json:"verification_kind"`
 	VerificationOutcome      VerificationOutcome `json:"verification_outcome"`
 	VerificationEpoch        Epoch               `json:"verification_epoch,omitempty"`

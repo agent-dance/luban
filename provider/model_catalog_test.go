@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"slices"
 	"testing"
 )
 
@@ -337,28 +338,38 @@ func TestDefaultCatalog_RemovedOpenAIModelsAreNotSelectable(t *testing.T) {
 	}
 }
 
-func TestDefaultCatalog_DeepSeekV4PricingUsesOfficialCNY(t *testing.T) {
+func TestDefaultCatalog_DeepSeekV4FormalReleaseMetadata(t *testing.T) {
 	c := DefaultCatalog()
 	flash, ok := c.GetForProvider("deepseek", "deepseek-v4-flash")
 	if !ok {
 		t.Fatal("expected deepseek-v4-flash")
 	}
-	if flash.BillingCurrency() != "CNY" {
-		t.Fatalf("currency = %q, want CNY", flash.BillingCurrency())
+	if flash.BillingCurrency() != "USD" {
+		t.Fatalf("currency = %q, want USD", flash.BillingCurrency())
 	}
-	if flash.CostPer1MIn != 1.0 || flash.CacheReadPer1M != 0.02 || flash.CostPer1MOut != 2.0 {
-		t.Fatalf("flash pricing = in %.3f cache %.3f out %.3f, want 1.0/0.02/2.0 CNY", flash.CostPer1MIn, flash.CacheReadPer1M, flash.CostPer1MOut)
+	if flash.CostPer1MIn != 0.14 || flash.CacheReadPer1M != 0.0028 || flash.CostPer1MOut != 0.28 {
+		t.Fatalf("flash pricing = in %.4f cache %.4f out %.4f, want 0.14/0.0028/0.28 USD", flash.CostPer1MIn, flash.CacheReadPer1M, flash.CostPer1MOut)
+	}
+	if flash.APIFormat != "responses" || flash.DefaultReasoningEffort != "high" {
+		t.Fatalf("flash protocol/default effort = %q/%q, want responses/high", flash.APIFormat, flash.DefaultReasoningEffort)
+	}
+	wantEfforts := []string{"low", "high", "max"}
+	if !slices.Equal(flash.ReasoningEfforts, wantEfforts) {
+		t.Fatalf("flash reasoning efforts = %#v, want %#v", flash.ReasoningEfforts, wantEfforts)
 	}
 
 	pro, ok := c.GetForProvider("deepseek", "deepseek-v4-pro")
 	if !ok {
 		t.Fatal("expected deepseek-v4-pro")
 	}
-	if pro.BillingCurrency() != "CNY" {
-		t.Fatalf("currency = %q, want CNY", pro.BillingCurrency())
+	if pro.BillingCurrency() != "USD" {
+		t.Fatalf("currency = %q, want USD", pro.BillingCurrency())
 	}
-	if pro.CostPer1MIn != 3.0 || pro.CacheReadPer1M != 0.025 || pro.CostPer1MOut != 6.0 {
-		t.Fatalf("pro pricing = in %.3f cache %.3f out %.3f, want 3.0/0.025/6.0 CNY", pro.CostPer1MIn, pro.CacheReadPer1M, pro.CostPer1MOut)
+	if pro.CostPer1MIn != 0.435 || pro.CacheReadPer1M != 0.003625 || pro.CostPer1MOut != 0.87 {
+		t.Fatalf("pro pricing = in %.6f cache %.6f out %.6f, want 0.435/0.003625/0.87 USD", pro.CostPer1MIn, pro.CacheReadPer1M, pro.CostPer1MOut)
+	}
+	if pro.APIFormat != "chat-completions" || pro.DefaultReasoningEffort != "high" {
+		t.Fatalf("pro protocol/default effort = %q/%q, want chat-completions/high", pro.APIFormat, pro.DefaultReasoningEffort)
 	}
 }
 

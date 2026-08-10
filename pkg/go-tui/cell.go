@@ -1,14 +1,20 @@
 package tui
 
-import "unicode"
+import (
+	"unicode"
+	"unicode/utf8"
+
+	"github.com/rivo/uniseg"
+)
 
 // Cell represents a single character cell in the terminal buffer.
 // Wide characters (CJK, emoji) occupy multiple cells; the first cell holds
 // the rune, subsequent cells are marked as continuations.
 type Cell struct {
-	Rune  rune  // The character (0 for continuation cells)
-	Style Style // Visual styling
-	Width uint8 // Display width (1 or 2; 0 for continuation)
+	Rune  rune   // First rune of the grapheme (0 for continuation cells)
+	Tail  string // Remaining runes in the grapheme cluster
+	Style Style  // Visual styling
+	Width uint8  // Display width (usually 1 or 2; 0 for continuation)
 }
 
 // NewCell creates a new Cell with automatic width detection.
@@ -30,6 +36,16 @@ func NewCellWithWidth(r rune, style Style, width uint8) Cell {
 	}
 }
 
+func (c Cell) displayText() string {
+	if c.Rune == 0 {
+		return ""
+	}
+	if c.Tail == "" {
+		return string(c.Rune)
+	}
+	return string(c.Rune) + c.Tail
+}
+
 // IsContinuation returns true if this cell is a continuation of a wide character.
 // Continuation cells have Width == 0 and are placed after the primary cell.
 func (c Cell) IsContinuation() bool {
@@ -38,7 +54,7 @@ func (c Cell) IsContinuation() bool {
 
 // Equal returns true if both cells are identical.
 func (c Cell) Equal(other Cell) bool {
-	return c.Rune == other.Rune && c.Style.Equal(other.Style) && c.Width == other.Width
+	return c.Rune == other.Rune && c.Tail == other.Tail && c.Style.Equal(other.Style) && c.Width == other.Width
 }
 
 // IsEmpty returns true if this cell represents an empty/blank cell.
@@ -83,6 +99,44 @@ func RuneWidth(r rune) int {
 	}
 
 	return 1
+}
+
+// StringWidth returns the physical terminal-cell width of a string. Unlike a
+// sum of RuneWidth calls, it treats a user-perceived grapheme cluster as one
+// unit, so sequences such as "✏️" and "👩🏽‍💻" match terminal cursor movement.
+func StringWidth(s string) int {
+	return uniseg.StringWidth(s)
+}
+
+type textGrapheme struct {
+	text      string
+	width     int
+	runeCount int
+}
+
+func splitTextGraphemes(text string) []textGrapheme {
+	if text == "" {
+		return nil
+	}
+	clusters := make([]textGrapheme, 0, utf8.RuneCountInString(text))
+	graphemes := uniseg.NewGraphemes(text)
+	for graphemes.Next() {
+		cluster := graphemes.Str()
+		clusters = append(clusters, textGrapheme{
+			text:      cluster,
+			width:     graphemes.Width(),
+			runeCount: utf8.RuneCountInString(cluster),
+		})
+	}
+	return clusters
+}
+
+func graphemeRuneCount(clusters []textGrapheme) int {
+	count := 0
+	for _, cluster := range clusters {
+		count += cluster.runeCount
+	}
+	return count
 }
 
 type runeRange struct {

@@ -51,11 +51,11 @@ func NewLLMStructuredSummarizeFunc(p provider.Provider) MessageSummarizeFunc {
 func NewLLMStructuredSummarizeFuncWithServiceTier(p provider.Provider, serviceTier provider.ServiceTier) MessageSummarizeFunc {
 	return func(ctx context.Context, messages []types.Message, customInstructions string) (string, error) {
 		ctx = provider.WithDebugCall(ctx, provider.DebugCallCompaction, nil)
-		requestMessages := cloneMessages(messages)
-		requestMessages = append(requestMessages, types.UserMessage(GetStructuredCompactPrompt(customInstructions)))
+		requestMessages := projectMessagesForCompaction(messages)
+		requestMessages = append(requestMessages, compactionRequestProjection())
 
 		params := provider.Params{
-			System:      CompactSystemPrompt,
+			System:      CompactSystemPrompt + "\n\n" + GetStructuredCompactPrompt(customInstructions),
 			Messages:    requestMessages,
 			MaxTokens:   CompactMaxOutputTokens,
 			Tools:       nil,
@@ -65,6 +65,55 @@ func NewLLMStructuredSummarizeFuncWithServiceTier(p provider.Provider, serviceTi
 
 		return streamCompactSummary(ctx, p, params)
 	}
+}
+
+// compactionRequestProjection supplies a final turn boundary after the
+// conversation data. System-only instructions are insufficient when the
+// projected history ends in a tool result: some compatible models interpret
+// that shape as a request to continue the interrupted tool loop. The explicit
+// runtime marker makes the action unambiguous while the system prompt keeps it
+// out of the "All user messages" section.
+func compactionRequestProjection() types.Message {
+	message := types.UserMessage(`<compaction-source role="runtime" kind="summarization_request">
+Produce the compact-summary/v2 JSON envelope required by the system prompt now. This runtime request is not an ordinary user message and must not be listed in "All user messages".`)
+	message.IsMeta = true
+	return message
+}
+
+// projectMessagesForCompaction makes runtime provenance visible to the
+// summarization model without granting conversation data instruction
+// authority. Runtime records use an assistant data projection. Trusted skill
+// catalogs are omitted because the live catalog is reinstalled after compact;
+// summarizing an obsolete snapshot only pollutes provenance and can interrupt
+// an otherwise atomic tool pair. Ordinary user, assistant, untrusted SDK data,
+// and tool-pair messages retain their exact structured form.
+func projectMessagesForCompaction(messages []types.Message) []types.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+	out := make([]types.Message, 0, len(messages))
+	for _, message := range messages {
+		switch {
+		case message.IsTrustedDeveloperMessage():
+			continue
+		case message.IsInternalRuntimeMessage():
+			out = append(out, compactionSourceProjection("runtime", string(message.InternalKind), message))
+		default:
+			out = append(out, message)
+		}
+	}
+	return out
+}
+
+func compactionSourceProjection(role, kind string, message types.Message) types.Message {
+	marker := `<compaction-source role="` + role + `"`
+	if kind != "" {
+		marker += ` kind="` + kind + `"`
+	}
+	marker += ">"
+	projected := types.AssistantMessage(marker + "\n" + message.GetText())
+	projected.ID = message.ID
+	return projected
 }
 
 func streamCompactSummary(ctx context.Context, p provider.Provider, params provider.Params) (string, error) {
@@ -103,6 +152,13 @@ func streamCompactSummary(ctx context.Context, p provider.Provider, params provi
 			}
 		}
 	}
+	// Some provider transports close their stream without forwarding
+	// context.Canceled. Re-check the caller context after EOF so an Esc racing
+	// with an empty/invalid final frame cannot be misclassified as a missing
+	// summary.
+	if isCompactUserAbortCause(ctx.Err()) {
+		return "", compactUserAbortError(ctx.Err())
+	}
 
 	summary := result.String()
 	if stopReason != nil && *stopReason == types.StopReasonMaxTokens {
@@ -118,7 +174,55 @@ func streamCompactSummary(ctx context.Context, p provider.Provider, params provi
 }
 
 func parseCompactSummaryEnvelope(raw string) (string, error) {
-	decoder := json.NewDecoder(bytes.NewBufferString(strings.TrimSpace(raw)))
+	type candidate struct {
+		start   int
+		end     int
+		summary string
+	}
+
+	text := strings.TrimSpace(raw)
+	var candidates []candidate
+	for index := 0; index < len(text); index++ {
+		if text[index] != '{' {
+			continue
+		}
+		decoder := json.NewDecoder(strings.NewReader(text[index:]))
+		var value json.RawMessage
+		if err := decoder.Decode(&value); err != nil {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(value, &fields); err != nil {
+			continue
+		}
+		_, hasSchema := fields["schema"]
+		_, hasSummary := fields["summary"]
+		if !hasSchema && !hasSummary {
+			continue
+		}
+		summary, err := decodeExactCompactSummaryEnvelope(value)
+		if err != nil {
+			return "", compactError(ErrCompactNoSummary, MessageNoSummary, nil)
+		}
+		candidates = append(candidates, candidate{
+			start:   index,
+			end:     index + int(decoder.InputOffset()),
+			summary: summary,
+		})
+	}
+
+	if len(candidates) != 1 {
+		return "", compactError(ErrCompactNoSummary, MessageNoSummary, nil)
+	}
+	match := candidates[0]
+	if !safeCompactExplanation(text[:match.start]) || !safeCompactExplanation(text[match.end:]) || containsPrivateCompactControl(match.summary) {
+		return "", compactError(ErrCompactNoSummary, MessageNoSummary, nil)
+	}
+	return match.summary, nil
+}
+
+func decodeExactCompactSummaryEnvelope(raw []byte) (string, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var envelope compactSummaryEnvelopeV2
 	if err := decoder.Decode(&envelope); err != nil {
@@ -133,6 +237,37 @@ func parseCompactSummaryEnvelope(raw string) (string, error) {
 	return strings.TrimSpace(envelope.Summary), nil
 }
 
+func safeCompactExplanation(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return true
+	}
+	if strings.Contains(text, "```") || strings.Contains(text, "~~~") ||
+		strings.ContainsAny(text, "{}[]") || containsPrivateCompactControl(text) {
+		return false
+	}
+	for _, char := range text {
+		if char < 0x20 && char != '\n' && char != '\r' && char != '\t' {
+			return false
+		}
+	}
+	return true
+}
+
+func containsPrivateCompactControl(text string) bool {
+	lower := strings.ToLower(text)
+	for _, marker := range []string{
+		"<analysis", "</analysis", "<thinking", "</thinking", "<reasoning", "</reasoning",
+		"<system", "</system", "<developer", "</developer", "<assistant", "</assistant",
+		"<tool", "</tool", "<private", "</private", "<summary", "</summary",
+	} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func ensureJSONEOF(decoder *json.Decoder) error {
 	var extra any
 	if err := decoder.Decode(&extra); err != io.EOF {
@@ -142,13 +277,4 @@ func ensureJSONEOF(decoder *json.Decoder) error {
 		return err
 	}
 	return nil
-}
-
-func cloneMessages(messages []types.Message) []types.Message {
-	if len(messages) == 0 {
-		return nil
-	}
-	out := make([]types.Message, len(messages))
-	copy(out, messages)
-	return out
 }

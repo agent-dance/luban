@@ -1,0 +1,52 @@
+{
+  "instance_id": "assistant-ui__assistant-ui-3866",
+  "language": "ts",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785591452.3198059,
+  "elapsed_seconds": 123.896,
+  "timeout_seconds": 200,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 71709,
+    "cached_input_tokens": 43008,
+    "cache_read_input_tokens": 43008,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 2430,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.237909,
+  "tool_calls": 6,
+  "tool_calls_by_type": {
+    "Inspect": 4,
+    "ApplyPatch": 1,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      ".changeset/react-langchain-state-hook.md",
+      "packages/react-langchain/src/index.ts",
+      "packages/react-langchain/src/useStreamRuntime.ts"
+    ],
+    "additions": 27,
+    "deletions": 4
+  },
+  "final_text": "Implemented `useLangChainState<T>` in `@assistant-ui/react-langchain`.\n\nChanges:\n- Exposed LangGraph `stream.values` through existing runtime extras.\n- Added overloads supporting optional default values.\n- Exported the hook from the package entry point.\n- Added a patch changeset.\n\nVerification was attempted, but pnpm could not run because its executable metadata was unavailable in the offline environment; no code-related failure was reported.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v12",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 7,
+  "llm_successful_calls": 7,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 120.581688,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v12",
+    "sha256": "4aac10b859e6e3d0ffab6e9d99f63f2cd3dd70e8e91d4985b2a46ae17055ee36"
+  }
+}

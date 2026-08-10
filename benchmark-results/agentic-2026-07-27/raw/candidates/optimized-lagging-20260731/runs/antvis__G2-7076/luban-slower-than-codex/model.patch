@@ -1,0 +1,79 @@
+diff --git a/__tests__/integration/api-chart-on-series-tooltip.spec.ts b/__tests__/integration/api-chart-on-series-tooltip.spec.ts
+new file mode 100644
+index 0000000..9e8c20b
+--- /dev/null
++++ b/__tests__/integration/api-chart-on-series-tooltip.spec.ts
+@@ -0,0 +1,48 @@
++import { Chart } from '../../src';
++import { createNodeGCanvas } from './utils/createNodeGCanvas';
++import { createPromise, dispatchPlotEvent } from './utils/event';
++
++describe('chart.on series tooltip', () => {
++  const canvas = createNodeGCanvas(640, 480);
++
++  it('emits the currently selected x value', async () => {
++    const data = [
++      { date: '2025-01-01', value: 1 },
++      { date: '2025-01-02', value: 3 },
++      { date: '2025-01-03', value: 2 },
++      { date: '2025-01-04', value: 4 },
++      { date: '2025-01-05', value: 3 },
++    ];
++    const chart = new Chart({
++      canvas,
++      container: document.createElement('div'),
++    });
++    chart.options({
++      type: 'line',
++      data,
++      encode: { x: 'date', y: 'value' },
++      tooltip: { title: (d) => d.date },
++      interaction: { tooltip: { wait: 0 } },
++    });
++    await chart.render();
++
++    const [tooltipShowed, resolveShow] = createPromise();
++    chart.on('tooltip:show', (event) => {
++      if (!event.nativeEvent) return;
++      expect(event.data.title).toBe('2025-01-03');
++      expect(event.data.data.x).toBe('2025-01-03');
++      resolveShow();
++    });
++
++    dispatchPlotEvent(canvas, 'pointermove', {
++      offsetX: 320,
++      offsetY: 200,
++    });
++    await tooltipShowed;
++    chart.destroy();
++  });
++
++  afterAll(() => {
++    canvas?.destroy();
++  });
++});
+diff --git a/src/interaction/tooltip.ts b/src/interaction/tooltip.ts
+index 4c82910..7d6b3db 100644
+--- a/src/interaction/tooltip.ts
++++ b/src/interaction/tooltip.ts
+@@ -1050,13 +1050,19 @@ export function seriesTooltip(
+       // so we need to find the first x to show tooltip.
+       const firstX = filteredSeriesData[0]?.[0].x;
+       const transformedX = firstX ?? abstractX(focus);
++      // For an ordinal scale, transformedX is the start of the selected
++      // category. Move it inside that category before inverting; otherwise
++      // the boundary is attributed to the preceding domain value.
++      const selectedX =
++        transformedX +
++        (scale.x.getBandWidth ? scale.x.getStep() / 2 : 0);
+ 
+       emitter.emit('tooltip:show', {
+         ...event,
+         nativeEvent: true,
+         data: {
+           ...tooltipData,
+-          data: { x: invert(scale.x, transformedX, true) },
++          data: { x: invert(scale.x, selectedX, true) },
+         },
+       });
+     },

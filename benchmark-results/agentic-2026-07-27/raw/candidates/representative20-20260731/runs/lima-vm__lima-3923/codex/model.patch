@@ -1,0 +1,72 @@
+diff --git a/cmd/limactl/prune.go b/cmd/limactl/prune.go
+index ee1196e..be3c553 100644
+--- a/cmd/limactl/prune.go
++++ b/cmd/limactl/prune.go
+@@ -80,6 +80,10 @@ func knownLocations(ctx context.Context) (map[string]limatype.File, error) {
+ 		if err != nil {
+ 			return nil, err
+ 		}
++		if instance.Config == nil {
++			logrus.WithField("errors", instance.Errors).Warnf("Skipping instance %q because its configuration could not be loaded", instanceName)
++			continue
++		}
+ 		maps.Copy(locations, locationsFromLimaYAML(instance.Config))
+ 	}
+ 
+@@ -107,6 +111,9 @@ func knownLocations(ctx context.Context) (map[string]limatype.File, error) {
+ 
+ func locationsFromLimaYAML(y *limatype.LimaYAML) map[string]limatype.File {
+ 	locations := make(map[string]limatype.File)
++	if y == nil {
++		return locations
++	}
+ 	for _, f := range y.Images {
+ 		locations[downloader.CacheKey(f.Location)] = f.File
+ 		if f.Kernel != nil {
+diff --git a/pkg/driver/vz/vz_driver_darwin.go b/pkg/driver/vz/vz_driver_darwin.go
+index 85b7a55..050f792 100644
+--- a/pkg/driver/vz/vz_driver_darwin.go
++++ b/pkg/driver/vz/vz_driver_darwin.go
+@@ -223,13 +223,13 @@ func (l *LimaVzDriver) Validate(_ context.Context) error {
+ 	if runtime.GOARCH == "amd64" && macOSProductVersion.LessThan(*semver.New("15.5.0")) {
+ 		logrus.Warnf("vmType %s: On Intel Mac, macOS 15.5 or later is required to run Linux 6.12 or later. "+
+ 			"Update macOS, or change vmType to \"qemu\" if the VM does not start up. (https://github.com/lima-vm/lima/issues/3334)",
+-			*l.Instance.Config.VMType)
++			limatype.VZ)
+ 	}
+ 	if l.Instance.Config.MountType != nil && *l.Instance.Config.MountType == limatype.NINEP {
+ 		return fmt.Errorf("field `mountType` must be %q or %q for VZ driver , got %q", limatype.REVSSHFS, limatype.VIRTIOFS, *l.Instance.Config.MountType)
+ 	}
+ 	if *l.Instance.Config.Firmware.LegacyBIOS {
+-		logrus.Warnf("vmType %s: ignoring `firmware.legacyBIOS`", *l.Instance.Config.VMType)
++		logrus.Warnf("vmType %s: ignoring `firmware.legacyBIOS`", limatype.VZ)
+ 	}
+ 	for _, f := range l.Instance.Config.Firmware.Images {
+ 		switch f.VMType {
+@@ -249,7 +249,7 @@ func (l *LimaVzDriver) Validate(_ context.Context) error {
+ 
+ 	for i, image := range l.Instance.Config.Images {
+ 		if unknown := reflectutil.UnknownNonEmptyFields(image, "File", "Kernel", "Initrd"); len(unknown) > 0 {
+-			logrus.Warnf("vmType %s: ignoring images[%d]: %+v", *l.Instance.Config.VMType, i, unknown)
++			logrus.Warnf("vmType %s: ignoring images[%d]: %+v", limatype.VZ, i, unknown)
+ 		}
+ 	}
+ 
+@@ -260,7 +260,7 @@ func (l *LimaVzDriver) Validate(_ context.Context) error {
+ 			"SSHFS",
+ 			"NineP",
+ 		); len(unknown) > 0 {
+-			logrus.Warnf("vmType %s: ignoring mounts[%d]: %+v", *l.Instance.Config.VMType, i, unknown)
++			logrus.Warnf("vmType %s: ignoring mounts[%d]: %+v", limatype.VZ, i, unknown)
+ 		}
+ 	}
+ 
+@@ -272,7 +272,7 @@ func (l *LimaVzDriver) Validate(_ context.Context) error {
+ 			"Metric",
+ 			"Interface",
+ 		); len(unknown) > 0 {
+-			logrus.Warnf("vmType %s: ignoring networks[%d]: %+v", *l.Instance.Config.VMType, i, unknown)
++			logrus.Warnf("vmType %s: ignoring networks[%d]: %+v", limatype.VZ, i, unknown)
+ 		}
+ 	}
+ 

@@ -49,14 +49,16 @@ type reportData struct {
 	SharedLuban     Aggregate
 	HasSharedPass   bool
 	SharedTaskCount int
+	HasAdjudication bool
 }
 
 type codexReportData struct {
-	Snapshot     CodexBaselineSnapshot
-	HTMLLanguage string
-	EvidencePath string
-	Aggregate    Aggregate
-	Tasks        []reportRun
+	Snapshot        CodexBaselineSnapshot
+	HTMLLanguage    string
+	EvidencePath    string
+	Aggregate       Aggregate
+	Tasks           []reportRun
+	HasAdjudication bool
 }
 
 func GenerateReport(inputPath, outputPath string, language i18n.Language) error {
@@ -138,8 +140,16 @@ func GenerateCodexReport(snapshot CodexBaselineSnapshot, resultsRoot, outputPath
 		if evaluation, ok := evaluations[task.InstanceID]; ok {
 			copyValue := evaluation
 			entry.Evaluation = &copyValue
-			target := filepath.Join(sourceRoot, filepath.FromSlash(evaluation.EvidenceRoot), "report.json")
-			entry.Links = append(entry.Links, reportLink{Label: "evaluation/report.json", Href: relativeLink(outputDir, target)})
+			evidenceFile := evaluationEvidenceFile(evaluation)
+			target := filepath.Join(sourceRoot, filepath.FromSlash(evaluation.EvidenceRoot), evidenceFile)
+			entry.Links = append(entry.Links, reportLink{Label: "evaluation/" + evidenceFile, Href: relativeLink(outputDir, target)})
+			if evaluation.Adjudicated {
+				data.HasAdjudication = true
+				for _, name := range []string{"report.json", "adjudication.json"} {
+					target := filepath.Join(sourceRoot, filepath.FromSlash(evaluation.EvidenceRoot), name)
+					entry.Links = append(entry.Links, reportLink{Label: "evaluation/" + name, Href: relativeLink(outputDir, target)})
+				}
+			}
 		}
 		data.Tasks = append(data.Tasks, entry)
 	}
@@ -209,7 +219,14 @@ func compileReport(result BenchmarkResult, outputDir, inputPath string, language
 			if value, ok := evaluations[key]; ok {
 				copyValue := value
 				entry.Evaluation = &copyValue
-				entry.Links = append(entry.Links, reportLink{Label: "evaluation/report.json", Href: filepath.ToSlash(filepath.Join(value.EvidenceRoot, "report.json"))})
+				evidenceFile := evaluationEvidenceFile(value)
+				entry.Links = append(entry.Links, reportLink{Label: "evaluation/" + evidenceFile, Href: filepath.ToSlash(filepath.Join(value.EvidenceRoot, evidenceFile))})
+				if value.Adjudicated {
+					data.HasAdjudication = true
+					for _, name := range []string{"report.json", "adjudication.json"} {
+						entry.Links = append(entry.Links, reportLink{Label: "evaluation/" + name, Href: filepath.ToSlash(filepath.Join(value.EvidenceRoot, name))})
+					}
+				}
 			}
 			row.Runs = append(row.Runs, entry)
 		}
@@ -226,6 +243,13 @@ func compileReport(result BenchmarkResult, outputDir, inputPath string, language
 		data.SharedTaskCount = len(sharedSet)
 	}
 	return data, nil
+}
+
+func evaluationEvidenceFile(value Evaluation) string {
+	if value.EvidenceFile != "" {
+		return value.EvidenceFile
+	}
+	return "report.json"
 }
 
 func renderReport(writer io.Writer, data reportData, language i18n.Language) error {

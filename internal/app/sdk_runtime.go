@@ -300,6 +300,7 @@ func sdkRequestStatus(eventType stream.EventType, source *stream.RequestStatusEv
 		out.MaxAttempts = source.MaxRetries + 1
 	}
 	out.RetryDelayMilliseconds = source.RetryDelayMilliseconds
+	out.RetryKind = source.RetryKind
 	out.RetryCount = source.RetryCount
 	out.RequestMilliseconds = source.RequestMilliseconds
 	out.FirstTokenMilliseconds = source.FirstTokenMilliseconds

@@ -312,7 +312,7 @@ func classForAPIIdentifier(value string) (types.ProviderErrorClass, bool) {
 			return types.ProviderErrorClassOverload, true
 		}
 	}
-	for _, marker := range []string{"connection_error", "stream_interrupted", "stream_idle_timeout", "transport_error"} {
+	for _, marker := range []string{"connection_error", "stream_interrupted", "stream_idle_timeout", "transport_error", "response_failed"} {
 		if strings.Contains(identifier, marker) {
 			return types.ProviderErrorClassTransport, true
 		}

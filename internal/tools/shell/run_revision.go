@@ -1,11 +1,13 @@
 package shell
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -39,6 +41,7 @@ func configureRunRevisionSafety(plan *compiledRunPlan, workspaceRoot, configured
 		return
 	}
 	seenVerification := false
+	formatterCount := 0
 	for index := range plan.steps {
 		step := &plan.steps[index]
 		step.formatterWrites = declaredGofmtWrites(*step, workspaceRoot)
@@ -47,19 +50,21 @@ func configureRunRevisionSafety(plan *compiledRunPlan, workspaceRoot, configured
 			if seenVerification {
 				return
 			}
-			plan.formatterCount++
+			formatterCount++
 		case step.verificationKind != runVerificationNone:
 			seenVerification = true
-			step.verificationSafe = true
+		case step.readOnly:
+			// Read-only observations may share a revision-safe graph with the
+			// classified verifier. The whole workspace is snapshotted around the
+			// graph, so an incorrect command classification still fails closed.
 		default:
 			return
 		}
-		step.managedRoot = managedRoot
 	}
 	if !seenVerification {
 		return
 	}
-	if plan.formatterCount > 0 {
+	if formatterCount > 0 {
 		for index, step := range plan.steps {
 			if index == 0 {
 				if len(step.dependsOn) != 0 {
@@ -72,6 +77,11 @@ func configureRunRevisionSafety(plan *compiledRunPlan, workspaceRoot, configured
 			}
 		}
 	}
+	for index := range plan.steps {
+		plan.steps[index].verificationSafe = plan.steps[index].verificationKind != runVerificationNone
+		plan.steps[index].managedRoot = managedRoot
+	}
+	plan.formatterCount = formatterCount
 	plan.revisionSafe = true
 }
 
@@ -175,7 +185,14 @@ func executeFormatterVerificationChain(ctx context.Context, scope bashExecutionS
 	failed := false
 	stepBudget := max(1, plan.maxChars/len(plan.steps))
 
-	for index := 0; index < plan.formatterCount; index++ {
+	verificationStart := len(plan.steps)
+	for index, step := range plan.steps {
+		if step.verificationKind != runVerificationNone {
+			verificationStart = index
+			break
+		}
+	}
+	for index := 0; index < verificationStart; index++ {
 		step := plan.steps[index]
 		if failed {
 			executions[index] = skippedRunStep(step)
@@ -188,11 +205,20 @@ func executeFormatterVerificationChain(ctx context.Context, scope bashExecutionS
 		executions[index] = executeRunStep(ctx, scope, step, plan.headLines, plan.tailLines, stepBudget, logicalStarted)
 		after, afterErr := captureRunSourceSnapshot(scope.cwd)
 		actual, changeErr := changedRunSourcePaths(before, after)
-		if beforeErr != nil || afterErr != nil || changeErr != nil || !runWritesWithinDeclaration(actual, step.formatterWrites) {
-			markUnsafe("formatter_write_set_exceeded")
-		}
-		for _, path := range actual {
-			changed[path] = struct{}{}
+		snapshotFailed := beforeErr != nil || afterErr != nil || changeErr != nil
+		switch {
+		case len(step.formatterWrites) > 0:
+			if snapshotFailed || !runWritesWithinDeclaration(actual, step.formatterWrites) {
+				markUnsafe("formatter_write_set_exceeded")
+			}
+			for _, path := range actual {
+				changed[path] = struct{}{}
+			}
+		case snapshotFailed || len(actual) != 0:
+			// A step classified as a read-only pre-verification observation is
+			// allowed in this phase, but it may not manufacture source changes.
+			// Keep the graph fail-closed if classification and reality diverge.
+			markUnsafe("observation_changed_source")
 		}
 		if runStepFailed(executions[index].output.Status) {
 			failed = true
@@ -220,14 +246,16 @@ func executeFormatterVerificationChain(ctx context.Context, scope bashExecutionS
 		markUnsafe("verification_snapshot_failed")
 	}
 	verificationRan := false
-	for index := plan.formatterCount; index < len(plan.steps); index++ {
+	for index := verificationStart; index < len(plan.steps); index++ {
 		step := plan.steps[index]
 		if failed {
 			executions[index] = skippedRunStep(step)
 			continue
 		}
 		executions[index] = executeRunStep(ctx, scope, step, plan.headLines, plan.tailLines, stepBudget, logicalStarted)
-		verificationRan = true
+		if step.verificationKind != runVerificationNone {
+			verificationRan = true
+		}
 		if runStepFailed(executions[index].output.Status) {
 			failed = true
 		}
@@ -284,8 +312,156 @@ func captureRunSourceSnapshot(root string) (runSourceSnapshot, error) {
 	if resolved, resolveErr := filepath.EvalSymlinks(absolute); resolveErr == nil {
 		absolute = filepath.Clean(resolved)
 	}
+	if paths, gitBacked, gitErr := gitRunSnapshotPaths(absolute); gitBacked {
+		if gitErr != nil {
+			return runSourceSnapshot{}, gitErr
+		}
+		return captureSelectedRunSourcePaths(absolute, paths)
+	}
+	return captureWalkedRunSourceSnapshot(absolute)
+}
+
+func gitRunSnapshotPaths(root string) ([]string, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	gitArgs := []string{"-C", root, "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "-c", "submodule.recurse=false"}
+	rootCommand := exec.CommandContext(ctx, "git", append(gitArgs, "rev-parse", "--show-toplevel")...)
+	rootCommand.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
+	repositoryOutput, err := rootCommand.Output()
+	if err != nil {
+		return nil, false, nil
+	}
+	repositoryRoot := filepath.Clean(strings.TrimSpace(string(repositoryOutput)))
+	if resolved, resolveErr := filepath.EvalSymlinks(repositoryRoot); resolveErr == nil {
+		repositoryRoot = filepath.Clean(resolved)
+	}
+	if !pathWithin(root, repositoryRoot) {
+		return nil, true, workspacerevision.ErrRevisionChanged
+	}
+	relativeRoot, err := filepath.Rel(repositoryRoot, root)
+	if err != nil {
+		return nil, true, err
+	}
+	pathspec := filepath.ToSlash(relativeRoot)
+	if pathspec == "" {
+		pathspec = "."
+	}
+	list := func(mode ...string) ([]byte, error) {
+		listArgs := append(append([]string{}, gitArgs...), "--literal-pathspecs", "ls-files", "-z")
+		listArgs = append(listArgs, mode...)
+		listArgs = append(listArgs, "--full-name", "--", pathspec)
+		listCommand := exec.CommandContext(ctx, "git", listArgs...)
+		listCommand.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0")
+		return listCommand.Output()
+	}
+	tracked, err := list("--cached")
+	if err != nil {
+		return nil, true, err
+	}
+	untracked, err := list("--others", "--exclude-standard")
+	if err != nil {
+		return nil, true, err
+	}
+	paths := make([]string, 0, bytes.Count(tracked, []byte{0})+bytes.Count(untracked, []byte{0}))
+	seen := make(map[string]struct{})
+	appendPaths := func(output []byte, excludeGenerated bool) error {
+		for _, raw := range bytes.Split(output, []byte{0}) {
+			if len(raw) == 0 {
+				continue
+			}
+			path := filepath.Clean(filepath.Join(repositoryRoot, filepath.FromSlash(string(raw))))
+			if !pathWithin(path, root) {
+				return workspacerevision.ErrRevisionChanged
+			}
+			relative, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return relErr
+			}
+			relative = filepath.ToSlash(relative)
+			if excludeGenerated && isRunGeneratedPath(relative) {
+				continue
+			}
+			if _, ok := seen[relative]; ok {
+				continue
+			}
+			seen[relative] = struct{}{}
+			paths = append(paths, relative)
+		}
+		return nil
+	}
+	if err := appendPaths(tracked, false); err != nil {
+		return nil, true, err
+	}
+	if err := appendPaths(untracked, true); err != nil {
+		return nil, true, err
+	}
+	sort.Strings(paths)
+	return paths, true, nil
+}
+
+var runGeneratedTopLevelDirectories = map[string]struct{}{
+	".gradle": {}, ".luban-build": {}, ".next": {}, "build": {}, "coverage": {},
+	"dist": {}, "node_modules": {}, "out": {}, "target": {},
+}
+
+func isRunGeneratedPath(relative string) bool {
+	first, _, _ := strings.Cut(filepath.ToSlash(relative), "/")
+	_, generated := runGeneratedTopLevelDirectories[first]
+	return generated || strings.HasPrefix(first, "build-") || strings.HasPrefix(first, "build_") ||
+		strings.HasPrefix(first, ".luban-build-")
+}
+
+func captureSelectedRunSourcePaths(root string, paths []string) (runSourceSnapshot, error) {
+	entries := make(map[string][sha256.Size]byte, len(paths))
+	for _, relative := range paths {
+		digest, err := digestRunSourcePath(filepath.Join(root, filepath.FromSlash(relative)))
+		if err != nil {
+			return runSourceSnapshot{}, err
+		}
+		entries[relative] = digest
+	}
+	return runSourceSnapshot{root: filepath.Clean(root), entries: entries}, nil
+}
+
+func digestRunSourcePath(path string) ([sha256.Size]byte, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return sha256.Sum256([]byte("missing")), nil
+	}
+	if err != nil {
+		return [sha256.Size]byte{}, err
+	}
+	h := sha256.New()
+	_, _ = h.Write([]byte(info.Mode().String()))
+	switch {
+	case info.Mode().IsRegular():
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return [sha256.Size]byte{}, readErr
+		}
+		current, statErr := os.Lstat(path)
+		if statErr != nil || current.Size() != info.Size() || !current.ModTime().Equal(info.ModTime()) || current.Mode() != info.Mode() {
+			return [sha256.Size]byte{}, workspacerevision.ErrRevisionChanged
+		}
+		_, _ = h.Write(content)
+	case info.Mode()&os.ModeSymlink != 0:
+		target, readErr := os.Readlink(path)
+		if readErr != nil {
+			return [sha256.Size]byte{}, readErr
+		}
+		_, _ = h.Write([]byte(target))
+	case info.IsDir():
+	default:
+		return [sha256.Size]byte{}, workspacerevision.ErrRevisionChanged
+	}
+	var digest [sha256.Size]byte
+	copy(digest[:], h.Sum(nil))
+	return digest, nil
+}
+
+func captureWalkedRunSourceSnapshot(absolute string) (runSourceSnapshot, error) {
 	entries := make(map[string][sha256.Size]byte)
-	err = filepath.WalkDir(absolute, func(path string, entry os.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(absolute, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -296,38 +472,13 @@ func captureRunSourceSnapshot(root string) (runSourceSnapshot, error) {
 		if relErr != nil {
 			return relErr
 		}
-		if relative == ".git" && entry.IsDir() {
+		if entry.IsDir() && (relative == ".git" || isRunGeneratedPath(filepath.ToSlash(relative))) {
 			return filepath.SkipDir
 		}
-		info, infoErr := entry.Info()
-		if infoErr != nil {
-			return infoErr
+		digest, digestErr := digestRunSourcePath(path)
+		if digestErr != nil {
+			return digestErr
 		}
-		h := sha256.New()
-		_, _ = h.Write([]byte(info.Mode().String()))
-		switch {
-		case info.Mode().IsRegular():
-			content, readErr := os.ReadFile(path)
-			if readErr != nil {
-				return readErr
-			}
-			current, statErr := os.Lstat(path)
-			if statErr != nil || current.Size() != info.Size() || !current.ModTime().Equal(info.ModTime()) || current.Mode() != info.Mode() {
-				return workspacerevision.ErrRevisionChanged
-			}
-			_, _ = h.Write(content)
-		case info.Mode()&os.ModeSymlink != 0:
-			target, readErr := os.Readlink(path)
-			if readErr != nil {
-				return readErr
-			}
-			_, _ = h.Write([]byte(target))
-		case info.IsDir():
-		default:
-			return workspacerevision.ErrRevisionChanged
-		}
-		var digest [sha256.Size]byte
-		copy(digest[:], h.Sum(nil))
 		entries[filepath.ToSlash(relative)] = digest
 		return nil
 	})

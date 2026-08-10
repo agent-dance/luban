@@ -435,6 +435,37 @@ func TestRevisionFusionRunsVerificationAfterCommittedMutation(t *testing.T) {
 	}
 }
 
+func TestRevisionFusionAutomaticallyBindsAdjacentRun(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	var verified atomic.Bool
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: path})
+	reg.Register(&fusionVerificationTool{ledger: ledger, path: path, executed: &verificationExecuted, verified: &verified})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{
+			{ID: "patch", Name: "ApplyPatch", Input: map[string]any{}},
+			{ID: "verify", Name: "Run", Input: map[string]any{}},
+		}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verificationExecuted.Load() != 1 || !verified.Load() {
+		t.Fatalf("automatic binding execution=%d verified=%t", verificationExecuted.Load(), verified.Load())
+	}
+	if detailed.Metrics.RevisionFusionCount != 1 || detailed.Metrics.RevisionBarrierSkips != 0 {
+		t.Fatalf("automatic binding metrics = %+v", detailed.Metrics)
+	}
+}
+
 func TestRevisionFusionSkipsRunAfterPatchBusinessFailure(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "source.txt")
@@ -463,6 +494,32 @@ func TestRevisionFusionSkipsRunAfterPatchBusinessFailure(t *testing.T) {
 	metrics := detailed.Metrics
 	if metrics.PhysicalChildOperations != 1 || metrics.RevisionFusionCount != 1 || metrics.RevisionBarrierSkips != 1 || metrics.ErrorCount != 2 {
 		t.Fatalf("failed fusion metrics = %+v", metrics)
+	}
+}
+
+func TestRevisionFusionAutomaticallySkipsAdjacentRunAfterPatchFailure(t *testing.T) {
+	root := t.TempDir()
+	ledger := workspacerevision.NewLedger()
+	var verificationExecuted atomic.Int32
+	reg := registry.New()
+	reg.Register(&fusionMutationTool{ledger: ledger, root: root, path: filepath.Join(root, "source.txt"), fail: true})
+	reg.Register(&fusionVerificationTool{ledger: ledger, executed: &verificationExecuted})
+
+	detailed, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{
+			{ID: "patch-failed", Name: "ApplyPatch", Input: map[string]any{}},
+			{ID: "verify-skipped", Name: "Run", Input: map[string]any{}},
+		}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if verificationExecuted.Load() != 0 || detailed.Results[1].Metadata["schedule.status"] != "skipped" {
+		t.Fatalf("automatic skip execution=%d results=%#v", verificationExecuted.Load(), detailed.Results)
+	}
+	if detailed.Metrics.RevisionFusionCount != 1 || detailed.Metrics.RevisionBarrierSkips != 1 {
+		t.Fatalf("automatic skip metrics = %+v", detailed.Metrics)
 	}
 }
 

@@ -1,0 +1,51 @@
+{
+  "instance_id": "actor-framework__actor-framework-2300",
+  "language": "cpp",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785482004.858237,
+  "elapsed_seconds": 312.642,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 970135,
+    "cached_input_tokens": 889344,
+    "output_tokens": 7588,
+    "reasoning_output_tokens": 3902,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 889344,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 1.076267,
+  "tool_calls": 16,
+  "tool_calls_by_type": {
+    "command_execution": 15,
+    "file_change": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "libcaf_net/caf/net/abstract_actor_shell.cpp",
+      "libcaf_net/caf/net/actor_shell.test.cpp"
+    ],
+    "additions": 32,
+    "deletions": 3
+  },
+  "final_text": "Implemented the actor-shell shutdown fix.\n\n- The receive loop now stops immediately after `quit` closes the mailbox, preventing reads from a closed mailbox.\n- Added a regression test covering `quit` from a timed-out request’s error handler.\n\nValidation:\n\n- Actor and typed-actor shell suites pass.\n- 27/32 broader net suites pass; five unrelated suites require prohibited TCP/UDP port binding in the sandbox.\n- `git diff --check` passes.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 22,
+  "llm_successful_calls": 22,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 270.345946,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

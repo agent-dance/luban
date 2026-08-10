@@ -139,7 +139,7 @@ func convertAssistantMessageToResponsesAPIForRequest(message types.Message, mode
 			// admissible stateless history. Never fall back to lossy reconstruction.
 			return nil, i18n.NewError(i18n.KeyProviderResponsesContinuationInvalid)
 		}
-		return convertAssistantMessageToResponsesAPIForModel(message, model), nil
+		return convertAssistantMessageToResponsesAPIForSemantics(message, model, semantics), nil
 	}
 
 	protocol := responsesContinuationProtocol(semantics, lite)

@@ -1,0 +1,153 @@
+diff --git a/crates/napi/src/bindgen_runtime/iterator.rs b/crates/napi/src/bindgen_runtime/iterator.rs
+index d28d626..ec4db5e 100644
+--- a/crates/napi/src/bindgen_runtime/iterator.rs
++++ b/crates/napi/src/bindgen_runtime/iterator.rs
+@@ -94,6 +94,108 @@ pub unsafe fn create_iterator<T: Generator>(
+   );
+ }
+ 
++unsafe fn set_iterator_prototype(env: sys::napi_env, generator_object: sys::napi_value) {
++  let mut global = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe { sys::napi_get_global(env, &mut global) },
++    "Get global object failed",
++  );
++
++  let mut iterator_constructor = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe {
++      sys::napi_get_named_property(
++        env,
++        global,
++        c"Iterator".as_ptr().cast(),
++        &mut iterator_constructor,
++      )
++    },
++    "Get Iterator constructor failed",
++  );
++
++  let mut iterator_type = sys::ValueType::napi_undefined;
++  check_status_or_throw!(
++    env,
++    unsafe { sys::napi_typeof(env, iterator_constructor, &mut iterator_type) },
++    "Get Iterator constructor type failed",
++  );
++  // Iterator is only exposed as a global in runtimes that support iterator helpers.
++  // Keep the plain-object iterator used by older Node.js versions when it is absent.
++  if iterator_type != sys::ValueType::napi_function {
++    return;
++  }
++
++  let mut iterator_prototype = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe {
++      sys::napi_get_named_property(
++        env,
++        iterator_constructor,
++        c"prototype".as_ptr().cast(),
++        &mut iterator_prototype,
++      )
++    },
++    "Get Iterator prototype failed",
++  );
++  let mut prototype_type = sys::ValueType::napi_undefined;
++  check_status_or_throw!(
++    env,
++    unsafe { sys::napi_typeof(env, iterator_prototype, &mut prototype_type) },
++    "Get Iterator prototype type failed",
++  );
++  if prototype_type != sys::ValueType::napi_object {
++    return;
++  }
++
++  let mut object_constructor = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe {
++      sys::napi_get_named_property(
++        env,
++        global,
++        c"Object".as_ptr().cast(),
++        &mut object_constructor,
++      )
++    },
++    "Get Object constructor failed",
++  );
++  let mut set_prototype_of = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe {
++      sys::napi_get_named_property(
++        env,
++        object_constructor,
++        c"setPrototypeOf".as_ptr().cast(),
++        &mut set_prototype_of,
++      )
++    },
++    "Get Object.setPrototypeOf failed",
++  );
++
++  let args = [generator_object, iterator_prototype];
++  let mut result = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe {
++      sys::napi_call_function(
++        env,
++        object_constructor,
++        set_prototype_of,
++        args.len(),
++        args.as_ptr(),
++        &mut result,
++      )
++    },
++    "Set Generator object prototype failed",
++  );
++}
++
+ #[doc(hidden)]
+ pub unsafe extern "C" fn symbol_generator<T: Generator>(
+   env: sys::napi_env,
+@@ -123,6 +225,7 @@ pub unsafe extern "C" fn symbol_generator<T: Generator>(
+     unsafe { sys::napi_create_object(env, &mut generator_object) },
+     "Create Generator object failed"
+   );
++  unsafe { set_iterator_prototype(env, generator_object) };
+   let mut next_function = ptr::null_mut();
+   check_status_or_throw!(
+     env,
+diff --git a/examples/napi/__tests__/generator.spec.ts b/examples/napi/__tests__/generator.spec.ts
+index c7c52c9..18b1ea8 100644
+--- a/examples/napi/__tests__/generator.spec.ts
++++ b/examples/napi/__tests__/generator.spec.ts
+@@ -6,6 +6,27 @@ test.after(() => {
+   shutdownRuntime()
+ })
+ 
++test('should inherit native Iterator helpers when available', (t) => {
++  const IteratorConstructor = Reflect.get(globalThis, 'Iterator')
++  if (typeof IteratorConstructor !== 'function') {
++    t.pass()
++    return
++  }
++
++  const iterator = new Fib()[Symbol.iterator]()
++  t.is(Object.getPrototypeOf(iterator), IteratorConstructor.prototype)
++  t.true(iterator instanceof IteratorConstructor)
++  t.is(iterator[Symbol.iterator](), iterator)
++  t.is(typeof iterator.take, 'function')
++  t.deepEqual(Array.from(iterator.take(5)), [1, 1, 2, 3, 5])
++
++  const flatMapIterator = new Fib()[Symbol.iterator]()
++  const flatMapped = flatMapIterator
++    .flatMap((value) => [value, -value])
++    .take(4)
++  t.deepEqual(Array.from(flatMapped), [1, -1, 1, -1])
++})
++
+ for (const [index, factory] of [
+   () => new Fib(),
+   () => Fib2.create(0),

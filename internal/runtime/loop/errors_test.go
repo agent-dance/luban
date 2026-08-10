@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/internal/contracts/stream"
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/registry"
@@ -254,7 +255,9 @@ func TestLLMRequestLifecycleReportsRetryStartFirstTokenAndEnd(t *testing.T) {
 	if requestID == "" || lifecycle[2].RequestStatus.RequestID != requestID || lifecycle[3].RequestStatus.RequestID != requestID {
 		t.Fatalf("request lifecycle identity was not stable: %+v", lifecycle)
 	}
-	if lifecycle[1].RequestStatus.Attempt != 2 || lifecycle[3].RequestStatus.EndedAt == "" {
+	// HTTP request retry 1/2 completed inside stream attempt 1/6. The budgets
+	// are deliberately independent, so the established stream remains attempt 1.
+	if lifecycle[1].RequestStatus.Attempt != 1 || lifecycle[1].RequestStatus.MaxRetries != 5 || lifecycle[3].RequestStatus.EndedAt == "" {
 		t.Fatalf("request lifecycle omitted final attempt/timestamp: %+v", lifecycle)
 	}
 }
@@ -349,7 +352,7 @@ func TestContextFailurePreservesTypedTerminalEventAcrossProviderBoundaries(t *te
 	}
 }
 
-func TestTransientProviderStopsAtThreeRawAttempts(t *testing.T) {
+func TestTransientProviderStopsAtSixRawAttempts(t *testing.T) {
 	p := &failNProvider{
 		failUntil: 99,
 		failErr:   &types.APIError{Type: "overloaded_error", Message: "overloaded"},
@@ -365,22 +368,24 @@ func TestTransientProviderStopsAtThreeRawAttempts(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected exhausted provider error")
 	}
-	if calls := p.calls.Load(); calls != 3 {
-		t.Fatalf("provider calls = %d, want total generation budget of three", calls)
+	if calls := p.calls.Load(); calls != 6 {
+		t.Fatalf("provider calls = %d, want total generation budget of six", calls)
 	}
-	if len(retries) != 2 {
+	if len(retries) != 5 {
 		t.Fatalf("retry events = %+v", retries)
 	}
 	for index := range retries {
-		maxDelay := int64(1 << index)
-		if retries[index].Attempt != index+1 || retries[index].MaxRetries != 2 || retries[index].RetryDelayMilliseconds < 0 || retries[index].RetryDelayMilliseconds > maxDelay {
-			t.Fatalf("retry[%d] = %+v, want full jitter within [0,%d]ms", index, retries[index], maxDelay)
+		baseDelay := int64(1 << index)
+		minDelay := baseDelay * 9 / 10
+		maxDelay := (baseDelay*11 + 9) / 10
+		if retries[index].Attempt != index+1 || retries[index].MaxRetries != 5 || retries[index].RetryDelayMilliseconds < minDelay || retries[index].RetryDelayMilliseconds > maxDelay {
+			t.Fatalf("retry[%d] = %+v, want Codex jitter within [%d,%d]ms", index, retries[index], minDelay, maxDelay)
 		}
 	}
 }
 
 func TestTransientRetryExhausted(t *testing.T) {
-	// Always fails with a transient error and should give up after three total attempts.
+	// Always fails with a transient error and should give up after six total attempts.
 	p := &alwaysFailProvider{
 		err: &types.APIError{Type: "overloaded_error", Message: "overloaded"},
 	}
@@ -887,10 +892,14 @@ func TestStreamInterruptRetrySucceeds(t *testing.T) {
 	ql := New(p, reg, Config{MaxTurns: 5, MaxTokens: 1024})
 
 	var warnings, texts []string
+	var foundWarning bool
 	err := ql.Run(context.Background(), "hi", func(e stream.Event) {
 		switch e.Type {
 		case stream.EventSystemWarning:
 			warnings = append(warnings, projectedSystemWarningText(e))
+			if e.RuntimeEvent != nil && e.RuntimeEvent.PublicKey == i18n.KeyRuntimeStreamRetryFullHistory {
+				foundWarning = true
+			}
 		case stream.EventText:
 			texts = append(texts, e.Text)
 		}
@@ -901,14 +910,7 @@ func TestStreamInterruptRetrySucceeds(t *testing.T) {
 	if p.calls.Load() != 2 {
 		t.Errorf("expected 2 provider calls (1 interrupt + 1 success), got %d", p.calls.Load())
 	}
-	// Should have emitted a warning about the stream interrupt
-	foundWarning := false
-	for _, w := range warnings {
-		lower := strings.ToLower(w)
-		if strings.Contains(lower, "stream failed") && strings.Contains(lower, "retrying") {
-			foundWarning = true
-		}
-	}
+	// Should have emitted a semantic warning about the stream interrupt.
 	if !foundWarning {
 		t.Errorf("expected stream-failed retry warning, got: %v", warnings)
 	}
@@ -918,7 +920,7 @@ func TestStreamInterruptRetrySucceeds(t *testing.T) {
 	}
 }
 
-func TestStreamInterruptStopsAtThreeRawAttempts(t *testing.T) {
+func TestStreamInterruptStopsAtSixRawAttempts(t *testing.T) {
 	p := &alwaysStreamInterruptProvider{}
 	ql := New(p, registry.New(), Config{MaxTurns: 5, MaxTokens: 1024})
 	var retries []*stream.RequestStatusEvent
@@ -931,33 +933,38 @@ func TestStreamInterruptStopsAtThreeRawAttempts(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected exhausted stream error")
 	}
-	if calls := p.calls.Load(); calls != 3 {
-		t.Fatalf("stream calls = %d, want total generation budget of three", calls)
+	if calls := p.calls.Load(); calls != 6 {
+		t.Fatalf("stream calls = %d, want total generation budget of six", calls)
 	}
-	if len(retries) != 2 {
+	if len(retries) != 5 {
 		t.Fatalf("stream retry events = %+v", retries)
 	}
 	for index := range retries {
-		maxDelay := int64(1 << index)
-		if retries[index].Attempt != index+1 || retries[index].MaxRetries != 2 || retries[index].RetryDelayMilliseconds < 0 || retries[index].RetryDelayMilliseconds > maxDelay {
-			t.Fatalf("stream retry[%d] = %+v, want full jitter within [0,%d]ms", index, retries[index], maxDelay)
+		baseDelay := int64(1 << index)
+		minDelay := baseDelay * 9 / 10
+		maxDelay := (baseDelay*11 + 9) / 10
+		if retries[index].Attempt != index+1 || retries[index].MaxRetries != 5 || retries[index].RetryDelayMilliseconds < minDelay || retries[index].RetryDelayMilliseconds > maxDelay {
+			t.Fatalf("stream retry[%d] = %+v, want Codex jitter within [%d,%d]ms", index, retries[index], minDelay, maxDelay)
 		}
 	}
 }
 
-func TestProviderAndStreamRetryLayersShareThreeAttemptBudget(t *testing.T) {
+func TestProviderAndStreamRetryLayersUseIndependentBudgets(t *testing.T) {
 	raw := &preflightThenStreamInterruptProvider{}
 	retrying := provider.NewRetryProvider(raw, provider.RetryConfig{
-		MaxAttempts: 3,
-		BaseDelay:   time.Millisecond,
-		MaxDelay:    2 * time.Millisecond,
+		MaxAttempts:       3,
+		StreamMaxAttempts: 6,
+		BaseDelay:         time.Millisecond,
+		MaxDelay:          2 * time.Millisecond,
 	})
 	ql := New(retrying, registry.New(), Config{MaxTurns: 5, MaxTokens: 1024})
 	if err := ql.Run(context.Background(), "hi", func(stream.Event) {}); err == nil {
 		t.Fatal("expected the layered transient failures to exhaust the generation")
 	}
-	if calls := raw.calls.Load(); calls != 3 {
-		t.Fatalf("provider + loop composed raw calls = %d, want hard cap of 3", calls)
+	// The first stream attempt uses two HTTP calls (one pre-stream failure and
+	// one successful connection); the other five reconnects each use one.
+	if calls := raw.calls.Load(); calls != 7 {
+		t.Fatalf("provider + loop composed raw calls = %d, want 2 request attempts plus 5 stream reconnects", calls)
 	}
 }
 
@@ -1009,23 +1016,20 @@ func TestStreamInterruptClearsPreviousResponseID(t *testing.T) {
 	// the fingerprint matches between turns, so previous_response_id IS used.
 	// The stream interrupt handler will clear it and retry.
 	var warnings []string
+	var foundInterruptWarning bool
 	err = ql.Run(context.Background(), "turn 2", func(e stream.Event) {
 		if e.Type == stream.EventSystemWarning {
 			warnings = append(warnings, projectedSystemWarningText(e))
+			if e.RuntimeEvent != nil && e.RuntimeEvent.PublicKey == i18n.KeyRuntimeStreamRetryFullHistory {
+				foundInterruptWarning = true
+			}
 		}
 	})
 	if err != nil {
 		t.Fatalf("turn 2 failed: %v", err)
 	}
 
-	// The stream interrupt should have been handled with a warning + retry
-	foundInterruptWarning := false
-	for _, w := range warnings {
-		lower := strings.ToLower(w)
-		if strings.Contains(lower, "stream failed") && strings.Contains(lower, "retrying") {
-			foundInterruptWarning = true
-		}
-	}
+	// The stream interrupt should have been handled with a warning + retry.
 	if !foundInterruptWarning {
 		t.Errorf("expected stream-interrupt retry warning, got: %v", warnings)
 	}

@@ -17,6 +17,18 @@ func DefaultReasoningEffort(efforts []string) string {
 	return efforts[0]
 }
 
+// DefaultReasoningEffortForModel returns the model-specific default when it is
+// one of the advertised tiers, then falls back to the shared selection rule.
+func DefaultReasoningEffortForModel(model ModelInfo) string {
+	configured := strings.TrimSpace(model.DefaultReasoningEffort)
+	for _, effort := range model.ReasoningEfforts {
+		if effort == configured {
+			return configured
+		}
+	}
+	return DefaultReasoningEffort(model.ReasoningEfforts)
+}
+
 // reasoningEffortForRequest mirrors current Codex behavior: Ultra is a client
 // orchestration preset, while the API request itself uses the Max effort.
 func reasoningEffortForRequest(effort string) string {

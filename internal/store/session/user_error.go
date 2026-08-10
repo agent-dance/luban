@@ -18,6 +18,10 @@ func UserFacingError(lang i18n.Language, err error) string {
 		return i18n.Text(lang, i18n.KeyAuxSessionNoSessions)
 	case errors.Is(err, ErrSessionDeleted):
 		return i18n.Text(lang, i18n.KeyAuxSessionDeleted)
+	case errors.Is(err, ErrCorruptSessionMetadata):
+		return i18n.Text(lang, i18n.KeyAuxSessionMetadataCorrupt)
+	case errors.Is(err, ErrIncompatibleSessionMetadata):
+		return i18n.Text(lang, i18n.KeyAuxSessionMetadataIncompatible)
 	case strings.Contains(err.Error(), "exists in") && strings.Contains(err.Error(), "projects"):
 		return i18n.Text(lang, i18n.KeyAuxSessionAmbiguous)
 	case errors.Is(err, fs.ErrNotExist):

@@ -72,11 +72,14 @@ func (s *warningStubQL) ContextWarningState() compact.TokenWarningState {
 }
 
 type stubSessionStore struct {
-	entries     []commands.SessionListEntry
-	loads       map[string][]types.Message
-	loadCalls   []string
-	renames     map[string]string
-	searchCalls []string
+	entries      []commands.SessionListEntry
+	currentErr   error
+	currentCalls []string
+	listCalls    int
+	loads        map[string][]types.Message
+	loadCalls    []string
+	renames      map[string]string
+	searchCalls  []string
 }
 
 func (s *stubSessionStore) Save(_ string, _ []types.Message) error { return nil }
@@ -87,7 +90,22 @@ func (s *stubSessionStore) Load(id string) ([]types.Message, error) {
 	}
 	return nil, errors.New("not found")
 }
-func (s *stubSessionStore) List() ([]commands.SessionListEntry, error) { return s.entries, nil }
+func (s *stubSessionStore) List() ([]commands.SessionListEntry, error) {
+	s.listCalls++
+	return s.entries, nil
+}
+func (s *stubSessionStore) Current(id string) (commands.SessionListEntry, error) {
+	s.currentCalls = append(s.currentCalls, id)
+	if s.currentErr != nil {
+		return commands.SessionListEntry{}, s.currentErr
+	}
+	for _, entry := range s.entries {
+		if entry.ID == id {
+			return entry, nil
+		}
+	}
+	return commands.SessionListEntry{}, errors.New("not found")
+}
 func (s *stubSessionStore) Search(query, _ string, _ bool) ([]commands.SessionListEntry, error) {
 	s.searchCalls = append(s.searchCalls, query)
 	var out []commands.SessionListEntry
@@ -464,6 +482,32 @@ func TestSessionCurrent_ShowsMetadata(t *testing.T) {
 	}
 	if output.Len() == 0 || !strings.Contains(output.String(), "fix-login") {
 		t.Fatalf("expected session metadata output, got %q", output.String())
+	}
+	if len(store.currentCalls) != 1 || store.currentCalls[0] != "sess-1" || store.listCalls != 0 {
+		t.Fatalf("current lookup = %v, list calls = %d", store.currentCalls, store.listCalls)
+	}
+}
+
+func TestSessionCurrent_ReportsPreciseLookupFailure(t *testing.T) {
+	r := commands.NewRegistry()
+	commands.RegisterBuiltins(r)
+	var output strings.Builder
+	lookupErr := errors.New("corrupt metadata")
+	store := &stubSessionStore{currentErr: lookupErr}
+	ctx := &commands.Context{
+		QueryLoop: &stubQL{}, SessionStore: store, SessionID: "sess-1",
+		OnCommandPresentation: captureCompletedCommand(&output),
+	}
+	err := r.Find("session").Execute(ctx, "current")
+	if !errors.Is(err, lookupErr) {
+		t.Fatalf("precise lookup cause was not preserved: %v", err)
+	}
+	if !strings.Contains(output.String(), "Unable to load current session details") ||
+		!strings.Contains(output.String(), "sess-1") {
+		t.Fatalf("precise lookup failure was hidden: %q", output.String())
+	}
+	if store.listCalls != 0 {
+		t.Fatalf("precise lookup failure fell back to global list: %d", store.listCalls)
 	}
 }
 

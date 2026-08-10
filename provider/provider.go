@@ -180,16 +180,17 @@ type Config struct {
 	// and Unsupported keep the documented HTTP/SSE transport. Supported enables
 	// the production WebSocket transport only for the public Responses profile;
 	// it is never inferred from a hostname or model name.
-	ResponsesWebSocket     CapabilitySupport
-	APIKey                 string
-	AuthToken              string
-	BaseURL                string
-	Model                  string
-	MaxTokens              int
-	Headers                map[string]string
-	Timeout                int // seconds
-	DisableStrictTools     bool
-	CacheRoutingPreference CacheRoutingPreference
+	ResponsesWebSocket        CapabilitySupport
+	APIKey                    string
+	AuthToken                 string
+	BaseURL                   string
+	Model                     string
+	MaxTokens                 int
+	Headers                   map[string]string
+	Timeout                   int // seconds
+	DisableStrictTools        bool
+	DisablePromptCacheOptions bool
+	CacheRoutingPreference    CacheRoutingPreference
 }
 
 // ResponsesSemantics is the capability profile for a Responses endpoint.
@@ -202,6 +203,7 @@ const (
 	ResponsesSemanticsAuto         ResponsesSemantics = ""
 	ResponsesSemanticsOpenAIPublic ResponsesSemantics = "openai_public"
 	ResponsesSemanticsOpenAICodex  ResponsesSemantics = "openai_codex"
+	ResponsesSemanticsDeepSeek     ResponsesSemantics = "deepseek"
 	ResponsesSemanticsCompatible   ResponsesSemantics = "generic_compatible"
 )
 

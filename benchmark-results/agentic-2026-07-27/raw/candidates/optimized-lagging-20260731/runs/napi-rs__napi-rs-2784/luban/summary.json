@@ -1,0 +1,51 @@
+{
+  "instance_id": "napi-rs__napi-rs-2784",
+  "language": "rust",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785585191.1207051,
+  "elapsed_seconds": 292.775,
+  "timeout_seconds": 360,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 365330,
+    "cached_input_tokens": 315904,
+    "cache_read_input_tokens": 315904,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 7386,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.626662,
+  "tool_calls": 13,
+  "tool_calls_by_type": {
+    "Inspect": 9,
+    "ApplyPatch": 2,
+    "Run": 2
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "crates/napi/src/bindgen_runtime/iterator.rs",
+      "examples/napi/__tests__/generator.spec.ts"
+    ],
+    "additions": 106,
+    "deletions": 2
+  },
+  "final_text": "Implemented the Generator iterator helper fix.\n\n- Generated iterators now inherit `Iterator.prototype` when available, enabling Node.js 22+ helpers such as `take`, `flatMap`, and `toArray`.\n- Older runtimes without global `Iterator` retain existing behavior.\n- Added coverage for prototype inheritance, `Symbol.iterator`, and `take().toArray()`.\n\nVerification:\n- Rust formatting passed.\n- Node 25 prototype/helper runtime probe passed.\n- Full Cargo and AVA tests could not run because offline Rust and Yarn dependencies were unavailable.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v4",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 14,
+  "llm_successful_calls": 14,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 288.395417,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v4",
+    "sha256": "3b6068d8c6e4efc1e8569cb36fd2fa5568585db9a3dba58333eda68c22023277"
+  }
+}

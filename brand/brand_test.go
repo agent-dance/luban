@@ -28,7 +28,7 @@ func TestDeepSeekProviderIdentityIsNotProductBranding(t *testing.T) {
 	if DeepSeekDefaultModel != "deepseek-v4-flash" || DeepSeekProModel != "deepseek-v4-pro" {
 		t.Fatalf("DeepSeek model identity changed: default=%q pro=%q", DeepSeekDefaultModel, DeepSeekProModel)
 	}
-	if DeepSeekBaseURL != "https://api.deepseek.com/v1" {
+	if DeepSeekBaseURL != "https://api.deepseek.com" {
 		t.Fatalf("DeepSeek base URL changed: %q", DeepSeekBaseURL)
 	}
 }

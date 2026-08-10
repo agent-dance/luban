@@ -1,0 +1,90 @@
+diff --git a/src/interaction/tooltip.ts b/src/interaction/tooltip.ts
+index 4c82910..7cb5d92 100644
+--- a/src/interaction/tooltip.ts
++++ b/src/interaction/tooltip.ts
+@@ -541,6 +541,26 @@ export function maybeValue(specified, defaults) {
+   return specified === undefined ? defaults : specified;
+ }
+ 
++function createChannelValueOf(views, channelName) {
++  const channelValues = new Map();
++  for (const view of Array.isArray(views) ? views : [views]) {
++    for (const [mark, state] of view.markState) {
++      const channel = state.channels.find(({ name }) => name === channelName);
++      if (!channel) continue;
++      const channelValue = channel.values.find(
++        ({ name }) => name === channelName,
++      );
++      if (!channelValue) continue;
++      if (!channelValues.has(view.key)) channelValues.set(view.key, new Map());
++      channelValues.get(view.key).set(mark.key, channelValue.value);
++    }
++  }
++  return (element, index) =>
++    channelValues
++      .get(element.__data__.viewKey)
++      ?.get(element.__data__.markKey)?.[index];
++}
++
+ function isEmptyTooltipData(data) {
+   const { title, items } = data;
+   if (items.length === 0 && title === undefined) return true;
+@@ -917,6 +937,7 @@ export function seriesTooltip(
+     disableNative = false,
+     marker = true,
+     preserve = false,
++    xValue,
+     style: _style = {},
+     css = {},
+     ...rest
+@@ -1048,15 +1069,23 @@ export function seriesTooltip(
+ 
+       // X in focus may related multiple points when dataset is large,
+       // so we need to find the first x to show tooltip.
+-      const firstX = filteredSeriesData[0]?.[0].x;
+-      const transformedX = firstX ?? abstractX(focus);
++      const firstDatum = filteredSeriesData[0]?.[0];
++      const firstX = firstDatum?.x;
++      // Prefer the encoded value over a scale round trip. Inverting a mapped
++      // continuous value can lose sub-millisecond precision and turn a date at
++      // midnight into the previous date.
++      const originalX = firstDatum
++        ? xValue?.(firstDatum.element, firstDatum.index)
++        : undefined;
++      const x =
++        originalX ?? invert(scale.x, firstX ?? abstractX(focus), true);
+ 
+       emitter.emit('tooltip:show', {
+         ...event,
+         nativeEvent: true,
+         data: {
+           ...tooltipData,
+-          data: { x: invert(scale.x, transformedX, true) },
++          data: { x },
+         },
+       });
+     },
+@@ -1366,6 +1395,7 @@ export function Tooltip(options) {
+         // crosshairsY default depend on the crossharisSettings
+         crosshairsY: maybeValue(crosshairsY, crosshairsSetting),
+         item,
++        xValue: createChannelValueOf(view, 'x'),
+         emitter,
+       });
+     }
+@@ -1382,6 +1412,7 @@ export function Tooltip(options) {
+       const bbox = plotArea.getBounds();
+       const startX = bbox.min[0];
+       const startY = bbox.min[1];
++      const facetViews = facetInstances.map((d) => d.view);
+       Object.assign(scale, { facet: true });
+ 
+       // @todo Nested structure rather than flat structure for facet?
+@@ -1399,6 +1430,7 @@ export function Tooltip(options) {
+         crosshairsX: maybeValue(maybeValue(crosshairsX, crosshairs), false),
+         crosshairsY: maybeValue(crosshairsY, crosshairsSetting),
+         item,
++        xValue: createChannelValueOf(facetViews, 'x'),
+         startX,
+         startY,
+         emitter,

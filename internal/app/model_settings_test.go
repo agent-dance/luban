@@ -353,21 +353,30 @@ func TestResolveStartupReasoningEffort(t *testing.T) {
 		ID:               "gpt-5.5",
 		ReasoningEfforts: []string{"low", "medium", "high", "xhigh"},
 	})
+	catalog.Register(provider.ModelInfo{CostCurrency: "USD",
+		Provider:               "deepseek",
+		ID:                     "deepseek-v4-flash",
+		ReasoningEfforts:       []string{"low", "high", "max"},
+		DefaultReasoningEffort: "high",
+	})
 
 	tests := []struct {
-		name     string
-		explicit string
-		settings startupModelSettings
-		want     string
+		name         string
+		explicit     string
+		settings     startupModelSettings
+		providerName string
+		modelID      string
+		want         string
 	}{
-		{name: "environment wins", explicit: "xhigh", settings: startupModelSettings{Provider: "openai", Model: "gpt-5.5", ReasoningEffort: "high"}, want: "xhigh"},
-		{name: "saved selection", settings: startupModelSettings{Provider: "openai", Model: "gpt-5.5", ReasoningEffort: "high"}, want: "high"},
-		{name: "catalog default", want: "medium"},
-		{name: "mismatched saved model uses catalog default", settings: startupModelSettings{Provider: "openai", Model: "other", ReasoningEffort: "high"}, want: "medium"},
+		{name: "environment wins", explicit: "xhigh", settings: startupModelSettings{Provider: "openai", Model: "gpt-5.5", ReasoningEffort: "high"}, providerName: "openai", modelID: "gpt-5.5", want: "xhigh"},
+		{name: "saved selection", settings: startupModelSettings{Provider: "openai", Model: "gpt-5.5", ReasoningEffort: "high"}, providerName: "openai", modelID: "gpt-5.5", want: "high"},
+		{name: "catalog default", providerName: "openai", modelID: "gpt-5.5", want: "medium"},
+		{name: "mismatched saved model uses catalog default", settings: startupModelSettings{Provider: "openai", Model: "other", ReasoningEffort: "high"}, providerName: "openai", modelID: "gpt-5.5", want: "medium"},
+		{name: "provider catalog default", providerName: "deepseek", modelID: "deepseek-v4-flash", want: "high"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got := resolveStartupReasoningEffort(test.explicit, test.settings, "openai", "gpt-5.5", catalog)
+			got := resolveStartupReasoningEffort(test.explicit, test.settings, test.providerName, test.modelID, catalog)
 			if got != test.want {
 				t.Fatalf("resolveStartupReasoningEffort() = %q, want %q", got, test.want)
 			}

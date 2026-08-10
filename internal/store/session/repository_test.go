@@ -3,6 +3,7 @@ package session
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -56,6 +57,30 @@ func TestRepositorySearchAcrossProjects(t *testing.T) {
 	}
 	if results[0].ProjectDir == "" || results[1].ProjectDir == "" {
 		t.Fatalf("expected project dirs in results: %+v", results)
+	}
+}
+
+func TestRepositorySearchAcrossProjectsIsolatesIncompatibleMetadata(t *testing.T) {
+	root := t.TempDir()
+	repo := NewRepository(root)
+	goodStore := repo.StoreForProjectDir(filepath.Join(root, "projects", "good"))
+	badStore := repo.StoreForProjectDir(filepath.Join(root, "projects", "bad"))
+	if err := goodStore.Save("good-session", []types.Message{types.UserMessage("good")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := badStore.Save("bad-session", []types.Message{types.UserMessage("bad")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(badStore.metaPath("bad-session"), []byte(`{"schema_version":"session-meta/v2"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	results, err := repo.Search(SearchOptions{AllProjects: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].ID != "good-session" {
+		t.Fatalf("global search = %+v, want only compatible session", results)
 	}
 }
 

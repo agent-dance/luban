@@ -23,6 +23,7 @@ const (
 	maxResponsesWebSocketSessions = 32
 	maxResponsesWebSocketFrame    = 32 << 20
 	responsesWebSocketRotateAfter = 55 * time.Minute
+	responsesWebSocketConnectWait = 15 * time.Second
 	responsesWebSocketWriteWait   = 30 * time.Second
 )
 
@@ -152,11 +153,11 @@ func newResponsesWebSocketWire(conn *websocket.Conn) *responsesWebSocketWire {
 	conn.SetReadLimit(maxResponsesWebSocketFrame)
 	defaultPingHandler := conn.PingHandler()
 	conn.SetPingHandler(func(payload string) error {
-		wire.touch(false)
+		wire.markActivity()
 		return defaultPingHandler(payload)
 	})
 	conn.SetPongHandler(func(string) error {
-		wire.touch(false)
+		wire.markActivity()
 		return nil
 	})
 	go wire.readPump()
@@ -220,20 +221,14 @@ func (wire *responsesWebSocketWire) endResponse() {
 	_ = wire.conn.SetReadDeadline(time.Time{})
 }
 
-func (wire *responsesWebSocketWire) touch(outputActive bool) {
+func (wire *responsesWebSocketWire) markActivity() {
 	wire.activityMu.Lock()
 	defer wire.activityMu.Unlock()
 	if !wire.inFlight {
 		return
 	}
-	if outputActive {
-		wire.active = true
-	}
-	delay := wire.watchdog.initialIdle
-	if wire.active {
-		delay = wire.watchdog.activeIdle
-	}
-	_ = wire.conn.SetReadDeadline(time.Now().Add(delay))
+	wire.active = true
+	_ = wire.conn.SetReadDeadline(time.Now().Add(wire.watchdog.activeIdle))
 }
 
 func (wire *responsesWebSocketWire) timeoutError() error {
@@ -277,7 +272,7 @@ func (wire *responsesWebSocketWire) readPump() {
 			wire.sendReadError(i18n.NewError(i18n.KeyProviderResponsesWebSocketProtocolInvalid))
 			return
 		}
-		wire.touch(responsesWebSocketEventMarksOutputActive(envelope.Type))
+		wire.markActivity()
 		select {
 		case wire.incoming <- sseEvent{Type: envelope.Type, Data: string(payload)}:
 		case <-wire.closing:
@@ -290,21 +285,6 @@ func (wire *responsesWebSocketWire) sendReadError(err error) {
 	select {
 	case wire.incoming <- sseEvent{Type: "error", Err: err}:
 	case <-wire.closing:
-	}
-}
-
-func responsesWebSocketEventMarksOutputActive(eventType string) bool {
-	switch eventType {
-	case "response.output_text.delta",
-		"response.content_part.delta",
-		"response.function_call_arguments.delta",
-		"response.custom_tool_call_input.delta",
-		"response.reasoning.delta",
-		"response.reasoning_text.delta",
-		"response.reasoning_summary_text.delta":
-		return true
-	default:
-		return false
 	}
 }
 
@@ -526,7 +506,7 @@ func dialResponsesWebSocket(ctx context.Context, endpoint string, profile respon
 		headers.Set("Authorization", "Bearer "+profile.apiKey)
 	}
 	dialer := *websocket.DefaultDialer
-	dialer.HandshakeTimeout = responsesWebSocketWriteWait
+	dialer.HandshakeTimeout = responsesWebSocketConnectWait
 	dialer.EnableCompression = true
 	connection, response, err := dialer.DialContext(ctx, endpoint, headers)
 	if response != nil && response.Body != nil {

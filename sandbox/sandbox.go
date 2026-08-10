@@ -446,12 +446,14 @@ var defaultEnvironmentNames = map[string]struct{}{
 	"RUSTC": {}, "RUSTDOC": {}, "RUSTFLAGS": {}, "RUSTDOCFLAGS": {},
 	"RUSTUP_HOME": {}, "RUSTUP_TOOLCHAIN": {}, "RUST_BACKTRACE": {}, "RUST_LOG": {},
 	"NODE_PATH": {}, "NODE_OPTIONS": {}, "NODE_ENV": {},
+	"PNPM_CONFIG_OFFLINE": {}, "YARN_ENABLE_NETWORK": {},
 	"VIRTUAL_ENV": {}, "CONDA_PREFIX": {}, "PYENV_ROOT": {}, "PYTHONHOME": {},
 	"PYTHONPATH": {}, "PYTHONUSERBASE": {}, "PYTHONNOUSERSITE": {},
-	"PYTHONDONTWRITEBYTECODE": {}, "PYTHONHASHSEED": {},
+	"PYTHONDONTWRITEBYTECODE": {}, "PYTHONHASHSEED": {}, "PIP_NO_INDEX": {}, "UV_OFFLINE": {},
 	"JAVA_HOME": {}, "JDK_HOME": {}, "MAVEN_HOME": {}, "M2_HOME": {},
 	"GRADLE_HOME": {}, "GRADLE_USER_HOME": {}, "JAVA_TOOL_OPTIONS": {},
-	"JDK_JAVA_OPTIONS": {}, "MAVEN_OPTS": {}, "GRADLE_OPTS": {}, "KOTLIN_HOME": {},
+	"JDK_JAVA_OPTIONS": {}, "MAVEN_OPTS": {}, "MAVEN_ARGS": {}, "MVNW_REPOURL": {},
+	"GRADLE_OPTS": {}, "KOTLIN_HOME": {},
 }
 
 var defaultEnvironmentPrefixes = []string{

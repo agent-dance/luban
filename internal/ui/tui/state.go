@@ -69,6 +69,7 @@ func imageComposerPlaceholder(placeholder string) string {
 type Message struct {
 	Kind               MsgKind
 	Text               string
+	WorkDuration       time.Duration  `json:"-"` // transient total query time on the final assistant reply
 	ToolName           string         // for ToolCall / ToolResult
 	Input              map[string]any // for ToolCall
 	IsError            bool           // for ToolResult
@@ -84,6 +85,7 @@ type Message struct {
 	WorkUnitID         string
 	ActorID            string
 	Outcome            ObservationOutcome
+	Completeness       types.ToolResultCompleteness
 	Disclosure         DisclosureState
 	DetailRefs         []DetailRef
 	PresentationHidden bool
@@ -204,6 +206,7 @@ type AppState struct {
 	ActivityFocus       *tui.State[string]
 	ActivityViewOffset  *tui.State[int]
 	LLMCall             *tui.State[*LLMCallStatus]
+	CompactionProgress  *tui.State[*CompactionProgressStatus]
 	activitySequence    uint64
 
 	// Decision request state
@@ -307,7 +310,7 @@ type AppState struct {
 	// Query cancel support: when non-nil, Ctrl+C cancels the active query
 	// instead of exiting. Protected by mu.
 	QueryCancelFn    func()
-	QueuedInputCount *tui.State[int]
+	QueuedInputTexts *tui.State[[]string]
 	queryGeneration  uint64
 	queryInFlight    bool
 
@@ -424,14 +427,33 @@ const (
 	LLMCallProblem  LLMCallPhase = "problem"
 )
 
+// LLMCallStage is the last model-work boundary directly observed by the
+// runtime. Stages are intentionally coarse and never imply a percentage.
+type LLMCallStage string
+
+const (
+	LLMStagePreparing         LLMCallStage = "preparing"
+	LLMStageWaitingFirstToken LLMCallStage = "waiting_first_token"
+	LLMStageThinking          LLMCallStage = "thinking"
+	LLMStageToolInput         LLMCallStage = "tool_input"
+	LLMStageToolExecution     LLMCallStage = "tool_execution"
+	LLMStageWaitingAfterTools LLMCallStage = "waiting_after_tools"
+	LLMStageResponse          LLMCallStage = "response"
+)
+
 // LLMCallStatus is transient presentation state for the active model execution.
 // It is intentionally excluded from session checkpoints.
 type LLMCallStatus struct {
 	RequestID          string
 	Phase              LLMCallPhase
+	Stage              LLMCallStage
+	StageDetail        string
+	ToolInputBytes     int
+	StageStartedAt     time.Time
 	Attempt            int
 	MaxRetries         int
 	RetryDelay         time.Duration
+	RetryKind          string
 	RequestDuration    time.Duration
 	HasRequestDuration bool
 	FirstTokenDuration time.Duration
@@ -455,6 +477,7 @@ func NewAppState() *AppState {
 		ActivityFocus:                     tui.NewState(""),
 		ActivityViewOffset:                tui.NewState(0),
 		LLMCall:                           tui.NewState[*LLMCallStatus](nil),
+		CompactionProgress:                tui.NewState[*CompactionProgressStatus](nil),
 		DecisionReq:                       tui.NewState[*DecisionRequest](nil),
 		DecisionSelected:                  tui.NewState(0),
 		DecisionResp:                      make(chan permissions.PromptResponse, 1),
@@ -510,7 +533,7 @@ func NewAppState() *AppState {
 		ForkPicker:                        tui.NewState[*ForkPickerState](nil),
 		ModelPicker:                       tui.NewState[*ModelPickerState](nil),
 		SkillsMenu:                        tui.NewState[*SkillsMenuState](nil),
-		QueuedInputCount:                  tui.NewState(0),
+		QueuedInputTexts:                  tui.NewState([]string(nil)),
 		Mode:                              tui.NewState(ModeAutoEdit),
 		Language:                          tui.NewState(i18n.DetectOrLoadLanguage()),
 		ExpandedView:                      tui.NewState(""),
@@ -670,6 +693,7 @@ func (s *AppState) applySessionSnapshot(snapshot SessionSnapshot) error {
 	s.ActivityFocus.Set(activityFocus)
 	s.ActivityViewOffset.Set(activityOffset)
 	s.LLMCall.Set(nil)
+	s.CompactionProgress.Set(nil)
 	s.SessionNS.Set(snapshot.Identity.Namespace)
 	s.SessionID.Set(snapshot.Identity.SessionID)
 	s.SessionEpoch.Set(snapshot.Identity.Epoch)
@@ -1419,6 +1443,7 @@ func (s *AppState) SetExpandedView(view string) {
 
 func clonePresentationMessage(message Message) Message {
 	message.Input = cloneStringAnyMap(message.Input)
+	message.Completeness = message.Completeness.Clone()
 	message.DetailRefs = append([]DetailRef(nil), message.DetailRefs...)
 	message.Images = append([]ImageAttachment(nil), message.Images...)
 	if message.Brief != nil {
@@ -1523,11 +1548,15 @@ func (s *AppState) applyToolResult(ctx ToolEventContext, result types.ToolResult
 	}
 	s.ObservationRevision.Set(s.ObservationRevision.Get() + 1)
 	if activities != nil && result.ToolUseID != "" && observation.Outcome != OutcomeUnknown {
+		activityOutcome := observation.Outcome
+		if observationIsNormalPagination(observation.Outcome, observation.Presentation.Completeness) {
+			activityOutcome = OutcomeSucceeded
+		}
 		_ = s.applyActivityLocked(ActivityEvent{
 			ID: "tool:" + result.ToolUseID, SessionID: ctx.SessionID, Epoch: s.SessionEpoch.Get(), TurnID: ctx.TurnID,
 			WorkUnitID: ctx.WorkUnitID, Actor: ActivityActor{ID: ctx.ActorID, Type: ctx.ActorType},
 			Kind: activityKindForTool(observation.ToolName), Name: observation.ToolName, Phase: activityPhaseForTool(observation.ToolName, observation.ToolInput, ctx.ActorType),
-			Lifecycle: activityLifecycleForOutcome(observation.Outcome), Outcome: observation.Outcome,
+			Lifecycle: activityLifecycleForOutcome(activityOutcome), Outcome: activityOutcome,
 			Control: ActivityControl{JumpTarget: observation.ID, DetailRefs: append(append([]DetailRef(nil), observation.ResultRefs...), observation.EnvelopeRefs...)},
 		})
 	}
@@ -1983,13 +2012,20 @@ func (s *AppState) ApplyRuntimeEvent(event types.RuntimeEvent) error {
 	return nil
 }
 
+func observationIsNormalPagination(outcome ObservationOutcome, completeness types.ToolResultCompleteness) bool {
+	return outcome == OutcomePartial && completeness.Source == types.ToolResultCompletenessComplete &&
+		completeness.View == types.ToolResultCompletenessPagination && completeness.Pagination != nil &&
+		completeness.Pagination.HasMore
+}
+
 func messageFromObservation(observation Observation, kind MsgKind) Message {
+	normalPagination := observationIsNormalPagination(observation.Outcome, observation.Presentation.Completeness)
 	return Message{
 		Kind:               kind,
 		Text:               observationSummary(observation),
 		ToolName:           observation.ToolName,
 		Input:              cloneStringAnyMap(observation.ToolInput),
-		IsError:            observation.Outcome != OutcomeRunning && observation.Outcome != OutcomeSucceeded,
+		IsError:            observation.Outcome != OutcomeRunning && observation.Outcome != OutcomeSucceeded && !normalPagination,
 		Timestamp:          time.Now(),
 		ObservationID:      observation.ID,
 		ToolUseID:          observation.ToolUseID,
@@ -1998,6 +2034,7 @@ func messageFromObservation(observation Observation, kind MsgKind) Message {
 		WorkUnitID:         observation.WorkUnitID,
 		ActorID:            observation.ActorID,
 		Outcome:            observation.Outcome,
+		Completeness:       observation.Presentation.Completeness.Clone(),
 		Disclosure:         observation.Disclosure,
 		DetailRefs:         append([]DetailRef(nil), observation.ResultRefs...),
 		PresentationHidden: observation.Aggregation.Hidden,
@@ -2348,17 +2385,76 @@ func (s *AppState) SetLLMCall(status *LLMCallStatus) {
 func (s *AppState) BeginLLMWork() {
 	now := time.Now()
 	s.SetLLMCall(&LLMCallStatus{
-		Phase: LLMCallWorking, UpdatedAt: now, WorkStartedAt: now,
+		Phase: LLMCallWorking, Stage: LLMStagePreparing, StageStartedAt: now,
+		UpdatedAt: now, WorkStartedAt: now,
 	})
 }
 
+// SetLLMActivity advances the current query's visible stage only when an
+// observable runtime boundary changes. Repeated streaming deltas in the same
+// stage do not reset its elapsed timer or cause extra redraw state.
+func (s *AppState) SetLLMActivity(stage LLMCallStage, detail string, toolInputBytes ...int) bool {
+	return s.setLLMActivityAt(stage, detail, time.Now(), toolInputBytes...)
+}
+
+func (s *AppState) setLLMActivityAt(stage LLMCallStage, detail string, now time.Time, toolInputBytes ...int) bool {
+	current := s.LLMCall.Get()
+	if current == nil || stage == "" {
+		return false
+	}
+	detail = strings.TrimSpace(detail)
+	receivedBytes := 0
+	if stage == LLMStageToolInput && len(toolInputBytes) > 0 && toolInputBytes[0] > 0 {
+		receivedBytes = toolInputBytes[0]
+	}
+	sameStage := current.Stage == stage && current.StageDetail == detail
+	if sameStage && current.ToolInputBytes == receivedBytes {
+		return false
+	}
+	updated := *current
+	updated.Stage = stage
+	updated.StageDetail = detail
+	updated.ToolInputBytes = receivedBytes
+	if !sameStage {
+		updated.StageStartedAt = now
+	}
+	updated.UpdatedAt = now
+	s.SetLLMCall(&updated)
+	return true
+}
+
 func (s *AppState) ClearLLMCall(requestID ...string) {
+	s.clearLLMCallAt(time.Now(), requestID...)
+}
+
+func (s *AppState) clearLLMCallAt(now time.Time, requestID ...string) {
 	current := s.LLMCall.Get()
 	if current == nil {
 		return
 	}
 	if len(requestID) > 0 && requestID[0] != "" && current.RequestID != requestID[0] {
 		return
+	}
+	if !current.WorkStartedAt.IsZero() {
+		duration := now.Sub(current.WorkStartedAt)
+		if duration < 0 {
+			duration = 0
+		}
+		s.mu.Lock()
+		messages := s.Messages.Get()
+		for index := len(messages) - 1; index >= 0; index-- {
+			message := messages[index]
+			if message.Kind != MsgAssistant || message.Timestamp.Before(current.WorkStartedAt) {
+				continue
+			}
+			updated := make([]Message, len(messages))
+			copy(updated, messages)
+			updated[index].WorkDuration = duration
+			s.Messages.Set(updated)
+			s.bumpViewRevision()
+			break
+		}
+		s.mu.Unlock()
 	}
 	s.LLMCall.Set(nil)
 }

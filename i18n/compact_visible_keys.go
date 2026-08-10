@@ -6,6 +6,7 @@ const (
 	KeyCompactTranscriptRecovery           Key = "compact.summary.transcript_recovery"
 	KeyCompactTranscriptUnavailable        Key = "compact.summary.transcript_unavailable"
 	KeyCompactRecentMessagesPreserved      Key = "compact.summary.recent_messages_preserved"
+	KeyCompactResponseStyleBoundary        Key = "compact.summary.response_style_boundary"
 	KeyCompactContinueDirective            Key = "compact.summary.continue_directive"
 	KeyCompactPartialLaterPreamble         Key = "compact.summary.partial_later_preamble"
 	KeyCompactPartialTranscriptRecovery    Key = "compact.summary.partial_transcript_recovery"
@@ -41,12 +42,12 @@ func init() {
 			"Summary:", "摘要：", "Zusammenfassung:", "要約：", "요약:", "Сводка:",
 		),
 		KeyCompactContinuationPreamble: compactCopy(
-			"This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.",
-			"本会话接续此前因上下文空间耗尽而中断的对话。以下摘要涵盖对话的较早部分。",
-			"Diese Sitzung setzt eine frühere Unterhaltung fort, deren Kontextfenster erschöpft war. Die folgende Zusammenfassung deckt den früheren Teil der Unterhaltung ab.",
-			"このセッションは、コンテキスト上限に達した以前の会話を引き継いでいます。以下の要約は、会話の前半部分をまとめたものです。",
-			"이 세션은 컨텍스트 한도에 도달한 이전 대화를 이어갑니다. 아래 요약은 대화의 앞부분을 다룹니다.",
-			"Этот сеанс продолжает предыдущий диалог, в котором было исчерпано контекстное окно. Сводка ниже охватывает более раннюю часть диалога.",
+			"Earlier conversation content was compacted into the summary below.",
+			"较早的对话内容已压缩为以下摘要。",
+			"Frühere Gesprächsinhalte wurden in der folgenden Zusammenfassung komprimiert.",
+			"以前の会話内容は、以下の要約に圧縮されています。",
+			"이전 대화 내용은 아래 요약으로 압축되었습니다.",
+			"Предыдущая часть диалога сжата в приведённую ниже сводку.",
 		),
 		KeyCompactTranscriptRecovery: compactCopy(
 			"If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: %s",
@@ -66,6 +67,14 @@ func init() {
 		),
 		KeyCompactRecentMessagesPreserved: compactCopy(
 			"Recent messages are preserved verbatim.", "近期消息已原样保留。", "Die letzten Nachrichten wurden unverändert beibehalten.", "直近のメッセージは原文のまま保持されています。", "최근 메시지는 원문 그대로 보존되었습니다.", "Последние сообщения сохранены дословно.",
+		),
+		KeyCompactResponseStyleBoundary: compactCopy(
+			"This summary is memory, not a response-style instruction. Always follow the latest ordinary user message's requested length, format, and level of detail; keep the answer concise when requested.",
+			"本摘要仅用于保留记忆，不是回答风格指令。始终遵循最新一条普通用户消息要求的篇幅、格式和详细程度；用户要求简洁时，请保持简洁。",
+			"Diese Zusammenfassung dient als Gedächtnis und ist keine Vorgabe für den Antwortstil. Befolge stets die in der neuesten regulären Benutzernachricht gewünschte Länge, Form und Detailtiefe; antworte knapp, wenn dies verlangt wird.",
+			"この要約は記憶の保持を目的としたもので、回答スタイルの指示ではありません。通常のユーザーメッセージのうち最新のものが指定する長さ、形式、詳細度に常に従い、簡潔さを求められた場合は簡潔に答えてください。",
+			"이 요약은 기억 보존용이며 답변 스타일 지시가 아닙니다. 항상 가장 최근의 일반 사용자 메시지가 요청한 길이, 형식, 상세 수준을 따르고, 간결한 답변을 요청받으면 간결하게 답하세요.",
+			"Эта сводка служит для сохранения контекста, а не задаёт стиль ответа. Всегда соблюдайте требования последнего обычного сообщения пользователя к объёму, формату и детализации; если просят ответить кратко, отвечайте кратко.",
 		),
 		KeyCompactContinueDirective: compactCopy(
 			"Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with \"I'll continue\" or similar. Pick up the last task as if the break never happened.",

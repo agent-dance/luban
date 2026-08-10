@@ -1,0 +1,51 @@
+{
+  "instance_id": "springdoc__springdoc-openapi-3051",
+  "language": "java",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785491997.92682,
+  "elapsed_seconds": 218.298,
+  "timeout_seconds": 600,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 605795,
+    "cached_input_tokens": 534528,
+    "cache_read_input_tokens": 534528,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 6236,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.810679,
+  "tool_calls": 19,
+  "tool_calls_by_type": {
+    "Inspect": 13,
+    "ApplyPatch": 1,
+    "Run": 5
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java",
+      "springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app3051/SpringDocApp3051Test.java"
+    ],
+    "additions": 75,
+    "deletions": 7
+  },
+  "final_text": "Implemented the multipart `@RequestPart` generic map fix.\n\n### Changes\n- Prevent `Map` parameters annotated with `@RequestPart` from being incorrectly ignored.\n- Preserved existing behavior for unannotated maps, actuator parameters, and `@RequestBody`.\n- Added a regression test verifying:\n  - `Map<String, Object>` appears in the multipart request schema.\n  - The part is marked required.\n  - Its description is retained.\n\n### Verification\nSource-level review completed. Tests could not run because the repository has no Maven wrapper and Maven/Gradle are unavailable in the environment.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v2",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 20,
+  "llm_successful_calls": 20,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 215.913273,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v2",
+    "sha256": "a2269a978d2d4a01afa036dfcf9f166d77bec862144bbc0701abaa16fffdb2f6"
+  }
+}

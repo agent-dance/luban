@@ -22,8 +22,9 @@ import (
 )
 
 const (
-	sessionViewCheckpointVersion = 5
-	sessionViewManifestVersion   = 1
+	sessionViewCheckpointVersion               = 6
+	sessionViewCheckpointOldestReadableVersion = 5
+	sessionViewManifestVersion                 = 1
 	// sessionViewProjectionPolicyVersion is part of the checkpoint projection
 	// identity. Any change that can alter which persisted blocks are visible or
 	// how they are projected must advance this value.
@@ -816,7 +817,7 @@ func readSessionViewManifest(root string) (sessionViewManifest, bool, error) {
 	if manifest.Version != sessionViewManifestVersion {
 		return sessionViewManifest{}, false, i18n.NewError(i18n.KeyTUISessionViewUnsupportedVersion, manifest.Version, sessionViewManifestVersion)
 	}
-	if manifest.CheckpointVersion != sessionViewCheckpointVersion {
+	if !supportedSessionViewCheckpointVersion(manifest.CheckpointVersion) {
 		return sessionViewManifest{}, false, i18n.NewError(i18n.KeyTUISessionViewUnsupportedVersion, manifest.CheckpointVersion, sessionViewCheckpointVersion)
 	}
 	if manifest.RequiredFromTranscriptCount < 0 {
@@ -839,6 +840,18 @@ func readSessionViewCheckpoint(root string, count int, digest string) (sessionVi
 	if envelope.PayloadSHA256 != hex.EncodeToString(actualPayloadDigest[:]) {
 		return sessionViewCheckpoint{}, false, i18n.NewError(i18n.KeyTUISessionViewInvalidCheckpoint)
 	}
+	var header struct {
+		Version *int `json:"version"`
+	}
+	if err := json.Unmarshal(envelope.Payload, &header); err != nil {
+		return sessionViewCheckpoint{}, false, i18n.WrapError(i18n.KeyTUISessionViewDecodeCheckpointFile, err)
+	}
+	if header.Version == nil {
+		return sessionViewCheckpoint{}, false, i18n.NewError(i18n.KeyTUISessionViewInvalidCheckpoint)
+	}
+	if !supportedSessionViewCheckpointVersion(*header.Version) {
+		return sessionViewCheckpoint{}, false, i18n.NewError(i18n.KeyTUISessionViewUnsupportedVersion, *header.Version, sessionViewCheckpointVersion)
+	}
 	var checkpoint sessionViewCheckpoint
 	decoder := json.NewDecoder(bytes.NewReader(envelope.Payload))
 	decoder.DisallowUnknownFields()
@@ -856,9 +869,6 @@ func readSessionViewCheckpoint(root string, count int, digest string) (sessionVi
 	if _, ok := fields["session_cost_known"]; !ok {
 		return sessionViewCheckpoint{}, false, i18n.NewError(i18n.KeyTUISessionViewInvalidCheckpoint)
 	}
-	if checkpoint.Version != sessionViewCheckpointVersion {
-		return sessionViewCheckpoint{}, false, i18n.NewError(i18n.KeyTUISessionViewUnsupportedVersion, checkpoint.Version, sessionViewCheckpointVersion)
-	}
 	if !validSessionViewDigest(checkpoint.ProjectionDigest) {
 		return sessionViewCheckpoint{}, false, i18n.NewError(i18n.KeyTUISessionViewInvalidCheckpoint)
 	}
@@ -872,7 +882,41 @@ func readSessionViewCheckpoint(root string, count int, digest string) (sessionVi
 		}
 		checkpoint.Activities[index].ActivityEvent = normalized
 	}
+	upgradeSessionViewCheckpoint(&checkpoint)
 	return checkpoint, true, nil
+}
+
+func supportedSessionViewCheckpointVersion(version int) bool {
+	return version >= sessionViewCheckpointOldestReadableVersion && version <= sessionViewCheckpointVersion
+}
+
+func upgradeSessionViewCheckpoint(checkpoint *sessionViewCheckpoint) {
+	if checkpoint == nil || checkpoint.Version != sessionViewCheckpointOldestReadableVersion {
+		return
+	}
+	completenessByObservation := make(map[string]types.ToolResultCompleteness, len(checkpoint.Observations))
+	completenessByToolUse := make(map[string]types.ToolResultCompleteness, len(checkpoint.Observations))
+	for _, observation := range checkpoint.Observations {
+		completeness := observation.Presentation.Completeness.Clone()
+		if observation.ID != "" {
+			completenessByObservation[observation.ID] = completeness
+		}
+		if observation.ToolUseID != "" {
+			completenessByToolUse[observation.ToolUseID] = completeness
+		}
+	}
+	for index := range checkpoint.Messages {
+		message := &checkpoint.Messages[index]
+		if completeness, ok := completenessByObservation[message.ObservationID]; ok {
+			message.Completeness = completeness.Clone()
+		} else if completeness, ok := completenessByToolUse[message.ToolUseID]; ok {
+			message.Completeness = completeness.Clone()
+		}
+		if observationIsNormalPagination(message.Outcome, message.Completeness) {
+			message.IsError = false
+		}
+	}
+	checkpoint.Version = sessionViewCheckpointVersion
 }
 
 func validSessionViewDigest(digest string) bool {

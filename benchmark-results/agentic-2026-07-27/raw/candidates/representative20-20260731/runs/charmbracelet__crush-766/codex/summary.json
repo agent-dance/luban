@@ -1,0 +1,52 @@
+{
+  "instance_id": "charmbracelet__crush-766",
+  "language": "go",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785479077.649518,
+  "elapsed_seconds": 230.049,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 367689,
+    "cached_input_tokens": 333568,
+    "output_tokens": 7179,
+    "reasoning_output_tokens": 4534,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 333568,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 0.552759,
+  "tool_calls": 12,
+  "tool_calls_by_type": {
+    "command_execution": 10,
+    "file_change": 2
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      "internal/fsext/fileutil.go",
+      "internal/fsext/ignore_test.go",
+      "internal/fsext/ls.go"
+    ],
+    "additions": 42,
+    "deletions": 10
+  },
+  "final_text": "Implemented the fix for `.*` gitignore patterns:\n\n- Traversal roots are no longer evaluated as ignored entries in directory listing and glob walkers.\n- Hidden files beneath the root remain correctly ignored.\n- Added regression coverage for file completion and glob scanning.\n\nValidation: `gofmt` and `git diff --check` pass. Go tests could not run because the local tool manager attempted to download Go 1.24.3 while network access is disabled.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 13,
+  "llm_successful_calls": 13,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 226.328001,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

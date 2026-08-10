@@ -30,6 +30,31 @@ var responsesWebSocketTestUpgrader = websocket.Upgrader{
 	CheckOrigin: func(*http.Request) bool { return true },
 }
 
+func TestResponsesWebSocketFallbackPermanentlySelectsHTTPS(t *testing.T) {
+	responses := NewResponses(Config{
+		ProviderName:       "openai",
+		BaseURL:            "https://api.openai.com/v1",
+		ResponsesSemantics: ResponsesSemanticsOpenAIPublic,
+		ResponsesWebSocket: CapabilitySupported,
+	})
+	if got := responses.Capabilities().ResponsesWebSocket; got != CapabilitySupported {
+		t.Fatalf("initial WebSocket capability = %v", got)
+	}
+	from, to, activated := TryFallbackTransport(NewRetryProvider(responses, DefaultRetryConfig()))
+	if !activated || from != "WebSocket" || to != "HTTPS" {
+		t.Fatalf("fallback = %q -> %q, activated=%t", from, to, activated)
+	}
+	if got := responses.Capabilities().ResponsesWebSocket; got != CapabilityUnsupported {
+		t.Fatalf("post-fallback WebSocket capability = %v, want unsupported", got)
+	}
+	if responses.snapshotRequestProfile().webSocketEligible(Params{ContinuationLineage: "lineage"}) {
+		t.Fatal("post-fallback request remained WebSocket eligible")
+	}
+	if _, _, activated := responses.TryFallbackTransport(); activated {
+		t.Fatal("fallback activated more than once")
+	}
+}
+
 type responsesWebSocketTestRecord struct {
 	connection    int
 	turn          int
@@ -297,7 +322,11 @@ func TestResponsesWebSocketHandshakeFailureFallsBackToHTTP(t *testing.T) {
 
 	responses := newResponsesWebSocketTestProvider(server.URL, "fallback-key")
 	defer responses.Close()
-	stream, err := responses.CreateStream(context.Background(), Params{
+	var retries []RetryEvent
+	ctx := WithRetryObserver(context.Background(), func(event RetryEvent) {
+		retries = append(retries, event)
+	})
+	stream, err := NewRetryProvider(responses, DefaultRetryConfig()).CreateStream(ctx, Params{
 		Model: responsesWebSocketTestModel,
 		Messages: []types.Message{
 			types.UserMessage("first"), types.AssistantMessage("answer"), types.UserMessage("second"),
@@ -311,6 +340,10 @@ func TestResponsesWebSocketHandshakeFailureFallsBackToHTTP(t *testing.T) {
 	}
 	if upgradeAttempts.Load() != 1 || httpRequests.Load() != 1 {
 		t.Fatalf("upgrade/http attempts = %d/%d, want 1/1", upgradeAttempts.Load(), httpRequests.Load())
+	}
+	if len(retries) != 1 || retries[0].Attempt != 1 || retries[0].MaxRetries != 4 ||
+		retries[0].Delay != 0 || retries[0].Kind != "request" || retries[0].Err == nil {
+		t.Fatalf("visible handshake fallback retry = %+v, want request retry 1/4 with problem details", retries)
 	}
 	mu.Lock()
 	body := fallbackBody

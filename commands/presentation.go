@@ -146,7 +146,7 @@ type CommandPresentationProvider interface {
 }
 
 var builtinCommandPresentationContracts = map[string]CommandPresentationContract{
-	"exit":     commandContract("exit", CommandFamilyLifecycle, CommandDisplayDecision, CommandRiskHigh, "exit", true),
+	"exit":     commandContract("exit", CommandFamilyLifecycle, CommandDisplayReceipt, CommandRiskLow, "exit", true),
 	"help":     commandContract("help", CommandFamilyDiscovery, CommandDisplayInspector, CommandRiskLow, "list", true),
 	"clear":    commandContract("clear", CommandFamilySession, CommandDisplayReceipt, CommandRiskHigh, "conversation", true),
 	"goal":     commandContract("goal", CommandFamilyGoal, CommandDisplayInspector, CommandRiskMedium, "status", true),
@@ -252,9 +252,6 @@ func (c *presentedCommand) Execute(ctx *Context, args string) error {
 		outcome = CommandOutcomeExitRequested
 		outcomeReliable = true
 		nextAction = localizedCommandNextAction(ctx.Language, c.contract, false)
-		if result == "" {
-			result = i18n.Text(ctx.Language, i18n.KeyCommandPresentationExitRequested)
-		}
 	} else if err != nil {
 		outcome = CommandOutcomeForError(err)
 		outcomeReliable = true
@@ -279,7 +276,10 @@ func (c *presentedCommand) Execute(ctx *Context, args string) error {
 		outcome = CommandOutcomeSucceeded
 		nextAction = localizedCommandNextAction(ctx.Language, c.contract, false)
 	}
-	if result == "" {
+	// The localized exit_requested outcome is already the complete receipt.
+	// Repeating the same copy in Result produces duplicate screen-reader and TUI
+	// output (for example, "exit requested. Exit requested.").
+	if result == "" && outcome != CommandOutcomeExitRequested {
 		result = i18n.Format(ctx.Language, i18n.KeyCommandPresentationCompleted, c.Name(), resolved.action)
 	}
 	result, sensitive, hasMore := boundedCommandPresentationText(result, maxCommandPresentationRunes)

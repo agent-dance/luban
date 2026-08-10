@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -1011,6 +1012,93 @@ func TestResponsesProvider_ReasoningDeltaEvents(t *testing.T) {
 	}
 }
 
+func TestResponsesProvider_ToolInputLimitTerminatesDegenerateFunctionCall(t *testing.T) {
+	delta, err := json.Marshal(map[string]any{
+		"output_index": 0,
+		"delta":        strings.Repeat(" ", maxResponsesInspectToolInputBytes+1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sseData := buildSSEStream([]sseEvent{
+		{Type: "response.created", Data: `{"id":"resp_runaway","status":"in_progress"}`},
+		{Type: "response.output_item.added", Data: `{"output_index":0,"item":{"type":"function_call","call_id":"call_runaway","name":"Inspect","status":"in_progress"}}`},
+		{Type: "response.function_call_arguments.delta", Data: string(delta)},
+	})
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(sseData))
+	}))
+	defer srv.Close()
+
+	p := NewResponses(Config{APIKey: "test-key", BaseURL: srv.URL})
+	ch, err := p.CreateStream(context.Background(), Params{
+		Messages: []types.Message{types.UserMessage("inspect")},
+	})
+	if err != nil {
+		t.Fatalf("CreateStream: %v", err)
+	}
+	var got *types.APIError
+	for _, event := range collectStreamEvents(ch) {
+		if event.Type == types.EventError {
+			got = event.Error
+			break
+		}
+	}
+	if got == nil || got.Type != "stream_interrupted" || got.Code != "tool_arguments_too_large" {
+		t.Fatalf("tool input limit error = %#v", got)
+	}
+	contract := ClassifyAttemptError(got)
+	if contract.Stage != types.ProviderErrorStageStream ||
+		contract.Class != types.ProviderErrorClassTransport ||
+		contract.ReplaySafety != types.ProviderReplaySafe || !contract.Retryable() {
+		t.Fatalf("tool input limit retry contract = %+v", contract)
+	}
+}
+
+func TestResponsesSSEParserTerminatesAggregatedFunctionDeltaBeforeFullLine(t *testing.T) {
+	for _, prefix := range []string{
+		"event: response.function_call_arguments.delta\n" + "data: ",
+		"data: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"",
+		"data: {\"type\": \"response.function_call_arguments.delta\", \"delta\": \"",
+	} {
+		source := &countingResponsesReader{reader: strings.NewReader(prefix + strings.Repeat(" ", 1<<20))}
+		events := parseResponsesSSE(context.Background(), source)
+		event, ok := <-events
+		if !ok || event.Type != "error" || !errors.Is(event.Err, errResponsesFunctionCallDeltaLineTooLarge) {
+			t.Fatalf("early parser event = %#v, ok=%v", event, ok)
+		}
+		if source.bytesRead > maxResponsesFunctionCallDeltaLineBytes+2*defaultSSEInitBuf {
+			t.Fatalf("parser read %d bytes before cutoff", source.bytesRead)
+		}
+	}
+}
+
+type countingResponsesReader struct {
+	reader    *strings.Reader
+	bytesRead int
+}
+
+func (r *countingResponsesReader) Read(buffer []byte) (int, error) {
+	read, err := r.reader.Read(buffer)
+	r.bytesRead += read
+	return read, err
+}
+
+func TestResponsesToolInputLimitsPreservePatchHeadroom(t *testing.T) {
+	if got := responsesToolInputLimit("Inspect"); got != 32<<10 {
+		t.Fatalf("Inspect limit = %d", got)
+	}
+	if got := responsesToolInputLimit("Run"); got <= responsesToolInputLimit("Inspect") {
+		t.Fatalf("Run limit = %d, want above Inspect", got)
+	}
+	if got := responsesToolInputLimit("ApplyPatch"); got < 1<<20 {
+		t.Fatalf("ApplyPatch limit = %d, want at least 1 MiB", got)
+	}
+}
+
 func TestResponsesProvider_ChatGPTCodexReasoningIncludesEncryptedContent(t *testing.T) {
 	var capturedBody map[string]any
 
@@ -1750,10 +1838,11 @@ func TestResponsesProvider_HTTPErrorPreviousResponseNotFound(t *testing.T) {
 
 func TestResponsesProvider_ResponseFailedTypedAPIError(t *testing.T) {
 	tests := []struct {
-		name       string
-		failedData string
-		wantType   string
-		wantStatus int
+		name           string
+		failedData     string
+		wantType       string
+		wantStatus     int
+		wantRetryAfter string
 	}{
 		{
 			name:       "previous response missing",
@@ -1761,10 +1850,11 @@ func TestResponsesProvider_ResponseFailedTypedAPIError(t *testing.T) {
 			wantType:   "previous_response_not_found",
 		},
 		{
-			name:       "rate limit",
-			failedData: `{"response":{"error":{"message":"Too many requests","code":"rate_limit","status":429}}}`,
-			wantType:   "rate_limit_error",
-			wantStatus: http.StatusTooManyRequests,
+			name:           "rate limit",
+			failedData:     `{"response":{"error":{"message":"Please try again in 2.5s","code":"rate_limit_exceeded","status":429}}}`,
+			wantType:       "rate_limit_error",
+			wantStatus:     http.StatusTooManyRequests,
+			wantRetryAfter: "2.5",
 		},
 		{
 			name:       "server error",
@@ -1783,6 +1873,12 @@ func TestResponsesProvider_ResponseFailedTypedAPIError(t *testing.T) {
 			failedData: `{"response":{"error":{"message":"previous response not found","code":"context_length_exceeded","status":503}}}`,
 			wantType:   "context_length_exceeded",
 			wantStatus: http.StatusServiceUnavailable,
+		},
+		{
+			name:       "unclassified upstream failure is replayable",
+			failedData: `{"response":{"error":{"message":"Upstream request failed"}}}`,
+			wantType:   "response_failed",
+			wantStatus: 0,
 		},
 	}
 
@@ -1823,6 +1919,17 @@ func TestResponsesProvider_ResponseFailedTypedAPIError(t *testing.T) {
 			}
 			if got.Status != tt.wantStatus {
 				t.Fatalf("APIError.Status = %d, want %d", got.Status, tt.wantStatus)
+			}
+			if got.RetryAfter != tt.wantRetryAfter {
+				t.Fatalf("APIError.RetryAfter = %q, want %q", got.RetryAfter, tt.wantRetryAfter)
+			}
+			if tt.wantType == "response_failed" {
+				contract := ClassifyAttemptError(got)
+				if contract.Stage != types.ProviderErrorStageStream ||
+					contract.Class != types.ProviderErrorClassTransport ||
+					contract.ReplaySafety != types.ProviderReplaySafe || !contract.Retryable() {
+					t.Fatalf("response.failed retry contract = %+v", contract)
+				}
 			}
 		})
 	}

@@ -1,0 +1,94 @@
+diff --git a/internal/fsext/fileutil.go b/internal/fsext/fileutil.go
+index e688884..04e285d 100644
+--- a/internal/fsext/fileutil.go
++++ b/internal/fsext/fileutil.go
+@@ -89,11 +89,17 @@ func NewFastGlobWalker(searchPath string) *FastGlobWalker {
+ 
+ // ShouldSkip checks if a path should be skipped based on gitignore, crushignore, and hidden file rules
+ func (w *FastGlobWalker) ShouldSkip(path string) bool {
++	relPath, err := filepath.Rel(w.rootPath, path)
++	if err == nil && relPath == "." {
++		// Ignore patterns apply to entries below the traversal root. In
++		// particular, patterns such as ".*" can match ".", but must not stop
++		// the walk before any entries have been visited.
++		return false
++	}
++
+ 	if SkipHidden(path) {
+ 		return true
+ 	}
+-
+-	relPath, err := filepath.Rel(w.rootPath, path)
+ 	if err != nil {
+ 		return false
+ 	}
+diff --git a/internal/fsext/ignore_test.go b/internal/fsext/ignore_test.go
+index c2490a0..caeea4d 100644
+--- a/internal/fsext/ignore_test.go
++++ b/internal/fsext/ignore_test.go
+@@ -2,11 +2,32 @@ package fsext
+ 
+ import (
+ 	"os"
++	"path/filepath"
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/require"
+ )
+ 
++func TestDotStarIgnoreDoesNotSkipTraversalRoot(t *testing.T) {
++	tempDir := t.TempDir()
++	examplePath := filepath.Join(tempDir, "example.txt")
++	anotherPath := filepath.Join(tempDir, "another.go")
++
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile(examplePath, []byte("test content"), 0o644))
++	require.NoError(t, os.WriteFile(anotherPath, []byte("more content"), 0o644))
++
++	files, truncated, err := ListDirectory(tempDir, nil, 0)
++	require.NoError(t, err)
++	require.False(t, truncated)
++	require.ElementsMatch(t, []string{examplePath, anotherPath}, files)
++
++	matches, truncated, err := GlobWithDoubleStar("example.txt", tempDir, 0)
++	require.NoError(t, err)
++	require.False(t, truncated)
++	require.Equal(t, []string{examplePath}, matches)
++}
++
+ func TestCrushIgnore(t *testing.T) {
+ 	// Create a temporary directory for testing
+ 	tempDir := t.TempDir()
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..eb6496f 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -116,6 +116,16 @@ func NewDirectoryLister(rootPath string) *directoryLister {
+ // ~/.gitignore
+ // ~/.config/crush/ignore
+ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bool {
++	relPath, err := filepath.Rel(dl.rootPath, path)
++	if err != nil {
++		relPath = path
++	} else if relPath == "." {
++		// The root is the starting point for the walk, not an entry to which
++		// ignore rules should be applied. Some valid gitignore patterns (for
++		// example ".*") also match "." and would otherwise skip the whole walk.
++		return false
++	}
++
+ 	if len(ignorePatterns) > 0 {
+ 		base := filepath.Base(path)
+ 		for _, pattern := range ignorePatterns {
+@@ -125,11 +135,6 @@ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bo
+ 		}
+ 	}
+ 
+-	relPath, err := filepath.Rel(dl.rootPath, path)
+-	if err != nil {
+-		relPath = path
+-	}
+-
+ 	if commonIgnorePatterns().MatchesPath(relPath) {
+ 		slog.Debug("ingoring common pattern", "path", relPath)
+ 		return true

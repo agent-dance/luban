@@ -12,6 +12,7 @@ type RetryEvent struct {
 	MaxRetries int
 	Delay      time.Duration
 	Err        error
+	Kind       string
 }
 
 type retryObserverContextKey struct{}

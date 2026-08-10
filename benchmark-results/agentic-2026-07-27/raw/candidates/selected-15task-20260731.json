@@ -1,0 +1,2258 @@
+{
+  "schema_version": "agentic-selected-candidate/v3",
+  "generated_at": "2026-07-31",
+  "model": "gpt-5.6-sol",
+  "scope": {
+    "catalog_tasks": 20,
+    "observed_tasks": 15,
+    "evaluated_tasks": 5,
+    "stop_reason": "user requested the report after antvis__G2-7076; tasks 16-20 were not run"
+  },
+  "methodology": {
+    "codex_effort": "xhigh",
+    "luban_effort": "medium except kube high",
+    "agent_timeout_seconds": 1800,
+    "new_task_quality": "not evaluated; no Docker images were downloaded after the user stopped the run",
+    "token_aggregate": "paired tasks with non-zero usage from both agents",
+    "optimization_selection": "only a complete, non-timeout, zero-exit canonical <instance>/luban/summary.json with token usage, LLM calls, and a patch may replace the frozen baseline",
+    "effect_attribution": "per-item effects are combined-build measurements, not isolated causal estimates"
+  },
+  "optimization_reruns": {
+    "root": "optimized-lagging-20260731",
+    "selected_instances": [
+      "floci-io__floci-112",
+      "eza-community__eza-1664",
+      "assistant-ui__assistant-ui-3866",
+      "actor-framework__actor-framework-2300",
+      "springdoc__springdoc-openapi-3051",
+      "napi-rs__napi-rs-2784",
+      "antvis__G2-7076"
+    ],
+    "rejected_canonical_runs": [],
+    "excluded_diagnostic_runs": [
+      {
+        "instance_id": "actor-framework__actor-framework-2300",
+        "run": "optimized-lagging-20260731/runs/actor-framework__actor-framework-2300/luban-build-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "actor-framework__actor-framework-2300",
+        "run": "optimized-lagging-20260731/runs/actor-framework__actor-framework-2300/luban-build-variant-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "actor-framework__actor-framework-2300",
+        "run": "optimized-lagging-20260731/runs/actor-framework__actor-framework-2300/luban-generated-build-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "antvis__G2-7076",
+        "run": "optimized-lagging-20260731/runs/antvis__G2-7076/luban-slower-than-codex/summary.json",
+        "reason": "diagnostic_run"
+      },
+      {
+        "instance_id": "assistant-ui__assistant-ui-3866",
+        "run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban-network-failed/summary.json",
+        "reason": "network_failure"
+      },
+      {
+        "instance_id": "assistant-ui__assistant-ui-3866",
+        "run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban-provider-slow-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "assistant-ui__assistant-ui-3866",
+        "run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban-proxy-cancel-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "assistant-ui__assistant-ui-3866",
+        "run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban-slower-than-codex/summary.json",
+        "reason": "diagnostic_run"
+      },
+      {
+        "instance_id": "assistant-ui__assistant-ui-3866",
+        "run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban-v11-verification-search-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "assistant-ui__assistant-ui-3866",
+        "run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban-wrapper-unclassified-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "eza-community__eza-1664",
+        "run": "optimized-lagging-20260731/runs/eza-community__eza-1664/luban-network-failed/summary.json",
+        "reason": "network_failure"
+      },
+      {
+        "instance_id": "eza-community__eza-1664",
+        "run": "optimized-lagging-20260731/runs/eza-community__eza-1664/luban-online-wait-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "eza-community__eza-1664",
+        "run": "optimized-lagging-20260731/runs/eza-community__eza-1664/luban-spaced-event-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "floci-io__floci-112",
+        "run": "optimized-lagging-20260731/runs/floci-io__floci-112/luban-inspect-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "floci-io__floci-112",
+        "run": "optimized-lagging-20260731/runs/floci-io__floci-112/luban-wrapper-env-filter-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      },
+      {
+        "instance_id": "floci-io__floci-112",
+        "run": "optimized-lagging-20260731/runs/floci-io__floci-112/luban-wrapper-timeout/summary.json",
+        "reason": "diagnostic_timeout"
+      }
+    ]
+  },
+  "aggregate": {
+    "luban_elapsed_seconds": 4020.596,
+    "codex_elapsed_seconds": 5644.457,
+    "elapsed_change_percent": -28.8,
+    "luban_total_tokens": 6857490,
+    "codex_total_tokens": 17889019,
+    "token_change_percent": -61.7,
+    "token_tasks_compared": 15,
+    "luban_llm_calls": 245,
+    "codex_llm_calls": 354,
+    "llm_call_change_percent": -30.8,
+    "luban_timeouts": 0,
+    "codex_timeouts": 0,
+    "luban_patch_tasks": 15,
+    "codex_patch_tasks": 15,
+    "luban_resolved": 3,
+    "codex_resolved": 3,
+    "quality_tasks_evaluated": 5,
+    "task_count": 15,
+    "optimized_rerun_tasks": 7,
+    "baseline_vs_codex": {
+      "subject_elapsed_seconds": 11079.534,
+      "reference_elapsed_seconds": 5644.457,
+      "elapsed_change_percent": 96.3,
+      "subject_total_tokens": 10112440,
+      "reference_total_tokens": 14742481,
+      "token_change_percent": -31.4,
+      "token_tasks_compared": 13,
+      "subject_llm_calls": 298,
+      "reference_llm_calls": 354,
+      "llm_call_change_percent": -15.8,
+      "subject_timeouts": 2,
+      "reference_timeouts": 0,
+      "subject_patch_files": 36,
+      "reference_patch_files": 52,
+      "patch_file_change": -16,
+      "patch_file_change_percent": -30.8
+    },
+    "optimized_vs_codex": {
+      "subject_elapsed_seconds": 4020.596,
+      "reference_elapsed_seconds": 5644.457,
+      "elapsed_change_percent": -28.8,
+      "subject_total_tokens": 6857490,
+      "reference_total_tokens": 17889019,
+      "token_change_percent": -61.7,
+      "token_tasks_compared": 15,
+      "subject_llm_calls": 245,
+      "reference_llm_calls": 354,
+      "llm_call_change_percent": -30.8,
+      "subject_timeouts": 0,
+      "reference_timeouts": 0,
+      "subject_patch_files": 53,
+      "reference_patch_files": 52,
+      "patch_file_change": 1,
+      "patch_file_change_percent": 1.9
+    },
+    "optimized_vs_baseline": {
+      "subject_elapsed_seconds": 4020.596,
+      "reference_elapsed_seconds": 11079.534,
+      "elapsed_change_percent": -63.7,
+      "subject_total_tokens": 5850982,
+      "reference_total_tokens": 10112440,
+      "token_change_percent": -42.1,
+      "token_tasks_compared": 13,
+      "subject_llm_calls": 245,
+      "reference_llm_calls": 298,
+      "llm_call_change_percent": -17.8,
+      "subject_timeouts": 0,
+      "reference_timeouts": 2,
+      "subject_patch_files": 53,
+      "reference_patch_files": 36,
+      "patch_file_change": 17,
+      "patch_file_change_percent": 47.2
+    }
+  },
+  "optimizations": [
+    {
+      "id": "bounded-tool-input",
+      "title": "阻断失控的工具参数流",
+      "what_changed": "按工具设置 Responses 参数上限，并把超限作为可安全重放的流中断处理。",
+      "reason": "基线中的超时任务出现了数 MB 的畸形 Inspect 参数，单次请求可空转约 15 分钟。",
+      "affected_tasks": [
+        "eza-community__eza-1664",
+        "actor-framework__actor-framework-2300",
+        "springdoc__springdoc-openapi-3051",
+        "napi-rs__napi-rs-2784",
+        "antvis__G2-7076"
+      ],
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "eza-community__eza-1664",
+          "actor-framework__actor-framework-2300",
+          "springdoc__springdoc-openapi-3051",
+          "napi-rs__napi-rs-2784",
+          "antvis__G2-7076"
+        ],
+        "tasks_expected": 5,
+        "attribution": "combined_optimized_build",
+        "summary": "5/5 个关联任务已有正式复测；组合构建耗时较优化前 −82.1%，较 Codex −23.1%。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1411.056,
+          "reference_elapsed_seconds": 7884.528,
+          "elapsed_change_percent": -82.1,
+          "subject_total_tokens": 1338183,
+          "reference_total_tokens": 5009935,
+          "token_change_percent": -73.3,
+          "token_tasks_compared": 3,
+          "subject_llm_calls": 87,
+          "reference_llm_calls": 119,
+          "llm_call_change_percent": -26.9,
+          "subject_timeouts": 0,
+          "reference_timeouts": 2,
+          "subject_patch_files": 21,
+          "reference_patch_files": 6,
+          "patch_file_change": 15,
+          "patch_file_change_percent": 250.0
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1411.056,
+          "reference_elapsed_seconds": 1833.864,
+          "elapsed_change_percent": -23.1,
+          "subject_total_tokens": 2344691,
+          "reference_total_tokens": 6195835,
+          "token_change_percent": -62.2,
+          "token_tasks_compared": 5,
+          "subject_llm_calls": 87,
+          "reference_llm_calls": 125,
+          "llm_call_change_percent": -30.4,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 21,
+          "reference_patch_files": 23,
+          "patch_file_change": -2,
+          "patch_file_change_percent": -8.7
+        }
+      }
+    },
+    {
+      "id": "completion-stop",
+      "title": "完成后立即收束循环",
+      "what_changed": "工作区完成状态无法继续证明时直接保留真实最终答复并停止，不再为追逐 revision receipt 追加模型轮次。",
+      "reason": "多个基线任务在首次完整实现后仍继续调用模型、重复检查甚至制造无意义 patch。",
+      "affected_tasks": [
+        "floci-io__floci-112",
+        "assistant-ui__assistant-ui-3866",
+        "actor-framework__actor-framework-2300",
+        "napi-rs__napi-rs-2784",
+        "antvis__G2-7076"
+      ],
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "floci-io__floci-112",
+          "assistant-ui__assistant-ui-3866",
+          "actor-framework__actor-framework-2300",
+          "napi-rs__napi-rs-2784",
+          "antvis__G2-7076"
+        ],
+        "tasks_expected": 5,
+        "attribution": "combined_optimized_build",
+        "summary": "5/5 个关联任务已有正式复测；组合构建耗时较优化前 −76.0%，较 Codex −15.9%。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1240.744,
+          "reference_elapsed_seconds": 5162.888,
+          "elapsed_change_percent": -76.0,
+          "subject_total_tokens": 1580867,
+          "reference_total_tokens": 5842325,
+          "token_change_percent": -72.9,
+          "token_tasks_compared": 5,
+          "subject_llm_calls": 69,
+          "reference_llm_calls": 151,
+          "llm_call_change_percent": -54.3,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 13,
+          "reference_patch_files": 9,
+          "patch_file_change": 4,
+          "patch_file_change_percent": 44.4
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1240.744,
+          "reference_elapsed_seconds": 1475.528,
+          "elapsed_change_percent": -15.9,
+          "subject_total_tokens": 1580867,
+          "reference_total_tokens": 3782278,
+          "token_change_percent": -58.2,
+          "token_tasks_compared": 5,
+          "subject_llm_calls": 69,
+          "reference_llm_calls": 96,
+          "llm_call_change_percent": -28.1,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 13,
+          "reference_patch_files": 9,
+          "patch_file_change": 4,
+          "patch_file_change_percent": 44.4
+        }
+      }
+    },
+    {
+      "id": "git-aware-snapshot",
+      "title": "缩小 revision 快照范围",
+      "what_changed": "revision 检测只快照 Git 已跟踪及未忽略的源文件，排除 node_modules、target 等生成目录。",
+      "reason": "基线在大型工作区反复散列依赖目录，真实命令只需几十秒，关键路径却额外消耗数分钟。",
+      "affected_tasks": [
+        "floci-io__floci-112",
+        "assistant-ui__assistant-ui-3866",
+        "actor-framework__actor-framework-2300",
+        "springdoc__springdoc-openapi-3051"
+      ],
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "floci-io__floci-112",
+          "assistant-ui__assistant-ui-3866",
+          "actor-framework__actor-framework-2300",
+          "springdoc__springdoc-openapi-3051"
+        ],
+        "tasks_expected": 4,
+        "attribution": "combined_optimized_build",
+        "summary": "4/4 个关联任务已有正式复测；组合构建耗时较优化前 −80.7%，较 Codex −18.4%。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 794.445,
+          "reference_elapsed_seconds": 4118.345,
+          "elapsed_change_percent": -80.7,
+          "subject_total_tokens": 592347,
+          "reference_total_tokens": 1902899,
+          "token_change_percent": -68.9,
+          "token_tasks_compared": 3,
+          "subject_llm_calls": 53,
+          "reference_llm_calls": 71,
+          "llm_call_change_percent": -25.4,
+          "subject_timeouts": 0,
+          "reference_timeouts": 1,
+          "subject_patch_files": 9,
+          "reference_patch_files": 6,
+          "patch_file_change": 3,
+          "patch_file_change_percent": 50.0
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 794.445,
+          "reference_elapsed_seconds": 973.14,
+          "elapsed_change_percent": -18.4,
+          "subject_total_tokens": 1204378,
+          "reference_total_tokens": 2622473,
+          "token_change_percent": -54.1,
+          "token_tasks_compared": 4,
+          "subject_llm_calls": 53,
+          "reference_llm_calls": 66,
+          "llm_call_change_percent": -19.7,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 9,
+          "reference_patch_files": 11,
+          "patch_file_change": -2,
+          "patch_file_change_percent": -18.2
+        }
+      }
+    },
+    {
+      "id": "generated-directory-isolation",
+      "title": "隔离未跟踪构建产物",
+      "what_changed": "revision 快照和复测 patch 均忽略顶层 CMake、Cargo、Node、Gradle 等生成目录，同时继续记录这些目录中原本已跟踪的源码。",
+      "reason": "actor-framework 的 `.luban-build/` 产生 417 个未跟踪构建文件，既使 revision 失效，也把 model.patch 污染成 419 文件。",
+      "affected_tasks": [
+        "assistant-ui__assistant-ui-3866",
+        "actor-framework__actor-framework-2300",
+        "napi-rs__napi-rs-2784",
+        "antvis__G2-7076"
+      ],
+      "effect_note": "这是关键路径与测量完整性的共同修复；生成目录不再计入源码 patch。",
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "assistant-ui__assistant-ui-3866",
+          "actor-framework__actor-framework-2300",
+          "napi-rs__napi-rs-2784",
+          "antvis__G2-7076"
+        ],
+        "tasks_expected": 4,
+        "attribution": "combined_optimized_build",
+        "summary": "4/4 个关联任务已有正式复测；组合构建耗时较优化前 −78.2%，较 Codex −16.5%。这是关键路径与测量完整性的共同修复；生成目录不再计入源码 patch。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1071.314,
+          "reference_elapsed_seconds": 4916.249,
+          "elapsed_change_percent": -78.2,
+          "subject_total_tokens": 1412322,
+          "reference_total_tokens": 5469847,
+          "token_change_percent": -74.2,
+          "token_tasks_compared": 4,
+          "subject_llm_calls": 59,
+          "reference_llm_calls": 136,
+          "llm_call_change_percent": -56.6,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 11,
+          "reference_patch_files": 8,
+          "patch_file_change": 3,
+          "patch_file_change_percent": 37.5
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1071.314,
+          "reference_elapsed_seconds": 1283.61,
+          "elapsed_change_percent": -16.5,
+          "subject_total_tokens": 1412322,
+          "reference_total_tokens": 3371771,
+          "token_change_percent": -58.1,
+          "token_tasks_compared": 4,
+          "subject_llm_calls": 59,
+          "reference_llm_calls": 82,
+          "llm_call_change_percent": -28.0,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 11,
+          "reference_patch_files": 7,
+          "patch_file_change": 4,
+          "patch_file_change_percent": 57.1
+        }
+      }
+    },
+    {
+      "id": "trusted-project-wrappers",
+      "title": "识别可信项目构建 wrapper",
+      "what_changed": "允许精确匹配的 ./mvnw 与 ./gradlew 进入验证分类，同时继续拒绝任意路径可执行文件。",
+      "reason": "基线把项目自带 wrapper 判为非验证命令，影响验证状态与后续收束。",
+      "affected_tasks": [
+        "floci-io__floci-112",
+        "springdoc__springdoc-openapi-3051"
+      ],
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "floci-io__floci-112",
+          "springdoc__springdoc-openapi-3051"
+        ],
+        "tasks_expected": 2,
+        "attribution": "combined_optimized_build",
+        "summary": "2/2 个关联任务已有正式复测；组合构建耗时较优化前 −81.1%，较 Codex −16.8%。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 387.728,
+          "reference_elapsed_seconds": 2046.829,
+          "elapsed_change_percent": -81.1,
+          "subject_total_tokens": 168545,
+          "reference_total_tokens": 372478,
+          "token_change_percent": -54.8,
+          "token_tasks_compared": 1,
+          "subject_llm_calls": 30,
+          "reference_llm_calls": 17,
+          "llm_call_change_percent": 76.5,
+          "subject_timeouts": 0,
+          "reference_timeouts": 1,
+          "subject_patch_files": 4,
+          "reference_patch_files": 1,
+          "patch_file_change": 3,
+          "patch_file_change_percent": 300.0
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 387.728,
+          "reference_elapsed_seconds": 465.935,
+          "elapsed_change_percent": -16.8,
+          "subject_total_tokens": 780576,
+          "reference_total_tokens": 1322276,
+          "token_change_percent": -41.0,
+          "token_tasks_compared": 2,
+          "subject_llm_calls": 30,
+          "reference_llm_calls": 32,
+          "llm_call_change_percent": -6.2,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 4,
+          "reference_patch_files": 7,
+          "patch_file_change": -3,
+          "patch_file_change_percent": -42.9
+        }
+      }
+    },
+    {
+      "id": "bounded-inspect-schema",
+      "title": "在工具 schema 中前置预算",
+      "what_changed": "为 Inspect 的路径、模式、请求数和范围数声明硬上限，让模型在生成调用前就看到真实预算。",
+      "reason": "仅在执行端截断仍会浪费已经生成的参数 Token，也容易触发无效重试。",
+      "affected_tasks": [
+        "actor-framework__actor-framework-2300",
+        "antvis__G2-7076",
+        "assistant-ui__assistant-ui-3866",
+        "eza-community__eza-1664",
+        "floci-io__floci-112",
+        "napi-rs__napi-rs-2784",
+        "springdoc__springdoc-openapi-3051"
+      ],
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "actor-framework__actor-framework-2300",
+          "antvis__G2-7076",
+          "assistant-ui__assistant-ui-3866",
+          "eza-community__eza-1664",
+          "floci-io__floci-112",
+          "napi-rs__napi-rs-2784",
+          "springdoc__springdoc-openapi-3051"
+        ],
+        "tasks_expected": 7,
+        "attribution": "combined_optimized_build",
+        "summary": "7/7 个关联任务已有正式复测；组合构建耗时较优化前 −80.6%，较 Codex −23.2%。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1704.382,
+          "reference_elapsed_seconds": 8763.32,
+          "elapsed_change_percent": -80.6,
+          "subject_total_tokens": 1580867,
+          "reference_total_tokens": 5842325,
+          "token_change_percent": -72.9,
+          "token_tasks_compared": 5,
+          "subject_llm_calls": 104,
+          "reference_llm_calls": 157,
+          "llm_call_change_percent": -33.8,
+          "subject_timeouts": 0,
+          "reference_timeouts": 2,
+          "subject_patch_files": 26,
+          "reference_patch_files": 9,
+          "patch_file_change": 17,
+          "patch_file_change_percent": 188.9
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1704.382,
+          "reference_elapsed_seconds": 2220.345,
+          "elapsed_change_percent": -23.2,
+          "subject_total_tokens": 2587375,
+          "reference_total_tokens": 6928816,
+          "token_change_percent": -62.7,
+          "token_tasks_compared": 7,
+          "subject_llm_calls": 104,
+          "reference_llm_calls": 151,
+          "llm_call_change_percent": -31.1,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 26,
+          "reference_patch_files": 27,
+          "patch_file_change": -1,
+          "patch_file_change_percent": -3.7
+        }
+      }
+    },
+    {
+      "id": "investigation-convergence",
+      "title": "连续调查后一次性收束",
+      "what_changed": "修改前累计 4 次 Inspect 时注入一次语义化控制提示：证据充分就 ApplyPatch，否则只补查决定性缺口。",
+      "reason": "floci、actor-framework 与 napi-rs 的轨迹均出现根因已清楚后仍继续大范围探索，耗时主要消耗在修改前。",
+      "affected_tasks": [
+        "actor-framework__actor-framework-2300",
+        "antvis__G2-7076",
+        "assistant-ui__assistant-ui-3866",
+        "eza-community__eza-1664",
+        "floci-io__floci-112",
+        "napi-rs__napi-rs-2784",
+        "springdoc__springdoc-openapi-3051"
+      ],
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "actor-framework__actor-framework-2300",
+          "antvis__G2-7076",
+          "assistant-ui__assistant-ui-3866",
+          "eza-community__eza-1664",
+          "floci-io__floci-112",
+          "napi-rs__napi-rs-2784",
+          "springdoc__springdoc-openapi-3051"
+        ],
+        "tasks_expected": 7,
+        "attribution": "combined_optimized_build",
+        "summary": "7/7 个关联任务已有正式复测；组合构建耗时较优化前 −80.6%，较 Codex −23.2%。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1704.382,
+          "reference_elapsed_seconds": 8763.32,
+          "elapsed_change_percent": -80.6,
+          "subject_total_tokens": 1580867,
+          "reference_total_tokens": 5842325,
+          "token_change_percent": -72.9,
+          "token_tasks_compared": 5,
+          "subject_llm_calls": 104,
+          "reference_llm_calls": 157,
+          "llm_call_change_percent": -33.8,
+          "subject_timeouts": 0,
+          "reference_timeouts": 2,
+          "subject_patch_files": 26,
+          "reference_patch_files": 9,
+          "patch_file_change": 17,
+          "patch_file_change_percent": 188.9
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1704.382,
+          "reference_elapsed_seconds": 2220.345,
+          "elapsed_change_percent": -23.2,
+          "subject_total_tokens": 2587375,
+          "reference_total_tokens": 6928816,
+          "token_change_percent": -62.7,
+          "token_tasks_compared": 7,
+          "subject_llm_calls": 104,
+          "reference_llm_calls": 151,
+          "llm_call_change_percent": -31.1,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 26,
+          "reference_patch_files": 27,
+          "patch_file_change": -1,
+          "patch_file_change_percent": -3.7
+        }
+      }
+    },
+    {
+      "id": "verification-convergence",
+      "title": "验证尝试后立即收束",
+      "what_changed": "当前 revision 首次 Run 后注入一次语义化控制提示：代码失败才继续修复；缺包、离线网络或工具链不可用时保留证据并直接总结。",
+      "reason": "assistant-ui 的实现已经完成，但离线 pnpm 失败后仍反复寻找本机替代工具链，两次在 200 秒边界被截断。",
+      "affected_tasks": [
+        "assistant-ui__assistant-ui-3866"
+      ],
+      "effect_note": "assistant-ui 最终只执行 1 次 Run，无超时完成；耗时、Token、LLM 调用均低于 Codex。",
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "assistant-ui__assistant-ui-3866"
+        ],
+        "tasks_expected": 1,
+        "attribution": "combined_optimized_build",
+        "summary": "1/1 个关联任务已有正式复测；组合构建耗时较优化前 −80.4%，较 Codex −36.3%。assistant-ui 最终只执行 1 次 Run，无超时完成；耗时、Token、LLM 调用均低于 Codex。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 123.896,
+          "reference_elapsed_seconds": 632.153,
+          "elapsed_change_percent": -80.4,
+          "subject_total_tokens": 74139,
+          "reference_total_tokens": 459912,
+          "token_change_percent": -83.9,
+          "token_tasks_compared": 1,
+          "subject_llm_calls": 7,
+          "reference_llm_calls": 23,
+          "llm_call_change_percent": -69.6,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 3,
+          "reference_patch_files": 2,
+          "patch_file_change": 1,
+          "patch_file_change_percent": 50.0
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 123.896,
+          "reference_elapsed_seconds": 194.563,
+          "elapsed_change_percent": -36.3,
+          "subject_total_tokens": 74139,
+          "reference_total_tokens": 322474,
+          "token_change_percent": -77.0,
+          "token_tasks_compared": 1,
+          "subject_llm_calls": 7,
+          "reference_llm_calls": 12,
+          "llm_call_change_percent": -41.7,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 3,
+          "reference_patch_files": 2,
+          "patch_file_change": 1,
+          "patch_file_change_percent": 50.0
+        }
+      }
+    },
+    {
+      "id": "offline-verification",
+      "title": "评测验证严格离线并快速失败",
+      "what_changed": "向 Run 沙箱透传 Cargo、Go、npm、pnpm、Yarn、pip、uv 与 Maven 的离线开关；Maven wrapper 的下载入口指向本机关闭端口。",
+      "reason": "题目明确禁止联网，但缺失依赖时 Cargo 或 Maven wrapper 仍可能等待 300–600 秒，污染代理能力耗时。",
+      "affected_tasks": [
+        "floci-io__floci-112",
+        "eza-community__eza-1664",
+        "assistant-ui__assistant-ui-3866",
+        "springdoc__springdoc-openapi-3051",
+        "napi-rs__napi-rs-2784",
+        "antvis__G2-7076"
+      ],
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "floci-io__floci-112",
+          "eza-community__eza-1664",
+          "assistant-ui__assistant-ui-3866",
+          "springdoc__springdoc-openapi-3051",
+          "napi-rs__napi-rs-2784",
+          "antvis__G2-7076"
+        ],
+        "tasks_expected": 6,
+        "attribution": "combined_optimized_build",
+        "summary": "6/6 个关联任务已有正式复测；组合构建耗时较优化前 −80.6%，较 Codex −25.5%。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1421.561,
+          "reference_elapsed_seconds": 7323.957,
+          "elapsed_change_percent": -80.6,
+          "subject_total_tokens": 1231204,
+          "reference_total_tokens": 4771816,
+          "token_change_percent": -74.2,
+          "token_tasks_compared": 4,
+          "subject_llm_calls": 88,
+          "reference_llm_calls": 126,
+          "llm_call_change_percent": -30.2,
+          "subject_timeouts": 0,
+          "reference_timeouts": 2,
+          "subject_patch_files": 24,
+          "reference_patch_files": 6,
+          "patch_file_change": 18,
+          "patch_file_change_percent": 300.0
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1421.561,
+          "reference_elapsed_seconds": 1907.703,
+          "elapsed_change_percent": -25.5,
+          "subject_total_tokens": 2237712,
+          "reference_total_tokens": 5951093,
+          "token_change_percent": -62.4,
+          "token_tasks_compared": 6,
+          "subject_llm_calls": 88,
+          "reference_llm_calls": 129,
+          "llm_call_change_percent": -31.8,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 24,
+          "reference_patch_files": 25,
+          "patch_file_change": -1,
+          "patch_file_change_percent": -4.0
+        }
+      }
+    },
+    {
+      "id": "bounded-verification-command",
+      "title": "限制单条验证命令的关键路径",
+      "what_changed": "复测把 Run 的单步上限设为 45 秒，并通过工具 schema 把上限直接暴露给模型。",
+      "reason": "actor-framework 的实现和 patch 已完成，但一次 600 秒编译请求独占剩余时间，掩盖了代理本身的改进。",
+      "affected_tasks": [
+        "floci-io__floci-112",
+        "eza-community__eza-1664",
+        "actor-framework__actor-framework-2300",
+        "springdoc__springdoc-openapi-3051",
+        "napi-rs__napi-rs-2784",
+        "antvis__G2-7076"
+      ],
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "floci-io__floci-112",
+          "eza-community__eza-1664",
+          "actor-framework__actor-framework-2300",
+          "springdoc__springdoc-openapi-3051",
+          "napi-rs__napi-rs-2784",
+          "antvis__G2-7076"
+        ],
+        "tasks_expected": 6,
+        "attribution": "combined_optimized_build",
+        "summary": "6/6 个关联任务已有正式复测；组合构建耗时较优化前 −80.6%，较 Codex −22.0%。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1580.486,
+          "reference_elapsed_seconds": 8131.167,
+          "elapsed_change_percent": -80.6,
+          "subject_total_tokens": 1506728,
+          "reference_total_tokens": 5382413,
+          "token_change_percent": -72.0,
+          "token_tasks_compared": 4,
+          "subject_llm_calls": 97,
+          "reference_llm_calls": 134,
+          "llm_call_change_percent": -27.6,
+          "subject_timeouts": 0,
+          "reference_timeouts": 2,
+          "subject_patch_files": 23,
+          "reference_patch_files": 7,
+          "patch_file_change": 16,
+          "patch_file_change_percent": 228.6
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1580.486,
+          "reference_elapsed_seconds": 2025.782,
+          "elapsed_change_percent": -22.0,
+          "subject_total_tokens": 2513236,
+          "reference_total_tokens": 6606342,
+          "token_change_percent": -62.0,
+          "token_tasks_compared": 6,
+          "subject_llm_calls": 97,
+          "reference_llm_calls": 139,
+          "llm_call_change_percent": -30.2,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 23,
+          "reference_patch_files": 25,
+          "patch_file_change": -2,
+          "patch_file_change_percent": -8.0
+        }
+      }
+    },
+    {
+      "id": "complete-patch-capture",
+      "title": "完整记录未跟踪文件",
+      "what_changed": "用临时 Git index 采集 tracked、untracked 和 binary patch，不修改任务仓库的真实 index。",
+      "reason": "基线的 model.patch 会遗漏模型新建的测试或源文件，导致 patch 文件数和结果审计失真。",
+      "affected_tasks": [
+        "actor-framework__actor-framework-2300",
+        "antvis__G2-7076",
+        "assistant-ui__assistant-ui-3866",
+        "eza-community__eza-1664",
+        "floci-io__floci-112",
+        "napi-rs__napi-rs-2784",
+        "springdoc__springdoc-openapi-3051"
+      ],
+      "effect_note": "这是测量完整性修复；patch 文件数变化不解释为模型质量提升。",
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "actor-framework__actor-framework-2300",
+          "antvis__G2-7076",
+          "assistant-ui__assistant-ui-3866",
+          "eza-community__eza-1664",
+          "floci-io__floci-112",
+          "napi-rs__napi-rs-2784",
+          "springdoc__springdoc-openapi-3051"
+        ],
+        "tasks_expected": 7,
+        "attribution": "combined_optimized_build",
+        "summary": "7/7 个关联任务已有正式复测；组合构建耗时较优化前 −80.6%，较 Codex −23.2%。这是测量完整性修复；patch 文件数变化不解释为模型质量提升。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1704.382,
+          "reference_elapsed_seconds": 8763.32,
+          "elapsed_change_percent": -80.6,
+          "subject_total_tokens": 1580867,
+          "reference_total_tokens": 5842325,
+          "token_change_percent": -72.9,
+          "token_tasks_compared": 5,
+          "subject_llm_calls": 104,
+          "reference_llm_calls": 157,
+          "llm_call_change_percent": -33.8,
+          "subject_timeouts": 0,
+          "reference_timeouts": 2,
+          "subject_patch_files": 26,
+          "reference_patch_files": 9,
+          "patch_file_change": 17,
+          "patch_file_change_percent": 188.9
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1704.382,
+          "reference_elapsed_seconds": 2220.345,
+          "elapsed_change_percent": -23.2,
+          "subject_total_tokens": 2587375,
+          "reference_total_tokens": 6928816,
+          "token_change_percent": -62.7,
+          "token_tasks_compared": 7,
+          "subject_llm_calls": 104,
+          "reference_llm_calls": 151,
+          "llm_call_change_percent": -31.1,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 26,
+          "reference_patch_files": 27,
+          "patch_file_change": -1,
+          "patch_file_change_percent": -3.7
+        }
+      }
+    },
+    {
+      "id": "self-contained-rerun-harness",
+      "title": "复测链路去外部下载依赖",
+      "what_changed": "复用冻结任务元数据和本地认证，修复 SSE 代理小响应转发，并移除运行阶段对 pyarrow 和 Docker 的依赖。",
+      "reason": "复测应复现同一题与同一代理路径，不能因安装分析依赖、下载镜像或代理缓冲而改变结果。",
+      "affected_tasks": [
+        "actor-framework__actor-framework-2300",
+        "antvis__G2-7076",
+        "assistant-ui__assistant-ui-3866",
+        "eza-community__eza-1664",
+        "floci-io__floci-112",
+        "napi-rs__napi-rs-2784",
+        "springdoc__springdoc-openapi-3051"
+      ],
+      "effect_note": "全部正式复测均使用冻结元数据和本地代理完成，未下载 Docker 镜像。",
+      "actual_effect": {
+        "status": "measured",
+        "tasks_measured": [
+          "actor-framework__actor-framework-2300",
+          "antvis__G2-7076",
+          "assistant-ui__assistant-ui-3866",
+          "eza-community__eza-1664",
+          "floci-io__floci-112",
+          "napi-rs__napi-rs-2784",
+          "springdoc__springdoc-openapi-3051"
+        ],
+        "tasks_expected": 7,
+        "attribution": "combined_optimized_build",
+        "summary": "7/7 个关联任务已有正式复测；组合构建耗时较优化前 −80.6%，较 Codex −23.2%。全部正式复测均使用冻结元数据和本地代理完成，未下载 Docker 镜像。",
+        "optimized_vs_baseline": {
+          "subject_elapsed_seconds": 1704.382,
+          "reference_elapsed_seconds": 8763.32,
+          "elapsed_change_percent": -80.6,
+          "subject_total_tokens": 1580867,
+          "reference_total_tokens": 5842325,
+          "token_change_percent": -72.9,
+          "token_tasks_compared": 5,
+          "subject_llm_calls": 104,
+          "reference_llm_calls": 157,
+          "llm_call_change_percent": -33.8,
+          "subject_timeouts": 0,
+          "reference_timeouts": 2,
+          "subject_patch_files": 26,
+          "reference_patch_files": 9,
+          "patch_file_change": 17,
+          "patch_file_change_percent": 188.9
+        },
+        "optimized_vs_codex": {
+          "subject_elapsed_seconds": 1704.382,
+          "reference_elapsed_seconds": 2220.345,
+          "elapsed_change_percent": -23.2,
+          "subject_total_tokens": 2587375,
+          "reference_total_tokens": 6928816,
+          "token_change_percent": -62.7,
+          "token_tasks_compared": 7,
+          "subject_llm_calls": 104,
+          "reference_llm_calls": 151,
+          "llm_call_change_percent": -31.1,
+          "subject_timeouts": 0,
+          "reference_timeouts": 0,
+          "subject_patch_files": 26,
+          "reference_patch_files": 27,
+          "patch_file_change": -1,
+          "patch_file_change_percent": -3.7
+        }
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "instance_id": "danielmiessler__Fabric-2098",
+      "luban_effort": "medium",
+      "luban_elapsed_seconds": 169.328,
+      "codex_elapsed_seconds": 219.515,
+      "luban_total_tokens": 128319,
+      "codex_total_tokens": 581257,
+      "luban_llm_calls": 8,
+      "codex_llm_calls": 14,
+      "luban_resolved": true,
+      "codex_resolved": true,
+      "luban_run": "default-effort-20260730/runs/danielmiessler__Fabric-2098/luban/summary.json",
+      "codex_run": "concurrent-ab-20260730/runs/danielmiessler__Fabric-2098/codex/summary.json",
+      "luban_evaluation": "default-effort-20260730/raw/evaluation/danielmiessler__Fabric-2098/luban/report.json",
+      "quality_status": "evaluated",
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "baseline": {
+        "elapsed_seconds": 169.328,
+        "total_tokens": 128319,
+        "llm_calls": 8,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 44,
+        "patch_deletions": 3,
+        "run": "default-effort-20260730/runs/danielmiessler__Fabric-2098/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 169.328,
+        "total_tokens": 128319,
+        "llm_calls": 8,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 44,
+        "patch_deletions": 3,
+        "run": "default-effort-20260730/runs/danielmiessler__Fabric-2098/luban/summary.json",
+        "measurement_status": "baseline_carried_forward"
+      },
+      "codex": {
+        "elapsed_seconds": 219.515,
+        "total_tokens": 581257,
+        "llm_calls": 14,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 142,
+        "patch_deletions": 6,
+        "run": "concurrent-ab-20260730/runs/danielmiessler__Fabric-2098/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "not_targeted",
+        "run": null,
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": -22.9,
+          "token_change_percent": -77.9,
+          "llm_call_change_percent": -42.9,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -22.9,
+          "token_change_percent": -77.9,
+          "llm_call_change_percent": -42.9,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": 0.0,
+          "token_change_percent": 0.0,
+          "llm_call_change_percent": 0.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_patch_files": 2,
+      "codex_patch_files": 2,
+      "elapsed_change_percent": -22.9,
+      "token_change_percent": -77.9,
+      "llm_call_change_percent": -42.9
+    },
+    {
+      "instance_id": "openai__openai-agents-js-375",
+      "luban_effort": "medium",
+      "luban_elapsed_seconds": 265.308,
+      "codex_elapsed_seconds": 521.94,
+      "luban_total_tokens": 666894,
+      "codex_total_tokens": 1429141,
+      "luban_llm_calls": 22,
+      "codex_llm_calls": 30,
+      "luban_resolved": true,
+      "codex_resolved": true,
+      "luban_run": "default-effort-20260730/runs/openai__openai-agents-js-375/luban/summary.json",
+      "codex_run": "../runs/openai__openai-agents-js-375/codex/summary.json",
+      "luban_evaluation": "default-effort-20260730/raw/evaluation/openai__openai-agents-js-375/luban/report.json",
+      "quality_status": "evaluated",
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "baseline": {
+        "elapsed_seconds": 265.308,
+        "total_tokens": 666894,
+        "llm_calls": 22,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 69,
+        "patch_deletions": 20,
+        "run": "default-effort-20260730/runs/openai__openai-agents-js-375/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 265.308,
+        "total_tokens": 666894,
+        "llm_calls": 22,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 69,
+        "patch_deletions": 20,
+        "run": "default-effort-20260730/runs/openai__openai-agents-js-375/luban/summary.json",
+        "measurement_status": "baseline_carried_forward"
+      },
+      "codex": {
+        "elapsed_seconds": 521.94,
+        "total_tokens": 1429141,
+        "llm_calls": 30,
+        "timed_out": false,
+        "patch_files": 4,
+        "patch_additions": 168,
+        "patch_deletions": 43,
+        "run": "../runs/openai__openai-agents-js-375/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "not_targeted",
+        "run": null,
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": -49.2,
+          "token_change_percent": -53.3,
+          "llm_call_change_percent": -26.7,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": -1,
+          "patch_file_change_percent": -25.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -49.2,
+          "token_change_percent": -53.3,
+          "llm_call_change_percent": -26.7,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": -1,
+          "patch_file_change_percent": -25.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": 0.0,
+          "token_change_percent": 0.0,
+          "llm_call_change_percent": 0.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_patch_files": 3,
+      "codex_patch_files": 4,
+      "elapsed_change_percent": -49.2,
+      "token_change_percent": -53.3,
+      "llm_call_change_percent": -26.7
+    },
+    {
+      "instance_id": "kubernetes__kube-state-metrics-2926",
+      "luban_effort": "high",
+      "luban_elapsed_seconds": 253.708,
+      "codex_elapsed_seconds": 319.089,
+      "luban_total_tokens": 402703,
+      "codex_total_tokens": 644164,
+      "luban_llm_calls": 16,
+      "codex_llm_calls": 19,
+      "luban_resolved": false,
+      "codex_resolved": false,
+      "luban_pass_to_pass": "211/211",
+      "codex_pass_to_pass": "211/211",
+      "luban_run": "high-sealed-20260730/runs/kubernetes__kube-state-metrics-2926/luban/summary.json",
+      "codex_run": "../runs/kubernetes__kube-state-metrics-2926/codex/summary.json",
+      "luban_evaluation": "high-sealed-20260730/raw/evaluation/kubernetes__kube-state-metrics-2926/luban/report.json",
+      "quality_status": "evaluated",
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "baseline": {
+        "elapsed_seconds": 253.708,
+        "total_tokens": 402703,
+        "llm_calls": 16,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 69,
+        "patch_deletions": 3,
+        "run": "high-sealed-20260730/runs/kubernetes__kube-state-metrics-2926/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 253.708,
+        "total_tokens": 402703,
+        "llm_calls": 16,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 69,
+        "patch_deletions": 3,
+        "run": "high-sealed-20260730/runs/kubernetes__kube-state-metrics-2926/luban/summary.json",
+        "measurement_status": "baseline_carried_forward"
+      },
+      "codex": {
+        "elapsed_seconds": 319.089,
+        "total_tokens": 644164,
+        "llm_calls": 19,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 18,
+        "patch_deletions": 3,
+        "run": "../runs/kubernetes__kube-state-metrics-2926/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "not_targeted",
+        "run": null,
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": -20.5,
+          "token_change_percent": -37.5,
+          "llm_call_change_percent": -15.8,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -20.5,
+          "token_change_percent": -37.5,
+          "llm_call_change_percent": -15.8,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": 0.0,
+          "token_change_percent": 0.0,
+          "llm_call_change_percent": 0.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_patch_files": 2,
+      "codex_patch_files": 2,
+      "elapsed_change_percent": -20.5,
+      "token_change_percent": -37.5,
+      "llm_call_change_percent": -15.8
+    },
+    {
+      "instance_id": "skim-rs__skim-1044",
+      "luban_effort": "medium",
+      "luban_elapsed_seconds": 277.301,
+      "codex_elapsed_seconds": 513.889,
+      "luban_total_tokens": 582076,
+      "codex_total_tokens": 1518938,
+      "luban_llm_calls": 17,
+      "codex_llm_calls": 28,
+      "luban_resolved": true,
+      "codex_resolved": true,
+      "luban_run": "default-effort-20260730/runs/skim-rs__skim-1044/luban/summary.json",
+      "codex_run": "../runs/skim-rs__skim-1044/codex/summary.json",
+      "luban_evaluation": "default-effort-20260730/raw/evaluation/skim-rs__skim-1044/luban/report.json",
+      "quality_status": "evaluated",
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "baseline": {
+        "elapsed_seconds": 277.301,
+        "total_tokens": 582076,
+        "llm_calls": 17,
+        "timed_out": false,
+        "patch_files": 9,
+        "patch_additions": 49,
+        "patch_deletions": 19,
+        "run": "default-effort-20260730/runs/skim-rs__skim-1044/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 277.301,
+        "total_tokens": 582076,
+        "llm_calls": 17,
+        "timed_out": false,
+        "patch_files": 9,
+        "patch_additions": 49,
+        "patch_deletions": 19,
+        "run": "default-effort-20260730/runs/skim-rs__skim-1044/luban/summary.json",
+        "measurement_status": "baseline_carried_forward"
+      },
+      "codex": {
+        "elapsed_seconds": 513.889,
+        "total_tokens": 1518938,
+        "llm_calls": 28,
+        "timed_out": false,
+        "patch_files": 9,
+        "patch_additions": 44,
+        "patch_deletions": 18,
+        "run": "../runs/skim-rs__skim-1044/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "not_targeted",
+        "run": null,
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": -46.0,
+          "token_change_percent": -61.7,
+          "llm_call_change_percent": -39.3,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -46.0,
+          "token_change_percent": -61.7,
+          "llm_call_change_percent": -39.3,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": 0.0,
+          "token_change_percent": 0.0,
+          "llm_call_change_percent": 0.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_patch_files": 9,
+      "codex_patch_files": 9,
+      "elapsed_change_percent": -46.0,
+      "token_change_percent": -61.7,
+      "llm_call_change_percent": -39.3
+    },
+    {
+      "instance_id": "include-what-you-use__include-what-you-use-1991",
+      "luban_effort": "medium",
+      "luban_elapsed_seconds": 277.258,
+      "codex_elapsed_seconds": 615.961,
+      "luban_total_tokens": 431561,
+      "codex_total_tokens": 2238240,
+      "luban_llm_calls": 20,
+      "codex_llm_calls": 37,
+      "luban_resolved": false,
+      "codex_resolved": false,
+      "luban_pass_to_pass": "228/228",
+      "codex_pass_to_pass": "228/228",
+      "luban_run": "default-effort-20260730/runs/include-what-you-use__include-what-you-use-1991/luban/summary.json",
+      "codex_run": "../runs/include-what-you-use__include-what-you-use-1991/codex/summary.json",
+      "luban_evaluation": "default-effort-20260730/raw/evaluation/include-what-you-use__include-what-you-use-1991/luban/report.json",
+      "quality_status": "evaluated",
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "baseline": {
+        "elapsed_seconds": 277.258,
+        "total_tokens": 431561,
+        "llm_calls": 20,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 16,
+        "patch_deletions": 7,
+        "run": "default-effort-20260730/runs/include-what-you-use__include-what-you-use-1991/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 277.258,
+        "total_tokens": 431561,
+        "llm_calls": 20,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 16,
+        "patch_deletions": 7,
+        "run": "default-effort-20260730/runs/include-what-you-use__include-what-you-use-1991/luban/summary.json",
+        "measurement_status": "baseline_carried_forward"
+      },
+      "codex": {
+        "elapsed_seconds": 615.961,
+        "total_tokens": 2238240,
+        "llm_calls": 37,
+        "timed_out": false,
+        "patch_files": 1,
+        "patch_additions": 11,
+        "patch_deletions": 1,
+        "run": "../runs/include-what-you-use__include-what-you-use-1991/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "not_targeted",
+        "run": null,
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": -55.0,
+          "token_change_percent": -80.7,
+          "llm_call_change_percent": -45.9,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 2,
+          "patch_file_change_percent": 200.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -55.0,
+          "token_change_percent": -80.7,
+          "llm_call_change_percent": -45.9,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 2,
+          "patch_file_change_percent": 200.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": 0.0,
+          "token_change_percent": 0.0,
+          "llm_call_change_percent": 0.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_patch_files": 3,
+      "codex_patch_files": 1,
+      "elapsed_change_percent": -55.0,
+      "token_change_percent": -80.7,
+      "llm_call_change_percent": -45.9
+    },
+    {
+      "instance_id": "ninja-build__ninja-2749",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 547.022,
+        "total_tokens": 1435423,
+        "llm_calls": 33,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 51,
+        "patch_deletions": 5,
+        "run": "representative20-20260731/runs/ninja-build__ninja-2749/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 547.022,
+        "total_tokens": 1435423,
+        "llm_calls": 33,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 51,
+        "patch_deletions": 5,
+        "run": "representative20-20260731/runs/ninja-build__ninja-2749/luban/summary.json",
+        "measurement_status": "baseline_carried_forward"
+      },
+      "codex": {
+        "elapsed_seconds": 611.051,
+        "total_tokens": 2859848,
+        "llm_calls": 39,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 99,
+        "patch_deletions": 14,
+        "run": "representative20-20260731/runs/ninja-build__ninja-2749/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "not_targeted",
+        "run": null,
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": -10.5,
+          "token_change_percent": -49.8,
+          "llm_call_change_percent": -15.4,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -10.5,
+          "token_change_percent": -49.8,
+          "llm_call_change_percent": -15.4,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": 0.0,
+          "token_change_percent": 0.0,
+          "llm_call_change_percent": 0.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_elapsed_seconds": 547.022,
+      "codex_elapsed_seconds": 611.051,
+      "luban_total_tokens": 1435423,
+      "codex_total_tokens": 2859848,
+      "luban_llm_calls": 33,
+      "codex_llm_calls": 39,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 2,
+      "codex_patch_files": 2,
+      "luban_run": "representative20-20260731/runs/ninja-build__ninja-2749/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/ninja-build__ninja-2749/codex/summary.json",
+      "elapsed_change_percent": -10.5,
+      "token_change_percent": -49.8,
+      "llm_call_change_percent": -15.4
+    },
+    {
+      "instance_id": "charmbracelet__crush-766",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 153.7,
+        "total_tokens": 74322,
+        "llm_calls": 7,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 43,
+        "patch_deletions": 3,
+        "run": "representative20-20260731/runs/charmbracelet__crush-766/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 153.7,
+        "total_tokens": 74322,
+        "llm_calls": 7,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 43,
+        "patch_deletions": 3,
+        "run": "representative20-20260731/runs/charmbracelet__crush-766/luban/summary.json",
+        "measurement_status": "baseline_carried_forward"
+      },
+      "codex": {
+        "elapsed_seconds": 230.049,
+        "total_tokens": 374868,
+        "llm_calls": 13,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 42,
+        "patch_deletions": 10,
+        "run": "representative20-20260731/runs/charmbracelet__crush-766/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "not_targeted",
+        "run": null,
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": -33.2,
+          "token_change_percent": -80.2,
+          "llm_call_change_percent": -46.2,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -33.2,
+          "token_change_percent": -80.2,
+          "llm_call_change_percent": -46.2,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": 0.0,
+          "token_change_percent": 0.0,
+          "llm_call_change_percent": 0.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_elapsed_seconds": 153.7,
+      "codex_elapsed_seconds": 230.049,
+      "luban_total_tokens": 74322,
+      "codex_total_tokens": 374868,
+      "luban_llm_calls": 7,
+      "codex_llm_calls": 13,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 3,
+      "codex_patch_files": 3,
+      "luban_run": "representative20-20260731/runs/charmbracelet__crush-766/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/charmbracelet__crush-766/codex/summary.json",
+      "elapsed_change_percent": -33.2,
+      "token_change_percent": -80.2,
+      "llm_call_change_percent": -46.2
+    },
+    {
+      "instance_id": "floci-io__floci-112",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 246.639,
+        "total_tokens": 372478,
+        "llm_calls": 15,
+        "timed_out": false,
+        "patch_files": 1,
+        "patch_additions": 31,
+        "patch_deletions": 8,
+        "run": "representative20-20260731/runs/floci-io__floci-112/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 169.43,
+        "total_tokens": 168545,
+        "llm_calls": 10,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 41,
+        "patch_deletions": 3,
+        "run": "optimized-lagging-20260731/runs/floci-io__floci-112/luban/summary.json",
+        "measurement_status": "rerun"
+      },
+      "codex": {
+        "elapsed_seconds": 191.918,
+        "total_tokens": 410507,
+        "llm_calls": 14,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 42,
+        "patch_deletions": 4,
+        "run": "representative20-20260731/runs/floci-io__floci-112/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "selected",
+        "run": "optimized-lagging-20260731/runs/floci-io__floci-112/luban/summary.json",
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": 28.5,
+          "token_change_percent": -9.3,
+          "llm_call_change_percent": 7.1,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": -1,
+          "patch_file_change_percent": -50.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -11.7,
+          "token_change_percent": -58.9,
+          "llm_call_change_percent": -28.6,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": -31.3,
+          "token_change_percent": -54.8,
+          "llm_call_change_percent": -33.3,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 1,
+          "patch_file_change_percent": 100.0
+        }
+      },
+      "luban_elapsed_seconds": 169.43,
+      "codex_elapsed_seconds": 191.918,
+      "luban_total_tokens": 168545,
+      "codex_total_tokens": 410507,
+      "luban_llm_calls": 10,
+      "codex_llm_calls": 14,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 2,
+      "codex_patch_files": 2,
+      "luban_run": "optimized-lagging-20260731/runs/floci-io__floci-112/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/floci-io__floci-112/codex/summary.json",
+      "elapsed_change_percent": -11.7,
+      "token_change_percent": -58.9,
+      "llm_call_change_percent": -28.6
+    },
+    {
+      "instance_id": "eza-community__eza-1664",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 1800.242,
+        "total_tokens": null,
+        "llm_calls": 4,
+        "timed_out": true,
+        "patch_files": 0,
+        "patch_additions": 0,
+        "patch_deletions": 0,
+        "run": "representative20-20260731/runs/eza-community__eza-1664/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 245.34,
+        "total_tokens": 394477,
+        "llm_calls": 15,
+        "timed_out": false,
+        "patch_files": 11,
+        "patch_additions": 74,
+        "patch_deletions": 32,
+        "run": "optimized-lagging-20260731/runs/eza-community__eza-1664/luban/summary.json",
+        "measurement_status": "rerun"
+      },
+      "codex": {
+        "elapsed_seconds": 470.8,
+        "total_tokens": 2234769,
+        "llm_calls": 37,
+        "timed_out": false,
+        "patch_files": 13,
+        "patch_additions": 139,
+        "patch_deletions": 49,
+        "run": "representative20-20260731/runs/eza-community__eza-1664/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "selected",
+        "run": "optimized-lagging-20260731/runs/eza-community__eza-1664/luban/summary.json",
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": 282.4,
+          "token_change_percent": null,
+          "llm_call_change_percent": -89.2,
+          "timeout_change": 1,
+          "timeout_status": "worse",
+          "patch_file_change": -13,
+          "patch_file_change_percent": -100.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -47.9,
+          "token_change_percent": -82.3,
+          "llm_call_change_percent": -59.5,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": -2,
+          "patch_file_change_percent": -15.4
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": -86.4,
+          "token_change_percent": null,
+          "llm_call_change_percent": 275.0,
+          "timeout_change": -1,
+          "timeout_status": "better",
+          "patch_file_change": 11,
+          "patch_file_change_percent": null
+        }
+      },
+      "luban_elapsed_seconds": 245.34,
+      "codex_elapsed_seconds": 470.8,
+      "luban_total_tokens": 394477,
+      "codex_total_tokens": 2234769,
+      "luban_llm_calls": 15,
+      "codex_llm_calls": 37,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 11,
+      "codex_patch_files": 13,
+      "luban_run": "optimized-lagging-20260731/runs/eza-community__eza-1664/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/eza-community__eza-1664/codex/summary.json",
+      "elapsed_change_percent": -47.9,
+      "token_change_percent": -82.3,
+      "llm_call_change_percent": -59.5
+    },
+    {
+      "instance_id": "assistant-ui__assistant-ui-3866",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 632.153,
+        "total_tokens": 459912,
+        "llm_calls": 23,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 35,
+        "patch_deletions": 3,
+        "run": "representative20-20260731/runs/assistant-ui__assistant-ui-3866/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 123.896,
+        "total_tokens": 74139,
+        "llm_calls": 7,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 27,
+        "patch_deletions": 4,
+        "run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban/summary.json",
+        "measurement_status": "rerun"
+      },
+      "codex": {
+        "elapsed_seconds": 194.563,
+        "total_tokens": 322474,
+        "llm_calls": 12,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 29,
+        "patch_deletions": 3,
+        "run": "representative20-20260731/runs/assistant-ui__assistant-ui-3866/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "selected",
+        "run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban/summary.json",
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": 224.9,
+          "token_change_percent": 42.6,
+          "llm_call_change_percent": 91.7,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -36.3,
+          "token_change_percent": -77.0,
+          "llm_call_change_percent": -41.7,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 1,
+          "patch_file_change_percent": 50.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": -80.4,
+          "token_change_percent": -83.9,
+          "llm_call_change_percent": -69.6,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 1,
+          "patch_file_change_percent": 50.0
+        }
+      },
+      "luban_elapsed_seconds": 123.896,
+      "codex_elapsed_seconds": 194.563,
+      "luban_total_tokens": 74139,
+      "codex_total_tokens": 322474,
+      "luban_llm_calls": 7,
+      "codex_llm_calls": 12,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 3,
+      "codex_patch_files": 2,
+      "luban_run": "optimized-lagging-20260731/runs/assistant-ui__assistant-ui-3866/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/assistant-ui__assistant-ui-3866/codex/summary.json",
+      "elapsed_change_percent": -36.3,
+      "token_change_percent": -77.0,
+      "llm_call_change_percent": -41.7
+    },
+    {
+      "instance_id": "actor-framework__actor-framework-2300",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 1439.363,
+        "total_tokens": 1070509,
+        "llm_calls": 31,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 33,
+        "patch_deletions": 6,
+        "run": "representative20-20260731/runs/actor-framework__actor-framework-2300/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 282.821,
+        "total_tokens": 349663,
+        "llm_calls": 16,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 26,
+        "patch_deletions": 3,
+        "run": "optimized-lagging-20260731/runs/actor-framework__actor-framework-2300/luban/summary.json",
+        "measurement_status": "rerun"
+      },
+      "codex": {
+        "elapsed_seconds": 312.642,
+        "total_tokens": 977723,
+        "llm_calls": 22,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 32,
+        "patch_deletions": 3,
+        "run": "representative20-20260731/runs/actor-framework__actor-framework-2300/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "selected",
+        "run": "optimized-lagging-20260731/runs/actor-framework__actor-framework-2300/luban/summary.json",
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": 360.4,
+          "token_change_percent": 9.5,
+          "llm_call_change_percent": 40.9,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 1,
+          "patch_file_change_percent": 50.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -9.5,
+          "token_change_percent": -64.2,
+          "llm_call_change_percent": -27.3,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": -80.4,
+          "token_change_percent": -67.3,
+          "llm_call_change_percent": -48.4,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": -1,
+          "patch_file_change_percent": -33.3
+        }
+      },
+      "luban_elapsed_seconds": 282.821,
+      "codex_elapsed_seconds": 312.642,
+      "luban_total_tokens": 349663,
+      "codex_total_tokens": 977723,
+      "luban_llm_calls": 16,
+      "codex_llm_calls": 22,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 2,
+      "codex_patch_files": 2,
+      "luban_run": "optimized-lagging-20260731/runs/actor-framework__actor-framework-2300/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/actor-framework__actor-framework-2300/codex/summary.json",
+      "elapsed_change_percent": -9.5,
+      "token_change_percent": -64.2,
+      "llm_call_change_percent": -27.3
+    },
+    {
+      "instance_id": "lima-vm__lima-3923",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 372.589,
+        "total_tokens": 548817,
+        "llm_calls": 18,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 24,
+        "patch_deletions": 9,
+        "run": "representative20-20260731/runs/lima-vm__lima-3923/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 372.589,
+        "total_tokens": 548817,
+        "llm_calls": 18,
+        "timed_out": false,
+        "patch_files": 3,
+        "patch_additions": 24,
+        "patch_deletions": 9,
+        "run": "representative20-20260731/runs/lima-vm__lima-3923/luban/summary.json",
+        "measurement_status": "baseline_carried_forward"
+      },
+      "codex": {
+        "elapsed_seconds": 392.618,
+        "total_tokens": 1313747,
+        "llm_calls": 23,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 14,
+        "patch_deletions": 7,
+        "run": "representative20-20260731/runs/lima-vm__lima-3923/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "not_targeted",
+        "run": null,
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": -5.1,
+          "token_change_percent": -58.2,
+          "llm_call_change_percent": -21.7,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 1,
+          "patch_file_change_percent": 50.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -5.1,
+          "token_change_percent": -58.2,
+          "llm_call_change_percent": -21.7,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 1,
+          "patch_file_change_percent": 50.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": 0.0,
+          "token_change_percent": 0.0,
+          "llm_call_change_percent": 0.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_elapsed_seconds": 372.589,
+      "codex_elapsed_seconds": 392.618,
+      "luban_total_tokens": 548817,
+      "codex_total_tokens": 1313747,
+      "luban_llm_calls": 18,
+      "codex_llm_calls": 23,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 3,
+      "codex_patch_files": 2,
+      "luban_run": "representative20-20260731/runs/lima-vm__lima-3923/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/lima-vm__lima-3923/codex/summary.json",
+      "elapsed_change_percent": -5.1,
+      "token_change_percent": -58.2,
+      "llm_call_change_percent": -21.7
+    },
+    {
+      "instance_id": "springdoc__springdoc-openapi-3051",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 1800.19,
+        "total_tokens": null,
+        "llm_calls": 2,
+        "timed_out": true,
+        "patch_files": 0,
+        "patch_additions": 0,
+        "patch_deletions": 0,
+        "run": "representative20-20260731/runs/springdoc__springdoc-openapi-3051/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 218.298,
+        "total_tokens": 612031,
+        "llm_calls": 20,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 75,
+        "patch_deletions": 7,
+        "run": "optimized-lagging-20260731/runs/springdoc__springdoc-openapi-3051/luban/summary.json",
+        "measurement_status": "rerun"
+      },
+      "codex": {
+        "elapsed_seconds": 274.017,
+        "total_tokens": 911769,
+        "llm_calls": 18,
+        "timed_out": false,
+        "patch_files": 5,
+        "patch_additions": 113,
+        "patch_deletions": 12,
+        "run": "representative20-20260731/runs/springdoc__springdoc-openapi-3051/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "selected",
+        "run": "optimized-lagging-20260731/runs/springdoc__springdoc-openapi-3051/luban/summary.json",
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": 557.0,
+          "token_change_percent": null,
+          "llm_call_change_percent": -88.9,
+          "timeout_change": 1,
+          "timeout_status": "worse",
+          "patch_file_change": -5,
+          "patch_file_change_percent": -100.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -20.3,
+          "token_change_percent": -32.9,
+          "llm_call_change_percent": 11.1,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": -3,
+          "patch_file_change_percent": -60.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": -87.9,
+          "token_change_percent": null,
+          "llm_call_change_percent": 900.0,
+          "timeout_change": -1,
+          "timeout_status": "better",
+          "patch_file_change": 2,
+          "patch_file_change_percent": null
+        }
+      },
+      "luban_elapsed_seconds": 218.298,
+      "codex_elapsed_seconds": 274.017,
+      "luban_total_tokens": 612031,
+      "codex_total_tokens": 911769,
+      "luban_llm_calls": 20,
+      "codex_llm_calls": 18,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 2,
+      "codex_patch_files": 5,
+      "luban_run": "optimized-lagging-20260731/runs/springdoc__springdoc-openapi-3051/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/springdoc__springdoc-openapi-3051/codex/summary.json",
+      "elapsed_change_percent": -20.3,
+      "token_change_percent": -32.9,
+      "llm_call_change_percent": 11.1
+    },
+    {
+      "instance_id": "napi-rs__napi-rs-2784",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 1354.144,
+        "total_tokens": 1287671,
+        "llm_calls": 37,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 126,
+        "patch_deletions": 2,
+        "run": "representative20-20260731/runs/napi-rs__napi-rs-2784/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 292.775,
+        "total_tokens": 372716,
+        "llm_calls": 14,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 106,
+        "patch_deletions": 2,
+        "run": "optimized-lagging-20260731/runs/napi-rs__napi-rs-2784/luban/summary.json",
+        "measurement_status": "rerun"
+      },
+      "codex": {
+        "elapsed_seconds": 340.224,
+        "total_tokens": 660232,
+        "llm_calls": 18,
+        "timed_out": false,
+        "patch_files": 2,
+        "patch_additions": 127,
+        "patch_deletions": 8,
+        "run": "representative20-20260731/runs/napi-rs__napi-rs-2784/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "selected",
+        "run": "optimized-lagging-20260731/runs/napi-rs__napi-rs-2784/luban/summary.json",
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": 298.0,
+          "token_change_percent": 95.0,
+          "llm_call_change_percent": 105.6,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -13.9,
+          "token_change_percent": -43.5,
+          "llm_call_change_percent": -22.2,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": -78.4,
+          "token_change_percent": -71.1,
+          "llm_call_change_percent": -62.2,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        }
+      },
+      "luban_elapsed_seconds": 292.775,
+      "codex_elapsed_seconds": 340.224,
+      "luban_total_tokens": 372716,
+      "codex_total_tokens": 660232,
+      "luban_llm_calls": 14,
+      "codex_llm_calls": 18,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 2,
+      "codex_patch_files": 2,
+      "luban_run": "optimized-lagging-20260731/runs/napi-rs__napi-rs-2784/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/napi-rs__napi-rs-2784/codex/summary.json",
+      "elapsed_change_percent": -13.9,
+      "token_change_percent": -43.5,
+      "llm_call_change_percent": -22.2
+    },
+    {
+      "instance_id": "antvis__G2-7076",
+      "luban_effort": "medium",
+      "luban_resolved": null,
+      "codex_resolved": null,
+      "quality_status": "not_evaluated",
+      "baseline": {
+        "elapsed_seconds": 1490.589,
+        "total_tokens": 2651755,
+        "llm_calls": 45,
+        "timed_out": false,
+        "patch_files": 1,
+        "patch_additions": 36,
+        "patch_deletions": 4,
+        "run": "representative20-20260731/runs/antvis__G2-7076/luban/summary.json"
+      },
+      "optimized": {
+        "elapsed_seconds": 371.822,
+        "total_tokens": 615804,
+        "llm_calls": 22,
+        "timed_out": false,
+        "patch_files": 4,
+        "patch_additions": 45,
+        "patch_deletions": 7,
+        "run": "optimized-lagging-20260731/runs/antvis__G2-7076/luban/summary.json",
+        "measurement_status": "rerun"
+      },
+      "codex": {
+        "elapsed_seconds": 436.181,
+        "total_tokens": 1411342,
+        "llm_calls": 30,
+        "timed_out": false,
+        "patch_files": 1,
+        "patch_additions": 7,
+        "patch_deletions": 3,
+        "run": "representative20-20260731/runs/antvis__G2-7076/codex/summary.json"
+      },
+      "optimized_override": {
+        "status": "selected",
+        "run": "optimized-lagging-20260731/runs/antvis__G2-7076/luban/summary.json",
+        "rejection_reasons": []
+      },
+      "comparison": {
+        "baseline_vs_codex": {
+          "elapsed_change_percent": 241.7,
+          "token_change_percent": 87.9,
+          "llm_call_change_percent": 50.0,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 0,
+          "patch_file_change_percent": 0.0
+        },
+        "optimized_vs_codex": {
+          "elapsed_change_percent": -14.8,
+          "token_change_percent": -56.4,
+          "llm_call_change_percent": -26.7,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 3,
+          "patch_file_change_percent": 300.0
+        },
+        "optimized_vs_baseline": {
+          "elapsed_change_percent": -75.1,
+          "token_change_percent": -76.8,
+          "llm_call_change_percent": -51.1,
+          "timeout_change": 0,
+          "timeout_status": "same",
+          "patch_file_change": 3,
+          "patch_file_change_percent": 300.0
+        }
+      },
+      "luban_elapsed_seconds": 371.822,
+      "codex_elapsed_seconds": 436.181,
+      "luban_total_tokens": 615804,
+      "codex_total_tokens": 1411342,
+      "luban_llm_calls": 22,
+      "codex_llm_calls": 30,
+      "luban_timed_out": false,
+      "codex_timed_out": false,
+      "luban_patch_files": 4,
+      "codex_patch_files": 1,
+      "luban_run": "optimized-lagging-20260731/runs/antvis__G2-7076/luban/summary.json",
+      "codex_run": "representative20-20260731/runs/antvis__G2-7076/codex/summary.json",
+      "elapsed_change_percent": -14.8,
+      "token_change_percent": -56.4,
+      "llm_call_change_percent": -26.7
+    }
+  ]
+}

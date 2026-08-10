@@ -191,6 +191,12 @@ func TestClassifyAttemptErrorStructuredContract(t *testing.T) {
 			wantReplay: types.ProviderReplayUnsafe,
 		},
 		{
+			name:      "uncommitted response failed is replayable transport failure",
+			err:       &types.APIError{Type: "response_failed", Message: "diagnostic", Stage: types.ProviderErrorStageStream, ReplaySafety: types.ProviderReplaySafe},
+			wantStage: types.ProviderErrorStageStream, wantClass: types.ProviderErrorClassTransport,
+			wantReplay: types.ProviderReplaySafe, wantRetry: true,
+		},
+		{
 			name:      "committed transport is unsafe unless explicitly proven",
 			err:       &types.APIError{Type: "stream_interrupted", Stage: types.ProviderErrorStageCommitted},
 			wantStage: types.ProviderErrorStageCommitted, wantClass: types.ProviderErrorClassTransport,

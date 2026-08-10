@@ -70,6 +70,15 @@ var ErrSessionDeleted = errors.New("session history permanently deleted")
 // Startup may safely create a fresh session only for this condition.
 var ErrNoSessions = errors.New("no sessions found")
 
+// ErrCorruptSessionMetadata identifies a sidecar whose declared schema cannot
+// be trusted. Listing isolates the affected session, while precise lookup
+// keeps the error visible to the caller.
+var ErrCorruptSessionMetadata = errors.New("corrupt session metadata")
+
+// ErrIncompatibleSessionMetadata identifies a well-formed sidecar whose
+// schema or fields are not understood by this build.
+var ErrIncompatibleSessionMetadata = errors.New("incompatible session metadata")
+
 // SessionMeta is the persisted sidecar metadata for a session.
 type SessionMeta struct {
 	SchemaVersion string `json:"schema_version"`
@@ -167,6 +176,23 @@ type SessionDecisionMeta struct {
 const maxStorageIDBytes = 200
 
 const sessionMetaSchemaV1 = "session-meta/v1"
+
+var legacySessionMetaFields = map[string]struct{}{
+	"id": {}, "cache_lineage_id": {}, "title": {}, "created_at": {},
+	"updated_at": {}, "message_count": {}, "cwd": {}, "git_branch": {},
+	"preview_text": {}, "provider": {}, "model": {}, "goal": {}, "usage": {},
+	"presentation": {}, "skills": {}, "decisions": {}, "seen_tool_use_ids": {},
+	"loaded_tool_names": {}, "first_writer_build": {}, "last_writer_build": {},
+	// These projections were persisted by pre-v1 TUI builds. They are derived
+	// from durable artifacts now and are intentionally discarded on migration.
+	"activities": {}, "evidence": {},
+}
+
+var legacySessionPresentationFields = map[string]struct{}{
+	"permission_mode": {},
+	// Pre-v1 presentation-only fields now live in the TUI checkpoint.
+	"version": {}, "input_cursor_set": {},
+}
 
 func validateStorageID(id string) error {
 	if id == "" || len(id) > maxStorageIDBytes {
@@ -987,6 +1013,10 @@ func cleanPath(p string) string {
 }
 
 func (s *FileStore) List() ([]SessionInfo, error) {
+	return s.list(false)
+}
+
+func (s *FileStore) list(strictMetadata bool) ([]SessionInfo, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.ensureReadyLocked(""); err != nil {
@@ -1023,6 +1053,9 @@ func (s *FileStore) List() ([]SessionInfo, error) {
 		}
 		meta, metaErr := s.loadMetaLocked(id)
 		if metaErr != nil && !os.IsNotExist(metaErr) {
+			if !strictMetadata && (errors.Is(metaErr, ErrCorruptSessionMetadata) || errors.Is(metaErr, ErrIncompatibleSessionMetadata)) {
+				continue
+			}
 			return nil, metaErr
 		}
 		if metaErr != nil {
@@ -1139,7 +1172,7 @@ func (s *FileStore) writeDeleteMarkerAtomic(sessionID string) error {
 }
 
 func (s *FileStore) Latest() (string, error) {
-	sessions, err := s.List()
+	sessions, err := s.list(true)
 	if err != nil {
 		return "", err
 	}
@@ -1157,32 +1190,27 @@ func (s *FileStore) loadMetaLocked(sessionID string) (SessionMeta, error) {
 	if err != nil {
 		return SessionMeta{}, err
 	}
-	var meta SessionMeta
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&meta); err != nil {
-		return SessionMeta{}, fmt.Errorf("parse session metadata: %w", err)
-	}
-	if err := requireJSONEOF(decoder); err != nil {
-		return SessionMeta{}, fmt.Errorf("parse session metadata: %w", err)
-	}
-	if meta.SchemaVersion != sessionMetaSchemaV1 {
-		return SessionMeta{}, fs.ErrInvalid
+	meta, legacy, err := decodeSessionMetadata(data)
+	if err != nil {
+		return SessionMeta{}, err
 	}
 	if meta.ID != sessionID {
-		return SessionMeta{}, fs.ErrInvalid
+		return SessionMeta{}, fmt.Errorf("%w: session identity mismatch", ErrCorruptSessionMetadata)
 	}
 	if strings.TrimSpace(meta.CacheLineageID) == "" {
-		return SessionMeta{}, fs.ErrInvalid
+		return SessionMeta{}, fmt.Errorf("%w: cache lineage is missing", ErrCorruptSessionMetadata)
 	}
 	if meta.CreatedAt.IsZero() || meta.UpdatedAt.IsZero() {
-		return SessionMeta{}, fs.ErrInvalid
+		return SessionMeta{}, fmt.Errorf("%w: required timestamps are missing", ErrCorruptSessionMetadata)
 	}
-	if meta.FirstWriterBuild == nil || meta.LastWriterBuild == nil {
-		return SessionMeta{}, fs.ErrInvalid
+	if !legacy && (meta.FirstWriterBuild == nil || meta.LastWriterBuild == nil) {
+		return SessionMeta{}, fmt.Errorf("%w: writer fingerprints are missing", ErrCorruptSessionMetadata)
 	}
-	if meta.FirstWriterBuild.ProcessStart.IsZero() || meta.LastWriterBuild.ProcessStart.IsZero() {
-		return SessionMeta{}, fs.ErrInvalid
+	if meta.FirstWriterBuild != nil && meta.FirstWriterBuild.ProcessStart.IsZero() {
+		return SessionMeta{}, fmt.Errorf("%w: first writer fingerprint is incomplete", ErrCorruptSessionMetadata)
+	}
+	if meta.LastWriterBuild != nil && meta.LastWriterBuild.ProcessStart.IsZero() {
+		return SessionMeta{}, fmt.Errorf("%w: last writer fingerprint is incomplete", ErrCorruptSessionMetadata)
 	}
 	if manifest, exists, manifestErr := s.loadManifestLocked(sessionID); manifestErr != nil {
 		return SessionMeta{}, manifestErr
@@ -1207,6 +1235,85 @@ func (s *FileStore) loadMetaLocked(sessionID string) (SessionMeta, error) {
 		meta.Skills = skillsMeta
 	}
 	return meta, nil
+}
+
+func decodeSessionMetadata(data []byte) (SessionMeta, bool, error) {
+	var fields map[string]json.RawMessage
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(&fields); err != nil {
+		return SessionMeta{}, false, fmt.Errorf("%w: %v", ErrCorruptSessionMetadata, err)
+	}
+	if err := requireJSONEOF(decoder); err != nil {
+		return SessionMeta{}, false, fmt.Errorf("%w: %v", ErrCorruptSessionMetadata, err)
+	}
+	if fields == nil {
+		return SessionMeta{}, false, ErrCorruptSessionMetadata
+	}
+
+	if rawSchema, exists := fields["schema_version"]; exists {
+		var schema string
+		if err := json.Unmarshal(rawSchema, &schema); err != nil {
+			return SessionMeta{}, false, fmt.Errorf("%w: invalid schema version", ErrCorruptSessionMetadata)
+		}
+		if schema != sessionMetaSchemaV1 {
+			return SessionMeta{}, false, fmt.Errorf("%w: %s", ErrIncompatibleSessionMetadata, schema)
+		}
+		meta, err := decodeStrictSessionMetadata(data)
+		return meta, false, err
+	}
+
+	normalized, err := normalizeLegacySessionMetadata(fields)
+	if err != nil {
+		return SessionMeta{}, true, err
+	}
+	meta, err := decodeStrictSessionMetadata(normalized)
+	return meta, true, err
+}
+
+func decodeStrictSessionMetadata(data []byte) (SessionMeta, error) {
+	var meta SessionMeta
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&meta); err != nil {
+		return SessionMeta{}, fmt.Errorf("%w: %v", ErrCorruptSessionMetadata, err)
+	}
+	if err := requireJSONEOF(decoder); err != nil {
+		return SessionMeta{}, fmt.Errorf("%w: %v", ErrCorruptSessionMetadata, err)
+	}
+	return meta, nil
+}
+
+func normalizeLegacySessionMetadata(fields map[string]json.RawMessage) ([]byte, error) {
+	for name := range fields {
+		if _, allowed := legacySessionMetaFields[name]; !allowed {
+			return nil, fmt.Errorf("%w: unsupported legacy field %q", ErrIncompatibleSessionMetadata, name)
+		}
+	}
+	delete(fields, "activities")
+	delete(fields, "evidence")
+
+	if rawPresentation, exists := fields["presentation"]; exists {
+		var presentation map[string]json.RawMessage
+		if err := json.Unmarshal(rawPresentation, &presentation); err != nil {
+			return nil, fmt.Errorf("%w: invalid legacy presentation", ErrCorruptSessionMetadata)
+		}
+		for name := range presentation {
+			if _, allowed := legacySessionPresentationFields[name]; !allowed {
+				return nil, fmt.Errorf("%w: unsupported legacy presentation field %q", ErrIncompatibleSessionMetadata, name)
+			}
+		}
+		if _, exists := presentation["permission_mode"]; exists {
+			fields["presentation"] = []byte(`{"permission_mode":` + string(presentation["permission_mode"]) + `}`)
+		} else {
+			delete(fields, "presentation")
+		}
+	}
+	fields["schema_version"] = []byte(`"` + sessionMetaSchemaV1 + `"`)
+	normalized, err := json.Marshal(fields)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrCorruptSessionMetadata, err)
+	}
+	return normalized, nil
 }
 
 func (s *FileStore) saveMetaLocked(sessionID string, meta SessionMeta) error {
@@ -1332,6 +1439,9 @@ func normalizeCacheLineageID(sessionID, lineageID string) string {
 func derivePreviewText(messages []types.Message) string {
 	for i := len(messages) - 1; i >= 0; i-- {
 		if messages[i].IsInternalRuntimeMessage() {
+			continue
+		}
+		if len(messages[i].GetInvalidToolUses()) > 0 {
 			continue
 		}
 		if text := strings.TrimSpace(messages[i].GetText()); text != "" {

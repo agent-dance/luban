@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/internal/contracts/workspacerevision"
 	"github.com/agent-dance/luban/types"
 )
@@ -45,6 +47,19 @@ func requireApplyPatchErrorCode(t testing.TB, result types.ToolResult, code stri
 	}
 	if data.Code != code {
 		t.Fatalf("error code = %q, want %q", data.Code, code)
+	}
+}
+
+func TestApplyPatchContractAdvertisesDeterministicPreflightRules(t *testing.T) {
+	tool := &ApplyPatchTool{}
+	lang := i18n.DetectOrLoadLanguage()
+	rules := i18n.Text(lang, i18n.KeyToolApplyPatchPreflightRules)
+	if !strings.Contains(tool.Description(), rules) {
+		t.Fatalf("ApplyPatch description omitted semantic preflight rules: %q", tool.Description())
+	}
+	patchProperty, ok := tool.Schema().Properties["patch"].(map[string]any)
+	if !ok || !strings.Contains(fmt.Sprint(patchProperty["description"]), rules) {
+		t.Fatalf("ApplyPatch patch schema omitted semantic preflight rules: %#v", patchProperty)
 	}
 }
 
@@ -129,6 +144,62 @@ func TestApplyPatchUnifiedDiffSupportsMultipleHunks(t *testing.T) {
 	}
 	if typed := result.Data.(ApplyPatchResult); typed.Summary.Hunks != 2 || typed.Summary.Additions != 2 || typed.Summary.Deletions != 2 {
 		t.Fatalf("diffstat = %+v", typed.Summary)
+	}
+}
+
+func TestApplyPatchReceiptSeparatesParameterChangeAndReceiptMetrics(t *testing.T) {
+	root := t.TempDir()
+	tool := newApplyPatchTestTool(root)
+	patch := "*** Begin Patch\n*** Add File: target.txt\n+ONE\n*** End Patch"
+	result, err := tool.Execute(context.Background(), map[string]any{"patch": patch})
+	if err != nil || result.IsError {
+		t.Fatalf("ApplyPatch result=%+v err=%v", result, err)
+	}
+	mapped := types.MapToolResult(tool, result, "metrics")
+	for key, want := range map[string]string{
+		"apply_patch.parameter_bytes": strconv.Itoa(len(patch)),
+		"apply_patch.changed_files":   "1",
+		"apply_patch.additions":       "1",
+		"apply_patch.deletions":       "0",
+		"apply_patch.receipt_bytes":   strconv.Itoa(len(mapped.Content)),
+	} {
+		if mapped.Metadata[key] != want {
+			t.Errorf("metadata[%q] = %q, want %q", key, mapped.Metadata[key], want)
+		}
+	}
+	if mapped.Metadata["apply_patch.parameter_bytes"] == mapped.Metadata["apply_patch.receipt_bytes"] {
+		t.Fatalf("parameter and receipt metrics were conflated: %+v", mapped.Metadata)
+	}
+}
+
+func TestApplyPatchTenKiBParameterAndMultiFileCompletionMetadata(t *testing.T) {
+	root := t.TempDir()
+	tool := newApplyPatchTestTool(root)
+	prefix := "*** Begin Patch\n*** Add File: first.txt\n+"
+	middle := "\n*** Add File: second.txt\n+second\n*** End Patch"
+	patch := prefix + strings.Repeat("x", 10*1024-len(prefix)-len(middle)) + middle
+	if len(patch) != 10*1024 {
+		t.Fatalf("fixture parameter bytes = %d", len(patch))
+	}
+	result, err := tool.Execute(context.Background(), map[string]any{"patch": patch})
+	if err != nil || result.IsError {
+		t.Fatalf("ApplyPatch result=%+v err=%v", result, err)
+	}
+	mapped := types.MapToolResult(tool, result, "ten-kib-multi-file")
+	for key, want := range map[string]string{
+		"apply_patch.parameter_bytes": "10240",
+		"apply_patch.changed_files":   "2",
+		"apply_patch.additions":       "2",
+		"apply_patch.deletions":       "0",
+	} {
+		if mapped.Metadata[key] != want {
+			t.Errorf("metadata[%q] = %q, want %q", key, mapped.Metadata[key], want)
+		}
+	}
+	for _, name := range []string{"first.txt", "second.txt"} {
+		if _, statErr := os.Stat(filepath.Join(root, name)); statErr != nil {
+			t.Fatalf("completed multi-file patch omitted %s: %v", name, statErr)
+		}
 	}
 }
 

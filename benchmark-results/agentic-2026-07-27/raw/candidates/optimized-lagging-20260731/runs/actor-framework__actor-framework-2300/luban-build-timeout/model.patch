@@ -1,0 +1,46 @@
+diff --git a/libcaf_net/caf/net/abstract_actor_shell.cpp b/libcaf_net/caf/net/abstract_actor_shell.cpp
+index 22cbf81..a5a4b55 100644
+--- a/libcaf_net/caf/net/abstract_actor_shell.cpp
++++ b/libcaf_net/caf/net/abstract_actor_shell.cpp
+@@ -27,6 +27,8 @@ abstract_actor_shell::abstract_actor_shell(actor_config& cfg,
+   mailbox_.try_block();
+   resume_ = make_action([this] {
+     for (;;) {
++      if (terminated())
++        return;
+       if (!consume_message() && try_block_mailbox())
+         return;
+     }
+diff --git a/libcaf_net/caf/net/actor_shell.test.cpp b/libcaf_net/caf/net/actor_shell.test.cpp
+index 6270752..29f1b4e 100644
+--- a/libcaf_net/caf/net/actor_shell.test.cpp
++++ b/libcaf_net/caf/net/actor_shell.test.cpp
+@@ -156,6 +156,28 @@ TEST("actor shells can receive messages") {
+   check_eq(to_string_view(buf), msg);
+ }
+ 
++TEST("actor shells stop consuming messages after calling quit") {
++  scoped_actor self{sys};
++  auto& mpx = sys.network_manager().mpx();
++  auto app = app_t::make(actor{self}, [](app_t* app) {
++    auto* shell = app->self.get();
++    app->self->set_behavior([shell](int) { shell->quit(none); });
++  });
++  auto transport = net::octet_stream::transport::make(fd1, std::move(app));
++  auto mgr = net::socket_manager::make(&mpx, std::move(transport));
++  require(mpx.start(mgr));
++  fd1.id = net::invalid_socket_id;
++  actor hdl;
++  self->receive([&hdl](actor& x) { hdl = x; },
++                after(1s) >> [this] { fail("shell did not send its handle"); });
++  self->monitor(hdl);
++  anon_mail(42).send(hdl);
++  auto terminated = false;
++  self->receive([&terminated](const down_msg&) { terminated = true; },
++                after(1s) >> [] {});
++  check(terminated);
++}
++
+ TEST("actor shells can send asynchronous messages") {
+   scoped_actor self{sys};
+   auto& mpx = sys.network_manager().mpx();

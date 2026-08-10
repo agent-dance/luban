@@ -68,11 +68,15 @@ type ContentDelta struct {
 	SignatureKind  ThinkingSignatureKind `json:"signature_kind,omitempty"`
 	SignatureModel string                `json:"signature_model,omitempty"`
 	ProviderStatus string                `json:"provider_status,omitempty"`
+	ThinkingKind   ThinkingKind          `json:"thinking_kind,omitempty"`
 
 	// For tool_use start
 	ID       string             `json:"id,omitempty"`
 	Name     string             `json:"name,omitempty"`
 	ToolType ToolDefinitionType `json:"tool_type,omitempty"`
+	// ProviderItemID is the Responses output-item identity. It is distinct
+	// from ID, which is the tool call ID used to correlate local results.
+	ProviderItemID string `json:"provider_item_id,omitempty"`
 
 	// For tool_use input delta (partial JSON)
 	PartialJSON string `json:"partial_json,omitempty"`
@@ -160,16 +164,22 @@ type ServerToolUsage struct {
 
 // APIError represents an error from the API
 type APIError struct {
-	Type          string               `json:"type"`
-	Code          string               `json:"code,omitempty"`
-	Message       string               `json:"message"`
-	Status        int                  `json:"status,omitempty"`      // HTTP status code (0 = unknown)
-	RetryAfter    string               `json:"retry_after,omitempty"` // Retry-After header value
-	Stage         ProviderErrorStage   `json:"stage,omitempty"`
-	Class         ProviderErrorClass   `json:"class,omitempty"`
-	ReplaySafety  ProviderReplaySafety `json:"replay_safety,omitempty"`
-	OriginalModel string               `json:"original_model,omitempty"`
-	FallbackModel string               `json:"fallback_model,omitempty"`
+	Type                string               `json:"type"`
+	Code                string               `json:"code,omitempty"`
+	Message             string               `json:"message"`
+	Status              int                  `json:"status,omitempty"`      // HTTP status code (0 = unknown)
+	RetryAfter          string               `json:"retry_after,omitempty"` // Retry-After header value
+	Stage               ProviderErrorStage   `json:"stage,omitempty"`
+	Class               ProviderErrorClass   `json:"class,omitempty"`
+	ReplaySafety        ProviderReplaySafety `json:"replay_safety,omitempty"`
+	OriginalModel       string               `json:"original_model,omitempty"`
+	FallbackModel       string               `json:"fallback_model,omitempty"`
+	Provider            string               `json:"provider,omitempty"`
+	APIFormat           string               `json:"api_format,omitempty"`
+	Endpoint            string               `json:"endpoint,omitempty"`
+	RequestID           string               `json:"request_id,omitempty"`
+	SuggestedAPIFormat  string               `json:"suggested_api_format,omitempty"`
+	AttemptedAPIFormats []string             `json:"attempted_api_formats,omitempty"`
 }
 
 func (e *APIError) Error() string {

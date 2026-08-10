@@ -1,0 +1,30 @@
+{
+  "instance_id": "include-what-you-use__include-what-you-use-1991",
+  "language": "cpp",
+  "agent": "luban",
+  "diagnostic_excluded_paths": [],
+  "resolved": false,
+  "elapsed_seconds": 911.199,
+  "image": "starryzhang/sweb.eval.x86_64.include-what-you-use_1776_include-what-you-use-1991",
+  "image_pull_exit_code": 0,
+  "test_patch_apply_exit_code": 0,
+  "solution_patch_apply_exit_code": 1,
+  "rebuild_exit_code": 0,
+  "test_exit_code": 8,
+  "print_exit_code": 0,
+  "parsed_tests": 229,
+  "FAIL_TO_PASS": {
+    "expected": 1,
+    "passed": [],
+    "failed": [
+      "cxx.test_specialization_needs_decl"
+    ],
+    "missing": []
+  },
+  "PASS_TO_PASS": {
+    "expected": 228,
+    "passed_count": 228,
+    "failed": [],
+    "missing_count": 0
+  }
+}

@@ -435,21 +435,21 @@ func DrawBoxWithTitle(buf *Buffer, rect Rect, border BorderStyle, title string, 
 		return
 	}
 
-	// Truncate title if needed
-	titleRunes := []rune(title)
+	// Truncate the title at grapheme boundaries so emoji sequences and
+	// combining marks occupy the same number of cells as they do in a terminal.
+	titleGraphemes := splitTextGraphemes(title)
 	titleWidth := 0
-	truncatedRunes := make([]rune, 0, len(titleRunes))
+	truncatedGraphemes := make([]textGrapheme, 0, len(titleGraphemes))
 
-	for _, r := range titleRunes {
-		w := RuneWidth(r)
-		if titleWidth+w > availableWidth {
+	for _, grapheme := range titleGraphemes {
+		if titleWidth+grapheme.width > availableWidth {
 			break
 		}
-		truncatedRunes = append(truncatedRunes, r)
-		titleWidth += w
+		truncatedGraphemes = append(truncatedGraphemes, grapheme)
+		titleWidth += grapheme.width
 	}
 
-	if len(truncatedRunes) == 0 {
+	if len(truncatedGraphemes) == 0 {
 		return
 	}
 
@@ -458,9 +458,9 @@ func DrawBoxWithTitle(buf *Buffer, rect Rect, border BorderStyle, title string, 
 
 	// Draw the title
 	x := startX
-	for _, r := range truncatedRunes {
-		buf.SetRune(x, rect.Y, r, style)
-		x += RuneWidth(r)
+	for _, grapheme := range truncatedGraphemes {
+		buf.SetGrapheme(x, rect.Y, grapheme.text, style)
+		x += grapheme.width
 	}
 }
 

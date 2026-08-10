@@ -12,6 +12,11 @@ func TestRootSurfaceKeysAreLocalizedAndComplete(t *testing.T) {
 	if got := Format(LangRU, KeyImagePasted, 7, "image/png", "12 KB"); got == "" {
 		t.Fatal("clipboard image feedback is missing")
 	}
+	for _, lang := range AllLanguages() {
+		if got := Format(lang, KeyImageOpenFailed, "raw cause"); got == "" || got == "["+string(KeyImageOpenFailed)+"]" {
+			t.Fatalf("image open failure is missing for %s: %q", lang.Code(), got)
+		}
+	}
 }
 
 func TestActivityRunningCountIsLocalizedForEveryLanguage(t *testing.T) {
@@ -42,7 +47,7 @@ func TestTranscriptSelectionHintsAreLocalizedForEveryLanguage(t *testing.T) {
 }
 
 func TestLLMRequestStatusKeysAreLocalizedAndComplete(t *testing.T) {
-	keys := []Key{KeyLLMRequestProblem, KeyLLMRequestRetrying, KeyLLMRequestError, KeyLLMRequestMetrics, KeyLLMRequestInterruptStatus}
+	keys := []Key{KeyLLMRequestProblem, KeyLLMRequestRetrying, KeyLLMRequestRequestRetrying, KeyLLMRequestReconnecting, KeyLLMRequestProblemDetail, KeyLLMRequestAttempt, KeyLLMRequestError, KeyLLMRequestMetrics, KeyLLMRequestInterruptStatus, KeyAssistantWorkedFor}
 	for _, lang := range AllLanguages() {
 		for _, key := range keys {
 			if got := Text(lang, key); got == "" || got == "["+string(key)+"]" {
@@ -53,11 +58,17 @@ func TestLLMRequestStatusKeysAreLocalizedAndComplete(t *testing.T) {
 	if got := Format(LangZH, KeyLLMRequestMetrics, "120ms", "800ms"); got != "建立连接 120ms · 首 token 800ms" {
 		t.Fatalf("Chinese LLM metrics = %q", got)
 	}
-	if got := Format(LangZH, KeyLLMRequestRetrying, 2, 10, "2.0s", "连接已重置"); got != "第 2/10 次重试 · 2.0s 后继续 · 连接已重置" {
+	if got := Format(LangZH, KeyLLMRequestRetrying, 2, 10, "2.0s"); got != "第 2/10 次重试 · 2.0s 后继续" {
 		t.Fatalf("Chinese retry status = %q", got)
+	}
+	if got := Format(LangZH, KeyLLMRequestProblemDetail, "连接已重置"); got != "问题：连接已重置" {
+		t.Fatalf("Chinese retry problem = %q", got)
 	}
 	if got := Format(LangZH, KeyLLMRequestInterruptStatus, "1.2s"); got != "(1.2s • Ctrl+C 中断)" {
 		t.Fatalf("Chinese interrupt status = %q", got)
+	}
+	if got := Format(LangZH, KeyAssistantWorkedFor, "8m 02s"); got != "工作耗时 8m 02s" {
+		t.Fatalf("Chinese assistant duration = %q", got)
 	}
 }
 

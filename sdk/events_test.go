@@ -436,7 +436,7 @@ func TestEventAdapterForwardsLocalizedRawSafeRequestStatus(t *testing.T) {
 		Metadata: map[string]any{"provider_error": secret},
 		RequestStatus: &RequestStatusEvent{
 			RequestID: "request-7", Phase: "request_retry", Status: "retrying",
-			Attempt: 2, MaxAttempts: 4, RetryDelayMilliseconds: 750,
+			Attempt: 2, MaxAttempts: 4, RetryDelayMilliseconds: 750, RetryKind: "stream",
 			ErrorCode: "provider_request_retry", ErrorMessage: secret,
 		},
 	})
@@ -446,7 +446,7 @@ func TestEventAdapterForwardsLocalizedRawSafeRequestStatus(t *testing.T) {
 	message := results[0].(StreamEventMsg)
 	payload := message.Event.(RuntimeEventPayload)
 	status := payload.RequestStatus
-	if status == nil || status.RequestID != "request-7" || status.Phase != "request_retry" || status.Status != "retrying" || status.Attempt != 2 || status.MaxAttempts != 4 || status.RetryDelayMilliseconds != 750 {
+	if status == nil || status.RequestID != "request-7" || status.Phase != "request_retry" || status.Status != "retrying" || status.Attempt != 2 || status.MaxAttempts != 4 || status.RetryDelayMilliseconds != 750 || status.RetryKind != "stream" {
 		t.Fatalf("request status payload = %+v", status)
 	}
 	if status.ErrorMessage != i18n.Format(i18n.LangZH, i18n.KeyRuntimeTransientAPIError, 2, 4) || status.ErrorCode != "provider_request_retry" {

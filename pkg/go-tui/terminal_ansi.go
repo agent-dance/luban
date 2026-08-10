@@ -114,6 +114,9 @@ func (t *ANSITerminal) Flush(changes []CellChange) {
 		// Write the character
 		if ch.Cell.Rune != 0 {
 			t.esc.WriteRune(ch.Cell.Rune)
+			if ch.Cell.Tail != "" {
+				t.esc.WriteString(ch.Cell.Tail)
+			}
 		} else {
 			t.esc.WriteRune(' ')
 		}

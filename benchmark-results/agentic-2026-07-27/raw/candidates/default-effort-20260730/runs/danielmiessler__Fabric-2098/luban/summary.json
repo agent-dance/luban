@@ -1,0 +1,51 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785399137.9727502,
+  "elapsed_seconds": 169.328,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 125258,
+    "cached_input_tokens": 86016,
+    "cache_read_input_tokens": 86016,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 3061,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.331048,
+  "tool_calls": 7,
+  "tool_calls_by_type": {
+    "Inspect": 5,
+    "ApplyPatch": 1,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/plugins/ai/codex/codex.go",
+      "internal/plugins/ai/codex/codex_test.go"
+    ],
+    "additions": 44,
+    "deletions": 3
+  },
+  "final_text": "Fixed Codex empty responses.\n\n- Preserve streamed text deltas when `response.completed` has empty output.\n- Continue preferring completed output when it contains text or citations.\n- Added regression coverage for the empty completion envelope case.\n- Verified with `go test ./internal/plugins/ai/codex` and formatting checks.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-optimized-20260730e",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 8,
+  "llm_successful_calls": 8,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 133.545088,
+  "binary": {
+    "path": "/private/tmp/luban-local5-optimized-20260730e",
+    "sha256": "75eb4f63afd5897dd0711cbb88c58595178956a726f605ca83a9da115fb5ff22"
+  }
+}

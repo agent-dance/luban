@@ -3,46 +3,49 @@ package i18n
 // Semantic copy for the repository-local Agentic Coding benchmark workflow.
 // Agent, model, dataset and protocol identifiers remain untranslated.
 const (
-	KeyLocalBenchmarkUsage                    Key = "benchmark.local.usage"
-	KeyLocalBenchmarkFlagTaskSize             Key = "benchmark.local.flag.task_size"
-	KeyLocalBenchmarkFlagWithCodex            Key = "benchmark.local.flag.with_codex"
-	KeyLocalBenchmarkFlagResultsRoot          Key = "benchmark.local.flag.results_root"
-	KeyLocalBenchmarkFlagAgentTimeout         Key = "benchmark.local.flag.agent_timeout"
-	KeyLocalBenchmarkFlagEvaluatorTimeout     Key = "benchmark.local.flag.evaluator_timeout"
-	KeyLocalBenchmarkInvalidOptions           Key = "benchmark.local.invalid_options"
-	KeyLocalBenchmarkTaskSizeRange            Key = "benchmark.local.task_size_range"
-	KeyLocalBenchmarkPreparing                Key = "benchmark.local.preparing"
-	KeyLocalBenchmarkRunningAgent             Key = "benchmark.local.running_agent"
-	KeyLocalBenchmarkEvaluating               Key = "benchmark.local.evaluating"
-	KeyLocalBenchmarkCompleted                Key = "benchmark.local.completed"
-	KeyLocalBenchmarkCompletedWithCodex       Key = "benchmark.local.completed_with_codex"
-	KeyLocalBenchmarkPartial                  Key = "benchmark.local.partial"
-	KeyLocalBenchmarkFailed                   Key = "benchmark.local.failed"
-	KeyLocalBenchmarkBaselineRequired         Key = "benchmark.local.baseline_required"
-	KeyLocalBenchmarkBaselineIncompatible     Key = "benchmark.local.baseline_incompatible"
-	KeyLocalBenchmarkReportTitle              Key = "benchmark.local.report.title"
-	KeyLocalBenchmarkReportSubtitle           Key = "benchmark.local.report.subtitle"
-	KeyLocalBenchmarkReportWatermark          Key = "benchmark.local.report.watermark"
-	KeyLocalBenchmarkReportConclusion         Key = "benchmark.local.report.conclusion"
-	KeyLocalBenchmarkReportMeasured           Key = "benchmark.local.report.measured"
-	KeyLocalBenchmarkReportSharedPass         Key = "benchmark.local.report.shared_pass"
-	KeyLocalBenchmarkReportNoSharedPass       Key = "benchmark.local.report.no_shared_pass"
-	KeyLocalBenchmarkReportLLMDefinition      Key = "benchmark.local.report.llm_definition"
-	KeyLocalBenchmarkReportCostDefinition     Key = "benchmark.local.report.cost_definition"
-	KeyLocalBenchmarkReportSelection          Key = "benchmark.local.report.selection"
-	KeyLocalBenchmarkReportPartialCaveat      Key = "benchmark.local.report.partial_caveat"
-	KeyLocalBenchmarkReportToolDiagnostic     Key = "benchmark.local.report.tool_diagnostic"
-	KeyLocalBenchmarkReportConcurrency        Key = "benchmark.local.report.concurrency"
-	KeyLocalBenchmarkReportHistoricalBaseline Key = "benchmark.local.report.historical_baseline"
-	KeyLocalBenchmarkReportBaselineRefreshed  Key = "benchmark.local.report.baseline_refreshed"
-	KeyLocalBenchmarkReportBaselineReused     Key = "benchmark.local.report.baseline_reused"
-	KeyLocalBenchmarkReportBinaryVersion      Key = "benchmark.local.report.binary_version"
-	KeyLocalBenchmarkReportCodexVersion       Key = "benchmark.local.report.codex_version"
-	KeyLocalBenchmarkReportGeneratedFrom      Key = "benchmark.local.report.generated_from"
-	KeyLocalBenchmarkReportSectionShared      Key = "benchmark.local.report.section.shared"
-	KeyLocalBenchmarkCodexReportTitle         Key = "benchmark.local.codex_report.title"
-	KeyLocalBenchmarkCodexReportSubtitle      Key = "benchmark.local.codex_report.subtitle"
-	KeyLocalBenchmarkCodexReportFrozenNotice  Key = "benchmark.local.codex_report.frozen_notice"
+	KeyLocalBenchmarkUsage                       Key = "benchmark.local.usage"
+	KeyLocalBenchmarkFlagTaskSize                Key = "benchmark.local.flag.task_size"
+	KeyLocalBenchmarkFlagWithCodex               Key = "benchmark.local.flag.with_codex"
+	KeyLocalBenchmarkFlagResultsRoot             Key = "benchmark.local.flag.results_root"
+	KeyLocalBenchmarkFlagAgentTimeout            Key = "benchmark.local.flag.agent_timeout"
+	KeyLocalBenchmarkFlagEvaluatorTimeout        Key = "benchmark.local.flag.evaluator_timeout"
+	KeyLocalBenchmarkInvalidOptions              Key = "benchmark.local.invalid_options"
+	KeyLocalBenchmarkTaskSizeRange               Key = "benchmark.local.task_size_range"
+	KeyLocalBenchmarkPreparing                   Key = "benchmark.local.preparing"
+	KeyLocalBenchmarkRunningAgent                Key = "benchmark.local.running_agent"
+	KeyLocalBenchmarkEvaluating                  Key = "benchmark.local.evaluating"
+	KeyLocalBenchmarkCompleted                   Key = "benchmark.local.completed"
+	KeyLocalBenchmarkCompletedWithCodex          Key = "benchmark.local.completed_with_codex"
+	KeyLocalBenchmarkPartial                     Key = "benchmark.local.partial"
+	KeyLocalBenchmarkFailed                      Key = "benchmark.local.failed"
+	KeyLocalBenchmarkBaselineRequired            Key = "benchmark.local.baseline_required"
+	KeyLocalBenchmarkBaselineIncompatible        Key = "benchmark.local.baseline_incompatible"
+	KeyLocalBenchmarkReportTitle                 Key = "benchmark.local.report.title"
+	KeyLocalBenchmarkReportSubtitle              Key = "benchmark.local.report.subtitle"
+	KeyLocalBenchmarkReportWatermark             Key = "benchmark.local.report.watermark"
+	KeyLocalBenchmarkReportConclusion            Key = "benchmark.local.report.conclusion"
+	KeyLocalBenchmarkReportMeasured              Key = "benchmark.local.report.measured"
+	KeyLocalBenchmarkReportMeasuredAdjudicated   Key = "benchmark.local.report.measured_adjudicated"
+	KeyLocalBenchmarkReportAdjudicationNotice    Key = "benchmark.local.report.adjudication_notice"
+	KeyLocalBenchmarkReportStatusAdjudicatedPass Key = "benchmark.local.report.status.adjudicated_pass"
+	KeyLocalBenchmarkReportSharedPass            Key = "benchmark.local.report.shared_pass"
+	KeyLocalBenchmarkReportNoSharedPass          Key = "benchmark.local.report.no_shared_pass"
+	KeyLocalBenchmarkReportLLMDefinition         Key = "benchmark.local.report.llm_definition"
+	KeyLocalBenchmarkReportCostDefinition        Key = "benchmark.local.report.cost_definition"
+	KeyLocalBenchmarkReportSelection             Key = "benchmark.local.report.selection"
+	KeyLocalBenchmarkReportPartialCaveat         Key = "benchmark.local.report.partial_caveat"
+	KeyLocalBenchmarkReportToolDiagnostic        Key = "benchmark.local.report.tool_diagnostic"
+	KeyLocalBenchmarkReportConcurrency           Key = "benchmark.local.report.concurrency"
+	KeyLocalBenchmarkReportHistoricalBaseline    Key = "benchmark.local.report.historical_baseline"
+	KeyLocalBenchmarkReportBaselineRefreshed     Key = "benchmark.local.report.baseline_refreshed"
+	KeyLocalBenchmarkReportBaselineReused        Key = "benchmark.local.report.baseline_reused"
+	KeyLocalBenchmarkReportBinaryVersion         Key = "benchmark.local.report.binary_version"
+	KeyLocalBenchmarkReportCodexVersion          Key = "benchmark.local.report.codex_version"
+	KeyLocalBenchmarkReportGeneratedFrom         Key = "benchmark.local.report.generated_from"
+	KeyLocalBenchmarkReportSectionShared         Key = "benchmark.local.report.section.shared"
+	KeyLocalBenchmarkCodexReportTitle            Key = "benchmark.local.codex_report.title"
+	KeyLocalBenchmarkCodexReportSubtitle         Key = "benchmark.local.codex_report.subtitle"
+	KeyLocalBenchmarkCodexReportFrozenNotice     Key = "benchmark.local.codex_report.frozen_notice"
 )
 
 var localBenchmarkKeys = []Key{
@@ -52,7 +55,8 @@ var localBenchmarkKeys = []Key{
 	KeyLocalBenchmarkRunningAgent, KeyLocalBenchmarkEvaluating, KeyLocalBenchmarkCompleted, KeyLocalBenchmarkCompletedWithCodex,
 	KeyLocalBenchmarkPartial, KeyLocalBenchmarkFailed, KeyLocalBenchmarkBaselineRequired, KeyLocalBenchmarkBaselineIncompatible, KeyLocalBenchmarkReportTitle,
 	KeyLocalBenchmarkReportSubtitle, KeyLocalBenchmarkReportWatermark,
-	KeyLocalBenchmarkReportConclusion, KeyLocalBenchmarkReportMeasured,
+	KeyLocalBenchmarkReportConclusion, KeyLocalBenchmarkReportMeasured, KeyLocalBenchmarkReportMeasuredAdjudicated,
+	KeyLocalBenchmarkReportAdjudicationNotice, KeyLocalBenchmarkReportStatusAdjudicatedPass,
 	KeyLocalBenchmarkReportSharedPass, KeyLocalBenchmarkReportNoSharedPass,
 	KeyLocalBenchmarkReportLLMDefinition, KeyLocalBenchmarkReportCostDefinition,
 	KeyLocalBenchmarkReportSelection, KeyLocalBenchmarkReportPartialCaveat,
@@ -117,6 +121,15 @@ func init() {
 	add(KeyLocalBenchmarkReportWatermark, "UNOFFICIAL LOCAL SAMPLE", "非官方本机样本", "INOFFIZIELLE LOKALE STICHPROBE", "非公式ローカル標本", "비공식 로컬 표본", "НЕОФИЦИАЛЬНАЯ ЛОКАЛЬНАЯ ВЫБОРКА")
 	add(KeyLocalBenchmarkReportConclusion, "Measured conclusion", "实测结论", "Gemessenes Fazit", "実測結果", "실측 결론", "Вывод по измерениям")
 	add(KeyLocalBenchmarkReportMeasured, "Strict local score: Codex %d/%d; Luban %d/%d. LLM calls: %d versus %d. Task duration: %s versus %s. Comparable estimated cost: %s versus %s.", "本机严格得分：Codex %d/%d，Luban %d/%d。LLM 调用：%d 对 %d。任务耗时：%s 对 %s。可比估算费用：%s 对 %s。", "Strikter lokaler Wert: Codex %d/%d; Luban %d/%d. LLM-Aufrufe: %d gegenüber %d. Aufgabendauer: %s gegenüber %s. Vergleichbare Kostenschätzung: %s gegenüber %s.", "厳密なローカル得点: Codex %d/%d、Luban %d/%d。LLM 呼び出し: %d 対 %d。タスク所要時間: %s 対 %s。比較用推定費用: %s 対 %s。", "엄격한 로컬 점수: Codex %d/%d, Luban %d/%d. LLM 호출: %d 대 %d. 작업 소요 시간: %s 대 %s. 비교 추정 비용: %s 대 %s.", "Строгий локальный результат: Codex %d/%d; Luban %d/%d. Вызовы LLM: %d против %d. Время выполнения задач: %s против %s. Сопоставимая оценка стоимости: %s против %s.")
+	add(KeyLocalBenchmarkReportMeasuredAdjudicated, "Adjudicated local score: Codex %d/%d; Luban %d/%d. LLM calls: %d versus %d. Task duration: %s versus %s. Comparable estimated cost: %s versus %s.", "本机裁决后得分：Codex %d/%d，Luban %d/%d。LLM 调用：%d 对 %d。任务耗时：%s 对 %s。可比估算费用：%s 对 %s。", "Lokaler Wert nach Beurteilung: Codex %d/%d; Luban %d/%d. LLM-Aufrufe: %d gegenüber %d. Aufgabendauer: %s gegenüber %s. Vergleichbare Kostenschätzung: %s gegenüber %s.", "裁定後のローカル得点: Codex %d/%d、Luban %d/%d。LLM 呼び出し: %d 対 %d。タスク所要時間: %s 対 %s。比較用推定費用: %s 対 %s。", "판정 반영 로컬 점수: Codex %d/%d, Luban %d/%d. LLM 호출: %d 대 %d. 작업 소요 시간: %s 대 %s. 비교 추정 비용: %s 대 %s.", "Локальный результат после оценки: Codex %d/%d; Luban %d/%d. Вызовы LLM: %d против %d. Время выполнения задач: %s против %s. Сопоставимая оценка стоимости: %s против %s.")
+	add(KeyLocalBenchmarkReportAdjudicationNotice,
+		"The Codex skim-rs__skim-1044 result is a disclosed diagnostic adjudication: its production patch passes the target test and all 587 regression tests after excluding only the colliding candidate test. The original evaluator failure remains linked and unchanged.",
+		"Codex 的 skim-rs__skim-1044 结果采用已披露的诊断裁决：仅排除发生名称冲突的候选测试后，其生产代码补丁通过目标测试及全部 587 个回归测试。原始 evaluator 失败结果保持不变并继续提供链接。",
+		"Das Codex-Ergebnis für skim-rs__skim-1044 ist eine offengelegte diagnostische Beurteilung: Nach dem alleinigen Ausschluss des kollidierenden Kandidatentests besteht der Produktionspatch den Zieltest und alle 587 Regressionstests. Der ursprüngliche Evaluator-Fehler bleibt unverändert verlinkt.",
+		"Codex の skim-rs__skim-1044 結果は開示済みの診断裁定です。衝突した候補テストだけを除外すると、本番コードパッチは対象テストと 587 件すべての回帰テストに合格します。元の evaluator 失敗結果は変更せずリンクを保持します。",
+		"Codex의 skim-rs__skim-1044 결과는 공개된 진단 판정입니다. 이름이 충돌한 후보 테스트만 제외하면 프로덕션 코드 패치가 대상 테스트와 회귀 테스트 587개를 모두 통과합니다. 기존 evaluator 실패 결과는 변경하지 않고 링크를 유지합니다.",
+		"Результат Codex для skim-rs__skim-1044 является раскрытой диагностической оценкой: после исключения только конфликтующего кандидатного теста производственный патч проходит целевой тест и все 587 регрессионных тестов. Исходный сбой evaluator остаётся без изменений и доступен по ссылке.")
+	add(KeyLocalBenchmarkReportStatusAdjudicatedPass, "Pass (diagnostic adjudication)", "通过（诊断裁决）", "Bestanden (diagnostische Beurteilung)", "合格（診断裁定）", "통과(진단 판정)", "Пройдено (диагностическая оценка)")
 	add(KeyLocalBenchmarkReportSharedPass, "Efficiency on the %d tasks passed by both agents; this quality-conditioned slice is not an overall score.", "双方都通过的 %d 道题上的效率对比；这是以质量为条件的切片，不是整体得分。", "Effizienz bei den %d von beiden Agents bestandenen Aufgaben; dieser qualitätsbedingte Ausschnitt ist kein Gesamtwert.", "両 Agent が合格した %d タスクでの効率です。品質条件付きの切片であり、総合得点ではありません。", "두 Agent가 모두 통과한 %d개 작업의 효율입니다. 품질 조건부 구간이며 전체 점수가 아닙니다.", "Эффективность на %d задачах, решённых обоими агентами; этот срез при условии качества не является общей оценкой.")
 	add(KeyLocalBenchmarkReportNoSharedPass, "No complete task was passed by both agents, so a quality-conditioned efficiency comparison is unavailable.", "没有双方均通过且证据完整的题目，因此无法进行以质量为条件的效率对比。", "Keine vollständige Aufgabe wurde von beiden Agents bestanden; ein qualitätsbedingter Effizienzvergleich ist daher nicht verfügbar.", "両 Agent がともに合格した完全なタスクがないため、品質条件付き効率比較は利用できません。", "두 Agent가 모두 통과한 완전한 작업이 없어 품질 조건부 효율 비교를 제공할 수 없습니다.", "Нет полной задачи, решённой обоими агентами, поэтому сравнение эффективности при условии качества недоступно.")
 	add(KeyLocalBenchmarkReportLLMDefinition, "LLM calls are counted as exact HTTP POST requests to the Responses endpoint; parallel tool calls inside one response do not increase this count.", "LLM 调用按发往 Responses 端点的实际 HTTP POST 次数计数；单次响应中的并行工具调用不会增加该计数。", "LLM-Aufrufe sind exakte HTTP-POST-Anfragen an den Responses-Endpunkt; parallele Tool-Aufrufe innerhalb einer Antwort erhöhen den Wert nicht.", "LLM 呼び出しは Responses endpoint への実際の HTTP POST 数です。1 応答内の並列ツール呼び出しは増分しません。", "LLM 호출은 Responses endpoint로 전송된 실제 HTTP POST 수입니다. 한 응답 안의 병렬 도구 호출은 이 수를 늘리지 않습니다.", "Вызовы LLM считаются как точные HTTP POST на endpoint Responses; параллельные вызовы инструментов внутри одного ответа счётчик не увеличивают.")

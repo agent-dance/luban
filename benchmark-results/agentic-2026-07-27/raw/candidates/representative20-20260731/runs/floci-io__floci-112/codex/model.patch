@@ -1,0 +1,78 @@
+diff --git a/src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java b/src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java
+index 71d0cc0..21061ea 100644
+--- a/src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java
++++ b/src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java
+@@ -25,6 +25,7 @@ import jakarta.ws.rs.core.MediaType;
+ import jakarta.ws.rs.core.Response;
+ import jakarta.ws.rs.core.UriInfo;
+ import java.io.ByteArrayOutputStream;
++import java.net.URLDecoder;
+ import java.nio.charset.StandardCharsets;
+ import java.time.Instant;
+ import java.time.ZoneId;
+@@ -1042,7 +1043,17 @@ public class S3Controller {
+ 
+     private Response handleCopyObject(String copySource, String destBucket, String destKey,
+                                       String contentType, HttpHeaders httpHeaders) {
+-        String source = copySource.startsWith("/") ? copySource.substring(1) : copySource;
++        String decodedCopySource;
++        try {
++            // CopySource is an RFC 3986-encoded path. URLDecoder provides the required
++            // UTF-8 percent decoding, but its form-decoding semantics treat '+' as a
++            // space, so protect literal plus signs before decoding.
++            decodedCopySource = URLDecoder.decode(copySource.replace("+", "%2B"), StandardCharsets.UTF_8);
++        } catch (IllegalArgumentException e) {
++            throw new AwsException("InvalidArgument", "Invalid copy source: " + copySource, 400);
++        }
++
++        String source = decodedCopySource.startsWith("/") ? decodedCopySource.substring(1) : decodedCopySource;
+         int slashIndex = source.indexOf('/');
+         if (slashIndex < 0) {
+             throw new AwsException("InvalidArgument", "Invalid copy source: " + copySource, 400);
+diff --git a/src/test/java/io/github/hectorvent/floci/services/s3/S3IntegrationTest.java b/src/test/java/io/github/hectorvent/floci/services/s3/S3IntegrationTest.java
+index 4dfff4b..1f0debe 100644
+--- a/src/test/java/io/github/hectorvent/floci/services/s3/S3IntegrationTest.java
++++ b/src/test/java/io/github/hectorvent/floci/services/s3/S3IntegrationTest.java
+@@ -185,6 +185,33 @@ class S3IntegrationTest {
+ 
+     @Test
+     @Order(13)
++    void copyObjectWithEncodedMultibyteSourceKey() {
++        given()
++            .body("hello")
++        .when()
++            .put("/test-bucket/src/テスト画像.png")
++        .then()
++            .statusCode(200);
++
++        given()
++            .header("x-amz-copy-source",
++                    "/test-bucket/src/%E3%83%86%E3%82%B9%E3%83%88%E7%94%BB%E5%83%8F.png")
++        .when()
++            .put("/test-bucket/dst/テスト画像.png")
++        .then()
++            .statusCode(200)
++            .body(containsString("CopyObjectResult"));
++
++        given()
++        .when()
++            .get("/test-bucket/dst/テスト画像.png")
++        .then()
++            .statusCode(200)
++            .body(equalTo("hello"));
++    }
++
++    @Test
++    @Order(14)
+     void deleteObject() {
+         given()
+         .when()
+@@ -201,7 +228,7 @@ class S3IntegrationTest {
+     }
+ 
+     @Test
+-    @Order(14)
++    @Order(15)
+     void deleteNonEmptyBucketFails() {
+         given()
+         .when()

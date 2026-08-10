@@ -30,7 +30,7 @@ func TestSubagentHeaderShowsSessionUsageAsDimSupplementaryText(t *testing.T) {
 	buf := gtui.NewBuffer(180, 20)
 	card.Render(buf, 180, 20)
 	rendered := renderElementText(card, 180, 20)
-	wantMetrics := "Session: in 19.3K · 83% cached · out 421 · $0.0210 · 46.6 s"
+	wantMetrics := "Session total: in 19.3K · 83% cached · out 421 · $0.0210 · 46.6 s"
 	if !strings.Contains(rendered, wantMetrics) {
 		t.Fatalf("subagent title metrics =\n%s\nwant %q", rendered, wantMetrics)
 	}
@@ -47,7 +47,7 @@ func TestSubagentHeaderShowsSessionUsageAsDimSupplementaryText(t *testing.T) {
 		}
 	}
 
-	metricColumn := strings.Index(lines[0], "Session: in 19.3K")
+	metricColumn := strings.Index(lines[0], "Session total: in 19.3K")
 	if metricColumn < 0 || buf.Cell(metricColumn, 0).Style.Attrs&gtui.AttrDim == 0 {
 		t.Fatalf("subagent title metrics are not dimmed: column=%d style=%+v", metricColumn, buf.Cell(metricColumn, 0).Style)
 	}
@@ -62,7 +62,7 @@ func TestFormatSubagentHeaderMetricsMarksUnknownPricing(t *testing.T) {
 		Usage:            &types.Usage{InputTokens: 2_000, OutputTokens: 250, CacheReadInputTokens: 1_000},
 		LastRequestUsage: &types.Usage{InputTokens: 1_200, OutputTokens: 100, CacheReadInputTokens: 300},
 	}, i18n.LangEN)
-	want := "Session: in 2.0K · 50% cached · out 250 · cost unknown"
+	want := "Session total: in 2.0K · 50% cached · out 250 · cost unknown"
 	if got != want {
 		t.Fatalf("formatSubagentHeaderMetrics() = %q, want %q", got, want)
 	}
@@ -73,7 +73,7 @@ func TestFormatSubagentHeaderMetricsDoesNotRelabelCumulativeUsageAsRequest(t *te
 		Model: "claude-sonnet-4-20250514",
 		Usage: &types.Usage{InputTokens: 2_000, OutputTokens: 250, CacheReadInputTokens: 1_000},
 	}, i18n.LangEN)
-	want := "Session: in 2.0K · 50% cached · out 250 · $0.0070"
+	want := "Session total: in 2.0K · 50% cached · out 250 · $0.0070"
 	if got != want {
 		t.Fatalf("formatSubagentHeaderMetrics() = %q, want %q", got, want)
 	}

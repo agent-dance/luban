@@ -53,6 +53,10 @@ type ModelInfo struct {
 	// effort picker should be shown for this model.
 	ReasoningEfforts []string
 
+	// DefaultReasoningEffort is the provider-documented default selectable
+	// effort. Empty retains the shared catalog fallback.
+	DefaultReasoningEffort string
+
 	// CanUseTools indicates the model supports function/tool calling.
 	CanUseTools bool
 

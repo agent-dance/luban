@@ -37,7 +37,7 @@ func TestIncidentFixtureLabelsLastSessionAndEffectiveContextWithoutMixing(t *tes
 
 	text := collectElementText(NewRootComponent(state, nil, nil).renderStatusBar(420))
 	for _, want := range []string{
-		"Session: in 136.1K · 97% cached · out 146 · $16.6019",
+		"Session total: in 136.1K · 97% cached · out 146 · $16.6019",
 		"Context: [█████▋░░░░] 56% (560.0K/1000.0K)",
 	} {
 		if !strings.Contains(text, want) {

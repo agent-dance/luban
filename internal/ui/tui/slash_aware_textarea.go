@@ -137,13 +137,11 @@ func (t *slashAwareTextArea) KeyMap() gtui.KeyMap {
 			}
 			t.dispatchBaseKey(ke)
 		}),
-		gtui.OnFocused(gtui.KeyEscape, func(ke gtui.KeyEvent) {
-			if t.hasSlashSuggestions != nil && t.hasSlashSuggestions() {
-				t.dismissSlash()
-				return
-			}
-			t.dispatchBaseKey(ke)
-		}),
+	}
+	if t.hasSlashSuggestions != nil && t.hasSlashSuggestions() {
+		km = append(km, gtui.OnFocused(gtui.KeyEscape, func(gtui.KeyEvent) {
+			t.dismissSlash()
+		}))
 	}
 
 	for _, binding := range base {
@@ -166,6 +164,12 @@ func (t *slashAwareTextArea) dispatchBaseKey(ke gtui.KeyEvent) {
 }
 
 func slashAwareShouldSkipBinding(pattern gtui.KeyPattern) bool {
+	// Escape is a product-level control: Root dismisses suggestions and views,
+	// or interrupts active work when a queued submission is waiting. Letting
+	// the focused TextArea consume it first would require a second key press.
+	if pattern.FocusRequired && pattern.Mod == 0 && pattern.Key == gtui.KeyEscape {
+		return true
+	}
 	// Shift+Up/Down remain product-level transcript scrolling shortcuts in the
 	// composer. Generic TextAreas still support vertical selection.
 	if pattern.FocusRequired && pattern.Mod == gtui.ModShift &&
@@ -180,8 +184,7 @@ func slashAwareShouldSkipBinding(pattern gtui.KeyPattern) bool {
 		pattern.Rune == 0 &&
 		(pattern.Key == gtui.KeyUp ||
 			pattern.Key == gtui.KeyDown ||
-			pattern.Key == gtui.KeyEnter ||
-			pattern.Key == gtui.KeyEscape)
+			pattern.Key == gtui.KeyEnter)
 }
 
 func slashAwareKeyMatches(pattern gtui.KeyPattern, ke gtui.KeyEvent) bool {

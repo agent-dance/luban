@@ -3,6 +3,7 @@ package i18n
 const (
 	KeyProviderOpenAIStreamChunkParseFailed   Key = "provider.openai.stream_chunk_parse_failed"
 	KeyProviderResponsesCompletedParseFailed  Key = "provider.responses.completed_parse_failed"
+	KeyProviderResponsesIncompleteParseFailed Key = "provider.responses.incomplete_parse_failed"
 	KeyProviderResponsesFailedParseFailed     Key = "provider.responses.failed_parse_failed"
 	KeyProviderResponsesContinuationInvalid   Key = "provider.responses.continuation_invalid"
 	KeyProviderResponsesCustomToolCallInvalid Key = "provider.responses.custom_tool_call_invalid"
@@ -29,6 +30,13 @@ func init() {
 		"response.completed の解析に失敗しました: %v",
 		"response.completed 파싱에 실패했습니다: %v",
 		"Не удалось разобрать response.completed: %v")
+	add(KeyProviderResponsesIncompleteParseFailed,
+		"failed to parse response.incomplete: %v",
+		"解析 response.incomplete 失败：%v",
+		"response.incomplete konnte nicht geparst werden: %v",
+		"response.incomplete の解析に失敗しました: %v",
+		"response.incomplete 파싱에 실패했습니다: %v",
+		"Не удалось разобрать response.incomplete: %v")
 	add(KeyProviderResponsesFailedParseFailed,
 		"failed to parse response.failed: %v",
 		"解析 response.failed 失败：%v",

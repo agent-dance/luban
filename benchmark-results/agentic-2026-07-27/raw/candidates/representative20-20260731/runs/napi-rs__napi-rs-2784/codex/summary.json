@@ -1,0 +1,51 @@
+{
+  "instance_id": "napi-rs__napi-rs-2784",
+  "language": "rust",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785485648.492852,
+  "elapsed_seconds": 340.224,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 648103,
+    "cached_input_tokens": 585472,
+    "output_tokens": 12129,
+    "reasoning_output_tokens": 6994,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 585472,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 0.969761,
+  "tool_calls": 17,
+  "tool_calls_by_type": {
+    "command_execution": 13,
+    "file_change": 4
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "crates/napi/src/bindgen_runtime/iterator.rs",
+      "examples/napi/__tests__/generator.spec.ts"
+    ],
+    "additions": 127,
+    "deletions": 8
+  },
+  "final_text": "Implemented the iterator-helper fix.\n\n- Generator iterators now inherit from `Iterator.prototype` when available, exposing `take`, `flatMap`, `map`, etc.\n- Older Node.js runtimes retain the existing plain-object fallback.\n- Added regression coverage for prototype inheritance, self-iteration, and `take().toArray()`.\n\nChanged [iterator.rs](/private/tmp/luban-agent-benchmark-work/repos/napi-rs__napi-rs-2784/codex/crates/napi/src/bindgen_runtime/iterator.rs) and [generator.spec.ts](/private/tmp/luban-agent-benchmark-work/repos/napi-rs__napi-rs-2784/codex/examples/napi/__tests__/generator.spec.ts).\n\nValidation passed: `cargo fmt --check`, `git diff --check`, and a Node iterator-helper smoke test. Full Cargo checking was blocked by the uncached `convert_case` dependency while offline.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 18,
+  "llm_successful_calls": 18,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 336.175937,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

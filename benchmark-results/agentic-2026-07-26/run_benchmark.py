@@ -14,9 +14,6 @@ import sys
 import time
 from pathlib import Path
 
-import pyarrow.parquet as pq
-
-
 MODEL = "gpt-5.6-sol"
 EFFORT = "xhigh"
 DATASET_REVISION = "608f7ae9ab8ea1f9f0d030fe04562cf6bd1a0c8b"
@@ -70,6 +67,8 @@ def run_quiet(args: list[str], cwd: Path | None = None, timeout: int = 600) -> s
 
 
 def load_instances() -> dict[str, dict]:
+    import pyarrow.parquet as pq
+
     instances: dict[str, dict] = {}
     for instance_id, language in SELECTED.items():
         rows = pq.read_table(DATA_DIR / f"{language}.parquet").to_pylist()

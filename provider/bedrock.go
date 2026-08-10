@@ -115,7 +115,7 @@ func NewBedrock(ctx context.Context, cfg BedrockConfig) (*BedrockProvider, error
 		return nil, i18n.WrapError(i18n.KeyProviderBedrockAWSConfigFailed, err)
 	}
 
-	// RetryProvider/AttemptController owns the generation budget; disable the
+	// RetryProvider/AttemptController owns the request budget; disable the
 	// Anthropic SDK's independent two-retry loop.
 	opts := []option.RequestOption{option.WithMaxRetries(0)}
 	if cfg.Timeout > 0 {

@@ -40,6 +40,39 @@ func (a *sessionStoreAdapter) LoadEntry(entry commands.SessionListEntry) ([]type
 	return a.repo.Load(session.Ref{ID: entry.ID, ProjectDir: projectDir})
 }
 
+func (a *sessionStoreAdapter) Current(id string) (commands.SessionListEntry, error) {
+	projectDir := strings.TrimSpace(a.currentProjectDir())
+	if projectDir == "" {
+		meta, ref, err := a.repo.GetMeta(id, "")
+		if err != nil {
+			return commands.SessionListEntry{}, err
+		}
+		return sessionListEntryFromMeta(ref, meta), nil
+	}
+	meta, err := a.repo.StoreForProjectDir(projectDir).GetMeta(id)
+	if err != nil {
+		return commands.SessionListEntry{}, err
+	}
+	ref := session.Ref{ID: id, ProjectDir: projectDir}
+	return sessionListEntryFromMeta(ref, meta), nil
+}
+
+func sessionListEntryFromMeta(ref session.Ref, meta session.SessionMeta) commands.SessionListEntry {
+	return commands.SessionListEntry{
+		ID:           ref.ID,
+		ProjectDir:   ref.ProjectDir,
+		Title:        meta.Title,
+		UpdatedAt:    meta.UpdatedAt,
+		CreatedAt:    meta.CreatedAt,
+		MessageCount: meta.MessageCount,
+		CWD:          meta.CWD,
+		GitBranch:    meta.GitBranch,
+		PreviewText:  meta.PreviewText,
+		Provider:     meta.Provider,
+		Model:        meta.Model,
+	}
+}
+
 func (a *sessionStoreAdapter) List() ([]commands.SessionListEntry, error) {
 	infos, err := a.repo.Search(session.SearchOptions{
 		AllProjects: true,

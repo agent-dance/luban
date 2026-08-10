@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/internal/presentation"
 
 	"github.com/agent-dance/luban/types"
@@ -87,5 +88,49 @@ func TestRuntimeEventAuditRetainsStableIdentityAndContextGeneration(t *testing.T
 		if bytes.Contains(encodedPublic, []byte(secret)) {
 			t.Fatalf("public projection leaked %q: %s", secret, encodedPublic)
 		}
+	}
+}
+
+func TestRuntimeErrorAuditRetainsSafeProviderRequestDiagnostic(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangZH)
+	state.SessionID.Set("session-provider-error")
+	state.SessionEpoch.Set(2)
+	ctx := ToolEventContext{SessionID: "session-provider-error", TurnID: "turn-provider-error"}
+	if err := state.ApplyRuntimeError(ctx, "", "private wrapper", &types.APIError{
+		Type: "api_error", Message: "private provider body", Status: 400,
+		Provider: "openai", APIFormat: "responses", Endpoint: "https://gateway.example/…/responses",
+		RequestID: "req-safe-17", SuggestedAPIFormat: "chat-completions",
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	observations := state.Observations.Snapshot()
+	if len(observations) != 1 || len(observations[0].ResultRefs) != 1 {
+		t.Fatalf("provider error observation = %#v", observations)
+	}
+	payload, err := state.ReadDetail(observations[0].ResultRefs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var audit struct {
+		ProviderRequest struct {
+			Provider   string `json:"provider"`
+			APIFormat  string `json:"api_format"`
+			Endpoint   string `json:"endpoint"`
+			RequestID  string `json:"request_id"`
+			Suggestion string `json:"suggestion"`
+		} `json:"provider_request"`
+	}
+	if err := json.Unmarshal(payload, &audit); err != nil {
+		t.Fatal(err)
+	}
+	if audit.ProviderRequest.Provider != "openai" || audit.ProviderRequest.APIFormat != "responses" ||
+		audit.ProviderRequest.Endpoint != "https://gateway.example/…/responses" || audit.ProviderRequest.RequestID != "req-safe-17" ||
+		!strings.Contains(audit.ProviderRequest.Suggestion, "--api chat-completions") {
+		t.Fatalf("stored provider request diagnostic = %#v", audit.ProviderRequest)
+	}
+	messages := state.Messages.Get()
+	if len(messages) != 1 || strings.Contains(messages[0].Text, "gateway.example") || strings.Contains(messages[0].Text, "req-safe-17") {
+		t.Fatalf("strict transcript exposed diagnostic: %#v", messages)
 	}
 }

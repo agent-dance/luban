@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/types"
 )
 
@@ -65,10 +66,11 @@ func errorEvent(ae *types.APIError) types.StreamEvent {
 // fastConfig returns a RetryConfig with minimal delays for unit tests.
 func fastConfig() RetryConfig {
 	return RetryConfig{
-		MaxAttempts: 3,
-		BaseDelay:   time.Millisecond,
-		MaxDelay:    10 * time.Millisecond,
-		jitter:      func(upper time.Duration) time.Duration { return upper },
+		MaxAttempts:       3,
+		StreamMaxAttempts: 3,
+		BaseDelay:         time.Millisecond,
+		MaxDelay:          10 * time.Millisecond,
+		jitter:            func(upper time.Duration) time.Duration { return upper },
 	}
 }
 
@@ -98,7 +100,7 @@ func TestRetry_429_EventualSuccess(t *testing.T) {
 }
 
 // TestRetry_529_LimitRespected verifies that overload errors cannot exceed the
-// shared total-attempt budget.
+// request-attempt budget.
 func TestRetry_529_LimitRespected(t *testing.T) {
 	cfg := fastConfig()
 
@@ -120,6 +122,32 @@ func TestRetry_529_LimitRespected(t *testing.T) {
 	if mock.calls != 3 {
 		t.Errorf("expected total budget of 3 calls, got %d", mock.calls)
 	}
+	var limit *AttemptLimitError
+	if !errors.As(err, &limit) {
+		t.Fatalf("error = %T %v, want AttemptLimitError", err, err)
+	}
+	if limit.Attempts != 3 || limit.MaxAttempts != 3 {
+		t.Fatalf("attempt limit = %+v, want 3 actual attempts from a budget of 3", limit)
+	}
+	if !errors.Is(err, overloaded) {
+		t.Fatal("attempt-limit error did not preserve its final provider cause")
+	}
+	var apiErr *types.APIError
+	if !errors.As(err, &apiErr) || apiErr != overloaded {
+		t.Fatalf("errors.As APIError = %#v, want final cause %#v", apiErr, overloaded)
+	}
+	wantMessage := i18n.WrapError(i18n.KeyProviderRetryExceededWithCause, overloaded, 2).Error()
+	if err.Error() != wantMessage {
+		t.Fatalf("attempt-limit message = %q, want %q", err, wantMessage)
+	}
+}
+
+func TestAttemptLimitErrorMessageUsesActualAttempts(t *testing.T) {
+	err := (&AttemptLimitError{MaxAttempts: 9, Attempts: 2}).Error()
+	want := i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderRetryExceededWithoutCause, 1)
+	if err != want {
+		t.Fatalf("message = %q, want actual retry count message %q", err, want)
+	}
 }
 
 // TestRetry_ExponentialBackoff verifies the computed delay grows with attempt.
@@ -139,10 +167,17 @@ func TestRetry_ExponentialBackoff(t *testing.T) {
 	}
 }
 
-func TestDefaultRetryConfigUsesThreeTotalAttempts(t *testing.T) {
+func TestDefaultRetryConfigMatchesCodexRequestAndStreamBudgets(t *testing.T) {
 	cfg := DefaultRetryConfig()
-	if cfg.MaxAttempts != 3 || cfg.BaseDelay != time.Second || cfg.MaxDelay != 32*time.Second {
+	if cfg.MaxAttempts != 5 || cfg.StreamMaxAttempts != 6 || cfg.BaseDelay != 200*time.Millisecond || cfg.MaxDelay != 3200*time.Millisecond {
 		t.Fatalf("default retry config = %+v", cfg)
+	}
+}
+
+func TestRetryConfigCapsCustomRetryCountsLikeCodex(t *testing.T) {
+	cfg := normalizeRetryConfig(RetryConfig{MaxAttempts: 1000, StreamMaxAttempts: 2000})
+	if cfg.MaxAttempts != 101 || cfg.StreamMaxAttempts != 101 {
+		t.Fatalf("bounded retry config = %+v, want at most 100 retries plus the initial attempt", cfg)
 	}
 }
 
@@ -166,7 +201,7 @@ func TestRetryObserverReceivesProblemAndBackoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	drainAndExpectSuccess(t, ch)
-	if len(observed) != 1 || observed[0].Attempt != 1 || observed[0].MaxRetries != 2 || observed[0].Delay != 2*time.Millisecond || observed[0].Err == nil {
+	if len(observed) != 1 || observed[0].Attempt != 1 || observed[0].MaxRetries != 2 || observed[0].Delay != 2*time.Millisecond || observed[0].Err == nil || observed[0].Kind != "request" {
 		t.Fatalf("retry observer events = %+v", observed)
 	}
 }
@@ -203,7 +238,7 @@ func TestRetry_RetryAfterHeader(t *testing.T) {
 	}
 }
 
-func TestRetry_RetryAfterHTTPDateAndBound(t *testing.T) {
+func TestRetry_RetryAfterHTTPDateIsAuthoritative(t *testing.T) {
 	now := time.Date(2026, time.July, 26, 12, 0, 0, 0, time.UTC)
 	rp := &RetryProvider{config: RetryConfig{
 		BaseDelay: time.Millisecond,
@@ -212,12 +247,12 @@ func TestRetry_RetryAfterHTTPDateAndBound(t *testing.T) {
 		now:       func() time.Time { return now },
 	}}
 	ae := &types.APIError{Status: 429, RetryAfter: now.Add(5 * time.Second).Format(http.TimeFormat)}
-	if delay := rp.computeDelay(0, ae); delay != 1500*time.Millisecond {
-		t.Fatalf("bounded HTTP-date Retry-After delay = %v, want 1.5s", delay)
+	if delay := rp.computeDelay(0, ae); delay != 5*time.Second {
+		t.Fatalf("request-layer HTTP-date Retry-After delay = %v, want authoritative server delay 5s", delay)
 	}
 }
 
-func TestRetry_FullJitterStaysWithinExponentialCap(t *testing.T) {
+func TestRetry_InjectedJitterStaysWithinExponentialCap(t *testing.T) {
 	controller := NewAttemptController(RetryConfig{
 		MaxAttempts: 3,
 		BaseDelay:   100 * time.Millisecond,
@@ -231,7 +266,35 @@ func TestRetry_FullJitterStaysWithinExponentialCap(t *testing.T) {
 	}
 	delay, ok := controller.RetryDelay(&types.APIError{Status: 429})
 	if !ok || delay != 100*time.Millisecond/3 {
-		t.Fatalf("full-jitter delay = %v, retry=%v", delay, ok)
+		t.Fatalf("injected jitter delay = %v, retry=%v", delay, ok)
+	}
+}
+
+func TestAttemptControllerAllowsCodexPositiveJitter(t *testing.T) {
+	controller := NewAttemptController(RetryConfig{
+		MaxAttempts: 2,
+		BaseDelay:   100 * time.Millisecond,
+		MaxDelay:    time.Second,
+		jitter: func(delay time.Duration) time.Duration {
+			return delay * 11 / 10
+		},
+	})
+	if _, err := controller.beginAttempt(); err != nil {
+		t.Fatal(err)
+	}
+	delay, ok := controller.RetryDelay(&types.APIError{Status: 503})
+	if !ok || delay != 110*time.Millisecond {
+		t.Fatalf("positive jitter delay = %v, retry=%v, want 110ms", delay, ok)
+	}
+}
+
+func TestCodexJitterStaysWithinTenPercent(t *testing.T) {
+	base := time.Second
+	for index := 0; index < 1000; index++ {
+		delay := codexJitter(base)
+		if delay < 900*time.Millisecond || delay >= 1100*time.Millisecond {
+			t.Fatalf("codex jitter = %s, want [900ms, 1.1s)", delay)
+		}
 	}
 }
 
@@ -360,10 +423,11 @@ func TestRetry_401_WithOnAuthError_NotRefreshed(t *testing.T) {
 
 // TestRetry_400_NoRetry verifies that 400 Bad Request is NOT retried.
 func TestRetry_400_NoRetry(t *testing.T) {
+	badRequest := &types.APIError{Status: 400, Message: "bad request"}
 	mock := &mockProvider{
 		name: "mock",
 		results: []mockResult{
-			{err: &types.APIError{Status: 400, Message: "bad request"}},
+			{err: badRequest},
 		},
 	}
 	rp := NewRetryProvider(mock, fastConfig())
@@ -372,8 +436,58 @@ func TestRetry_400_NoRetry(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for 400")
 	}
+	if err != badRequest || !errors.Is(err, badRequest) {
+		t.Fatalf("error = %#v, want original 400 error %#v", err, badRequest)
+	}
+	if IsAttemptLimit(err) {
+		t.Fatalf("permanent 400 was wrapped as attempt exhaustion: %v", err)
+	}
+	var apiErr *types.APIError
+	if !errors.As(err, &apiErr) || apiErr != badRequest {
+		t.Fatalf("errors.As APIError = %#v, want %#v", apiErr, badRequest)
+	}
 	if mock.calls != 1 {
 		t.Errorf("expected exactly 1 call (no retry), got %d", mock.calls)
+	}
+}
+
+func TestRetry_PermanentErrorAfterTransientRetryIsReturnedDirectly(t *testing.T) {
+	transient := &types.APIError{Status: 503, Type: "server_error", Message: "unavailable"}
+	badRequest := &types.APIError{Status: 400, Type: "invalid_request_error", Message: "bad request"}
+	mock := &mockProvider{
+		name: "mock",
+		results: []mockResult{
+			{err: transient},
+			{err: badRequest},
+			{events: successEvents()},
+		},
+	}
+
+	_, err := NewRetryProvider(mock, fastConfig()).CreateStream(context.Background(), Params{})
+	if err != badRequest || !errors.Is(err, badRequest) {
+		t.Fatalf("error = %#v, want original post-retry permanent error %#v", err, badRequest)
+	}
+	if IsAttemptLimit(err) {
+		t.Fatalf("post-retry permanent error was wrapped as attempt exhaustion: %v", err)
+	}
+	var apiErr *types.APIError
+	if !errors.As(err, &apiErr) || apiErr != badRequest {
+		t.Fatalf("errors.As APIError = %#v, want %#v", apiErr, badRequest)
+	}
+	if mock.calls != 2 {
+		t.Fatalf("raw calls = %d, want one transient call and one permanent call", mock.calls)
+	}
+}
+
+func TestAttemptControllerExhaustedDoesNotWrapAvailableBudget(t *testing.T) {
+	controller := NewAttemptController(fastConfig())
+	if _, err := controller.beginAttempt(); err != nil {
+		t.Fatal(err)
+	}
+	cause := &types.APIError{Status: 503, Message: "unavailable"}
+	err := controller.exhausted(cause)
+	if err != cause || IsAttemptLimit(err) {
+		t.Fatalf("exhausted before budget consumption = %#v, want original cause", err)
 	}
 }
 

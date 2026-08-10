@@ -1,0 +1,51 @@
+{
+  "instance_id": "ninja-build__ninja-2749",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785478462.037303,
+  "elapsed_seconds": 547.022,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1422489,
+    "cached_input_tokens": 1320448,
+    "cache_read_input_tokens": 1320448,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 12934,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.558449,
+  "tool_calls": 30,
+  "tool_calls_by_type": {
+    "Inspect": 20,
+    "ApplyPatch": 5,
+    "Run": 5
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "src/build_test.cc",
+      "src/graph.cc"
+    ],
+    "additions": 51,
+    "deletions": 5
+  },
+  "final_text": "The source fix and regression test remain, including a clean post-build assertion. `git diff --check` passed, but the environment classified this read-only command as a write, leaving the revision unsealed. I lack authority to adopt or seal the current state.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-representative20-20260731",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 33,
+  "llm_successful_calls": 33,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 520.519445,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-representative20-20260731",
+    "sha256": "484cdff16065c275cb60e545e37ae7f36b6afef71519309bd329cee0f9c413ac"
+  }
+}

@@ -20,14 +20,20 @@ type modelResult struct {
 }
 
 type modelRequest struct {
-	ID               string            `json:"id"`
-	Kind             string            `json:"kind"`
-	Path             string            `json:"path,omitempty"`
-	Files            []string          `json:"files,omitempty"`
-	Matches          []modelMatchGroup `json:"matches,omitempty"`
-	Errors           []string          `json:"errors,omitempty"`
-	SourceTruncated  bool              `json:"source_truncated,omitempty"`
-	TruncationReason string            `json:"truncation_reason,omitempty"`
+	ID               string              `json:"id"`
+	Kind             string              `json:"kind"`
+	Path             string              `json:"path,omitempty"`
+	Files            []string            `json:"files,omitempty"`
+	Matches          []modelMatchGroup   `json:"matches,omitempty"`
+	Errors           []string            `json:"errors,omitempty"`
+	ErrorDetails     []modelRequestError `json:"error_details,omitempty"`
+	SourceTruncated  bool                `json:"source_truncated,omitempty"`
+	TruncationReason string              `json:"truncation_reason,omitempty"`
+}
+
+type modelRequestError struct {
+	Code    string `json:"code"`
+	Message string `json:"message,omitempty"`
 }
 
 type modelMatchGroup struct {
@@ -89,11 +95,16 @@ func projectModelResult(result Result, view *evidenceView) (modelResult, []evide
 	}
 	for _, request := range result.Requests {
 		projected := modelRequest{
-			ID: request.ID, Kind: request.Kind,
+			ID: request.ID, Kind: request.Kind, Path: request.Path,
 			Files: append([]string(nil), request.Files...),
 		}
 		for _, requestError := range request.Errors {
 			projected.Errors = append(projected.Errors, requestError.Code)
+			if message := modelVisibleRequestError(request.Kind, requestError); message != "" {
+				projected.ErrorDetails = append(projected.ErrorDetails, modelRequestError{
+					Code: requestError.Code, Message: message,
+				})
+			}
 		}
 		if request.SourcePartial {
 			projected.SourceTruncated = true
@@ -119,6 +130,18 @@ func projectModelResult(result Result, view *evidenceView) (modelResult, []evide
 		}
 	}
 	return wire, observations
+}
+
+func modelVisibleRequestError(kind string, requestError RequestError) string {
+	if kind != KindRead {
+		return ""
+	}
+	switch requestError.Code {
+	case "read_failed", "read_is_directory", "unsupported_content":
+		return requestError.Message
+	default:
+		return ""
+	}
 }
 
 func groupModelMatches(matches []Match) []modelMatchGroup {

@@ -316,27 +316,11 @@ func (t *TextArea) HandleMouse(me MouseEvent) bool {
 	if me.Button != MouseLeft || me.Action != MousePress {
 		return false
 	}
-	if t.renderedElement == nil {
+	position, ok := t.PositionAtPoint(me.X, me.Y)
+	if !ok {
 		t.resetClickSequence()
 		return false
 	}
-	content := t.renderedElement.ContentRect()
-	if !content.Contains(me.X, me.Y) {
-		t.resetClickSequence()
-		return false
-	}
-
-	lines := t.wrapText()
-	row := t.visibleLineStart(lines) + me.Y - content.Y
-	if row < 0 {
-		row = 0
-	}
-	if row >= len(lines) {
-		row = len(lines) - 1
-	}
-	cellColumn := me.X - content.X
-	runeColumn := textAreaRuneColumn(lines[row], cellColumn)
-	position := t.posFromRowCol(lines, row, runeColumn)
 
 	t.Focus()
 	clickCount := t.recordClick(me.X, me.Y, position)
@@ -354,6 +338,32 @@ func (t *TextArea) HandleMouse(me MouseEvent) bool {
 	}
 	t.blink.Set(true)
 	return true
+}
+
+// PositionAtPoint returns the absolute rune position represented by a screen
+// cell in the rendered text area. It has no focus or selection side effects,
+// allowing a parent component to hit-test atomic inline tokens before the
+// TextArea handles an ordinary cursor click.
+func (t *TextArea) PositionAtPoint(x, y int) (int, bool) {
+	if t.renderedElement == nil {
+		return 0, false
+	}
+	content := t.renderedElement.ContentRect()
+	if !content.Contains(x, y) {
+		return 0, false
+	}
+
+	lines := t.wrapText()
+	row := t.visibleLineStart(lines) + y - content.Y
+	if row < 0 {
+		row = 0
+	}
+	if row >= len(lines) {
+		row = len(lines) - 1
+	}
+	cellColumn := x - content.X
+	runeColumn := textAreaRuneColumn(lines[row], cellColumn)
+	return t.posFromRowCol(lines, row, runeColumn), true
 }
 
 const textAreaMultiClickInterval = 500 * time.Millisecond

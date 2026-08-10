@@ -1,13 +1,18 @@
 package i18n
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+)
 
 func TestProviderRuntimeErrorKeysCoverEveryLanguage(t *testing.T) {
 	keys := []Key{
 		KeyProviderUnconfigured, KeyProviderUnconfiguredAction, KeyProviderDisconnected,
 		KeyProviderDisconnectedAction, KeyProviderThinkingUnsupported,
 		KeyProviderCustomToolsUnsupported, KeyProviderCustomToolDefinitionInvalid,
-		KeyProviderRetryExceededWithoutCause, KeyProviderUnknown, KeyProviderBedrockInvalidBaseURL,
+		KeyProviderRetryExceededWithoutCause, KeyProviderRetryExceededWithCause,
+		KeyProviderUnknown, KeyProviderBedrockInvalidBaseURL,
 		KeyProviderVertexProjectRequired, KeyProviderVertexAPIKeyRequired, KeyProviderVertexBaseURLRequired,
 		KeyProviderVertexEndpointInvalid, KeyCredentialHomeFailed, KeyCredentialReadFailed,
 		KeyCredentialDecodeFailed, KeyCredentialDirectoryFailed, KeyCredentialEncodeFailed,
@@ -27,6 +32,24 @@ func TestProviderRuntimeErrorKeysCoverEveryLanguage(t *testing.T) {
 			if got := Text(lang, key); got == "" || got == "["+string(key)+"]" {
 				t.Fatalf("Text(%s, %q) = %q", lang.Code(), key, got)
 			}
+		}
+	}
+}
+
+func TestProviderRetryExceededWithCausePreservesRuntimeDetails(t *testing.T) {
+	cause := errors.New("raw upstream failure")
+	err := WrapError(KeyProviderRetryExceededWithCause, cause, 2)
+	if !errors.Is(err, cause) {
+		t.Fatal("retry error did not preserve its external cause")
+	}
+	localizer, ok := err.(interface{ Localized(Language) string })
+	if !ok {
+		t.Fatalf("retry error = %T, want runtime-localized error", err)
+	}
+	for _, lang := range AllLanguages() {
+		got := localizer.Localized(lang)
+		if !strings.Contains(got, "2") || !strings.Contains(got, cause.Error()) {
+			t.Fatalf("Localized(%s) = %q; actual retry count or raw cause was lost", lang.Code(), got)
 		}
 	}
 }

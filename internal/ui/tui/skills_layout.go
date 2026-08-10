@@ -220,31 +220,11 @@ func finalizeSkillsPanelLayout(layout skillsPanelLayout) skillsPanelLayout {
 // normalizeSkillsPanelLine turns every catalog/backend-provided value into
 // inert one-line text before width calculation. This shares the transcript's
 // CSI/OSC/DCS/C0/C1 sanitizer so an embedded escape cannot move the cursor or
-// invalidate a supposedly one-row panel budget.
+// invalidate a supposedly one-row panel budget. NFC normalization keeps
+// canonically equivalent text stable without discarding valid grapheme clusters.
 func normalizeSkillsPanelLine(value string) string {
 	plain := strings.Join(strings.Fields(sanitizePresentationTerminalText(value)), " ")
-	plain = norm.NFC.String(plain)
-	if plain == "" {
-		return ""
-	}
-	var output strings.Builder
-	output.Grow(len(plain))
-	graphemes := uniseg.NewGraphemes(plain)
-	for graphemes.Next() {
-		cluster := graphemes.Str()
-		// go-tui v0.11 stores one rune per buffer cell and deliberately
-		// counts combining/VS/ZWJ code points as width one. Emitting a
-		// cluster whose physical width disagrees with that model would make
-		// ANSITerminal's logical cursor drift. NFC rescues composable text;
-		// the remaining mismatched cluster is replaced atomically rather than
-		// split, prematurely ellipsized, or allowed to move the side border.
-		if uniseg.StringWidth(cluster) != skillsPanelCellWidth(cluster) {
-			output.WriteRune('�')
-			continue
-		}
-		output.WriteString(cluster)
-	}
-	return output.String()
+	return norm.NFC.String(plain)
 }
 
 // wrapSkillsPanelNoticeLines preserves complete recovery instructions while
@@ -349,15 +329,9 @@ func visibleSkillsPanelNoticeLines(value string, maxCells, limit int) []string {
 	return selected
 }
 
-// skillsPanelCellWidth intentionally matches go-tui's buffer renderer. Visual
-// strings pass through normalizeSkillsPanelLine first, which NFC-normalizes or
-// atomically replaces any grapheme whose physical width would disagree.
+// skillsPanelCellWidth matches go-tui's grapheme-aware buffer renderer.
 func skillsPanelCellWidth(value string) int {
-	width := 0
-	for _, r := range value {
-		width += gtui.RuneWidth(r)
-	}
-	return width
+	return gtui.StringWidth(value)
 }
 
 // truncateSkillsPanelLine returns normalized valid UTF-8 that fits maxCells,

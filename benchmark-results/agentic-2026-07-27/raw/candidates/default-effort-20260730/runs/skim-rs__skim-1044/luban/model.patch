@@ -1,0 +1,192 @@
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+index e668a34..93948b3 100644
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -719,6 +719,10 @@ Layout is rebuilt on `Event::Resize`, when the header height changes (multiline
+ | `Reverse` | Input at top, list below (top-to-bottom reading) |
+ | `ReverseList` | List at top, input at bottom |
+ 
++`BorderType` mirrors ratatui's visible border styles and also exposes `None` for fzf-compatible
++`--border none` parsing. `SkimOptions::build()` normalizes that sentinel to `border: None`, so the
++layout and widgets use the same border-disabled path as an omitted border.
++
+ **Preview placement** is parsed from `--preview-window`:
+ - Direction: `left` / `right` / `up` / `down`
+ - Size: `50%` (default) or fixed cells
+diff --git a/man/man1/sk.1 b/man/man1/sk.1
+index 296a47a..a62fc33 100644
+--- a/man/man1/sk.1
++++ b/man/man1/sk.1
+@@ -410,7 +410,7 @@ Number of lines of the input treated as header
+ The  first N lines of the input are treated as the sticky header. When \-\-with\-nth is set, the lines are transformed just like the other lines that follow.
+ .TP
+ \fB\-\-border\fR [\fI<BORDER>...\fR]
+-Draw borders around the UI components
++Draw borders around the UI components. Use \fBnone\fR to disable UI borders.
+ .br
+ 
+ .br
+@@ -419,6 +419,8 @@ Draw borders around the UI components
+ .IP \(bu 2
+ plain
+ .IP \(bu 2
++none
++.IP \(bu 2
+ rounded
+ .IP \(bu 2
+ double
+diff --git a/shell/completion.bash b/shell/completion.bash
+index 0f4978f..098a917 100644
+--- a/shell/completion.bash
++++ b/shell/completion.bash
+@@ -166,7 +166,7 @@ _sk() {
+                     return 0
+                     ;;
+                 --border)
+-                    COMPREPLY=($(compgen -W "plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside" -- "${cur}"))
++                    COMPREPLY=($(compgen -W "plain none rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside" -- "${cur}"))
+                     return 0
+                     ;;
+                 --multiline)
+diff --git a/shell/completion.fish b/shell/completion.fish
+index dc7719c..cf8feda 100644
+--- a/shell/completion.fish
++++ b/shell/completion.fish
+@@ -49,7 +49,8 @@ inline\t''
+ hidden\t''"
+ complete -c sk -l header -d 'Set header, displayed next to the info' -r
+ complete -c sk -l header-lines -d 'Number of lines of the input treated as header' -r
+-complete -c sk -l border -d 'Draw borders around the UI components' -r -f -a "plain\t''
++complete -c sk -l border -d 'Draw borders around the UI components. Use `none` to disable UI borders' -r -f -a "plain\t''
++none\t''
+ rounded\t''
+ double\t''
+ thick\t''
+diff --git a/shell/completion.nu b/shell/completion.nu
+index 95057bd..22ccf1c 100644
+--- a/shell/completion.nu
++++ b/shell/completion.nu
+@@ -25,7 +25,7 @@ module completions {
+   }
+ 
+   def "nu-complete sk border" [] {
+-    [ "plain" "rounded" "double" "thick" "light-double-dashed" "heavy-double-dashed" "light-triple-dashed" "heavy-triple-dashed" "light-quadruple-dashed" "heavy-quadruple-dashed" "quadrant-inside" "quadrant-outside" ]
++    [ "plain" "none" "rounded" "double" "thick" "light-double-dashed" "heavy-double-dashed" "light-triple-dashed" "heavy-triple-dashed" "light-quadruple-dashed" "heavy-quadruple-dashed" "quadrant-inside" "quadrant-outside" ]
+   }
+ 
+   def "nu-complete sk shell" [] {
+@@ -91,7 +91,7 @@ module completions {
+     --inline-info             # Alias for --info=inline
+     --header: string          # Set header, displayed next to the info
+     --header-lines: string    # Number of lines of the input treated as header
+-    --border: string@"nu-complete sk border" # Draw borders around the UI components
++    --border: string@"nu-complete sk border" # Draw borders around the UI components. Use `none` to disable UI borders
+     --no-border               # Disables all borders, including in tmux/zellij popups
+     --wrap                    # Wrap items in the item list
+     --multiline: string       # Split item text into multiple display lines at the given separator character defaults to \n if read0 is set, and \\n if not (matching literal \n in text)
+diff --git a/shell/completion.zsh b/shell/completion.zsh
+index 9a33b7e..4f17f9c 100644
+--- a/shell/completion.zsh
++++ b/shell/completion.zsh
+@@ -59,7 +59,7 @@ reverse-list\:"Display from the top of the screen, prompt at the bottom"))' \
+ '--info=[Set matching result count display position]:INFO:(default inline hidden)' \
+ '--header=[Set header, displayed next to the info]:HEADER:_default' \
+ '--header-lines=[Number of lines of the input treated as header]:HEADER_LINES:_default' \
+-'--border=[Draw borders around the UI components]::BORDER:(plain rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside)' \
++'--border=[Draw borders around the UI components. Use `none` to disable UI borders]::BORDER:(plain none rounded double thick light-double-dashed heavy-double-dashed light-triple-dashed heavy-triple-dashed light-quadruple-dashed heavy-quadruple-dashed quadrant-inside quadrant-outside)' \
+ '--multiline=[Split item text into multiple display lines at the given separator character defaults to \\n if read0 is set, and \\\\n if not (matching literal \\n in text)]::MULTILINE:_default' \
+ '--scrollbar=[Set scrollbar style for the item list]:THUMB:_default' \
+ '--history=[History file]:HISTORY_FILE:_default' \
+diff --git a/src/options.rs b/src/options.rs
+index 70839f1..7d67c04 100644
+--- a/src/options.rs
++++ b/src/options.rs
+@@ -539,7 +539,7 @@ pub struct SkimOptions {
+     #[cfg_attr(feature = "cli", arg(long, default_value = "0", help_heading = "Display"))]
+     pub header_lines: usize,
+ 
+-    /// Draw borders around the UI components
++    /// Draw borders around the UI components. Use `none` to disable UI borders.
+     ///
+     #[cfg_attr(
+         feature = "cli",
+@@ -1223,7 +1223,7 @@ impl SkimOptions {
+         if self.no_typos {
+             self.typos = Typos::Disabled;
+         }
+-        if self.no_border {
++        if self.no_border || matches!(self.border, Some(BorderType::None)) {
+             self.border = None;
+         }
+ 
+@@ -1359,3 +1359,20 @@ macro_rules! feature_flag {
+ }
+ #[allow(unused_imports)]
+ pub(crate) use feature_flag;
++
++#[cfg(all(test, feature = "cli"))]
++mod tests {
++    use clap::Parser;
++
++    use super::{BorderType, SkimOptions};
++
++    #[test]
++    fn border_none_is_accepted_and_disables_ui_borders() {
++        let options = SkimOptions::try_parse_from(["sk", "--border", "none"]).expect("--border none should parse");
++        assert!(matches!(options.border, Some(BorderType::None)));
++
++        let options = options.build();
++        assert!(options.border.is_none());
++        assert!(!options.no_border);
++    }
++}
+diff --git a/src/popup/tmux.rs b/src/popup/tmux.rs
+index 0744e7f..140ad49 100644
+--- a/src/popup/tmux.rs
++++ b/src/popup/tmux.rs
+@@ -25,12 +25,12 @@ impl TmuxPopup {
+         ]);
+ 
+         let border = {
+-            use crate::tui::BorderType::{Plain, Rounded, Thick};
++            use crate::tui::BorderType::{None as NoUiBorder, Plain, Rounded, Thick};
+             if options.no_border {
+                 "none"
+             } else {
+                 match options.border {
+-                    None | Some(Plain) => "single",
++                    None | Some(Plain | NoUiBorder) => "single",
+                     Some(Rounded) => "rounded",
+                     Some(Thick) => "heavy",
+                     Some(_) => "double",
+@@ -128,6 +128,7 @@ mod tests {
+         // Ensure each BorderType variant can be passed without panicking.
+         for border in [
+             crate::tui::BorderType::Plain,
++            crate::tui::BorderType::None,
+             crate::tui::BorderType::Rounded,
+             crate::tui::BorderType::Thick,
+             crate::tui::BorderType::Double,
+diff --git a/src/tui/mod.rs b/src/tui/mod.rs
+index 30d5518..22d8742 100644
+--- a/src/tui/mod.rs
++++ b/src/tui/mod.rs
+@@ -141,6 +141,8 @@ impl std::fmt::Display for Size {
+ pub enum BorderType {
+     #[default]
+     Plain,
++    /// Disable borders when used with `SkimOptions::border`.
++    None,
+     Rounded,
+     Double,
+     Thick,
+@@ -162,6 +164,9 @@ impl From<BorderType> for ratatui::widgets::BorderType {
+     fn from(val: BorderType) -> Self {
+         match val {
+             BorderType::Plain => ratatui::widgets::BorderType::Plain,
++            // `SkimOptions::build` removes this sentinel before rendering. Keep the
++            // conversion total for callers converting `BorderType` directly.
++            BorderType::None => ratatui::widgets::BorderType::Plain,
+             BorderType::Rounded => ratatui::widgets::BorderType::Rounded,
+             BorderType::Double => ratatui::widgets::BorderType::Double,
+             BorderType::Thick => ratatui::widgets::BorderType::Thick,

@@ -52,6 +52,15 @@ type CredentialEntry struct {
 	// APIFormat is an explicit OpenAI-family wire override. It is deliberately
 	// separate from Models[].APIFormat, which is discovered catalog metadata.
 	APIFormat string `json:"api_format,omitempty"`
+	// DisableStrictTools is an explicit compatibility escape hatch for an
+	// OpenAI Responses endpoint that is reached through a gateway which rejects
+	// strict function schemas. The endpoint identity remains OpenAI; only schema
+	// strictness is relaxed.
+	DisableStrictTools bool `json:"disable_strict_tools,omitempty"`
+	// DisablePromptCacheOptions preserves prompt_cache_key routing while
+	// omitting public-API cache option and breakpoint extensions rejected by
+	// some content-blind gateways.
+	DisablePromptCacheOptions bool `json:"disable_prompt_cache_options,omitempty"`
 
 	// DisplayName and UserDefined persist providers created through the generic
 	// gateway flow without requiring a second configuration file.

@@ -21,7 +21,7 @@ import (
 
 const selectionPolicy = "frozen-representative-order-prefix-v1"
 
-//go:embed catalog/representative5.json worker/run_worker.py worker/evaluate_worker.py
+//go:embed catalog/representative20.json catalog/representative20.selection.json worker/run_worker.py worker/evaluate_worker.py
 var runtimeAssets embed.FS
 
 type Options struct {
@@ -237,7 +237,7 @@ func progress(options Options, key i18n.Key, arguments ...any) {
 }
 
 func loadSelection(taskSize int) ([]TaskSelection, error) {
-	raw, err := runtimeAssets.ReadFile("catalog/representative5.json")
+	raw, err := runtimeAssets.ReadFile("catalog/representative20.json")
 	if err != nil {
 		return nil, err
 	}
@@ -470,11 +470,11 @@ func (executor *LocalExecutor) Prepare(ctx context.Context, runRoot, repositoryR
 			return PreparedEnvironment{}, writeErr
 		}
 	}
-	catalogRaw, err := runtimeAssets.ReadFile("catalog/representative5.json")
+	catalogRaw, err := runtimeAssets.ReadFile("catalog/representative20.json")
 	if err != nil {
 		return PreparedEnvironment{}, err
 	}
-	executor.CatalogPath = filepath.Join(executor.RuntimeRoot, "representative5.json")
+	executor.CatalogPath = filepath.Join(executor.RuntimeRoot, "representative20.json")
 	if err := os.WriteFile(executor.CatalogPath, catalogRaw, 0o600); err != nil {
 		return PreparedEnvironment{}, err
 	}

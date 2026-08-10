@@ -35,3 +35,17 @@ func TestReasoningEffortForRequest(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultReasoningEffortForModel(t *testing.T) {
+	model := ModelInfo{
+		ReasoningEfforts:       []string{"low", "high", "max"},
+		DefaultReasoningEffort: "high",
+	}
+	if got := DefaultReasoningEffortForModel(model); got != "high" {
+		t.Fatalf("DefaultReasoningEffortForModel() = %q, want high", got)
+	}
+	model.DefaultReasoningEffort = "unsupported"
+	if got := DefaultReasoningEffortForModel(model); got != "low" {
+		t.Fatalf("fallback DefaultReasoningEffortForModel() = %q, want low", got)
+	}
+}

@@ -1713,15 +1713,18 @@ func (e *CoreEngine) buildConvWithRuntime(sessionID, model, system string, syste
 		ProjectRoot:         runtime.ProjectRoot,
 		CWD:                 runtime.CWD,
 		TranscriptPath:      e.transcriptPathForProject(sessionID, projectDir),
-		ReasoningEffort:     e.cfg.ReasoningEffort,
-		ServiceTier:         e.cfg.ServiceTier,
-		PinnedModel:         e.cfg.PinnedModel,
-		PermissionHandler:   e.permission,
-		SkillManager:        e.cfg.SkillManager,
-		PlanState:           e.cfg.PlanState,
-		BackgroundTasks:     e.cfg.BackgroundTasks,
-		MCPState:            e.cfg.MCPState,
-		AgentDefinitions:    e.cfg.AgentDefinitions,
+		TranscriptPathResolver: func() string {
+			return e.transcriptPathForProject(sessionID, projectDir)
+		},
+		ReasoningEffort:   e.cfg.ReasoningEffort,
+		ServiceTier:       e.cfg.ServiceTier,
+		PinnedModel:       e.cfg.PinnedModel,
+		PermissionHandler: e.permission,
+		SkillManager:      e.cfg.SkillManager,
+		PlanState:         e.cfg.PlanState,
+		BackgroundTasks:   e.cfg.BackgroundTasks,
+		MCPState:          e.cfg.MCPState,
+		AgentDefinitions:  e.cfg.AgentDefinitions,
 	})
 
 	// Inject ResultStore: persist oversized tool results to disk so they don't

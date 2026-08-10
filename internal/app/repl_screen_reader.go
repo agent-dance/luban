@@ -657,10 +657,14 @@ func runScreenReaderQuery(ctx context.Context, cfg TUIREPLConfig, renderer *ui.S
 		return usage.TotalTokens, usage.UsedTokens
 	}, presentation.ToolEventContext{SessionID: req.SessionID, ProjectRoot: req.ProjectRoot})
 	var runErr error
+	var renderedRuntimeErrors []*types.APIError
 	for event := range ch {
 		if event.Final {
 			runErr = event.Error
 			continue
+		}
+		if event.Inner.Type == stream.EventError && event.Inner.Error != nil {
+			renderedRuntimeErrors = append(renderedRuntimeErrors, event.Inner.Error)
 		}
 		handler(event.Inner)
 	}
@@ -675,8 +679,10 @@ func runScreenReaderQuery(ctx context.Context, cfg TUIREPLConfig, renderer *ui.S
 	case errors.Is(runErr, context.Canceled):
 		renderer.Info(i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyREPLQueryCancelled))
 	default:
-		lang := i18n.DetectOrLoadLanguage()
-		renderer.Error(i18n.Format(lang, i18n.KeyREPLQueryFailed, engine.UserFacingError(lang, runErr)))
+		if !runtimeErrorCauseAlreadyRendered(runErr, renderedRuntimeErrors) {
+			lang := i18n.DetectOrLoadLanguage()
+			renderer.Error(i18n.Format(lang, i18n.KeyREPLQueryFailed, engine.UserFacingError(lang, runErr)))
+		}
 	}
 }
 

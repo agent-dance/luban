@@ -1,0 +1,50 @@
+diff --git a/iwyu.cc b/iwyu.cc
+index ab2eef7..b8c12d7 100644
+--- a/iwyu.cc
++++ b/iwyu.cc
+@@ -1740,6 +1740,17 @@ class IwyuBaseAstVisitor : public BaseAstVisitor<Derived> {
+     if (CanIgnoreCurrentASTNode())
+       return true;
+ 
++    // An explicit specialization is ill-formed unless its primary template
++    // has been declared. Report that dependency so we don't remove the header
++    // providing the primary template.
++    if (decl->getTemplateSpecializationKind() ==
++        clang::TSK_ExplicitSpecialization) {
++      if (const FunctionTemplateDecl* primary_template =
++              decl->getPrimaryTemplate()) {
++        ReportDeclUse(CurrentLoc(), primary_template);
++      }
++    }
++
+     if (decl->isThisDeclarationADefinition()) {
+       // For non-member function definitions, report use of all previously seen
+       // decls.
+diff --git a/tests/bugs/1931/1931.cc b/tests/bugs/1931/1931.cc
+index a54c794..d62a2f3 100644
+--- a/tests/bugs/1931/1931.cc
++++ b/tests/bugs/1931/1931.cc
+@@ -7,8 +7,6 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
+-// IWYU_XFAIL
+-
+ #include "1931.h"
+ 
+ #include <iostream>
+diff --git a/tests/bugs/1931/1931.h b/tests/bugs/1931/1931.h
+index 0a93915..3b7e694 100644
+--- a/tests/bugs/1931/1931.h
++++ b/tests/bugs/1931/1931.h
+@@ -9,8 +9,8 @@
+ 
+ #pragma once
+ 
+-// IWYU falsely suggests removing this header,
+-// which makes compilation fail.
++// The explicit specialization below requires the primary template declaration,
++// so IWYU must retain this include.
+ #include "print.h"
+ 
+ struct A { void print(); };

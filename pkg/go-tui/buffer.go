@@ -1,6 +1,9 @@
 package tui
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // Buffer is a double-buffered 2D grid of cells.
 // Writes go to the back buffer; Flush() computes the diff and swaps buffers.
@@ -99,11 +102,32 @@ func (b *Buffer) SetCell(x, y int, c Cell) {
 // Handles wide characters by setting continuation cells.
 // Properly clears overlapped wide characters.
 func (b *Buffer) SetRune(x, y int, r rune, style Style) {
+	b.setDisplayCell(x, y, r, "", RuneWidth(r), style)
+}
+
+// SetGrapheme writes one complete user-perceived character. The grapheme is
+// stored in its primary cell and reserves exactly the number of columns that a
+// terminal advances when it is emitted.
+func (b *Buffer) SetGrapheme(x, y int, text string, style Style) {
+	if text == "" {
+		return
+	}
+	first, size := utf8.DecodeRuneInString(text)
+	if size == 0 {
+		return
+	}
+	width := StringWidth(text)
+	if width <= 0 {
+		b.appendZeroWidthText(x, y, text)
+		return
+	}
+	b.setDisplayCell(x, y, first, text[size:], width, style)
+}
+
+func (b *Buffer) setDisplayCell(x, y int, r rune, tail string, width int, style Style) {
 	if x < 0 || x >= b.width || y < 0 || y >= b.height {
 		return
 	}
-
-	width := RuneWidth(r)
 	currentCell := b.Cell(x, y)
 
 	// If target position is a continuation cell, clear the originating wide char
@@ -112,58 +136,63 @@ func (b *Buffer) SetRune(x, y int, r rune, style Style) {
 	}
 
 	// If target position is the START of a wide character, clear its continuation
-	if currentCell.Width == 2 && x+1 < b.width {
-		b.SetCell(x+1, y, NewCell(' ', NewStyle()))
+	if currentCell.Width > 1 {
+		b.clearWideCharAt(x, y)
 	}
 
-	// If placing a wide char would overlap an existing wide char at x+1, clear it
-	if width == 2 && x+1 < b.width {
-		next := b.Cell(x+1, y)
-		// If next cell is the start of a wide char (width 2), clear it and its continuation
-		if next.Width == 2 {
-			b.clearWideCharAt(x+1, y)
-		}
-		// If next cell is a continuation, clear its originating wide char
-		if next.IsContinuation() {
-			b.clearWideCharAt(x+1, y)
+	// Clear every display cell that the new grapheme will occupy. This covers
+	// overlap with either a primary cell or any continuation of an older glyph.
+	for offset := 1; offset < width && x+offset < b.width; offset++ {
+		next := b.Cell(x+offset, y)
+		if next.Width > 1 || next.IsContinuation() {
+			b.clearWideCharAt(x+offset, y)
 		}
 	}
 
-	// Handle edge case: wide char at last column - can't fit, skip it
-	if width == 2 && x+1 >= b.width {
-		// Place a space instead since the wide char can't fit
+	// A grapheme that cannot fit at the edge is replaced with one blank cell.
+	if width > 1 && x+width > b.width {
 		b.SetCell(x, y, NewCell(' ', style))
 		return
 	}
 
 	// Set the primary cell
-	b.SetCell(x, y, NewCellWithWidth(r, style, uint8(width)))
+	b.SetCell(x, y, Cell{Rune: r, Tail: tail, Style: style, Width: uint8(width)})
 
-	// Set continuation cell for wide characters
-	if width == 2 {
-		b.SetCell(x+1, y, NewCellWithWidth(0, style, 0))
+	// Set continuation cells for wide graphemes.
+	for offset := 1; offset < width; offset++ {
+		b.SetCell(x+offset, y, NewCellWithWidth(0, style, 0))
 	}
+}
+
+func (b *Buffer) appendZeroWidthText(x, y int, text string) {
+	if y < 0 || y >= b.height || x <= 0 || x > b.width {
+		return
+	}
+	origin := x - 1
+	for origin > 0 && b.Cell(origin, y).IsContinuation() {
+		origin--
+	}
+	cell := b.Cell(origin, y)
+	if cell.Rune == 0 || cell.Rune == ' ' {
+		return
+	}
+	cell.Tail += text
+	b.SetCell(origin, y, cell)
 }
 
 // clearWideCharAt clears a wide character that includes position (x, y).
 // If (x, y) is a continuation cell, finds and clears the originating cell.
 // If (x, y) is a wide char start, clears it and its continuation.
 func (b *Buffer) clearWideCharAt(x, y int) {
-	cell := b.Cell(x, y)
 	defaultCell := NewCell(' ', NewStyle())
-
-	if cell.IsContinuation() {
-		// This is a continuation - the wide char starts at x-1
-		if x > 0 {
-			b.SetCell(x-1, y, defaultCell)
-		}
-		b.SetCell(x, y, defaultCell)
-	} else if cell.Width == 2 {
-		// This is the start of a wide char
-		b.SetCell(x, y, defaultCell)
-		if x+1 < b.width {
-			b.SetCell(x+1, y, defaultCell)
-		}
+	origin := x
+	for origin > 0 && b.Cell(origin, y).IsContinuation() {
+		origin--
+	}
+	cell := b.Cell(origin, y)
+	width := max(int(cell.Width), 1)
+	for offset := 0; offset < width && origin+offset < b.width; offset++ {
+		b.SetCell(origin+offset, y, defaultCell)
 	}
 }
 
@@ -178,27 +207,25 @@ func (b *Buffer) SetString(x, y int, s string, style Style) int {
 	totalWidth := 0
 	curX := x
 
-	for _, r := range s {
+	for _, cluster := range splitTextGraphemes(s) {
 		if curX >= b.width {
 			break
 		}
 		if curX < 0 {
 			// Skip characters before the visible area
-			curX += RuneWidth(r)
+			curX += cluster.width
 			continue
 		}
 
-		width := RuneWidth(r)
-
 		// Check if wide char fits
-		if width == 2 && curX+1 >= b.width {
+		if cluster.width > 1 && curX+cluster.width > b.width {
 			// Wide char doesn't fit, stop here
 			break
 		}
 
-		b.SetRune(curX, y, r, style)
-		curX += width
-		totalWidth += width
+		b.SetGrapheme(curX, y, cluster.text, style)
+		curX += cluster.width
+		totalWidth += cluster.width
 	}
 
 	return totalWidth
@@ -215,8 +242,8 @@ func (b *Buffer) SetStringClipped(x, y int, s string, style Style, clipRect Rect
 	totalWidth := 0
 	curX := x
 
-	for _, r := range s {
-		width := RuneWidth(r)
+	for _, cluster := range splitTextGraphemes(s) {
+		width := cluster.width
 
 		// Skip if entirely before clip region
 		if curX+width <= clipRect.X {
@@ -237,7 +264,7 @@ func (b *Buffer) SetStringClipped(x, y int, s string, style Style, clipRect Rect
 				curX += width
 				continue
 			}
-			b.SetRune(curX, y, r, style)
+			b.SetGrapheme(curX, y, cluster.text, style)
 			totalWidth += width
 		}
 
@@ -280,25 +307,25 @@ func (b *Buffer) SetStringGradient(x, y int, s string, g Gradient, baseStyle Sty
 		return 0
 	}
 
-	runes := []rune(s)
-	if len(runes) == 0 {
+	clusters := splitTextGraphemes(s)
+	if len(clusters) == 0 {
 		return 0
 	}
 
 	totalWidth := 0
 	curX := x
 
-	for i, r := range runes {
+	for i, cluster := range clusters {
 		if curX >= b.width {
 			break
 		}
 		if curX < 0 {
 			// Skip characters before the visible area
-			curX += RuneWidth(r)
+			curX += cluster.width
 			continue
 		}
 
-		width := RuneWidth(r)
+		width := cluster.width
 
 		// Check if wide char fits
 		if width == 2 && curX+1 >= b.width {
@@ -307,8 +334,8 @@ func (b *Buffer) SetStringGradient(x, y int, s string, g Gradient, baseStyle Sty
 		}
 
 		// Calculate gradient position t in [0, 1]
-		t := float64(i) / float64(len(runes)-1)
-		if len(runes) == 1 {
+		t := float64(i) / float64(len(clusters)-1)
+		if len(clusters) == 1 {
 			t = 0
 		}
 
@@ -317,7 +344,7 @@ func (b *Buffer) SetStringGradient(x, y int, s string, g Gradient, baseStyle Sty
 		style := baseStyle
 		style.Fg = gradColor
 
-		b.SetRune(curX, y, r, style)
+		b.SetGrapheme(curX, y, cluster.text, style)
 		curX += width
 		totalWidth += width
 	}
@@ -495,7 +522,7 @@ func (b *Buffer) String() string {
 			if cell.Rune == 0 {
 				sb.WriteRune(' ')
 			} else {
-				sb.WriteRune(cell.Rune)
+				sb.WriteString(cell.displayText())
 			}
 		}
 		if y < b.height-1 {
@@ -518,7 +545,7 @@ func (b *Buffer) StringTrimmed() string {
 			if cell.Rune == 0 {
 				line.WriteRune(' ')
 			} else {
-				line.WriteRune(cell.Rune)
+				line.WriteString(cell.displayText())
 			}
 		}
 		sb.WriteString(strings.TrimRight(line.String(), " "))

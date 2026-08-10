@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/grindlemire/go-tui/internal/debug"
+import (
+	"strings"
+
+	"github.com/grindlemire/go-tui/internal/debug"
+)
 
 // inheritedStyle carries cascading visual properties down the element tree.
 // Text style (Fg, Attrs) and background color cascade from parent to child.
@@ -330,8 +334,8 @@ func renderClippedElement(buf *Buffer, e *Element, clipRect Rect, scrollX, scrol
 			}
 
 			if needPerCell {
-				runes := []rune(line)
-				if len(runes) > 0 {
+				clusters := splitTextGraphemes(line)
+				if len(clusters) > 0 {
 					if hasSpans {
 						remaining := globalRuneOff
 						clippedSpanIdx = 0
@@ -350,19 +354,18 @@ func renderClippedElement(buf *Buffer, e *Element, clipRect Rect, scrollX, scrol
 						}
 					}
 					curX := textX
-					for i, r := range runes {
+					for i, cluster := range clusters {
 						if curX >= clipRect.Right() {
-							globalRuneOff += len(runes) - i
+							globalRuneOff += graphemeRuneCount(clusters[i:])
 							break
 						}
-						style := nextTextRuneStyle(e, ts, prefixStyle, rc.bg, &clippedSpanIdx, &clippedSpanRuneOff, &globalRuneOff)
+						style := nextTextGraphemeStyle(e, ts, prefixStyle, rc.bg, &clippedSpanIdx, &clippedSpanRuneOff, &globalRuneOff, cluster.runeCount)
 						if curX < clipRect.X {
-							curX += RuneWidth(r)
+							curX += cluster.width
 							continue
 						}
-						width := RuneWidth(r)
-						if width == 2 && curX+1 >= clipRect.Right() {
-							globalRuneOff += len(runes) - i - 1
+						if cluster.width > 1 && curX+cluster.width > clipRect.Right() {
+							globalRuneOff += graphemeRuneCount(clusters[i+1:])
 							break
 						}
 						if curX >= clipRect.X && curX < clipRect.Right() {
@@ -373,15 +376,15 @@ func renderClippedElement(buf *Buffer, e *Element, clipRect Rect, scrollX, scrol
 								}
 							}
 							if e.textGradient != nil {
-								t := float64(i) / float64(len(runes)-1)
-								if len(runes) == 1 {
+								t := float64(i) / float64(len(clusters)-1)
+								if len(clusters) == 1 {
 									t = 0
 								}
 								style.Fg = e.textGradient.At(t)
 							}
-							buf.SetRune(curX, textY, r, style)
+							buf.SetGrapheme(curX, textY, cluster.text, style)
 						}
-						curX += width
+						curX += cluster.width
 					}
 				}
 			} else {
@@ -459,15 +462,17 @@ func truncateText(text string, maxWidth int) string {
 	if textWidth <= maxWidth {
 		return text
 	}
-	// Need to truncate: fit as many runes as possible + ellipsis (1 cell wide)
-	runes := []rune(text)
+	// Fit only complete grapheme clusters before the ellipsis.
+	clusters := splitTextGraphemes(text)
+	ellipsisWidth := StringWidth("…")
 	curWidth := 0
-	for i, r := range runes {
-		w := RuneWidth(r)
-		if curWidth+w+1 > maxWidth { // +1 for ellipsis
-			return string(runes[:i]) + "…"
+	var prefix strings.Builder
+	for _, cluster := range clusters {
+		if curWidth+cluster.width+ellipsisWidth > maxWidth {
+			return prefix.String() + "…"
 		}
-		curWidth += w
+		prefix.WriteString(cluster.text)
+		curWidth += cluster.width
 	}
 	return text
 }
@@ -514,6 +519,26 @@ func nextTextRuneStyle(
 		style.Bg = bg.Bg
 	}
 	*globalRuneOffset++
+	return style
+}
+
+func nextTextGraphemeStyle(
+	e *Element,
+	baseStyle Style,
+	prefixStyle Style,
+	bg *Style,
+	spanIdx *int,
+	spanRuneOff *int,
+	globalRuneOffset *int,
+	runeCount int,
+) Style {
+	style := baseStyle
+	for index := 0; index < max(runeCount, 1); index++ {
+		next := nextTextRuneStyle(e, baseStyle, prefixStyle, bg, spanIdx, spanRuneOff, globalRuneOffset)
+		if index == 0 {
+			style = next
+		}
+	}
 	return style
 }
 
@@ -582,17 +607,17 @@ func renderTextContent(buf *Buffer, e *Element, textStyle Style, bg *Style) {
 		maxLines = contentRect.Height
 	}
 
-	// Total rune count across visible lines (for gradient calculation)
-	totalRunes := 0
+	// Total grapheme count across visible lines (for gradient calculation).
+	totalGraphemes := 0
 	if e.textGradient != nil {
 		for i := startLine; i < startLine+maxLines && i < len(lines); i++ {
-			totalRunes += len([]rune(lines[i]))
+			totalGraphemes += len(splitTextGraphemes(lines[i]))
 		}
 	}
 
 	hasSpans := len(e.styledSpans) > 0
 	needPerCell := e.textGradient != nil || ts.Bg.IsDefault() || e.textPrefixLen > 0 || hasSpans
-	runeOffset := 0 // running offset for gradient
+	graphemeOffset := 0 // running offset for gradient
 
 	var prefixStyle Style
 	if e.textPrefixLen > 0 {
@@ -649,19 +674,18 @@ func renderTextContent(buf *Buffer, e *Element, textStyle Style, bg *Style) {
 		}
 
 		if needPerCell {
-			runes := []rune(line)
+			clusters := splitTextGraphemes(line)
 			curX := x
-			for i, r := range runes {
+			for i, cluster := range clusters {
 				if curX >= contentRect.Right() {
-					globalRuneOffset += len(runes) - i
+					globalRuneOffset += graphemeRuneCount(clusters[i:])
 					break
 				}
-				width := RuneWidth(r)
-				if width == 2 && curX+1 >= contentRect.Right() {
-					globalRuneOffset += len(runes) - i
+				if cluster.width > 1 && curX+cluster.width > contentRect.Right() {
+					globalRuneOffset += graphemeRuneCount(clusters[i:])
 					break
 				}
-				style := nextTextRuneStyle(e, ts, prefixStyle, bg, &spanIdx, &spanRuneOff, &globalRuneOffset)
+				style := nextTextGraphemeStyle(e, ts, prefixStyle, bg, &spanIdx, &spanRuneOff, &globalRuneOffset, cluster.runeCount)
 				if style.Bg.IsDefault() {
 					cellBg := buf.Cell(curX, y).Style.Bg
 					if !cellBg.IsDefault() {
@@ -670,14 +694,14 @@ func renderTextContent(buf *Buffer, e *Element, textStyle Style, bg *Style) {
 				}
 				if e.textGradient != nil {
 					t := 0.0
-					if totalRunes > 1 {
-						t = float64(runeOffset) / float64(totalRunes-1)
+					if totalGraphemes > 1 {
+						t = float64(graphemeOffset) / float64(totalGraphemes-1)
 					}
 					style.Fg = e.textGradient.At(t)
-					runeOffset++
+					graphemeOffset++
 				}
-				buf.SetRune(curX, y, r, style)
-				curX += width
+				buf.SetGrapheme(curX, y, cluster.text, style)
+				curX += cluster.width
 			}
 		} else {
 			buf.SetStringClipped(x, y, line, ts, contentRect)

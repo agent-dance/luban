@@ -436,6 +436,14 @@ func (t *RunTool) Execute(ctx context.Context, input map[string]any) (types.Tool
 	}
 	result := executeRunPlan(ctx, scope, plan)
 	if !plan.readOnly {
+		if result.Metadata == nil {
+			result.Metadata = make(map[string]string)
+		}
+		if revisionBound {
+			result.Metadata["verification.safety_reason"] = "plan_not_revision_safe"
+		} else {
+			result.Metadata["verification.safety_reason"] = "revision_receipt_unavailable"
+		}
 		return runCommittedUnverifiedResult(result), nil
 	}
 	if verificationKind, verificationConfig := runVerificationAttestation(plan); verificationKind != "" {
@@ -474,6 +482,15 @@ func runPatchCommitRequiredResult() types.ToolResult {
 
 func runCommittedUnverifiedResult(result types.ToolResult) types.ToolResult {
 	warning := toolRuntimeText(i18n.KeyToolRunCommittedUnverified)
+	switch reason := result.Metadata["verification.safety_reason"]; reason {
+	case "revision_receipt_unavailable":
+		warning += "\n" + toolRuntimeText(i18n.KeyToolRunSealReceiptMissing)
+	case "plan_not_revision_safe":
+		warning += "\n" + toolRuntimeText(i18n.KeyToolRunSealPlanUnsupported)
+	case "":
+	default:
+		warning += "\n" + toolRuntimeFormat(i18n.KeyToolRunSealSafetyFailed, reason)
+	}
 	appendWarning := func(value string) string {
 		if strings.TrimSpace(value) == "" {
 			return warning

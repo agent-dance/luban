@@ -1,0 +1,51 @@
+{
+  "instance_id": "floci-io__floci-112",
+  "language": "java",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785587260.312223,
+  "elapsed_seconds": 169.43,
+  "timeout_seconds": 210,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 164148,
+    "cached_input_tokens": 131072,
+    "cache_read_input_tokens": 131072,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 4397,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.362826,
+  "tool_calls": 9,
+  "tool_calls_by_type": {
+    "Inspect": 6,
+    "ApplyPatch": 1,
+    "Run": 2
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java",
+      "src/test/java/io/github/hectorvent/floci/services/s3/S3IntegrationTest.java"
+    ],
+    "additions": 41,
+    "deletions": 3
+  },
+  "final_text": "Fixed S3 `CopyObject` for non-ASCII source keys.\n\n- Percent-decodes `x-amz-copy-source` as UTF-8 before bucket/key lookup.\n- Preserves literal `+` path characters.\n- Returns `InvalidArgument` for malformed encoding.\n- Added an integration regression test using a Japanese key.\n\nVerification was attempted, but Maven could not run because the wrapper distribution was unavailable locally and network access is disabled; no system Maven is installed.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v8",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 10,
+  "llm_successful_calls": 10,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 167.545776,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v8",
+    "sha256": "b4787d8cd992e51f17f83b6a16bd43f5bc3418f07818315f6146410e0feb01bc"
+  }
+}

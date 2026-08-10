@@ -76,7 +76,7 @@ func TestBDDLegacyCompactedTUIUsageShowsOnlySessionTotal(t *testing.T) {
 	state.SessionInputTokensAtCompact.Set(0)
 	state.SessionCacheReadAtCompact.Set(0)
 	text := collectElementText(NewRootComponent(state, nil, nil).renderStatusBar(300))
-	if !strings.Contains(text, "Session: in 4.1K") || strings.Contains(text, "0 (4.1K total)") || strings.Contains(text, "900") {
+	if !strings.Contains(text, "Session total: in 4.1K") || strings.Contains(text, "0 (4.1K total)") || strings.Contains(text, "900") {
 		t.Fatalf("Then an old session does not fabricate a compact segment: %q", text)
 	}
 }

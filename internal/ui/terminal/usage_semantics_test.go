@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -61,10 +62,10 @@ func TestSessionProjectionFormatsCatalogBillingCurrency(t *testing.T) {
 	}, time.Second)
 
 	projection := BuildSessionUsageProjection(tracker)
-	if projection.CostCurrency != "CNY" || projection.CostUSD != 3 {
-		t.Fatalf("projection cost = %.2f %s, want 3.00 CNY", projection.CostUSD, projection.CostCurrency)
+	if projection.CostCurrency != "USD" || math.Abs(projection.CostUSD-0.42) > 1e-9 {
+		t.Fatalf("projection cost = %.2f %s, want 0.42 USD", projection.CostUSD, projection.CostCurrency)
 	}
-	if got := FormatSessionUsage(i18n.LangZH, projection); !strings.Contains(got, "¥3.0000") || strings.Contains(got, "$") {
+	if got := FormatSessionUsage(i18n.LangZH, projection); !strings.Contains(got, "$0.4200") || strings.Contains(got, "¥") {
 		t.Fatalf("formatted native-currency usage = %q", got)
 	}
 }
@@ -100,7 +101,7 @@ func TestScreenReaderUsageSemanticsUsesSameScopedLabels(t *testing.T) {
 	renderer.Close()
 	text := output.String()
 	for _, want := range []string{
-		"Session: in 136.1K · 97% cached · out 146 · $16.6019",
+		"Session total: in 136.1K · 97% cached · out 146 · $16.6019",
 		"Context: 56% (560.0K/1000.0K)",
 	} {
 		if !strings.Contains(text, want) {

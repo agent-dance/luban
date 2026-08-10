@@ -4,8 +4,14 @@ import "testing"
 
 func TestRuntimeErrorPublicSummaryCoversEveryLanguage(t *testing.T) {
 	for _, lang := range AllLanguages() {
-		if got := Text(lang, KeyRuntimeErrorPublicSummary); got == "" || got == string(KeyRuntimeErrorPublicSummary) {
-			t.Fatalf("missing public runtime-error summary for %s", lang)
+		for _, key := range []Key{
+			KeyRuntimeErrorPublicSummary,
+			KeyRuntimeErrorProviderAPISuggestion,
+			KeyRuntimeErrorProviderAPIsExhausted,
+		} {
+			if got := Text(lang, key); got == "" || got == string(key) {
+				t.Fatalf("missing %s for %s", key, lang)
+			}
 		}
 	}
 }

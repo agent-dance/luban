@@ -1,0 +1,51 @@
+{
+  "instance_id": "ninja-build__ninja-2749",
+  "language": "cpp",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785478462.035635,
+  "elapsed_seconds": 611.051,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 2842646,
+    "cached_input_tokens": 2727424,
+    "output_tokens": 17202,
+    "reasoning_output_tokens": 10520,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 2727424,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 2.455882,
+  "tool_calls": 36,
+  "tool_calls_by_type": {
+    "command_execution": 29,
+    "file_change": 7
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "src/build_test.cc",
+      "src/graph.cc"
+    ],
+    "additions": 99,
+    "deletions": 14
+  },
+  "final_text": "Implemented the dyndep/depfile rebuild fix.\n\n- Dependency scanning now evaluates inputs after all recursive scans complete and retries newly discovered producer edges.\n- Added regression coverage for direct and shared-dyndep producer cases.\n- Bootstrapped Ninja successfully.\n- Verified the reported reproduction: producer and `copy` now rebuild in the same invocation; the next run is clean.\n- `git diff --check` passes.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 39,
+  "llm_successful_calls": 39,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 598.933528,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

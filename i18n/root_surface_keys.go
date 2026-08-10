@@ -31,9 +31,14 @@ const (
 	KeyActivityDescendants              Key = "tui.activity.descendants"
 	KeyLLMRequestProblem                Key = "tui.llm_request.problem"
 	KeyLLMRequestRetrying               Key = "tui.llm_request.retrying"
+	KeyLLMRequestRequestRetrying        Key = "tui.llm_request.request_retrying"
+	KeyLLMRequestReconnecting           Key = "tui.llm_request.reconnecting"
+	KeyLLMRequestProblemDetail          Key = "tui.llm_request.problem_detail"
+	KeyLLMRequestAttempt                Key = "tui.llm_request.attempt"
 	KeyLLMRequestError                  Key = "tui.llm_request.error"
 	KeyLLMRequestMetrics                Key = "tui.llm_request.metrics"
 	KeyLLMRequestInterruptStatus        Key = "tui.llm_request.interrupt_status"
+	KeyAssistantWorkedFor               Key = "tui.assistant.worked_for"
 	KeySessionPickerTitle               Key = "tui.session_picker.title"
 	KeySessionPickerQuery               Key = "tui.session_picker.query"
 	KeySessionPickerEmpty               Key = "tui.session_picker.empty"
@@ -73,6 +78,7 @@ const (
 	KeyImageClipboardError              Key = "tui.image.clipboard_error"
 	KeyImageClipboardEmpty              Key = "tui.image.clipboard_empty"
 	KeyImagePasted                      Key = "tui.image.pasted"
+	KeyImageOpenFailed                  Key = "tui.image.open_failed"
 )
 
 func init() {
@@ -86,7 +92,11 @@ func init() {
 		KeyThinkingTitle:   rootSurface("💭 Thinking:", "💭 思考中：", "💭 Denkt nach:", "💭 思考中:", "💭 생각 중:", "💭 Размышляет:"),
 		KeyActivityWorking: rootSurface("Working", "工作中", "In Arbeit", "作業中", "작업 중", "В работе"), KeyActivityRunning: rootSurface("%d running", "%d 项运行中", "%d laufen", "%d 件実行中", "%d개 실행 중", "%d выполняются"), KeyDecisionReceipt: rootSurface("  Decision receipt: %s", "  决策回执：%s", "  Entscheidungsbeleg: %s", "  決定の記録: %s", "  결정 영수증: %s", "  Квитанция решения: %s"), KeyActivitiesTitle: rootSurface("Activities", "活动", "Aktivitäten", "アクティビティ", "활동", "Действия"), KeyActivityUnassigned: rootSurface("unassigned", "未分配", "nicht zugewiesen", "未割り当て", "미할당", "не назначено"), KeyActivityWorkActor: rootSurface("work=%s actor=%s > ", "工作=%s 执行者=%s > ", "Arbeit=%s Akteur=%s > ", "作業=%s 実行者=%s > ", "작업=%s 실행자=%s > ", "работа=%s исполнитель=%s > "), KeyActivityActor: rootSurface("  actor=%s > ", "  执行者=%s > ", "  Akteur=%s > ", "  実行者=%s > ", "  실행자=%s > ", "  исполнитель=%s > "), KeyActivityDetail: rootSurface("%s %s%s  %s/%s outcome=%s  %s", "%s %s%s  %s/%s 结果=%s  %s", "%s %s%s  %s/%s Ergebnis=%s  %s", "%s %s%s  %s/%s 結果=%s  %s", "%s %s%s  %s/%s 결과=%s  %s", "%s %s%s  %s/%s результат=%s  %s"), KeyActivityDescendants: rootSurface("  descendants=%d worst=%s", "  后代=%d 最差=%s", "  Nachkommen=%d schlechtester=%s", "  子孫=%d 最悪=%s", "  하위=%d 최악=%s", "  потомков=%d худший=%s"),
 		KeyLLMRequestProblem:         rootSurface("LLM API issue", "LLM API 请求出错", "LLM-API-Problem", "LLM API の問題", "LLM API 문제", "Проблема LLM API"),
-		KeyLLMRequestRetrying:        rootSurface("Retry %d/%d in %s · %s", "第 %d/%d 次重试 · %s 后继续 · %s", "Wiederholung %d/%d in %s · %s", "%d/%d 回目の再試行 · %s 後 · %s", "재시도 %d/%d · %s 후 · %s", "Повтор %d/%d через %s · %s"),
+		KeyLLMRequestRetrying:        rootSurface("Retry %d/%d in %s", "第 %d/%d 次重试 · %s 后继续", "Wiederholung %d/%d in %s", "%d/%d 回目の再試行 · %s 後", "재시도 %d/%d · %s 후", "Повтор %d/%d через %s"),
+		KeyLLMRequestRequestRetrying: rootSurface("Request retry %d/%d in %s", "请求重试 %d/%d · %s 后继续", "Anfragewiederholung %d/%d in %s", "リクエスト再試行 %d/%d · %s 後", "요청 재시도 %d/%d · %s 후", "Повтор запроса %d/%d через %s"),
+		KeyLLMRequestReconnecting:    rootSurface("Reconnecting %d/%d in %s", "正在重连 %d/%d · %s 后继续", "Neu verbinden %d/%d in %s", "再接続 %d/%d · %s 後", "재연결 %d/%d · %s 후", "Переподключение %d/%d через %s"),
+		KeyLLMRequestProblemDetail:   rootSurface("Problem: %s", "问题：%s", "Problem: %s", "問題: %s", "문제: %s", "Проблема: %s"),
+		KeyLLMRequestAttempt:         rootSurface("Attempt %d/%d", "尝试 %d/%d", "Versuch %d/%d", "試行 %d/%d", "시도 %d/%d", "Попытка %d/%d"),
 		KeyLLMRequestError:           rootSurface("Error: %s", "错误：%s", "Fehler: %s", "エラー: %s", "오류: %s", "Ошибка: %s"),
 		KeyLLMRequestMetrics:         rootSurface("Connection %s · First token %s", "建立连接 %s · 首 token %s", "Verbindung %s · Erstes Token %s", "接続 %s · 最初の token %s", "연결 %s · 첫 token %s", "Соединение %s · Первый token %s"),
 		KeyLLMRequestInterruptStatus: rootSurface("(%s • Ctrl+C to interrupt)", "(%s • Ctrl+C 中断)", "(%s • Ctrl+C zum Unterbrechen)", "(%s • Ctrl+C で中断)", "(%s • Ctrl+C로 중단)", "(%s • Ctrl+C — прервать)"),
@@ -100,6 +110,22 @@ func init() {
 	} {
 		semanticTranslations[key] = t
 	}
+	semanticTranslations[KeyAssistantWorkedFor] = rootSurface(
+		"Worked for %s",
+		"工作耗时 %s",
+		"Arbeitszeit: %s",
+		"作業時間 %s",
+		"작업 시간 %s",
+		"Время работы: %s",
+	)
+	semanticTranslations[KeyImageOpenFailed] = rootSurface(
+		"Could not open image: %s",
+		"无法打开图片：%s",
+		"Bild konnte nicht geöffnet werden: %s",
+		"画像を開けませんでした: %s",
+		"이미지를 열 수 없습니다: %s",
+		"Не удалось открыть изображение: %s",
+	)
 	semanticTranslations[KeyTranscriptSelectionHintOption] = rootSurface(
 		"Tip: hold Option (Alt) and drag to select text",
 		"提示：按住 Option（Alt）并拖动以选择文字",

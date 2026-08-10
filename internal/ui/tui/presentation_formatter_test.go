@@ -781,3 +781,81 @@ func TestFormatterMapsAgentPlanAndScopeFactsWithoutParsingProse(t *testing.T) {
 		t.Fatalf("scope facts=%+v decision=%+v", scope, scopeDecision)
 	}
 }
+
+func TestApplyPatchPresentationSeparatesParameterChangesAndReceipt(t *testing.T) {
+	formatted := FormatToolPresentationInLanguage(i18n.LangZH, "ApplyPatch", map[string]any{"patch": "raw"}, OutcomeSucceeded, &types.ToolResultBlock{
+		Outcome: types.ToolOutcomeSucceeded,
+		Metadata: map[string]string{
+			"apply_patch.parameter_bytes": "2048",
+			"apply_patch.changed_files":   "3",
+			"apply_patch.additions":       "17",
+			"apply_patch.deletions":       "4",
+			"apply_patch.receipt_bytes":   "71",
+		},
+	})
+	for _, want := range []string{"参数 2.0 KiB", "变更 3 个文件 / +17 -4", "回执 71 B"} {
+		if !strings.Contains(formatted.Summary, want) {
+			t.Fatalf("ApplyPatch summary %q missing %q", formatted.Summary, want)
+		}
+	}
+}
+
+func TestApplyPatchCompletedPresentationCoversParameterScalesAndMultiFileDiffstat(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		metadata map[string]string
+		want     []string
+	}{
+		{
+			name: "one byte parameter",
+			metadata: map[string]string{
+				"apply_patch.parameter_bytes": "1", "apply_patch.changed_files": "1",
+				"apply_patch.additions": "1", "apply_patch.deletions": "0", "apply_patch.receipt_bytes": "71",
+			},
+			want: []string{"参数 1 B", "变更 1 个文件 / +1 -0", "回执 71 B"},
+		},
+		{
+			name: "ten kibibyte multi file parameter",
+			metadata: map[string]string{
+				"apply_patch.parameter_bytes": "10240", "apply_patch.changed_files": "4",
+				"apply_patch.additions": "120", "apply_patch.deletions": "17", "apply_patch.receipt_bytes": "512",
+			},
+			want: []string{"参数 10.0 KiB", "变更 4 个文件 / +120 -17", "回执 512 B"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			formatted := FormatToolPresentationInLanguage(i18n.LangZH, "ApplyPatch", nil, OutcomeSucceeded, &types.ToolResultBlock{
+				Outcome: types.ToolOutcomeSucceeded, Metadata: test.metadata,
+			})
+			for _, want := range test.want {
+				if !strings.Contains(formatted.Summary, want) {
+					t.Fatalf("completed ApplyPatch summary %q missing %q", formatted.Summary, want)
+				}
+			}
+			if strings.Contains(formatted.Summary, "raw") {
+				t.Fatalf("completed ApplyPatch summary leaked parameter content: %q", formatted.Summary)
+			}
+		})
+	}
+}
+
+func TestInspectPresentationSurfacesStructuredPartialCause(t *testing.T) {
+	failures := `[{"request_id":"root","kind":"read","path":".","code":"read_is_directory","message":"目录不能作为文件读取"}]`
+	formatted := FormatToolPresentationInLanguage(i18n.LangZH, "Inspect", nil, OutcomePartial, &types.ToolResultBlock{
+		Outcome: types.ToolOutcomePartial,
+		Metadata: map[string]string{
+			"inspect.partial_failures":         failures,
+			"inspect.partial_failure_count":    "1",
+			"inspect.successful_request_count": "2",
+		},
+	})
+	if !strings.Contains(formatted.Summary, "1 项请求失败") || !strings.Contains(formatted.Summary, "另有 2 项请求成功") {
+		t.Fatalf("Inspect summary = %q", formatted.Summary)
+	}
+	details := strings.Join(formatted.DetailLines, "\n")
+	for _, want := range []string{"root", "read", "read_is_directory", "目录不能作为文件读取"} {
+		if !strings.Contains(details, want) {
+			t.Fatalf("Inspect details %q missing %q", details, want)
+		}
+	}
+}

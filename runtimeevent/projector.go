@@ -6,6 +6,8 @@ package runtimeevent
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/types"
@@ -75,15 +77,28 @@ type ProjectedRuntimeEvent struct {
 	ActorID           string `json:"actor_id,omitempty"`
 	ActorType         string `json:"actor_type,omitempty"`
 
-	Outcome     types.ToolOutcome         `json:"outcome,omitempty"`
-	Code        string                    `json:"code"`
-	Message     string                    `json:"message"`
-	PublicKey   i18n.Key                  `json:"public_key,omitempty"`
-	PublicArgs  []any                     `json:"public_args,omitempty"`
-	EvidenceRef *types.RuntimeEvidenceRef `json:"evidence_ref,omitempty"`
+	Outcome         types.ToolOutcome          `json:"outcome,omitempty"`
+	Code            string                     `json:"code"`
+	Message         string                     `json:"message"`
+	PublicKey       i18n.Key                   `json:"public_key,omitempty"`
+	PublicArgs      []any                      `json:"public_args,omitempty"`
+	EvidenceRef     *types.RuntimeEvidenceRef  `json:"evidence_ref,omitempty"`
+	ProviderRequest *ProviderRequestDiagnostic `json:"provider_request,omitempty"`
 
 	PrivateCause    string         `json:"private_cause,omitempty"`
 	PrivateMetadata map[string]any `json:"private_metadata,omitempty"`
+}
+
+// ProviderRequestDiagnostic contains a deliberately narrow, display-safe view
+// of one provider request failure. Provider-controlled prose and raw endpoint
+// URLs remain private evidence.
+type ProviderRequestDiagnostic struct {
+	Provider            string   `json:"provider,omitempty"`
+	APIFormat           string   `json:"api_format,omitempty"`
+	Endpoint            string   `json:"endpoint,omitempty"`
+	RequestID           string   `json:"request_id,omitempty"`
+	AttemptedAPIFormats []string `json:"attempted_api_formats,omitempty"`
+	Suggestion          string   `json:"suggestion,omitempty"`
 }
 
 // AudienceProjector is stateless and safe for concurrent use.
@@ -131,12 +146,87 @@ func (AudienceProjector) Project(event types.RuntimeEvent, options ProjectionOpt
 	}
 	if options.Redaction == RedactionDiagnostic || options.Redaction == RedactionRaw {
 		projected.EvidenceRef = cloneEvidenceRef(event.EvidenceRef)
+		if apiError := runtimeEventAPIError(event); apiError != nil {
+			projected.ProviderRequest = projectProviderRequestDiagnostic(apiError, lang)
+		}
 	}
 	if options.Redaction == RedactionRaw {
 		projected.PrivateCause = rawCauseText(event.PrivateCause)
 		projected.PrivateMetadata = cloneMetadata(event.PrivateMetadata)
 	}
 	return projected, nil
+}
+
+func runtimeEventAPIError(event types.RuntimeEvent) *types.APIError {
+	apiError, _ := event.PrivateMetadata["api_error"].(*types.APIError)
+	return apiError
+}
+
+func projectProviderRequestDiagnostic(apiError *types.APIError, lang i18n.Language) *ProviderRequestDiagnostic {
+	if apiError == nil {
+		return nil
+	}
+	providerName := safeDiagnosticIdentifier(apiError.Provider)
+	apiFormat := safeAPIFormat(apiError.APIFormat)
+	endpoint := safeDiagnosticEndpoint(apiError.Endpoint)
+	requestID := safeDiagnosticIdentifier(apiError.RequestID)
+	attempted := make([]string, 0, len(apiError.AttemptedAPIFormats))
+	for _, candidate := range apiError.AttemptedAPIFormats {
+		if format := safeAPIFormat(candidate); format != "" {
+			attempted = append(attempted, format)
+		}
+	}
+	suggested := safeAPIFormat(apiError.SuggestedAPIFormat)
+	diagnostic := &ProviderRequestDiagnostic{
+		Provider: providerName, APIFormat: apiFormat, Endpoint: endpoint,
+		RequestID: requestID, AttemptedAPIFormats: attempted,
+	}
+	switch {
+	case len(attempted) >= 2:
+		diagnostic.Suggestion = i18n.Format(lang, i18n.KeyRuntimeErrorProviderAPIsExhausted, attempted[0], attempted[1])
+	case apiFormat != "" && suggested != "":
+		diagnostic.Suggestion = i18n.Format(lang, i18n.KeyRuntimeErrorProviderAPISuggestion, apiFormat, suggested, apiFormat)
+	}
+	if diagnostic.Provider == "" && diagnostic.APIFormat == "" && diagnostic.Endpoint == "" &&
+		diagnostic.RequestID == "" && len(diagnostic.AttemptedAPIFormats) == 0 && diagnostic.Suggestion == "" {
+		return nil
+	}
+	return diagnostic
+}
+
+func safeAPIFormat(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "responses":
+		return "responses"
+	case "chat-completions":
+		return "chat-completions"
+	default:
+		return ""
+	}
+}
+
+func safeDiagnosticIdentifier(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 128 {
+		return ""
+	}
+	for _, char := range value {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || strings.ContainsRune("._:-", char) {
+			continue
+		}
+		return ""
+	}
+	return value
+}
+
+func safeDiagnosticEndpoint(value string) string {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" ||
+		parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || !strings.HasPrefix(parsed.Path, "/…") {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 func validateProjectionOptions(options ProjectionOptions) error {

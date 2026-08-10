@@ -1,0 +1,50 @@
+{
+  "instance_id": "floci-io__floci-112",
+  "language": "java",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785479312.543175,
+  "elapsed_seconds": 246.639,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 367611,
+    "cached_input_tokens": 283648,
+    "cache_read_input_tokens": 283648,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 4867,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.707649,
+  "tool_calls": 13,
+  "tool_calls_by_type": {
+    "Inspect": 11,
+    "ApplyPatch": 1,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 1,
+    "files": [
+      "src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java"
+    ],
+    "additions": 31,
+    "deletions": 8
+  },
+  "final_text": "Inspected the current implementation and regression tests; no further source change is warranted. This query lacks authority to adopt or seal the existing unsealed revision.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-representative20-20260731",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 15,
+  "llm_successful_calls": 15,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 165.280828,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-representative20-20260731",
+    "sha256": "484cdff16065c275cb60e545e37ae7f36b6afef71519309bd329cee0f9c413ac"
+  }
+}

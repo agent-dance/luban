@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	executioncontract "github.com/agent-dance/luban/internal/contracts/execution"
 
@@ -38,6 +39,8 @@ const (
 	defaultMaxTurns              = 100
 	escalatedMaxTokens           = 64000
 	maxOutputTokensRecoveryLimit = 3
+	toolInputRecoveryLimit       = 1
+	invalidToolInputPreviewBytes = 4096
 )
 
 func queryTurnIdentity(snapshot QueryConfigSnapshot, queryID string, turnCount int) (turnID, actorID, workUnitID string) {
@@ -111,12 +114,16 @@ type Config struct {
 	SessionProjectDir   string // durable session namespace; remains stable while a worktree changes ProjectRoot
 	ProjectRoot         string // immutable workspace identity; distinct from an execution CWD
 	TranscriptPath      string // readable persisted transcript path for compact summaries
-	AgentID             string // non-empty marks subagent runs and disables token-budget continuation
-	AgentType           string // subagent type/name for SubagentStop hooks
-	AgentTranscriptPath string // readable persisted transcript path for SubagentStop hooks
-	ReasoningEffort     string // "low", "medium", "high" for reasoning models
-	ServiceTier         provider.ServiceTier
-	PinnedModel         bool // reject provider-directed model fallback
+	// TranscriptPathResolver refreshes content-addressed transcript paths when
+	// compaction starts; it prevents a long-lived loop from exposing a genesis
+	// artifact after the session manifest advances.
+	TranscriptPathResolver func() string
+	AgentID                string // non-empty marks subagent runs and disables token-budget continuation
+	AgentType              string // subagent type/name for SubagentStop hooks
+	AgentTranscriptPath    string // readable persisted transcript path for SubagentStop hooks
+	ReasoningEffort        string // "low", "medium", "high" for reasoning models
+	ServiceTier            provider.ServiceTier
+	PinnedModel            bool // reject provider-directed model fallback
 	// StreamingToolExecution starts tool execution when a tool_use content block
 	// closes. Default false preserves the previous message-stop path.
 	StreamingToolExecution bool
@@ -722,13 +729,14 @@ func New(p provider.Provider, reg *registry.Registry, cfg Config) *QueryLoop {
 		cw.MaxOutputTokens = cfg.MaxOutputTokens
 		ql.ctxWindow = cw
 		ql.compactor = &compact.SummaryCompactor{
-			SummarizeMessages:  compact.NewLLMStructuredSummarizeFuncWithServiceTier(p, cfg.ServiceTier),
-			KeepRecent:         20,
-			TranscriptPath:     cfg.TranscriptPath,
-			AttachmentProvider: ql.postCompactAttachmentProvider(),
-			SessionID:          cfg.SessionID,
-			CWD:                cfg.CWD,
-			HookRunner:         cfg.HookRunner,
+			SummarizeMessages:      compact.NewLLMStructuredSummarizeFuncWithServiceTier(p, cfg.ServiceTier),
+			KeepRecent:             20,
+			TranscriptPath:         cfg.TranscriptPath,
+			TranscriptPathResolver: cfg.TranscriptPathResolver,
+			AttachmentProvider:     ql.postCompactAttachmentProvider(),
+			SessionID:              cfg.SessionID,
+			CWD:                    cfg.CWD,
+			HookRunner:             cfg.HookRunner,
 		}
 	}
 	return ql
@@ -1028,6 +1036,7 @@ func (q *QueryLoop) skillCatalogStateLocked() SkillCatalogRuntimeState {
 // the session-lifetime tool-use ledger while clearing Responses chaining and
 // all ledgers whose evidence belonged to the replaced context.
 func (q *QueryLoop) installVisibleHistory(messages []types.Message) []types.Message {
+	messages = repairInstalledMissingToolResults(messages)
 	q.advanceContinuationEpoch()
 	q.skillCatalogMu.Lock()
 	q.ensureSkillCatalogEpochLocked()
@@ -1125,6 +1134,7 @@ func skillCatalogInsertionIndexForTransition(messages []types.Message, transitio
 	switch transition {
 	case QueryTransitionReactiveCompactRetry,
 		QueryTransitionMaxOutputTokensRecovery,
+		QueryTransitionToolInputRecovery,
 		QueryTransitionStopHookBlocking,
 		QueryTransitionGoalContinuation,
 		QueryTransitionTokenBudgetContinuation,
@@ -1504,6 +1514,63 @@ func (q *QueryLoop) maxOutputTokensRecoveryMessage() types.Message {
 	return q.sealRuntimeControlMessage(message)
 }
 
+func (q *QueryLoop) toolInputRecoveryMessage(toolNames string) types.Message {
+	message := types.UserMessage(i18n.Format(
+		i18n.DetectOrLoadLanguage(),
+		i18n.KeyLoopVisibleToolInputRecovery,
+		toolNames,
+	))
+	message.IsMeta = true
+	message.InternalKind = types.InternalMessageKindToolInputRecovery
+	return q.sealRuntimeControlMessage(message)
+}
+
+func invalidToolUseNames(invalid []types.InvalidToolUseBlock) string {
+	return strings.Join(invalidToolUseNameList(invalid), ", ")
+}
+
+func invalidToolUseNameList(invalid []types.InvalidToolUseBlock) []string {
+	seen := make(map[string]struct{}, len(invalid))
+	names := make([]string, 0, len(invalid))
+	for _, call := range invalid {
+		name := strings.TrimSpace(call.Name)
+		if name == "" {
+			name = strings.TrimSpace(call.ID)
+		}
+		if name == "" {
+			name = "?"
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	return names
+}
+
+func containsToolInputCorrection(toolUses []types.ToolUseBlock, expected []string) bool {
+	if len(toolUses) == 0 {
+		return false
+	}
+	if len(expected) == 0 {
+		return true
+	}
+	for _, name := range expected {
+		found := false
+		for _, toolUse := range toolUses {
+			if toolUse.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 // Run sends a user message and runs the agentic loop until completion.
 func (q *QueryLoop) Run(ctx context.Context, userMessage string, onEvent func(streamevent.Event)) error {
 	q.messages = append(q.messages, types.UserMessage(userMessage))
@@ -1545,7 +1612,7 @@ func (q *QueryLoop) providerParams(state *QueryState, snapshot QueryConfigSnapsh
 }
 
 func (q *QueryLoop) providerParamsBase(state *QueryState, snapshot QueryConfigSnapshot, messages []types.Message) provider.Params {
-	messages = compact.StripContentReplacementBlocks(messages)
+	messages = compact.StripProviderPrivateBlocks(messages)
 	messages = collapseMaxOutputTokensRecoveryMessages(messages)
 	userContext := snapshot.UserContext
 	if snapshot.GoalRuntime != nil {
@@ -1809,6 +1876,7 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 	if err != nil {
 		return i18n.WrapInternalError(i18n.KeyLoopQueryFlightStateInvalid, err)
 	}
+	investigationTracker := &agenticInvestigationTracker{}
 	if q.executionOwner == nil {
 		q.executionOwner = executioncontract.NewOwner()
 	}
@@ -1928,6 +1996,7 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 				// unambiguous cumulative retry counter used by telemetry parsers.
 				requestStatus.Attempt = retry.Attempt
 				requestStatus.RetryDelayMilliseconds = retry.Delay.Milliseconds()
+				requestStatus.RetryKind = retry.Kind
 				if retry.Err != nil {
 					requestStatus.Error = retry.Err.Error()
 				}
@@ -1981,7 +2050,7 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 		if state.AutoCompactTracking.Compacted && q.SkillCatalogState().ContextEpoch == epochBeforePrepare {
 			state.Messages = q.installVisibleHistory(state.Messages)
 		}
-		apiMessages := prepared.Messages
+		apiMessages := compact.StripProviderPrivateBlocks(prepared.Messages)
 
 		// Plan exactly one developer catalog projection after all preparation that
 		// can replace or project history. Insert that same projection into durable
@@ -2027,8 +2096,9 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 		responseChainRepairUsed := false
 
 		// --- Recovery path 1: transient API error retry ---
-		// Every raw call below, including provider-internal pre-stream retries and
-		// later uncommitted stream replays, consumes one shared generation budget.
+		// Every stream connection below consumes the stream-reconnect budget.
+		// Provider-internal pre-stream HTTP failures use a fresh, independent
+		// request budget for each connection attempt.
 		maxStreamAttempts := attemptController.MaxAttempts()
 		var stream <-chan types.StreamEvent
 		var streamAttempt providerAttemptIdentity
@@ -2106,6 +2176,7 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 			retryStatus.RetryCount = attemptController.Attempts()
 			retryStatus.MaxRetries = attemptController.MaxAttempts() - 1
 			retryStatus.RetryDelayMilliseconds = delay.Milliseconds()
+			retryStatus.RetryKind = "stream"
 			retryStatus.Error = streamErr.Error()
 			onEvent(streamevent.Event{
 				Type: streamevent.EventRequestRetry, TurnCount: turnCount,
@@ -2219,35 +2290,64 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 				}
 
 				delay, canRetry := attemptController.RetryDelay(replayCause)
-				if !canRetry || provider.IsAttemptLimit(replayCause) {
+				transportFallback := false
+				contract := provider.ClassifyAttemptError(replayCause)
+				if (!canRetry || provider.IsAttemptLimit(replayCause)) &&
+					contract.Stage == types.ProviderErrorStageStream &&
+					attemptController.Attempts() >= attemptController.MaxAttempts() {
+					if from, to, activated := provider.TryFallbackTransport(q.provider); activated {
+						onEvent(NewSystemWarningEvent(
+							i18n.KeyRuntimeStreamTransportFallback,
+							[]any{from, to},
+							replayCause,
+							map[string]any{"from_transport": from, "to_transport": to},
+							turnCount,
+						))
+						attemptController = provider.AttemptControllerForProvider(q.provider, fallbackRetryConfig)
+						transportFallback = true
+						canRetry = true
+						delay = 0
+					}
+				}
+				if !canRetry || (provider.IsAttemptLimit(replayCause) && !transportFallback) {
 					break
 				}
-				retryStatus := streamAttempt.requestStatus(time.Now())
-				retryStatus.Attempt = attemptController.Attempts()
-				retryStatus.RetryCount = attemptController.Attempts()
-				retryStatus.MaxRetries = attemptController.MaxAttempts() - 1
-				retryStatus.RetryDelayMilliseconds = delay.Milliseconds()
-				retryStatus.Error = replayCause.Error()
-				onEvent(streamevent.Event{
-					Type: streamevent.EventRequestRetry, TurnCount: turnCount,
-					RequestStatus: retryStatus,
-				})
-				onEvent(NewSystemWarningEvent(
-					i18n.KeyRuntimeStreamRetryFullHistory,
-					nil,
-					replayCause,
-					nil,
-					turnCount,
-				))
-				if waitErr := attemptController.Wait(ctx, delay); waitErr != nil {
-					return waitErr
+				if !transportFallback {
+					retryStatus := streamAttempt.requestStatus(time.Now())
+					retryStatus.Attempt = attemptController.Attempts()
+					retryStatus.RetryCount = attemptController.Attempts()
+					retryStatus.MaxRetries = attemptController.MaxAttempts() - 1
+					retryStatus.RetryDelayMilliseconds = delay.Milliseconds()
+					retryStatus.RetryKind = "stream"
+					retryStatus.Error = replayCause.Error()
+					onEvent(streamevent.Event{
+						Type: streamevent.EventRequestRetry, TurnCount: turnCount,
+						RequestStatus: retryStatus,
+					})
+					onEvent(NewSystemWarningEvent(
+						i18n.KeyRuntimeStreamRetryFullHistory,
+						[]any{attemptController.Attempts(), attemptController.MaxAttempts() - 1, delay},
+						replayCause,
+						map[string]any{
+							"retry_count":    attemptController.Attempts(),
+							"max_retries":    attemptController.MaxAttempts() - 1,
+							"retry_delay_ms": delay.Milliseconds(),
+						},
+						turnCount,
+					))
+					if waitErr := attemptController.Wait(ctx, delay); waitErr != nil {
+						return waitErr
+					}
 				}
 
 				stream2, retryAttempt, createErr := createProviderStream(params)
 				streamAttempt = retryAttempt
 				if createErr != nil {
 					replayCause = createErr
-					if !attemptController.CanRetry(createErr) || provider.IsAttemptLimit(createErr) {
+					createContract := provider.ClassifyAttemptError(createErr)
+					fallbackEligible := createContract.Stage == types.ProviderErrorStageStream &&
+						attemptController.Attempts() >= attemptController.MaxAttempts()
+					if (!attemptController.CanRetry(createErr) || provider.IsAttemptLimit(createErr)) && !fallbackEligible {
 						break
 					}
 					continue
@@ -2260,7 +2360,10 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 				if replayCause == nil {
 					return nil
 				}
-				if !attemptController.CanRetry(replayCause) {
+				replayContract := provider.ClassifyAttemptError(replayCause)
+				fallbackEligible := replayContract.Stage == types.ProviderErrorStageStream &&
+					attemptController.Attempts() >= attemptController.MaxAttempts()
+				if !attemptController.CanRetry(replayCause) && !fallbackEligible {
 					break
 				}
 			}
@@ -2394,7 +2497,7 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 		}
 
 		// --- Recovery path 2: max_output_tokens escalation/recovery ---
-		if stopReason != nil && *stopReason == types.StopReasonMaxTokens && len(assistantMsg.GetToolUses()) == 0 {
+		if stopReason != nil && *stopReason == types.StopReasonMaxTokens && len(assistantMsg.GetToolUses()) == 0 && len(assistantMsg.GetInvalidToolUses()) == 0 {
 			goalRecoveryMustStop := func() bool {
 				tracked, saveErr := saveGoalAssistantTurnUsage(snapshot.GoalRuntime, usage, time.Now())
 				if saveErr != nil {
@@ -2550,7 +2653,94 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 			}
 		}
 
+		invalidToolUses := assistantMsg.GetInvalidToolUses()
+		if len(invalidToolUses) > 0 {
+			if streamingExecutor != nil {
+				streamingExecutor.Discard()
+			}
+			// Any provider-native continuation was authenticated against the
+			// malformed output item and must never be replayed during correction.
+			assistantMsg.ClearProviderContinuation()
+			state.Messages = append(state.Messages, *assistantMsg)
+			if _, saveErr := saveGoalAssistantTurnUsage(snapshot.GoalRuntime, usage, time.Now()); saveErr != nil {
+				emitGoalTurnSaveWarning(onEvent, turnCount, saveErr)
+			}
+
+			// The committed server response contains an invalid function call, so
+			// it cannot be a safe previous_response_id parent. Retry from the
+			// durable full-history projection instead.
+			q.lastResponseID = ""
+			q.lastEnvelopeFingerprint = ""
+			q.disableResponseChain = true
+			toolNames := invalidToolUseNames(invalidToolUses)
+			metadata := map[string]any{
+				"reason":           "invalid_tool_input",
+				"tool_names":       toolNames,
+				"invalid_calls":    len(invalidToolUses),
+				"correction_limit": toolInputRecoveryLimit,
+			}
+			if state.ToolInputRecoveryCount < toolInputRecoveryLimit {
+				state.ToolInputRecoveryCount++
+				state.ToolInputRecoveryTools = invalidToolUseNameList(invalidToolUses)
+				metadata["correction_attempt"] = state.ToolInputRecoveryCount
+				state.Messages = append(state.Messages, q.toolInputRecoveryMessage(toolNames))
+				state.Transition = QueryTransitionToolInputRecovery
+				onEvent(NewSystemWarningEvent(
+					i18n.KeyRuntimeToolInputRecoveryRetry,
+					[]any{toolNames, state.ToolInputRecoveryCount, toolInputRecoveryLimit},
+					nil,
+					metadata,
+					turnCount,
+				))
+				onEvent(streamevent.Event{Type: streamevent.EventTurnEnd, Usage: usage, TurnCount: turnCount})
+				continue
+			}
+
+			onEvent(NewSystemWarningEvent(
+				i18n.KeyRuntimeToolInputRecoveryFailed,
+				[]any{toolNames, state.ToolInputRecoveryCount},
+				nil,
+				metadata,
+				turnCount,
+			))
+			q.startTurnSideEffects(ctx, snapshot, state.Messages)
+			onEvent(streamevent.Event{Type: streamevent.EventTurnEnd, Usage: usage, TurnCount: turnCount})
+			recoveryErr := i18n.NewError(i18n.KeyLoopToolInputRecoveryFailed, toolNames, state.ToolInputRecoveryCount)
+			q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(recoveryErr.Error()))
+			return recoveryErr
+		}
+
 		toolUses := assistantMsg.GetToolUses()
+		if state.ToolInputRecoveryCount > 0 && !containsToolInputCorrection(toolUses, state.ToolInputRecoveryTools) {
+			if streamingExecutor != nil {
+				streamingExecutor.Discard()
+			}
+			state.Messages = append(state.Messages, *assistantMsg)
+			if _, saveErr := saveGoalAssistantTurnUsage(snapshot.GoalRuntime, usage, time.Now()); saveErr != nil {
+				emitGoalTurnSaveWarning(onEvent, turnCount, saveErr)
+			}
+			toolNames := strings.Join(state.ToolInputRecoveryTools, ", ")
+			onEvent(NewSystemWarningEvent(
+				i18n.KeyRuntimeToolInputRecoveryAbandoned,
+				[]any{toolNames},
+				nil,
+				map[string]any{
+					"reason":             "tool_input_correction_missing",
+					"tool_names":         toolNames,
+					"correction_attempt": state.ToolInputRecoveryCount,
+				},
+				turnCount,
+			))
+			q.startTurnSideEffects(ctx, snapshot, state.Messages)
+			onEvent(streamevent.Event{Type: streamevent.EventTurnEnd, Usage: usage, TurnCount: turnCount})
+			recoveryErr := i18n.NewError(i18n.KeyLoopToolInputRecoveryAbandoned, toolNames)
+			q.runStopFailure(ctx, snapshot, onEvent, queryID, turnCount, types.AssistantMessage(recoveryErr.Error()))
+			return recoveryErr
+		}
+		if state.ToolInputRecoveryCount > 0 {
+			state.ToolInputRecoveryCount = 0
+			state.ToolInputRecoveryTools = nil
+		}
 		if identityErr := validateToolUseIdentities(toolUses, q.seenToolUseIDs); identityErr != nil {
 			if streamingExecutor != nil {
 				streamingExecutor.Discard()
@@ -2612,7 +2802,7 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 				switch flightDecision.Action {
 				case agenticFlightTerminalContinue:
 					onEvent(newAgenticFlightDispositionEvent(flightController, flightDecision, turnCount))
-					state.Messages = append(state.Messages, flightController.verificationMessage(q))
+					state.Messages = append(state.Messages, flightController.verificationMessage(q, flightDecision.Blocker))
 					state.Transition = QueryTransitionFlightVerification
 					onEvent(streamevent.Event{Type: streamevent.EventTurnEnd, Usage: usage, TurnCount: turnCount})
 					continue
@@ -2883,9 +3073,12 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 			emitUserInterruption(onEvent, turnCount, "interrupt")
 			return i18n.WrapError(i18n.KeyLoopQueryToolExecutionInterrupted, ctx.Err())
 		}
-		if err := flightController.observeToolRound(toolUses, toolResults); err != nil {
-			return i18n.WrapInternalError(i18n.KeyLoopQueryFlightStateInvalid, err)
-		}
+		// Observe flight state now, but do not return its error until the model-
+		// visible tool results have been committed below. A reducer failure must
+		// never leave the already-persisted assistant tool_use without its
+		// protocol-mandated matching tool_result.
+		flightErr := flightController.observeToolRound(toolUses, toolResults)
+		investigationTracker.observe(toolUses, toolResults)
 
 		// Persist oversized tool results to disk, keeping only a preview
 		if q.resultStore != nil {
@@ -2908,33 +3101,6 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 				toolResults[i] = processed
 			}
 		}
-		q.learnLoadedTools(toolResults)
-		goalStopAfterTool := goalTurnSaveErr != nil
-		if !goalStopAfterTool && goalTurnTracked {
-			reached, current, err := goalTokenBudgetReached(snapshot.GoalRuntime)
-			if err != nil {
-				emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalLoadToolExecution, nil, err)
-				goalStopAfterTool = true
-			}
-			if reached {
-				emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalBudgetReached, []any{current.Usage, current.TokenBudget}, nil)
-				goalStopAfterTool = true
-			}
-		}
-		if restartMessage, restart := planModeContextRestart(toolResults); restart {
-			// Clear the assistant tool_use together with the old transcript, then
-			// restart from the approved-plan prose. This avoids an orphaned
-			// tool_result while matching the TS clear-context handoff.
-			state.Messages = q.installVisibleHistory([]types.Message{types.UserMessage(restartMessage)})
-			state.Transition = QueryTransitionPlanModeContextRestart
-			onEvent(streamevent.Event{Type: streamevent.EventTurnEnd, Usage: usage, TurnCount: turnCount})
-			if goalStopAfterTool {
-				q.startTurnSideEffects(ctx, snapshot, state.Messages)
-				return nil
-			}
-			continue
-		}
-
 		// NewMessages is an in-process attachment side channel. Append those
 		// messages below, but do not persist a second JSON copy inside the tool
 		// result: nested copies have no manifest provenance refs after restart.
@@ -2956,6 +3122,41 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 		if len(records) > 0 {
 			state.Messages = q.installContentReplacementRecords(state.Messages, records)
 		}
+		if flightErr != nil {
+			return i18n.WrapInternalError(i18n.KeyLoopQueryFlightStateInvalid, flightErr)
+		}
+
+		q.learnLoadedTools(toolResults)
+		goalStopAfterTool := goalTurnSaveErr != nil
+		if !goalStopAfterTool && goalTurnTracked {
+			reached, current, err := goalTokenBudgetReached(snapshot.GoalRuntime)
+			if err != nil {
+				emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalLoadToolExecution, nil, err)
+				goalStopAfterTool = true
+			}
+			if reached {
+				emitGoalContinuationWarning(onEvent, turnCount, i18n.KeyRuntimeGoalBudgetReached, []any{current.Usage, current.TokenBudget}, nil)
+				goalStopAfterTool = true
+			}
+		}
+		if restartMessage, restart := planModeContextRestart(toolResults); restart {
+			// Clear the assistant tool_use together with the old transcript, then
+			// restart from the approved-plan prose. This avoids an orphaned
+			// tool_result while matching the TS clear-context handoff.
+			state.Messages = q.installVisibleHistory([]types.Message{types.UserMessage(restartMessage)})
+			state.Transition = QueryTransitionPlanModeContextRestart
+			if goalStopAfterTool {
+				onEvent(streamevent.Event{Type: streamevent.EventTurnEnd, Usage: usage, TurnCount: turnCount})
+				q.startTurnSideEffects(ctx, snapshot, state.Messages)
+				return nil
+			}
+			onEvent(streamevent.Event{
+				Type: streamevent.EventProgress, TurnCount: turnCount,
+				Progress: &streamevent.ProgressEvent{Stage: streamevent.ProgressStageLLMWaitingAfterTools},
+			})
+			onEvent(streamevent.Event{Type: streamevent.EventTurnEnd, Usage: usage, TurnCount: turnCount})
+			continue
+		}
 
 		if err := q.appendPostToolAttachments(ctx, state, snapshot, toolUses, toolResults, reminders); err != nil {
 			return err
@@ -2963,6 +3164,12 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 		commitVisibleReadEvidenceReceipts(state.Messages, toolResults)
 		if err := q.commitVisibleSkillExecutionReceipts(state.Messages, toolUses, toolResults); err != nil {
 			return err
+		}
+		if investigationTracker.takeNudge() {
+			state.Messages = append(state.Messages, investigationMessage(q))
+		}
+		if investigationTracker.takeVerificationConvergenceNudge() {
+			state.Messages = append(state.Messages, verificationConvergenceMessage(q))
 		}
 		if flightController != nil && flightController.repeatedFailureTriggered() {
 			decision, flightErr := flightController.blockRepeatedFailure()
@@ -3008,6 +3215,10 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 		if err := enforceMessageHistoryLimit(state.Messages); err != nil {
 			return err
 		}
+		onEvent(streamevent.Event{
+			Type: streamevent.EventProgress, TurnCount: turnCount,
+			Progress: &streamevent.ProgressEvent{Stage: streamevent.ProgressStageLLMWaitingAfterTools},
+		})
 	}
 
 	maxTurnsErr := state.maxTurnsExceeded(snapshot.MaxTurns)
@@ -3129,12 +3340,17 @@ type blockState struct {
 	signatureModel string
 	providerItemID string
 	providerStatus string
+	thinkingKind   types.ThinkingKind
 	text           strings.Builder // For text content
 	thinking       strings.Builder // NEW: For thinking content (separate)
 	toolInput      strings.Builder
 	rawToolInput   strings.Builder
-	toolUseID      string
-	rawJSON        json.RawMessage
+	// lastReportedToolInputBytes throttles content-free progress updates while
+	// preserving an exact final count. It never stores or projects input text.
+	lastReportedToolInputBytes int
+	toolInputProgressReported  bool
+	toolUseID                  string
+	rawJSON                    json.RawMessage
 }
 
 // processStream reads stream events and builds the assistant message.
@@ -3160,6 +3376,34 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 	var providerContinuation *types.ProviderContinuation
 	committed := false
 	blocks := make(map[int]*blockState) // per-block accumulator keyed by index
+	emitToolInputProgress := func(bs *blockState, force bool) {
+		if bs == nil || bs.toolName == "" {
+			return
+		}
+		inputBytes := bs.toolInput.Len()
+		if bs.toolType == types.ToolDefinitionTypeCustom {
+			inputBytes = bs.rawToolInput.Len()
+		}
+		previous := bs.lastReportedToolInputBytes
+		if !force && bs.toolInputProgressReported && inputBytes > 0 && previous > 0 && inputBytes/1024 == previous/1024 {
+			return
+		}
+		if bs.toolInputProgressReported && inputBytes == previous {
+			return
+		}
+		bs.lastReportedToolInputBytes = inputBytes
+		bs.toolInputProgressReported = true
+		onEvent(streamevent.Event{
+			Type: streamevent.EventProgress, TurnCount: turnCount,
+			Progress: &streamevent.ProgressEvent{
+				Stage: streamevent.ProgressStageLLMToolInput,
+				Metadata: map[string]any{
+					"tool_name":        bs.toolName,
+					"tool_input_bytes": inputBytes,
+				},
+			},
+		})
+	}
 	// Streaming executors are intentionally not started while content blocks are
 	// still arriving. The complete batch is validated by runLoop before tools are
 	// added, so a later duplicate ID cannot race an earlier tool side effect.
@@ -3197,6 +3441,13 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 					bs.toolID = event.ContentBlock.ID
 					bs.toolName = event.ContentBlock.Name
 					bs.toolType = event.ContentBlock.ToolType
+					bs.providerItemID = event.ContentBlock.ProviderItemID
+					bs.providerStatus = event.ContentBlock.ProviderStatus
+					// A tool-use block is the earliest honest boundary at which the
+					// runtime knows that the model is generating tool input. Keep the
+					// event content-free: partial JSON can be large and may contain
+					// sensitive commands or paths.
+					emitToolInputProgress(bs, false)
 				}
 				if event.ContentBlock.Type == types.ContentTypeThinking {
 					bs.signature = event.ContentBlock.Signature
@@ -3204,6 +3455,7 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 					bs.signatureModel = event.ContentBlock.SignatureModel
 					bs.providerItemID = event.ContentBlock.ID
 					bs.providerStatus = event.ContentBlock.ProviderStatus
+					bs.thinkingKind = event.ContentBlock.ThinkingKind
 				}
 			}
 			blocks[event.Index] = bs
@@ -3225,6 +3477,9 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 				case "thinking_delta":
 					// Phase 3: Fix - use separate thinking accumulator instead of bs.text
 					bs.thinking.WriteString(event.Delta.Thinking)
+					if event.Delta.ThinkingKind == types.ThinkingKindRaw || bs.thinkingKind == "" {
+						bs.thinkingKind = event.Delta.ThinkingKind
+					}
 					onEvent(streamevent.Event{Type: streamevent.EventThinking, Text: event.Delta.Thinking, TurnCount: turnCount})
 				case "signature_delta":
 					// Opaque provider continuation state is retained solely for
@@ -3238,11 +3493,25 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 					if event.Delta.ProviderStatus != "" {
 						bs.providerStatus = event.Delta.ProviderStatus
 					}
+				case "thinking_state_final":
+					if event.Delta.ID != "" {
+						bs.providerItemID = event.Delta.ID
+					}
+					if event.Delta.ProviderStatus != "" {
+						bs.providerStatus = event.Delta.ProviderStatus
+					}
+					if event.Delta.Signature != "" {
+						bs.signature = event.Delta.Signature
+						bs.signatureKind = event.Delta.SignatureKind
+						bs.signatureModel = event.Delta.SignatureModel
+					}
 				case "input_json_delta":
 					bs.toolInput.WriteString(event.Delta.PartialJSON)
+					emitToolInputProgress(bs, false)
 				case "input_text_delta":
 					bs.toolType = types.ToolDefinitionTypeCustom
 					bs.rawToolInput.WriteString(event.Delta.PartialText)
+					emitToolInputProgress(bs, false)
 				case "tool_state_final":
 					if event.Delta.ID != "" {
 						bs.toolID = event.Delta.ID
@@ -3258,6 +3527,7 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 						bs.toolInput.Reset()
 						bs.toolInput.WriteString(event.Delta.PartialJSON)
 					}
+					emitToolInputProgress(bs, true)
 				}
 			}
 
@@ -3268,6 +3538,7 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 			}
 			switch {
 			case bs.toolName != "":
+				emitToolInputProgress(bs, true)
 				toolUse, err := q.toolUseFromBlockState(bs)
 				if err != nil {
 					onEvent(NewSystemWarningEvent(
@@ -3277,10 +3548,7 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 						nil,
 						turnCount,
 					))
-					appendContentBlock(event.Index, types.TextBlock{
-						Type: types.ContentTypeText,
-						Text: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolSkippedMalformed, bs.toolName),
-					})
+					appendContentBlock(event.Index, invalidToolUseFromBlockState(bs))
 					delete(blocks, event.Index)
 					continue
 				}
@@ -3296,6 +3564,7 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 						SignatureModel: bs.signatureModel,
 						ProviderItemID: bs.providerItemID,
 						ProviderStatus: bs.providerStatus,
+						Kind:           bs.thinkingKind,
 					})
 				}
 			case bs.blockType != "" && bs.blockType != types.ContentTypeText:
@@ -3365,10 +3634,7 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 					nil,
 					turnCount,
 				))
-				appendContentBlock(k, types.TextBlock{
-					Type: types.ContentTypeText,
-					Text: i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolSkippedMalformed, bs.toolName),
-				})
+				appendContentBlock(k, invalidToolUseFromBlockState(bs))
 				continue
 			}
 			appendContentBlock(k, toolUse)
@@ -3382,6 +3648,7 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 				SignatureModel: bs.signatureModel,
 				ProviderItemID: bs.providerItemID,
 				ProviderStatus: bs.providerStatus,
+				Kind:           bs.thinkingKind,
 			})
 		} else if bs.blockType != "" && bs.blockType != types.ContentTypeText {
 			appendContentBlock(k, serverToolUnknownBlock(bs))
@@ -3406,6 +3673,41 @@ func (q *QueryLoop) processStream(ctx context.Context, stream <-chan types.Strea
 	msg.AttachProviderContinuation(providerContinuation)
 
 	return msg, usage, stopReason, nil
+}
+
+func invalidToolUseFromBlockState(state *blockState) types.InvalidToolUseBlock {
+	if state == nil {
+		return types.InvalidToolUseBlock{Type: types.ContentTypeInvalidToolUse, FailureKind: types.ToolInputFailureInvalidJSON, Recoverable: true}
+	}
+	raw := state.toolInput.String()
+	failureKind := types.ToolInputFailureInvalidJSON
+	if state.toolType == types.ToolDefinitionTypeCustom {
+		raw = state.rawToolInput.String()
+		failureKind = types.ToolInputFailureCustomDecode
+	}
+	digest := sha256.Sum256([]byte(raw))
+	preview := raw
+	truncated := len(preview) > invalidToolInputPreviewBytes
+	if truncated {
+		preview = preview[:invalidToolInputPreviewBytes]
+		for len(preview) > 0 && !utf8.ValidString(preview) {
+			preview = preview[:len(preview)-1]
+		}
+	}
+	return types.InvalidToolUseBlock{
+		Type:              types.ContentTypeInvalidToolUse,
+		ID:                state.toolID,
+		Name:              state.toolName,
+		ToolType:          state.toolType,
+		RawInput:          preview,
+		InputBytes:        len(raw),
+		InputDigest:       fmt.Sprintf("sha256:%x", digest),
+		RawInputTruncated: truncated,
+		ProviderItemID:    state.providerItemID,
+		ProviderStatus:    state.providerStatus,
+		FailureKind:       failureKind,
+		Recoverable:       true,
+	}
 }
 
 func (q *QueryLoop) toolUseFromBlockState(state *blockState) (types.ToolUseBlock, error) {

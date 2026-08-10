@@ -12,6 +12,7 @@ func TestCompactVisibleKeysCoverEveryLanguage(t *testing.T) {
 		KeyCompactTranscriptRecovery,
 		KeyCompactTranscriptUnavailable,
 		KeyCompactRecentMessagesPreserved,
+		KeyCompactResponseStyleBoundary,
 		KeyCompactContinueDirective,
 		KeyCompactPartialLaterPreamble,
 		KeyCompactPartialTranscriptRecovery,
@@ -59,5 +60,10 @@ func TestCompactVisibleCopyPreservesRawPathsAndEnglishContract(t *testing.T) {
 	}
 	if got := Text(LangZH, KeyCompactContinuationPreamble); got == Text(LangEN, KeyCompactContinuationPreamble) {
 		t.Fatalf("Chinese continuation preamble was not localized: %q", got)
+	}
+	for _, lang := range AllLanguages() {
+		if got := Text(lang, KeyCompactResponseStyleBoundary); got == "" || got == "["+string(KeyCompactResponseStyleBoundary)+"]" {
+			t.Fatalf("%s response-style boundary is unavailable: %q", lang.Code(), got)
+		}
 	}
 }

@@ -14,6 +14,15 @@ func isOpenAIChatGPTCodexBaseURL(baseURL string) bool {
 	return strings.TrimRight(strings.TrimSpace(baseURL), "/") == openAIChatGPTCodexBaseURL
 }
 
+func isFirstPartyDeepSeekBaseURL(raw string) bool {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || !strings.EqualFold(u.Hostname(), "api.deepseek.com") {
+		return false
+	}
+	path := strings.TrimRight(u.EscapedPath(), "/")
+	return path == "" || path == "/v1"
+}
+
 func openAICodexHeaders() map[string]string {
 	return map[string]string{
 		"originator": openAICodexOriginator,
@@ -148,6 +157,13 @@ func newNegotiatingOpenAIProvider(cfg Config) *openAIProtocolProvider {
 	responses := NewResponses(cfg)
 	chatCfg := cfg
 	chatCfg.BaseURL = normalizeOpenAIChatBaseURL(chatCfg.BaseURL)
+	// Reaching Chat means the custom gateway already rejected the native
+	// Responses envelope. Such gateways commonly implement function schemas
+	// without OpenAI's recursive strict-schema contract. Keep the projected
+	// definition's Strict bit derived from its local schema, but omit the wire
+	// extension on this compatibility fallback (the same policy used by the
+	// explicit compatible-provider factory).
+	chatCfg.DisableStrictTools = true
 	return newOpenAIProtocolProvider(responses, NewOpenAI(chatCfg))
 }
 
@@ -174,10 +190,13 @@ func isOpenAIResponsesLiteModel(model string) bool {
 // GPT-5.6 family may carry freeform grammar tools. Codex/Lite and compatible
 // endpoints remain fail-closed until they gain their own wire contract tests.
 func supportsOpenAIResponsesCustomTools(semantics ResponsesSemantics, model string) bool {
+	lower := strings.ToLower(strings.TrimSpace(model))
+	if semantics == ResponsesSemanticsDeepSeek {
+		return lower == "deepseek-v4-flash"
+	}
 	if semantics != ResponsesSemanticsOpenAIPublic {
 		return false
 	}
-	lower := strings.ToLower(strings.TrimSpace(model))
 	return lower == "gpt-5.6" || strings.HasPrefix(lower, "gpt-5.6-")
 }
 

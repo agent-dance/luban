@@ -464,6 +464,7 @@ func Run() (exitCode int) {
 			CWD:               cwd,
 			Query:             strings.Join(opts.Args, " "),
 			Verbose:           opts.Verbose,
+			Resume:            resolvedSession.Resumed,
 		})
 		return exitCode
 	}

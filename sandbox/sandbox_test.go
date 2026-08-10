@@ -250,6 +250,21 @@ func TestSafeEnv(t *testing.T) {
 		}
 	})
 
+	t.Run("keeps offline build settings", func(t *testing.T) {
+		env := []string{
+			"CARGO_NET_OFFLINE=true", "GOPROXY=off", "GOSUMDB=off",
+			"NPM_CONFIG_OFFLINE=true", "PNPM_CONFIG_OFFLINE=true", "YARN_ENABLE_NETWORK=0",
+			"PIP_NO_INDEX=1", "UV_OFFLINE=1", "MAVEN_ARGS=--offline",
+			"MVNW_REPOURL=http://127.0.0.1:9",
+		}
+		filtered := SafeEnv(env)
+		for _, entry := range env {
+			if !contains(filtered, entry) {
+				t.Errorf("SafeEnv dropped offline build setting %q", entry)
+			}
+		}
+	})
+
 	t.Run("strips secret shaped names inside safe prefixes", func(t *testing.T) {
 		env := []string{
 			"NPM_CONFIG_AUTH_TOKEN=npm-secret",

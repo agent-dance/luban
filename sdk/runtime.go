@@ -240,6 +240,7 @@ type RequestStatusEvent struct {
 	MaxAttempts            int    `json:"max_attempts,omitempty"`
 	RetryCount             int    `json:"retry_count,omitempty"`
 	RetryDelayMilliseconds int64  `json:"retry_delay_ms,omitempty"`
+	RetryKind              string `json:"retry_kind,omitempty"`
 	RequestMilliseconds    int64  `json:"request_ms,omitempty"`
 	FirstTokenMilliseconds int64  `json:"first_token_ms,omitempty"`
 	TotalMilliseconds      int64  `json:"total_ms,omitempty"`

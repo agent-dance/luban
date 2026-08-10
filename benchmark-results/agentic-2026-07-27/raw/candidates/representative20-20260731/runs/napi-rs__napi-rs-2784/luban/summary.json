@@ -1,0 +1,51 @@
+{
+  "instance_id": "napi-rs__napi-rs-2784",
+  "language": "rust",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785485648.4718971,
+  "elapsed_seconds": 1354.144,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1274093,
+    "cached_input_tokens": 1169408,
+    "cache_read_input_tokens": 1169408,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 13578,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.515469,
+  "tool_calls": 32,
+  "tool_calls_by_type": {
+    "Inspect": 16,
+    "ApplyPatch": 8,
+    "Run": 8
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "crates/napi/src/bindgen_runtime/iterator.rs",
+      "examples/napi/__tests__/generator.spec.ts"
+    ],
+    "additions": 126,
+    "deletions": 2
+  },
+  "final_text": "Implemented the iterator helper fix.\n\n- Generator iterators inherit from native `Iterator.prototype` on Node.js versions exposing it.\n- Older Node.js versions retain existing behavior.\n- Added coverage for `take`, `flatMap`, `Symbol.iterator`, and `instanceof Iterator`.\n- Validated Rust formatting, TypeScript syntax, compilation with `napi9`, and final diff whitespace.\n\nFull addon runtime tests remain unavailable because workspace JavaScript dependencies are not installed.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-representative20-20260731",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 37,
+  "llm_successful_calls": 37,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1347.590099,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-representative20-20260731",
+    "sha256": "484cdff16065c275cb60e545e37ae7f36b6afef71519309bd329cee0f9c413ac"
+  }
+}

@@ -601,7 +601,8 @@ func TestScreenReaderExitUsesTypedCommandLifecycle(t *testing.T) {
 		t.Fatalf("exit: handled=%t exit=%t err=%v", handled, exit, err)
 	}
 	if !strings.Contains(output.String(), "Command /exit: running exit") ||
-		!strings.Contains(output.String(), "Command /exit: exit requested") {
+		strings.Count(output.String(), "exit requested") != 1 ||
+		!strings.Contains(output.String(), "Display: receipt. Risk: low.") {
 		t.Fatalf("exit typed lifecycle missing: %q", output.String())
 	}
 }

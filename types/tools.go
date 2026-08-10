@@ -751,6 +751,12 @@ func decodeContentBlocks(rawBlocks []json.RawMessage) ([]ContentBlock, error) {
 				return nil, err
 			}
 			block = b
+		case ContentTypeInvalidToolUse:
+			var b InvalidToolUseBlock
+			if err := json.Unmarshal(rawBlock, &b); err != nil {
+				return nil, err
+			}
+			block = b
 		case ContentTypeToolResult:
 			var b ToolResultBlock
 			if err := json.Unmarshal(rawBlock, &b); err != nil {

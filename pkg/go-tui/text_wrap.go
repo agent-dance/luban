@@ -45,15 +45,14 @@ func wrapParagraph(text string, maxWidth int) []string {
 				buf.Reset()
 				lineWidth = 0
 			}
-			for _, r := range word {
-				rw := RuneWidth(r)
-				if lineWidth+rw > maxWidth && lineWidth > 0 {
+			for _, cluster := range splitTextGraphemes(word) {
+				if lineWidth+cluster.width > maxWidth && lineWidth > 0 {
 					lines = append(lines, buf.String())
 					buf.Reset()
 					lineWidth = 0
 				}
-				buf.WriteRune(r)
-				lineWidth += rw
+				buf.WriteString(cluster.text)
+				lineWidth += cluster.width
 			}
 			continue
 		}

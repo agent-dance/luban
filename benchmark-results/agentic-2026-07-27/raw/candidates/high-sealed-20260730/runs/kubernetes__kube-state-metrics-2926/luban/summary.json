@@ -1,0 +1,51 @@
+{
+  "instance_id": "kubernetes__kube-state-metrics-2926",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "high",
+  "started_at_unix": 1785396276.638023,
+  "elapsed_seconds": 253.708,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 394478,
+    "cached_input_tokens": 313344,
+    "cache_read_input_tokens": 313344,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 8225,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.809092,
+  "tool_calls": 16,
+  "tool_calls_by_type": {
+    "Inspect": 9,
+    "ApplyPatch": 3,
+    "Run": 4
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "pkg/options/options.go",
+      "pkg/options/options_test.go"
+    ],
+    "additions": 69,
+    "deletions": 3
+  },
+  "final_text": "Implemented the regression fix.\n\n- Restored `custom_resource_config_file` YAML decoding into `CustomResourceConfigFile`.\n- Retained compatibility with the v2.17.0 spelling.\n- Added regression tests for both spellings and precedence.\n- Verified formatting and patch integrity with `gofmt -d` and `git diff --check`.\n\nReviewed the decode-to-runtime path: the populated field is consumed by the same custom-resource loader as the CLI flag. Go tests remain unexecuted because the available runner cannot parse this repository’s Go 1.25 `tool` block.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-optimized-20260730b",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 16,
+  "llm_successful_calls": 16,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 252.218591,
+  "binary": {
+    "path": "/private/tmp/luban-local5-optimized-20260730b",
+    "sha256": "6294a57b59bbe8a0a685a3fc5cb8c7d70662e799ca55826549634a20f0644a59"
+  }
+}

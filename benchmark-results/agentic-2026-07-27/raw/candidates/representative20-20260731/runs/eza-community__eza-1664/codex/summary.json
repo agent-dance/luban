@@ -1,0 +1,62 @@
+{
+  "instance_id": "eza-community__eza-1664",
+  "language": "rust",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785479563.2845562,
+  "elapsed_seconds": 470.8,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 2220044,
+    "cached_input_tokens": 2113536,
+    "output_tokens": 14725,
+    "reasoning_output_tokens": 6906,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 2113536,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 2.031058,
+  "tool_calls": 35,
+  "tool_calls_by_type": {
+    "command_execution": 26,
+    "file_change": 9
+  },
+  "patch": {
+    "files_changed": 13,
+    "files": [
+      "README.md",
+      "completions/bash/eza",
+      "completions/fish/eza.fish",
+      "completions/nush/eza.nu",
+      "completions/pwsh/_eza.ps1",
+      "completions/zsh/_eza",
+      "man/eza.1.md",
+      "powertest.yaml",
+      "src/options/file_name.rs",
+      "src/options/parser.rs",
+      "src/output/file_name.rs",
+      "tests/ptests/ptest_2439b7d68089135b.stdout",
+      "tests/ptests/ptest_a689ab7558716dda.stdout"
+    ],
+    "additions": 139,
+    "deletions": 49
+  },
+  "final_text": "Implemented `--hyperlink` modes:\n\n- Supports `always`, `auto`/`automatic`, and `never`.\n- Bare `--hyperlink` defaults to automatic, suppressing hyperlinks when piped.\n- Updated documentation and shell completions.\n- Added parsing, terminal-gating, CLI regression tests, and updated snapshots.\n\nValidation passed for formatting, diff checks, completion syntax, YAML, and Cargo metadata. Full tests couldn’t run because required Cargo dependencies weren’t available offline.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 37,
+  "llm_successful_calls": 37,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 452.818515,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

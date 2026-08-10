@@ -302,7 +302,9 @@ func (c *compactCmd) Execute(ctx *Context, args string) error {
 
 	ctx.OnEvent(i18n.Text(ctx.Language, i18n.KeyBuiltinCompactRunning))
 	if err := ctx.CompactFunc(strings.TrimSpace(args)); err != nil {
-		return fmt.Errorf("%s", compactpkg.FormatCompactUserError(ctx.Language, err))
+		// Preserve context cancellation through the command presentation layer so
+		// an Esc-triggered compact is projected as cancelled, not failed.
+		return compactpkg.LocalizeUserError(ctx.Language, err)
 	}
 	after := ctx.QueryLoop.Messages()
 	ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyBuiltinCompactComplete, len(msgs), len(after)))
@@ -545,44 +547,13 @@ func (c *sessionCmd) Execute(ctx *Context, args string) error {
 			reportCommandSucceeded(ctx)
 			return nil
 		}
-		sessions, err := ctx.SessionStore.List()
-		if err != nil {
-			ctx.OnEvent(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionCurrentID, ctx.SessionID))
-			reportCommandFailed(ctx)
-			return nil
-		}
-		for _, s := range sessions {
-			if s.ID != ctx.SessionID {
-				continue
+		if currentStore, ok := ctx.SessionStore.(CurrentSessionStore); ok {
+			current, err := currentStore.Current(ctx.SessionID)
+			if err != nil {
+				return i18n.WrapInternalErrorInLanguage(ctx.Language, i18n.KeyBuiltinSessionCurrentError, err,
+					session.UserFacingError(ctx.Language, err), ctx.SessionID)
 			}
-			title := s.Title
-			if title == "" {
-				title = s.ID
-			}
-			var sb strings.Builder
-			sb.WriteString(i18n.Text(ctx.Language, i18n.KeyBuiltinSessionCurrent))
-			sb.WriteString(strings.Repeat("─", 42) + "\n")
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionID, s.ID))
-			sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionTitle, title))
-			if !s.CreatedAt.IsZero() {
-				sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionCreated, s.CreatedAt.Format("2006-01-02 15:04")))
-			}
-			if !s.UpdatedAt.IsZero() {
-				sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionUpdated, s.UpdatedAt.Format("2006-01-02 15:04")))
-			}
-			if s.MessageCount > 0 {
-				sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionMessages, s.MessageCount))
-			}
-			if s.GitBranch != "" {
-				sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionGitBranch, s.GitBranch))
-			}
-			if s.CWD != "" {
-				sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionDirectory, s.CWD))
-			}
-			if s.PreviewText != "" {
-				sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionPreview, s.PreviewText))
-			}
-			ctx.OnEvent(sb.String())
+			renderCurrentSession(ctx, current)
 			reportCommandSucceeded(ctx)
 			return nil
 		}
@@ -682,4 +653,35 @@ func (c *sessionCmd) Execute(ctx *Context, args string) error {
 		reportCommandFailed(ctx)
 		return nil
 	}
+}
+
+func renderCurrentSession(ctx *Context, current SessionListEntry) {
+	title := current.Title
+	if title == "" {
+		title = current.ID
+	}
+	var sb strings.Builder
+	sb.WriteString(i18n.Text(ctx.Language, i18n.KeyBuiltinSessionCurrent))
+	sb.WriteString(strings.Repeat("─", 42) + "\n")
+	sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionID, current.ID))
+	sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionTitle, title))
+	if !current.CreatedAt.IsZero() {
+		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionCreated, current.CreatedAt.Format("2006-01-02 15:04")))
+	}
+	if !current.UpdatedAt.IsZero() {
+		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionUpdated, current.UpdatedAt.Format("2006-01-02 15:04")))
+	}
+	if current.MessageCount > 0 {
+		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionMessages, current.MessageCount))
+	}
+	if current.GitBranch != "" {
+		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionGitBranch, current.GitBranch))
+	}
+	if current.CWD != "" {
+		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionDirectory, current.CWD))
+	}
+	if current.PreviewText != "" {
+		sb.WriteString(i18n.Format(ctx.Language, i18n.KeyBuiltinSessionPreview, current.PreviewText))
+	}
+	ctx.OnEvent(sb.String())
 }

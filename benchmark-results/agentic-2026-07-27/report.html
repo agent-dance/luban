@@ -27,7 +27,7 @@
     <span class="pill"><code>tasks=5</code></span>
     <span class="pill"><code>agents=codex,luban</code></span>
     <span class="pill good">覆盖率 · 完整覆盖</span>
-    <span class="pill">证据截至 · 2026-07-27T04:47:09Z</span>
+    <span class="pill">证据截至 · 2026-07-27T08:30:54Z</span>
   </div>
   <div class="callout warn">这是仅含 5 道本地选题的开发 pilot；结果不可外推为完整或公开测评分数，也不能据此确立正式胜者。</div>
   
@@ -35,18 +35,19 @@
 
 <section class="section" id="conclusion">
   <h2>当前结论</h2>
-  
-  <div class="callout warn"><strong>Luban 尚未证明全面超越 Codex。</strong><br>本机严格原始投影：Luban 3/5，Codex 2/5；meter 已记录 POST 为 181 对 127（&#43;42.5%），任务耗时 &#43;208.7%，可比估算费用 &#43;84.6%。</div>
+
+  <div class="callout warn"><strong>Luban 尚未证明全面超越 Codex。</strong><br>本机裁决后投影：Luban 3/5，Codex 3/5；meter 已记录 POST 为 181 对 127（&#43;42.5%），任务耗时 &#43;208.7%，可比估算费用 &#43;84.6%。</div>
   <div class="callout">缓存率高出 &#43;0.9 pp，但 Luban 的缓存 token 绝对量也更高（7600640 对 5860352），原因是其输入显著更多；这本身不能视为效率胜出。</div>
-  
-  <p class="note">2/5 与 3/5 来自 5/5 完整本地 evaluator 分区的严格投影；它们仍是非官方 pilot 结果，不是公开测评分数。</p>
+  <div class="callout">Codex 按 3/5 计分：仅排除发生名称冲突的候选测试后，其 skim 生产代码补丁通过目标测试及全部 587 个回归测试。原始 2/5 evaluator 投影保持不变并继续提供链接；这是明确披露的诊断裁决，不是改写原始证据。</div>
+
+
 </section>
 
 <section class="section" id="current-comparison">
   <h2>当前 5 题对比</h2>
   <div class="grid">
     <div class="stat"><code>sealed_run_summaries</code><strong>10/10</strong></div>
-    <div class="stat"><code>strict_agent_evaluations</code><strong>10/10</strong></div>
+    <div class="stat"><code>effective_agent_evaluations</code><strong>10/10</strong></div>
     <div class="stat"><code>paired_run_evaluation</code><strong>10/10</strong></div>
     <div class="stat"><code>gold_oracle_reports</code><strong>5/5</strong></div>
   </div>
@@ -70,7 +71,7 @@
     <tbody><tr>
       <td><strong>codex</strong><br><code>codex</code><br><code>134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477</code></td>
       <td><code>run=5/5</code><br><code>eval=5/5</code><br><code>pair=5/5</code></td>
-      <td class="num">2/5 (40.0%)</td>
+      <td class="num">3/5 (60.0%)</td>
       <td class="num">38m 5.9s<br><code>provider_http=37m 44.7s</code></td>
       <td class="num"><strong>127</strong><br><code>http_2xx=127</code><br><code>http_non_2xx=0</code></td>
       <td class="num"><code>6295371 / 5860352 / 0 / 53450</code></td>
@@ -106,122 +107,122 @@
     <tbody><tr>
       <td><code>danielmiessler__Fabric-2098</code><br><strong>codex</strong> · <code>go</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status good">通过</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">5m 15.0s<br><code>provider_http=5m 12.7s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>13</strong><br><code>http_2xx=13;http_non_2xx=0</code></td>
       <td class="num"><code>509785 / 450560 / 0 / 8553</code></td>
       <td class="num">88.4%</td>
       <td class="num"><code>deduplicated=$0.7780</code><br><code>runner_receipt=$0.7780</code></td>
       <td class="num">12<br><code>command_execution=10</code><br><code>file_change=2</code></td>
-      
+
       <td><code>codex</code><br><code>134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477</code><div class="links"><a href="raw/runs/danielmiessler__Fabric-2098/codex/summary.json"><code>summary.json</code></a><a href="raw/evaluation/danielmiessler__Fabric-2098/codex/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/danielmiessler__Fabric-2098/codex/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/danielmiessler__Fabric-2098/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/danielmiessler__Fabric-2098/codex/model.patch"><code>model.patch</code></a><a href="raw/evaluation/danielmiessler__Fabric-2098/gold/report.json"><code>gold/report.json</code></a></div></td>
     </tr><tr>
       <td><code>danielmiessler__Fabric-2098</code><br><strong>luban</strong> · <code>go</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status good">通过</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">26m 47.0s<br><code>provider_http=22m 35.4s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>44</strong><br><code>http_2xx=44;http_non_2xx=0</code></td>
       <td class="num"><code>1965395 / 1870848 / 0 / 40535</code></td>
       <td class="num">95.2%</td>
       <td class="num"><code>deduplicated=$2.6242</code><br><code>runner_receipt=$2.6242</code></td>
       <td class="num">34<br><code>Inspect=17</code><br><code>Run=15</code><br><code>ApplyPatch=2</code></td>
-      
+
       <td><code>luban-local5-candidate-cursorfix-20260727</code><br><code>67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9</code><div class="links"><a href="raw/runs/danielmiessler__Fabric-2098/luban/summary.json"><code>summary.json</code></a><a href="raw/evaluation/danielmiessler__Fabric-2098/luban/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/danielmiessler__Fabric-2098/luban/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/danielmiessler__Fabric-2098/luban/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/danielmiessler__Fabric-2098/luban/model.patch"><code>model.patch</code></a></div></td>
     </tr><tr>
       <td><code>openai__openai-agents-js-375</code><br><strong>codex</strong> · <code>ts</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status good">通过</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">8m 41.9s<br><code>provider_http=8m 39.3s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>30</strong><br><code>http_2xx=30;http_non_2xx=0</code></td>
       <td class="num"><code>1416883 / 1334016 / 0 / 12258</code></td>
       <td class="num">94.2%</td>
       <td class="num"><code>deduplicated=$1.4491</code><br><code>runner_receipt=$1.4491</code></td>
       <td class="num">25<br><code>command_execution=18</code><br><code>file_change=7</code></td>
-      
+
       <td><code>codex</code><br><code>134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477</code><div class="links"><a href="raw/runs/openai__openai-agents-js-375/codex/summary.json"><code>summary.json</code></a><a href="raw/evaluation/openai__openai-agents-js-375/codex/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/openai__openai-agents-js-375/codex/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/openai__openai-agents-js-375/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/openai__openai-agents-js-375/codex/model.patch"><code>model.patch</code></a><a href="raw/evaluation/openai__openai-agents-js-375/gold/report.json"><code>gold/report.json</code></a></div></td>
     </tr><tr>
       <td><code>openai__openai-agents-js-375</code><br><strong>luban</strong> · <code>ts</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status good">通过</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">15m 47.4s<br><code>provider_http=14m 58.8s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>27</strong><br><code>http_2xx=27;http_non_2xx=0</code></td>
       <td class="num"><code>1196516 / 1104896 / 0 / 29460</code></td>
       <td class="num">92.3%</td>
       <td class="num"><code>deduplicated=$1.8943</code><br><code>runner_receipt=$1.8943</code></td>
       <td class="num">26<br><code>Inspect=20</code><br><code>ApplyPatch=4</code><br><code>Run=2</code></td>
-      
+
       <td><code>luban-local5-candidate-cursorfix-20260727</code><br><code>67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9</code><div class="links"><a href="raw/runs/openai__openai-agents-js-375/luban/summary.json"><code>summary.json</code></a><a href="raw/evaluation/openai__openai-agents-js-375/luban/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/openai__openai-agents-js-375/luban/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/openai__openai-agents-js-375/luban/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/openai__openai-agents-js-375/luban/model.patch"><code>model.patch</code></a></div></td>
     </tr><tr>
       <td><code>kubernetes__kube-state-metrics-2926</code><br><strong>codex</strong> · <code>go</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status bad">失败</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">5m 19.1s<br><code>provider_http=5m 16.5s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>19</strong><br><code>http_2xx=19;http_non_2xx=0</code></td>
       <td class="num"><code>637678 / 563968 / 0 / 6486</code></td>
       <td class="num">88.4%</td>
       <td class="num"><code>deduplicated=$0.8451</code><br><code>runner_receipt=$0.8451</code></td>
       <td class="num">18<br><code>command_execution=17</code><br><code>file_change=1</code></td>
-      
+
       <td><code>codex</code><br><code>134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477</code><div class="links"><a href="raw/runs/kubernetes__kube-state-metrics-2926/codex/summary.json"><code>summary.json</code></a><a href="raw/evaluation/kubernetes__kube-state-metrics-2926/codex/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/kubernetes__kube-state-metrics-2926/codex/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/kubernetes__kube-state-metrics-2926/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/kubernetes__kube-state-metrics-2926/codex/model.patch"><code>model.patch</code></a><a href="raw/evaluation/kubernetes__kube-state-metrics-2926/gold/report.json"><code>gold/report.json</code></a></div></td>
     </tr><tr>
       <td><code>kubernetes__kube-state-metrics-2926</code><br><strong>luban</strong> · <code>go</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status bad">失败</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">21m 50.8s<br><code>provider_http=21m 13.9s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>38</strong><br><code>http_2xx=38;http_non_2xx=0</code></td>
       <td class="num"><code>1302049 / 1221632 / 0 / 40550</code></td>
       <td class="num">93.8%</td>
       <td class="num"><code>deduplicated=$2.2294</code><br><code>runner_receipt=$2.2294</code></td>
       <td class="num">37<br><code>Inspect=16</code><br><code>Run=14</code><br><code>ApplyPatch=7</code></td>
-      
+
       <td><code>luban-local5-candidate-cursorfix-20260727</code><br><code>67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9</code><div class="links"><a href="raw/runs/kubernetes__kube-state-metrics-2926/luban/summary.json"><code>summary.json</code></a><a href="raw/evaluation/kubernetes__kube-state-metrics-2926/luban/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/kubernetes__kube-state-metrics-2926/luban/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/kubernetes__kube-state-metrics-2926/luban/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/kubernetes__kube-state-metrics-2926/luban/model.patch"><code>model.patch</code></a></div></td>
     </tr><tr>
       <td><code>skim-rs__skim-1044</code><br><strong>codex</strong> · <code>rust</code><br><span class="note"><code>gold=sealed</code></span></td>
-      <td><span class="status bad">失败</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+      <td><span class="status good">通过（诊断裁决）</span><br><span class="note"><code>run=sealed;eval=adjudicated</code></span></td>
+
       <td class="num">8m 33.9s<br><code>provider_http=8m 27.4s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>28</strong><br><code>http_2xx=28;http_non_2xx=0</code></td>
       <td class="num"><code>1507136 / 1409280 / 0 / 11802</code></td>
       <td class="num">93.5%</td>
       <td class="num"><code>deduplicated=$1.5480</code><br><code>runner_receipt=$1.5480</code></td>
       <td class="num">26<br><code>command_execution=21</code><br><code>file_change=5</code></td>
-      
-      <td><code>codex</code><br><code>134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477</code><div class="links"><a href="raw/runs/skim-rs__skim-1044/codex/summary.json"><code>summary.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/codex/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/skim-rs__skim-1044/codex/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/codex/model.patch"><code>model.patch</code></a><a href="raw/evaluation/skim-rs__skim-1044/gold/report.json"><code>gold/report.json</code></a></div></td>
+
+      <td><code>codex</code><br><code>134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477</code><div class="links"><a href="raw/runs/skim-rs__skim-1044/codex/summary.json"><code>summary.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/codex/report.json"><code>evaluation/report.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/codex/effective-report.json"><code>evaluation/effective-report.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/codex/adjudication.json"><code>evaluation/adjudication.json</code></a><a href="raw/runs/skim-rs__skim-1044/codex/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/codex/model.patch"><code>model.patch</code></a><a href="raw/evaluation/skim-rs__skim-1044/gold/report.json"><code>gold/report.json</code></a></div></td>
     </tr><tr>
       <td><code>skim-rs__skim-1044</code><br><strong>luban</strong> · <code>rust</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status good">通过</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">30m 0.4s<br><code>provider_http=25m 47.5s</code><br><code>exit=0;timeout=true</code></td>
       <td class="num"><strong>38</strong><br><code>http_2xx=38;http_non_2xx=0</code></td>
       <td class="num"><code>1915013 / 1807360 / 0 / 50509</code></td>
       <td class="num">94.4%</td>
       <td class="num"><code>deduplicated=$2.9572</code><br><code>runner_receipt=$2.9572</code></td>
       <td class="num">36<br><code>Inspect=24</code><br><code>Run=7</code><br><code>ApplyPatch=5</code></td>
-      
+
       <td><code>luban-local5-candidate-cursorfix-20260727</code><br><code>67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9</code><div class="links"><a href="raw/runs/skim-rs__skim-1044/luban/summary.json"><code>summary.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/luban/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/skim-rs__skim-1044/luban/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/luban/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/luban/model.patch"><code>model.patch</code></a></div></td>
     </tr><tr>
       <td><code>include-what-you-use__include-what-you-use-1991</code><br><strong>codex</strong> · <code>cpp</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status bad">失败</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">10m 16.0s<br><code>provider_http=10m 8.7s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>37</strong><br><code>http_2xx=37;http_non_2xx=0</code></td>
       <td class="num"><code>2223889 / 2102528 / 0 / 14351</code></td>
       <td class="num">94.5%</td>
       <td class="num"><code>deduplicated=$2.0886</code><br><code>runner_receipt=$2.0886</code></td>
       <td class="num">35<br><code>command_execution=32</code><br><code>file_change=3</code></td>
-      
+
       <td><code>codex</code><br><code>134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477</code><div class="links"><a href="raw/runs/include-what-you-use__include-what-you-use-1991/codex/summary.json"><code>summary.json</code></a><a href="raw/evaluation/include-what-you-use__include-what-you-use-1991/codex/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/include-what-you-use__include-what-you-use-1991/codex/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/include-what-you-use__include-what-you-use-1991/codex/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/include-what-you-use__include-what-you-use-1991/codex/model.patch"><code>model.patch</code></a><a href="raw/evaluation/include-what-you-use__include-what-you-use-1991/gold/report.json"><code>gold/report.json</code></a></div></td>
     </tr><tr>
       <td><code>include-what-you-use__include-what-you-use-1991</code><br><strong>luban</strong> · <code>cpp</code><br><span class="note"><code>gold=sealed</code></span></td>
       <td><span class="status bad">失败</span><br><span class="note"><code>run=sealed;eval=sealed</code></span></td>
-      
+
       <td class="num">23m 11.6s<br><code>provider_http=23m 3.6s</code><br><code>exit=0;timeout=false</code></td>
       <td class="num"><strong>34</strong><br><code>http_2xx=34;http_non_2xx=0</code></td>
       <td class="num"><code>1705948 / 1595904 / 0 / 44427</code></td>
       <td class="num">93.5%</td>
       <td class="num"><code>deduplicated=$2.6810</code><br><code>runner_receipt=$2.6810</code></td>
       <td class="num">30<br><code>Inspect=24</code><br><code>Run=5</code><br><code>ApplyPatch=1</code></td>
-      
+
       <td><code>luban-local5-candidate-cursorfix-20260727</code><br><code>67659bdec7cb978cb59b0be10657c3239e71daae939175920b36b6b7cd114fe9</code><div class="links"><a href="raw/runs/include-what-you-use__include-what-you-use-1991/luban/summary.json"><code>summary.json</code></a><a href="raw/evaluation/include-what-you-use__include-what-you-use-1991/luban/report.json"><code>evaluation/report.json</code></a><a href="raw/runs/include-what-you-use__include-what-you-use-1991/luban/events.jsonl"><code>events.jsonl</code></a><a href="raw/runs/include-what-you-use__include-what-you-use-1991/luban/provider-requests.jsonl"><code>provider-requests.jsonl</code></a><a href="raw/runs/include-what-you-use__include-what-you-use-1991/luban/model.patch"><code>model.patch</code></a></div></td>
     </tr></tbody>
   </table></div>
@@ -229,22 +230,22 @@
 
 <section class="section" id="shared-pass-comparison">
   <h2>双方共同通过题目的效率对比</h2>
-  
-  <div class="callout good">本节以质量为前提：仅纳入双方均经严格评测器判定通过的 2 道题，每个 Agent–题目组合只有 1 次观测运行。因此不能据此估计无条件的整体测评效率或统计显著优势。</div>
+
+  <div class="callout good">本节包含按有效 evaluator 结果双方都通过的 3 道题。其中一个 Codex 结果是已披露的仅生产代码反事实裁决；该切片仅作描述，不以资源消耗为通过条件，也不能证明统计显著的优越性。</div>
   <h3>汇总结果</h3>
   <div class="table-wrap"><table>
     <thead><tr><th>指标</th><th class="num"><code>Codex</code></th><th class="num"><code>Luban</code></th><th class="num"><code>Luban/Codex</code></th><th class="num">相对变化</th></tr></thead>
-    <tbody><tr><td><code>meter_recorded_POST_/responses</code></td><td class="num">43</td><td class="num">71</td><td class="num">1.65x</td><td class="num">&#43;65.1%</td></tr><tr><td><code>wall_seconds</code></td><td class="num">13m 56.9s</td><td class="num">42m 34.4s</td><td class="num">3.05x</td><td class="num">&#43;205.2%</td></tr><tr><td><code>provider_seconds</code></td><td class="num">13m 52.0s</td><td class="num">37m 34.2s</td><td class="num">2.71x</td><td class="num">&#43;170.9%</td></tr><tr><td><code>input_tokens</code></td><td class="num">1926668</td><td class="num">3161911</td><td class="num">1.64x</td><td class="num">&#43;64.1%</td></tr><tr><td><code>cached_input_tokens</code></td><td class="num">1784576</td><td class="num">2975744</td><td class="num">1.67x</td><td class="num">&#43;66.7%</td></tr><tr><td><code>cache_creation_input_tokens</code></td><td class="num">0</td><td class="num">0</td><td class="num">N/A</td><td class="num">N/A</td></tr><tr><td><code>output_tokens</code></td><td class="num">20811</td><td class="num">69995</td><td class="num">3.36x</td><td class="num">&#43;236.3%</td></tr><tr><td><code>token_weighted_cache_ratio</code></td><td class="num">92.6%</td><td class="num">94.1%</td><td class="num">1.02x</td><td class="num">&#43;1.5 pp</td></tr><tr><td><code>same_gateway_comparable_cost</code></td><td class="num">$2.2271</td><td class="num">$4.5186</td><td class="num">2.03x</td><td class="num">&#43;102.9%</td></tr><tr><td><code>logical_tool_events*</code></td><td class="num">37</td><td class="num">60</td><td class="num">1.62x</td><td class="num">&#43;62.2%</td></tr><tr><td><code>wall_seconds_per_solved_task</code></td><td class="num">6m 58.5s</td><td class="num">21m 17.2s</td><td class="num">3.05x</td><td class="num">&#43;205.2%</td></tr><tr><td><code>cost_per_solved_task</code></td><td class="num">$1.1135</td><td class="num">$2.2593</td><td class="num">2.03x</td><td class="num">&#43;102.9%</td></tr><tr><td><code>provider_seconds_per_POST</code></td><td class="num">19.35s</td><td class="num">31.75s</td><td class="num">1.64x</td><td class="num">&#43;64.1%</td></tr><tr><td><code>input_tokens_per_POST</code></td><td class="num">44806.2</td><td class="num">44534.0</td><td class="num">0.99x</td><td class="num">-0.6%</td></tr><tr><td><code>output_tokens_per_POST</code></td><td class="num">484.0</td><td class="num">985.8</td><td class="num">2.04x</td><td class="num">&#43;103.7%</td></tr></tbody>
+    <tbody><tr><td><code>meter_recorded_POST_/responses</code></td><td class="num">71</td><td class="num">109</td><td class="num">1.54x</td><td class="num">&#43;53.5%</td></tr><tr><td><code>wall_seconds</code></td><td class="num">22m 30.8s</td><td class="num">72m 34.8s</td><td class="num">3.22x</td><td class="num">&#43;222.4%</td></tr><tr><td><code>provider_seconds</code></td><td class="num">22m 19.4s</td><td class="num">63m 21.7s</td><td class="num">2.84x</td><td class="num">&#43;183.8%</td></tr><tr><td><code>input_tokens</code></td><td class="num">3433804</td><td class="num">5076924</td><td class="num">1.48x</td><td class="num">&#43;47.9%</td></tr><tr><td><code>cached_input_tokens</code></td><td class="num">3193856</td><td class="num">4783104</td><td class="num">1.50x</td><td class="num">&#43;49.8%</td></tr><tr><td><code>cache_creation_input_tokens</code></td><td class="num">0</td><td class="num">0</td><td class="num">N/A</td><td class="num">N/A</td></tr><tr><td><code>output_tokens</code></td><td class="num">32613</td><td class="num">120504</td><td class="num">3.69x</td><td class="num">&#43;269.5%</td></tr><tr><td><code>token_weighted_cache_ratio</code></td><td class="num">93.0%</td><td class="num">94.2%</td><td class="num">1.01x</td><td class="num">&#43;1.2 pp</td></tr><tr><td><code>same_gateway_comparable_cost</code></td><td class="num">$3.7751</td><td class="num">$7.4758</td><td class="num">1.98x</td><td class="num">&#43;98.0%</td></tr><tr><td><code>logical_tool_events*</code></td><td class="num">63</td><td class="num">96</td><td class="num">1.52x</td><td class="num">&#43;52.4%</td></tr><tr><td><code>wall_seconds_per_solved_task</code></td><td class="num">7m 30.3s</td><td class="num">24m 11.6s</td><td class="num">3.22x</td><td class="num">&#43;222.4%</td></tr><tr><td><code>cost_per_solved_task</code></td><td class="num">$1.2584</td><td class="num">$2.4919</td><td class="num">1.98x</td><td class="num">&#43;98.0%</td></tr><tr><td><code>provider_seconds_per_POST</code></td><td class="num">18.87s</td><td class="num">34.88s</td><td class="num">1.85x</td><td class="num">&#43;84.9%</td></tr><tr><td><code>input_tokens_per_POST</code></td><td class="num">48363.4</td><td class="num">46577.3</td><td class="num">0.96x</td><td class="num">-3.7%</td></tr><tr><td><code>output_tokens_per_POST</code></td><td class="num">459.3</td><td class="num">1105.5</td><td class="num">2.41x</td><td class="num">&#43;140.7%</td></tr></tbody>
   </table></div>
   <div class="grid">
-    <div class="stat"><code>Codex_tool_taxonomy</code><strong>37</strong><span class="note"><code>command_execution=28</code></span><br><span class="note"><code>file_change=9</code></span><br></div>
-    <div class="stat"><code>Luban_tool_taxonomy</code><strong>60</strong><span class="note"><code>Inspect=37</code></span><br><span class="note"><code>Run=17</code></span><br><span class="note"><code>ApplyPatch=6</code></span><br></div>
+    <div class="stat"><code>Codex_tool_taxonomy</code><strong>63</strong><span class="note"><code>command_execution=49</code></span><br><span class="note"><code>file_change=14</code></span><br></div>
+    <div class="stat"><code>Luban_tool_taxonomy</code><strong>96</strong><span class="note"><code>Inspect=61</code></span><br><span class="note"><code>Run=24</code></span><br><span class="note"><code>ApplyPatch=11</code></span><br></div>
   </div>
   <div class="callout warn">Codex 与 Luban 暴露的工具目录和事件分类口径不同。本节的工具调用总数与分工具计数仅供诊断，不属于可同口径比较的效率证据。</div>
-  <div class="callout warn">每次 POST 的输入量接近（Codex 44806.2，Luban 44534.0；-0.6%），但 Luban 每次 POST 的 Provider 耗时更高（Codex 19.35s，Luban 31.75s；&#43;64.1%），输出 token 也更多（Codex 484.0，Luban 985.8；&#43;103.7%）。在解题质量保持一致后，这个两题样本显示 Luban 的额外耗时与费用伴随更长、更慢的模型响应，但不能据此确立因果关系。</div>
+  <div class="callout warn">每次 POST 的输入量接近（Codex 48363.4，Luban 46577.3；-3.7%），但 Luban 每次 POST 的 Provider 耗时更高（Codex 18.87s，Luban 34.88s；&#43;84.9%），输出 token 也更多（Codex 459.3，Luban 1105.5；&#43;140.7%）。在解题质量保持一致后，这个以质量为条件的样本显示 Luban 的额外耗时与费用伴随更长、更慢的模型响应，但不能据此确立因果关系。</div>
 
   <h3>逐题结果</h3>
-  
+
   <h3><code>danielmiessler__Fabric-2098</code> · <code>go</code></h3>
   <div class="table-wrap"><table>
     <thead><tr><th>指标</th><th class="num"><code>Codex</code></th><th class="num"><code>Luban</code></th><th class="num"><code>Luban/Codex</code></th><th class="num">相对变化</th></tr></thead>
@@ -255,7 +256,7 @@
     <div class="stat"><code>Luban_tool_taxonomy</code><strong>34</strong><span class="note"><code>Inspect=17</code></span><br><span class="note"><code>Run=15</code></span><br><span class="note"><code>ApplyPatch=2</code></span><br></div>
   </div>
   <div class="links"><a href="raw/runs/danielmiessler__Fabric-2098/codex/summary.json"><code>codex/summary.json</code></a><a href="raw/evaluation/danielmiessler__Fabric-2098/codex/report.json"><code>codex/evaluation/report.json</code></a><a href="raw/runs/danielmiessler__Fabric-2098/codex/events.jsonl"><code>codex/events.jsonl</code></a><a href="raw/runs/danielmiessler__Fabric-2098/codex/provider-requests.jsonl"><code>codex/provider-requests.jsonl</code></a><a href="raw/runs/danielmiessler__Fabric-2098/codex/model.patch"><code>codex/model.patch</code></a><a href="raw/runs/danielmiessler__Fabric-2098/luban/summary.json"><code>luban/summary.json</code></a><a href="raw/evaluation/danielmiessler__Fabric-2098/luban/report.json"><code>luban/evaluation/report.json</code></a><a href="raw/runs/danielmiessler__Fabric-2098/luban/events.jsonl"><code>luban/events.jsonl</code></a><a href="raw/runs/danielmiessler__Fabric-2098/luban/provider-requests.jsonl"><code>luban/provider-requests.jsonl</code></a><a href="raw/runs/danielmiessler__Fabric-2098/luban/model.patch"><code>luban/model.patch</code></a></div>
-  
+
   <h3><code>openai__openai-agents-js-375</code> · <code>ts</code></h3>
   <div class="table-wrap"><table>
     <thead><tr><th>指标</th><th class="num"><code>Codex</code></th><th class="num"><code>Luban</code></th><th class="num"><code>Luban/Codex</code></th><th class="num">相对变化</th></tr></thead>
@@ -266,13 +267,24 @@
     <div class="stat"><code>Luban_tool_taxonomy</code><strong>26</strong><span class="note"><code>Inspect=20</code></span><br><span class="note"><code>ApplyPatch=4</code></span><br><span class="note"><code>Run=2</code></span><br></div>
   </div>
   <div class="links"><a href="raw/runs/openai__openai-agents-js-375/codex/summary.json"><code>codex/summary.json</code></a><a href="raw/evaluation/openai__openai-agents-js-375/codex/report.json"><code>codex/evaluation/report.json</code></a><a href="raw/runs/openai__openai-agents-js-375/codex/events.jsonl"><code>codex/events.jsonl</code></a><a href="raw/runs/openai__openai-agents-js-375/codex/provider-requests.jsonl"><code>codex/provider-requests.jsonl</code></a><a href="raw/runs/openai__openai-agents-js-375/codex/model.patch"><code>codex/model.patch</code></a><a href="raw/runs/openai__openai-agents-js-375/luban/summary.json"><code>luban/summary.json</code></a><a href="raw/evaluation/openai__openai-agents-js-375/luban/report.json"><code>luban/evaluation/report.json</code></a><a href="raw/runs/openai__openai-agents-js-375/luban/events.jsonl"><code>luban/events.jsonl</code></a><a href="raw/runs/openai__openai-agents-js-375/luban/provider-requests.jsonl"><code>luban/provider-requests.jsonl</code></a><a href="raw/runs/openai__openai-agents-js-375/luban/model.patch"><code>luban/model.patch</code></a></div>
-  
-  
+
+  <h3><code>skim-rs__skim-1044</code> · <code>rust</code></h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>指标</th><th class="num"><code>Codex</code></th><th class="num"><code>Luban</code></th><th class="num"><code>Luban/Codex</code></th><th class="num">相对变化</th></tr></thead>
+    <tbody><tr><td><code>meter_recorded_POST_/responses</code></td><td class="num">28</td><td class="num">38</td><td class="num">1.36x</td><td class="num">&#43;35.7%</td></tr><tr><td><code>wall_seconds</code></td><td class="num">8m 33.9s</td><td class="num">30m 0.4s</td><td class="num">3.50x</td><td class="num">&#43;250.4%</td></tr><tr><td><code>provider_seconds</code></td><td class="num">8m 27.4s</td><td class="num">25m 47.5s</td><td class="num">3.05x</td><td class="num">&#43;205.0%</td></tr><tr><td><code>input_tokens</code></td><td class="num">1507136</td><td class="num">1915013</td><td class="num">1.27x</td><td class="num">&#43;27.1%</td></tr><tr><td><code>cached_input_tokens</code></td><td class="num">1409280</td><td class="num">1807360</td><td class="num">1.28x</td><td class="num">&#43;28.2%</td></tr><tr><td><code>cache_creation_input_tokens</code></td><td class="num">0</td><td class="num">0</td><td class="num">N/A</td><td class="num">N/A</td></tr><tr><td><code>output_tokens</code></td><td class="num">11802</td><td class="num">50509</td><td class="num">4.28x</td><td class="num">&#43;328.0%</td></tr><tr><td><code>token_weighted_cache_ratio</code></td><td class="num">93.5%</td><td class="num">94.4%</td><td class="num">1.01x</td><td class="num">&#43;0.9 pp</td></tr><tr><td><code>same_gateway_comparable_cost</code></td><td class="num">$1.5480</td><td class="num">$2.9572</td><td class="num">1.91x</td><td class="num">&#43;91.0%</td></tr><tr><td><code>logical_tool_events*</code></td><td class="num">26</td><td class="num">36</td><td class="num">1.38x</td><td class="num">&#43;38.5%</td></tr></tbody>
+  </table></div>
+  <div class="grid">
+    <div class="stat"><code>Codex_tool_taxonomy</code><strong>26</strong><span class="note"><code>command_execution=21</code></span><br><span class="note"><code>file_change=5</code></span><br></div>
+    <div class="stat"><code>Luban_tool_taxonomy</code><strong>36</strong><span class="note"><code>Inspect=24</code></span><br><span class="note"><code>Run=7</code></span><br><span class="note"><code>ApplyPatch=5</code></span><br></div>
+  </div>
+  <div class="links"><a href="raw/runs/skim-rs__skim-1044/codex/summary.json"><code>codex/summary.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/codex/report.json"><code>codex/evaluation/report.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/codex/effective-report.json"><code>codex/evaluation/effective-report.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/codex/adjudication.json"><code>codex/evaluation/adjudication.json</code></a><a href="raw/runs/skim-rs__skim-1044/codex/events.jsonl"><code>codex/events.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/codex/provider-requests.jsonl"><code>codex/provider-requests.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/codex/model.patch"><code>codex/model.patch</code></a><a href="raw/runs/skim-rs__skim-1044/luban/summary.json"><code>luban/summary.json</code></a><a href="raw/evaluation/skim-rs__skim-1044/luban/report.json"><code>luban/evaluation/report.json</code></a><a href="raw/runs/skim-rs__skim-1044/luban/events.jsonl"><code>luban/events.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/luban/provider-requests.jsonl"><code>luban/provider-requests.jsonl</code></a><a href="raw/runs/skim-rs__skim-1044/luban/model.patch"><code>luban/model.patch</code></a></div>
+
+
 </section>
 
 <section class="section" id="efficiency-diagnosis">
   <h2>效率诊断</h2>
-  
+
   <div class="callout warn"><strong>工具 wrapper 数下降了，但模型轮次、输出、任务耗时与费用均上升；本 pilot 改善的是包装层，而不是端到端效率。</strong></div>
   <div class="table-wrap"><table>
     <thead><tr><th><code>metric</code></th><th class="num"><code>old_luban</code></th><th class="num"><code>new_luban</code></th><th class="num">相对变化</th></tr></thead>
@@ -341,7 +353,7 @@
   <p class="callout">缺失、格式错误、未封存或配对不完整的证据一律报告为 N/A，并阻断比较结论；绝不会转写为零或进行插补。</p>
 </section>
 
-<footer>作为本机自包含 HTML snapshot 生成 · 证据截至 2026-07-27T04:47:09Z · 所链接 raw/source 文件可变，且不构成内容寻址 manifest</footer>
+<footer>作为本机自包含 HTML snapshot 生成 · 证据截至 2026-07-27T08:30:54Z · 所链接 raw/source 文件可变，且不构成内容寻址 manifest</footer>
 </main>
 </body>
 </html>

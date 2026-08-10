@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "provider_catalog.json"
-CATALOG_VERIFIED_AT = "2026-07-18"
+CATALOG_VERIFIED_AT = "2026-08-01"
 FAMILY_HISTORY_LIMIT = 4
 
 # Effective context windows returned by Codex app-server token-usage events.
@@ -63,8 +63,12 @@ REMOTE_MODELS = [
     {"Provider": "gemini", "ID": "gemini-2.5-flash", "Name": "Gemini 2.5 Flash", "ContextWindow": 1048576, "MaxOutput": 65536, "CostPer1MIn": 0.3, "CostPer1MOut": 2.5, "CacheReadPer1M": 0.03, "CanReason": True, "CanUseTools": True, "CanSeeImages": True, "CacheControl": True, "APIFormat": "chat-completions", "_family": "flash", "_rank": 1},
     {"Provider": "gemini", "ID": "gemini-2.5-flash-lite", "Name": "Gemini 2.5 Flash-Lite", "ContextWindow": 1048576, "MaxOutput": 65536, "CostPer1MIn": 0.1, "CostPer1MOut": 0.4, "CacheReadPer1M": 0.01, "CanReason": True, "CanUseTools": True, "CanSeeImages": True, "CacheControl": True, "APIFormat": "chat-completions", "_family": "flash-lite", "_rank": 1},
 
-    {"Provider": "deepseek", "ID": "deepseek-v4-flash", "Name": "DeepSeek V4 Flash", "ContextWindow": 1048576, "MaxOutput": 393216, "CostCurrency": "CNY", "CostPer1MIn": 1.0, "CostPer1MOut": 2.0, "CacheReadPer1M": 0.02, "CanReason": True, "CanUseTools": True, "CanSeeImages": False, "APIFormat": "chat-completions", "IsDefault": True, "_family": "v4", "_rank": 3},
-    {"Provider": "deepseek", "ID": "deepseek-v4-pro", "Name": "DeepSeek V4 Pro", "ContextWindow": 1048576, "MaxOutput": 393216, "CostCurrency": "CNY", "CostPer1MIn": 3.0, "CostPer1MOut": 6.0, "CacheReadPer1M": 0.025, "CanReason": True, "CanUseTools": True, "CanSeeImages": False, "APIFormat": "chat-completions", "_family": "v4", "_rank": 2},
+    # DeepSeek V4 limits, Responses support, reasoning tiers, and global USD pricing:
+    # https://api-docs.deepseek.com/quick_start/pricing/
+    # https://api-docs.deepseek.com/guides/responses_api/
+    # https://api-docs.deepseek.com/guides/thinking_mode/
+    {"Provider": "deepseek", "ID": "deepseek-v4-flash", "Name": "DeepSeek V4 Flash", "ContextWindow": 1048576, "MaxOutput": 393216, "CostCurrency": "USD", "CostPer1MIn": 0.14, "CostPer1MOut": 0.28, "CacheReadPer1M": 0.0028, "CanReason": True, "ReasoningEfforts": ["low", "high", "max"], "DefaultReasoningEffort": "high", "CanUseTools": True, "CanSeeImages": False, "APIFormat": "responses", "IsDefault": True, "_family": "v4", "_rank": 3},
+    {"Provider": "deepseek", "ID": "deepseek-v4-pro", "Name": "DeepSeek V4 Pro", "ContextWindow": 1048576, "MaxOutput": 393216, "CostCurrency": "USD", "CostPer1MIn": 0.435, "CostPer1MOut": 0.87, "CacheReadPer1M": 0.003625, "CanReason": True, "ReasoningEfforts": ["low", "high", "max"], "DefaultReasoningEffort": "high", "CanUseTools": True, "CanSeeImages": False, "APIFormat": "chat-completions", "_family": "v4", "_rank": 2},
 
     # Current Groq rows and prices reverified at https://groq.com/pricing and
     # https://console.groq.com/docs/prompt-caching.
@@ -156,7 +160,11 @@ def build_payload() -> list[dict]:
     final.sort(key=lambda item: (item["Provider"], not item.get("IsDefault", False), item["ID"]))
     stripped = []
     for item in final:
-        clean = {k: v for k, v in item.items() if not k.startswith("_")}
+        clean = {
+            k: int(v) if isinstance(v, float) and v.is_integer() else v
+            for k, v in sorted(item.items())
+            if not k.startswith("_")
+        }
         # The OpenAI API can expose larger windows than a ChatGPT-backed Codex
         # session. Prefer the verified Codex window when that model is offered
         # by the subscription; otherwise retain the public API metadata.
@@ -164,6 +172,10 @@ def build_payload() -> list[dict]:
             clean["ContextWindow"] = OPENAI_CODEX_CONTEXT_WINDOWS.get(
                 clean["ID"], clean["ContextWindow"]
             )
+        # USD is the catalog-wide default. Append it after the sorted model
+        # fields to keep generated diffs stable while preserving explicit
+        # non-USD currencies in their normal alphabetical position.
+        clean.setdefault("CostCurrency", "USD")
         stripped.append(clean)
     return stripped
 
@@ -202,7 +214,7 @@ def validate_payload(payload: list[dict]) -> None:
 def main() -> None:
     payload = build_payload()
     validate_payload(payload)
-    OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n")
+    OUT.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     print(f"wrote {OUT} with {len(payload)} models (verified {CATALOG_VERIFIED_AT})")
 
 

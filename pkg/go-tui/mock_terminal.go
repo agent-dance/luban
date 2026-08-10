@@ -191,7 +191,7 @@ func (m *MockTerminal) String() string {
 			if cell.Rune == 0 {
 				sb.WriteRune(' ')
 			} else {
-				sb.WriteRune(cell.Rune)
+				sb.WriteString(cell.displayText())
 			}
 		}
 		if y < m.height-1 {
@@ -214,7 +214,7 @@ func (m *MockTerminal) StringTrimmed() string {
 			if cell.Rune == 0 {
 				line.WriteRune(' ')
 			} else {
-				line.WriteRune(cell.Rune)
+				line.WriteString(cell.displayText())
 			}
 		}
 		sb.WriteString(strings.TrimRight(line.String(), " "))

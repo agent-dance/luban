@@ -25,8 +25,19 @@ func isAdjacentRevisionFusion(reg *registry.Registry, mutation, verification typ
 	producer, producerOK := reg.Get(mutation.Name).(workspacerevision.MutationTool)
 	consumer, consumerOK := reg.Get(verification.Name).(workspacerevision.VerificationTool)
 	dependent, dependencyOK := reg.Get(verification.Name).(workspacerevision.PatchCommitDependentTool)
-	return producerOK && consumerOK && dependencyOK && producer.ProvidesWorkspaceRevisionBarrier() &&
-		consumer.ConsumesWorkspaceRevisionBarrier() && dependent.RequiresPatchCommit(verification.Input)
+	if !producerOK || !consumerOK || !dependencyOK || !producer.ProvidesWorkspaceRevisionBarrier() ||
+		!consumer.ConsumesWorkspaceRevisionBarrier() {
+		return false
+	}
+	// An immediately adjacent ApplyPatch is the only scheduler-authored source
+	// of revision authority in this assistant response, so bind it by default.
+	// Omission outside this adjacency creates no scheduler dependency. The model
+	// can set requires_patch_commit=false for a deliberately independent Run;
+	// explicit true documents the fail-closed dependency contract.
+	if _, explicit := verification.Input["requires_patch_commit"]; !explicit {
+		return true
+	}
+	return dependent.RequiresPatchCommit(verification.Input)
 }
 
 func revisionReceiptFromResult(result types.ToolResultBlock) (workspacerevision.Receipt, bool) {

@@ -3,10 +3,32 @@ package tui
 import (
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
+	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/types"
 )
+
+func TestProjectPersistedInvalidToolUseShowsBoundedWarning(t *testing.T) {
+	persisted := []types.Message{{Role: types.RoleAssistant, Content: []types.ContentBlock{
+		types.InvalidToolUseBlock{
+			Type: types.ContentTypeInvalidToolUse, ID: "call_bad", Name: "Inspect",
+			RawInput: "provider-secret-malformed-json", InputBytes: 30, InputDigest: "sha256:test",
+			FailureKind: types.ToolInputFailureInvalidJSON, Recoverable: true,
+		},
+	}}}
+	projection, err := ProjectPersistedMessagesInLanguage(i18n.LangZH, SessionIdentity{Namespace: "project", SessionID: "session"}, persisted, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Messages) != 1 || projection.Messages[0].Kind != MsgWarning || !strings.Contains(projection.Messages[0].Text, "Inspect") {
+		t.Fatalf("invalid tool projection = %#v", projection.Messages)
+	}
+	if strings.Contains(projection.Messages[0].Text, "provider-secret") {
+		t.Fatalf("raw invalid input leaked into transcript: %q", projection.Messages[0].Text)
+	}
+}
 
 // Target API assumptions locked by this file:
 //   - ProjectPersistedMessages is a pure, deterministic projection from a

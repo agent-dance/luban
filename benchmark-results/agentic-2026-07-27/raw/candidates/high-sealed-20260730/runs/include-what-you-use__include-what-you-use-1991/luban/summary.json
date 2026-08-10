@@ -1,0 +1,52 @@
+{
+  "instance_id": "include-what-you-use__include-what-you-use-1991",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "high",
+  "started_at_unix": 1785396050.470934,
+  "elapsed_seconds": 211.377,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 305007,
+    "cached_input_tokens": 257536,
+    "cache_read_input_tokens": 257536,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 6934,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.574143,
+  "tool_calls": 12,
+  "tool_calls_by_type": {
+    "Inspect": 9,
+    "Run": 2,
+    "ApplyPatch": 1
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      "iwyu.cc",
+      "tests/bugs/1931/1931.cc",
+      "tests/bugs/1931/1931.h"
+    ],
+    "additions": 13,
+    "deletions": 7
+  },
+  "final_text": "Implemented explicit function-template specialization dependency tracking.\n\n- Explicit specializations now record a full use of their primary template declaration.\n- Enabled the existing issue-1931 regression fixture.\n- Confirmed the fixture compiles with:\n  `clang++ -std=c++17 -fsyntax-only -Itests/bugs/1931 tests/bugs/1931/1931.cc`\n- Reviewed final changed files; no unintended scope changes found.\n\nThe IWYU regression runner was not executed because no built IWYU executable is available locally.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-optimized-20260730b",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 13,
+  "llm_successful_calls": 13,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 209.601579,
+  "binary": {
+    "path": "/private/tmp/luban-local5-optimized-20260730b",
+    "sha256": "6294a57b59bbe8a0a685a3fc5cb8c7d70662e799ca55826549634a20f0644a59"
+  }
+}

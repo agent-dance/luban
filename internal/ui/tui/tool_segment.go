@@ -200,7 +200,7 @@ func newTranscriptToolSegment(messages []Message) TranscriptToolSegment {
 		WorkUnitID: messages[0].WorkUnitID,
 	}
 	for _, message := range messages {
-		if transcriptToolOutcomeNeedsAttention(message.Outcome) {
+		if transcriptToolMessageNeedsAttention(message) {
 			segment.Alert = true
 			segment.IssueCount++
 		}
@@ -274,6 +274,13 @@ func (s *AppState) toolSegmentExpansionOverride(id string) (bool, bool) {
 	}
 	expanded, ok := s.ToolSegmentExpansion.Get()[id]
 	return expanded, ok
+}
+
+func transcriptToolMessageNeedsAttention(message Message) bool {
+	if observationIsNormalPagination(message.Outcome, message.Completeness) {
+		return false
+	}
+	return transcriptToolOutcomeNeedsAttention(message.Outcome)
 }
 
 func transcriptToolOutcomeNeedsAttention(outcome ObservationOutcome) bool {

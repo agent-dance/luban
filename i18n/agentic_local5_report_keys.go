@@ -25,14 +25,18 @@ const (
 	KeyAgenticLocal5CaveatAttributionBundle           Key = "agentic.local5.caveat.attribution_bundle"
 	KeyAgenticLocal5CaveatBaselineSecurityIncident    Key = "agentic.local5.caveat.baseline_security_incident"
 	KeyAgenticLocal5CaveatSharedPassScope             Key = "agentic.local5.caveat.shared_pass_scope"
+	KeyAgenticLocal5CaveatSharedPassAdjudicatedScope  Key = "agentic.local5.caveat.shared_pass_adjudicated_scope"
 	KeyAgenticLocal5CaveatSharedPassToolTaxonomy      Key = "agentic.local5.caveat.shared_pass_tool_taxonomy"
 	KeyAgenticLocal5SharedPassLongerSlower            Key = "agentic.local5.shared_pass.longer_slower"
 	KeyAgenticLocal5SharedPassNormalizedNeutral       Key = "agentic.local5.shared_pass.normalized_neutral"
 
 	KeyAgenticLocal5ConclusionNoComprehensiveSuperiority Key = "agentic.local5.conclusion.no_comprehensive_superiority"
 	KeyAgenticLocal5ConclusionMeasured                   Key = "agentic.local5.conclusion.measured"
+	KeyAgenticLocal5ConclusionMeasuredAdjudicated        Key = "agentic.local5.conclusion.measured_adjudicated"
 	KeyAgenticLocal5ConclusionCacheContext               Key = "agentic.local5.conclusion.cache_context"
 	KeyAgenticLocal5ConclusionRawProjectionScope         Key = "agentic.local5.conclusion.raw_projection_scope"
+	KeyAgenticLocal5ConclusionAdjudicationScope          Key = "agentic.local5.conclusion.adjudication_scope"
+	KeyAgenticLocal5StatusAdjudicatedPass                Key = "agentic.local5.status.adjudicated_pass"
 
 	KeyAgenticLocal5EfficiencyPrimaryConclusion Key = "agentic.local5.efficiency.primary_conclusion"
 	KeyAgenticLocal5EfficiencyCompletionTail    Key = "agentic.local5.efficiency.completion_tail"
@@ -182,6 +186,14 @@ var agenticLocal5Copy = [...]agenticLocal5CopyEntry{
 		"이 절은 품질을 조건으로 하며, 엄격한 평가에서 두 Agent가 모두 통과한 %d개 작업만 포함합니다. 관측은 Agent–작업 쌍당 1회뿐입니다. 전체 벤치마크의 무조건적 효율이나 통계적 우위를 추정하지 않습니다.",
 		"Этот раздел содержит сравнение при условии качества: включены только %d задач, которые оба агента прошли по строгой оценке, по одному наблюдаемому запуску на каждую пару агент–задача. Эти данные не позволяют оценивать безусловную эффективность по всему бенчмарку или статистическое превосходство.",
 	}},
+	{KeyAgenticLocal5CaveatSharedPassAdjudicatedScope, [6]string{
+		"This section includes the %d tasks both agents pass under the effective evaluator result. One Codex result is a disclosed production-only counterfactual adjudication; the slice is descriptive, unconditional on resource use, and does not establish statistical superiority.",
+		"本节包含按有效 evaluator 结果双方都通过的 %d 道题。其中一个 Codex 结果是已披露的仅生产代码反事实裁决；该切片仅作描述，不以资源消耗为通过条件，也不能证明统计显著的优越性。",
+		"Dieser Abschnitt umfasst die %d Aufgaben, die beide Agents nach dem wirksamen Evaluator-Ergebnis bestehen. Ein Codex-Ergebnis ist eine offengelegte kontrafaktische Beurteilung nur des Produktionscodes; der Ausschnitt ist deskriptiv, nicht vom Ressourcenverbrauch abhängig und belegt keine statistische Überlegenheit.",
+		"この節は、有効な evaluator 結果で両 Agent が合格した %d タスクを対象とします。Codex の 1 件は開示済みの本番コードのみの反実仮想裁定です。この切片は記述的で、資源使用量を合格条件にせず、統計的優位性を示すものではありません。",
+		"이 절은 유효 evaluator 결과에서 두 Agent가 모두 통과한 %d개 작업을 포함합니다. Codex 결과 1건은 공개된 프로덕션 코드 전용 반사실 판정입니다. 이 구간은 기술적 비교일 뿐 자원 사용량을 통과 조건으로 삼지 않으며 통계적 우위를 입증하지 않습니다.",
+		"Раздел охватывает %d задач, пройденных обоими агентами по действующему результату evaluator. Один результат Codex является раскрытой контрфактической оценкой только производственного кода; срез носит описательный характер, не зависит от расхода ресурсов и не доказывает статистического превосходства.",
+	}},
 	{KeyAgenticLocal5CaveatSharedPassToolTaxonomy, [6]string{
 		"Codex and Luban expose different tool catalogs and event taxonomies. Tool-call totals and per-tool counts in this section are diagnostic only; they are not like-for-like efficiency evidence.",
 		"Codex 与 Luban 暴露的工具目录和事件分类口径不同。本节的工具调用总数与分工具计数仅供诊断，不属于可同口径比较的效率证据。",
@@ -191,12 +203,12 @@ var agenticLocal5Copy = [...]agenticLocal5CopyEntry{
 		"Codex и Luban используют разные каталоги инструментов и таксономии событий. Общее число и разбивка вызовов инструментов в этом разделе предназначены только для диагностики и не являются сопоставимым доказательством эффективности.",
 	}},
 	{KeyAgenticLocal5SharedPassLongerSlower, [6]string{
-		"Input per POST is close (Codex %s, Luban %s; %s), while Luban uses more provider time per POST (Codex %s, Luban %s; %s) and more output tokens per POST (Codex %s, Luban %s; %s). With solved quality held constant, this two-task sample associates Luban's extra time and cost with longer, slower model responses; it does not establish causation.",
-		"每次 POST 的输入量接近（Codex %s，Luban %s；%s），但 Luban 每次 POST 的 Provider 耗时更高（Codex %s，Luban %s；%s），输出 token 也更多（Codex %s，Luban %s；%s）。在解题质量保持一致后，这个两题样本显示 Luban 的额外耗时与费用伴随更长、更慢的模型响应，但不能据此确立因果关系。",
-		"Die Eingabemenge je POST ist ähnlich (Codex %s, Luban %s; %s), während Luban mehr Provider-Zeit je POST (Codex %s, Luban %s; %s) und mehr Ausgabe-Token je POST benötigt (Codex %s, Luban %s; %s). Bei konstant gehaltener Lösungsqualität bringt diese Zwei-Aufgaben-Stichprobe Lubans zusätzliche Zeit und Kosten mit längeren, langsameren Modellantworten in Verbindung; Kausalität ist damit nicht belegt.",
-		"POST 当たりの入力量は近い値です（Codex %s、Luban %s、%s）。一方、Luban は POST 当たりの Provider 時間（Codex %s、Luban %s、%s）と出力 token（Codex %s、Luban %s、%s）が多くなっています。解決品質を一定にしたこの 2 タスク標本では、Luban の追加時間と費用はより長く遅いモデル応答に伴っていますが、因果関係を示すものではありません。",
-		"POST당 입력량은 비슷하지만(Codex %s, Luban %s, %s), Luban은 POST당 Provider 시간(Codex %s, Luban %s, %s)과 출력 token(Codex %s, Luban %s, %s)이 더 많습니다. 해결 품질을 동일하게 둔 이 2개 작업 표본에서는 Luban의 추가 시간과 비용이 더 길고 느린 모델 응답과 함께 나타나지만 인과관계를 입증하지는 않습니다.",
-		"Объём входа на POST близок (Codex %s, Luban %s; %s), однако Luban расходует больше времени Provider на POST (Codex %s, Luban %s; %s) и выдаёт больше выходных токенов на POST (Codex %s, Luban %s; %s). При одинаковом качестве решения эта выборка из двух задач связывает дополнительные время и стоимость Luban с более длинными и медленными ответами модели, но не доказывает причинность.",
+		"Input per POST is close (Codex %s, Luban %s; %s), while Luban uses more provider time per POST (Codex %s, Luban %s; %s) and more output tokens per POST (Codex %s, Luban %s; %s). With solved quality held constant, this quality-conditioned sample associates Luban's extra time and cost with longer, slower model responses; it does not establish causation.",
+		"每次 POST 的输入量接近（Codex %s，Luban %s；%s），但 Luban 每次 POST 的 Provider 耗时更高（Codex %s，Luban %s；%s），输出 token 也更多（Codex %s，Luban %s；%s）。在解题质量保持一致后，这个以质量为条件的样本显示 Luban 的额外耗时与费用伴随更长、更慢的模型响应，但不能据此确立因果关系。",
+		"Die Eingabemenge je POST ist ähnlich (Codex %s, Luban %s; %s), während Luban mehr Provider-Zeit je POST (Codex %s, Luban %s; %s) und mehr Ausgabe-Token je POST benötigt (Codex %s, Luban %s; %s). Bei konstant gehaltener Lösungsqualität bringt diese qualitätsbedingte Stichprobe Lubans zusätzliche Zeit und Kosten mit längeren, langsameren Modellantworten in Verbindung; Kausalität ist damit nicht belegt.",
+		"POST 当たりの入力量は近い値です（Codex %s、Luban %s、%s）。一方、Luban は POST 当たりの Provider 時間（Codex %s、Luban %s、%s）と出力 token（Codex %s、Luban %s、%s）が多くなっています。解決品質を一定にした品質条件付き標本では、Luban の追加時間と費用はより長く遅いモデル応答に伴っていますが、因果関係を示すものではありません。",
+		"POST당 입력량은 비슷하지만(Codex %s, Luban %s, %s), Luban은 POST당 Provider 시간(Codex %s, Luban %s, %s)과 출력 token(Codex %s, Luban %s, %s)이 더 많습니다. 해결 품질을 동일하게 둔 품질 조건부 표본에서는 Luban의 추가 시간과 비용이 더 길고 느린 모델 응답과 함께 나타나지만 인과관계를 입증하지는 않습니다.",
+		"Объём входа на POST близок (Codex %s, Luban %s; %s), однако Luban расходует больше времени Provider на POST (Codex %s, Luban %s; %s) и выдаёт больше выходных токенов на POST (Codex %s, Luban %s; %s). При одинаковом качестве решения эта выборка с условием по качеству связывает дополнительные время и стоимость Luban с более длинными и медленными ответами модели, но не доказывает причинность.",
 	}},
 	{KeyAgenticLocal5SharedPassNormalizedNeutral, [6]string{
 		"Per-solved-task and per-POST normalizations are derived dynamically. They separate task-count effects from call intensity, but one run per pair cannot establish a stable mechanism.",
@@ -218,6 +230,14 @@ var agenticLocal5Copy = [...]agenticLocal5CopyEntry{
 		"엄격한 로컬 원시 투영: Luban %d/%d, Codex %d/%d; 기록된 POST는 %d 대 %d(%s), 작업 소요 시간은 %s, 비교 추정 비용은 %s입니다.",
 		"Строгая локальная сырая проекция: Luban %d/%d против Codex %d/%d; записанные POST — %d против %d (%s), время выполнения задачи — %s, сопоставимая оценка стоимости — %s.",
 	}},
+	{KeyAgenticLocal5ConclusionMeasuredAdjudicated, [6]string{
+		"Adjudicated local projection: Luban %d/%d versus Codex %d/%d; meter-recorded POSTs %d versus %d (%s), task duration %s, and comparable estimated cost %s.",
+		"本机裁决后投影：Luban %d/%d，Codex %d/%d；meter 已记录 POST 为 %d 对 %d（%s），任务耗时 %s，可比估算费用 %s。",
+		"Lokale Projektion nach Beurteilung: Luban %d/%d gegenüber Codex %d/%d; aufgezeichnete POSTs %d gegenüber %d (%s), Aufgabendauer %s und vergleichbare geschätzte Kosten %s.",
+		"裁定後のローカル投影：Luban %d/%d、Codex %d/%d。記録済み POST は %d 対 %d（%s）、タスク所要時間は %s、比較用推定費用は %s です。",
+		"판정 반영 로컬 투영: Luban %d/%d, Codex %d/%d; 기록된 POST는 %d 대 %d(%s), 작업 소요 시간은 %s, 비교 추정 비용은 %s입니다.",
+		"Локальная проекция после оценки: Luban %d/%d против Codex %d/%d; записанные POST — %d против %d (%s), время выполнения задач — %s, сопоставимая оценка стоимости — %s.",
+	}},
 	{KeyAgenticLocal5ConclusionCacheContext, [6]string{
 		"Cache ratio is %s in Luban's favor, but cached-token volume is also higher (%d versus %d) because Luban sends substantially more input; this is not an efficiency win by itself.",
 		"缓存率高出 %s，但 Luban 的缓存 token 绝对量也更高（%d 对 %d），原因是其输入显著更多；这本身不能视为效率胜出。",
@@ -233,6 +253,17 @@ var agenticLocal5Copy = [...]agenticLocal5CopyEntry{
 		"2/5 と 3/5 は 5/5 の完全なローカル evaluator 分割から得た厳密な投影です。非公式 pilot の結果であり、公開ベンチマークスコアではありません。",
 		"2/5와 3/5는 5/5 완전한 로컬 evaluator 분할의 엄격한 투영입니다. 여전히 비공식 pilot 결과이며 공개 벤치마크 점수가 아닙니다.",
 		"Значения 2/5 и 3/5 — строгая проекция пяти из пяти полных локальных разделов evaluator. Это по-прежнему неофициальные результаты пилота, а не публичная оценка бенчмарка.",
+	}},
+	{KeyAgenticLocal5ConclusionAdjudicationScope, [6]string{
+		"Codex is counted as 3/5 because its skim production patch passes the target test and all 587 regression tests after excluding only its colliding candidate test. The original 2/5 evaluator projection remains linked and unchanged; this is a disclosed diagnostic adjudication, not a rewrite of raw evidence.",
+		"Codex 按 3/5 计分：仅排除发生名称冲突的候选测试后，其 skim 生产代码补丁通过目标测试及全部 587 个回归测试。原始 2/5 evaluator 投影保持不变并继续提供链接；这是明确披露的诊断裁决，不是改写原始证据。",
+		"Codex wird mit 3/5 gewertet, weil sein skim-Produktionspatch nach dem alleinigen Ausschluss des kollidierenden Kandidatentests den Zieltest und alle 587 Regressionstests besteht. Die ursprüngliche Evaluator-Projektion von 2/5 bleibt unverändert verlinkt; dies ist eine offengelegte diagnostische Beurteilung und keine Umschreibung der Rohdaten.",
+		"Codex は 3/5 として集計します。衝突した候補テストだけを除外すると、skim の本番コードパッチが対象テストと 587 件すべての回帰テストに合格するためです。元の evaluator 投影 2/5 は変更せずリンクを保持します。これは開示済みの診断裁定であり、生の証拠の書き換えではありません。",
+		"Codex는 3/5로 집계합니다. 이름이 충돌한 후보 테스트만 제외하면 skim 프로덕션 코드 패치가 대상 테스트와 회귀 테스트 587개를 모두 통과하기 때문입니다. 기존 evaluator 투영 2/5는 변경하지 않고 링크를 유지합니다. 이는 공개된 진단 판정이며 원시 근거를 다시 쓴 것이 아닙니다.",
+		"Codex учитывается как 3/5: после исключения только конфликтующего кандидатного теста производственный патч skim проходит целевой тест и все 587 регрессионных тестов. Исходная проекция evaluator 2/5 остаётся без изменений и доступна по ссылке; это раскрытая диагностическая оценка, а не переписывание исходных данных.",
+	}},
+	{KeyAgenticLocal5StatusAdjudicatedPass, [6]string{
+		"Pass (diagnostic adjudication)", "通过（诊断裁决）", "Bestanden (diagnostische Beurteilung)", "合格（診断裁定）", "통과(진단 판정)", "Пройдено (диагностическая оценка)",
 	}},
 
 	{KeyAgenticLocal5EfficiencyPrimaryConclusion, [6]string{

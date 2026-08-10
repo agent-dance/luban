@@ -20,7 +20,7 @@ const (
 	DeepSeekProvider     = "deepseek"
 	DeepSeekDefaultModel = "deepseek-v4-flash"
 	DeepSeekProModel     = "deepseek-v4-pro"
-	DeepSeekBaseURL      = "https://api.deepseek.com/v1"
+	DeepSeekBaseURL      = "https://api.deepseek.com"
 )
 
 var (

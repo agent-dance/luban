@@ -1,0 +1,51 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785394763.3515751,
+  "elapsed_seconds": 318.386,
+  "timeout_seconds": 900,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 385955,
+    "cached_input_tokens": 316928,
+    "cache_read_input_tokens": 316928,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 9435,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.786649,
+  "tool_calls": 13,
+  "tool_calls_by_type": {
+    "Inspect": 11,
+    "ApplyPatch": 1,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/plugins/ai/codex/codex.go",
+      "internal/plugins/ai/codex/codex_test.go"
+    ],
+    "additions": 142,
+    "deletions": 5
+  },
+  "final_text": "Fixed Codex empty responses.\n\n- Added fallback parsing for `response.output_text.done`.\n- Preserved delta text when `response.completed` has empty output.\n- Prevented duplicate streamed output.\n- Added regression tests for non-streaming and streaming cases.\n\nVerification: `go test ./internal/plugins/ai/codex` passed. Live Codex API behavior was not tested.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-optimized-20260730",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 14,
+  "llm_successful_calls": 14,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 282.355405,
+  "binary": {
+    "path": "/private/tmp/luban-local5-optimized-20260730",
+    "sha256": "21f880c25c636010bf4da950aac80313136d6b8fd621019778f113f85bb99446"
+  }
+}

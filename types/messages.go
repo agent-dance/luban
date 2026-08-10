@@ -14,6 +14,7 @@ type ContentType string
 const (
 	ContentTypeText                ContentType = "text"
 	ContentTypeToolUse             ContentType = "tool_use"
+	ContentTypeInvalidToolUse      ContentType = "invalid_tool_use"
 	ContentTypeToolResult          ContentType = "tool_result"
 	ContentTypeToolReference       ContentType = "tool_reference"
 	ContentTypeThinking            ContentType = "thinking"
@@ -58,6 +59,7 @@ type InternalMessageKind string
 
 const (
 	InternalMessageKindOutputTokenRecovery InternalMessageKind = "output_token_recovery"
+	InternalMessageKindToolInputRecovery   InternalMessageKind = "tool_input_recovery"
 	InternalMessageKindCompactBoundary     InternalMessageKind = "compact_boundary"
 	InternalMessageKindCompactSummary      InternalMessageKind = "compact_summary"
 	InternalMessageKindCompactReminder     InternalMessageKind = "compact_reminder"
@@ -114,9 +116,20 @@ type ThinkingBlock struct {
 	SignatureModel string                `json:"signature_model,omitempty"`
 	ProviderItemID string                `json:"provider_item_id,omitempty"`
 	ProviderStatus string                `json:"provider_status,omitempty"`
+	Kind           ThinkingKind          `json:"kind,omitempty"`
 }
 
 func (b ThinkingBlock) GetType() ContentType { return ContentTypeThinking }
+
+// ThinkingKind records whether provider-visible reasoning is raw chain-of-
+// thought or an explicit summary. The zero value preserves legacy sessions and
+// is treated as raw reasoning by adapters that support replay.
+type ThinkingKind string
+
+const (
+	ThinkingKindRaw     ThinkingKind = "raw"
+	ThinkingKindSummary ThinkingKind = "summary"
+)
 
 // ThinkingSignatureKind binds an opaque provider continuation token to its
 // wire protocol. A signature must never be projected to another protocol or
@@ -186,6 +199,36 @@ type ToolUseBlock struct {
 }
 
 func (b ToolUseBlock) GetType() ContentType { return ContentTypeToolUse }
+
+// ToolInputFailureKind classifies why a committed provider tool call could not
+// cross the runtime's execution boundary.
+type ToolInputFailureKind string
+
+const (
+	ToolInputFailureInvalidJSON  ToolInputFailureKind = "invalid_json"
+	ToolInputFailureCustomDecode ToolInputFailureKind = "custom_decode"
+)
+
+// InvalidToolUseBlock is the durable audit record for a provider-committed
+// tool call that was never executed. RawInput is a bounded diagnostic prefix;
+// InputBytes and InputDigest describe the complete provider payload.
+// Provider/model projections must strip this block before sampling.
+type InvalidToolUseBlock struct {
+	Type              ContentType          `json:"type"`
+	ID                string               `json:"id,omitempty"`
+	Name              string               `json:"name"`
+	ToolType          ToolDefinitionType   `json:"tool_type,omitempty"`
+	RawInput          string               `json:"raw_input,omitempty"`
+	InputBytes        int                  `json:"input_bytes"`
+	InputDigest       string               `json:"input_digest"`
+	RawInputTruncated bool                 `json:"raw_input_truncated,omitempty"`
+	ProviderItemID    string               `json:"provider_item_id,omitempty"`
+	ProviderStatus    string               `json:"provider_status,omitempty"`
+	FailureKind       ToolInputFailureKind `json:"failure_kind"`
+	Recoverable       bool                 `json:"recoverable"`
+}
+
+func (b InvalidToolUseBlock) GetType() ContentType { return ContentTypeInvalidToolUse }
 
 // ToolResultBlock represents the result of a tool execution
 type ToolResultBlock struct {
@@ -658,6 +701,18 @@ func (m Message) GetToolUses() []ToolUseBlock {
 	for _, block := range m.Content {
 		if tu, ok := block.(ToolUseBlock); ok {
 			uses = append(uses, tu)
+		}
+	}
+	return uses
+}
+
+// GetInvalidToolUses extracts provider-committed tool calls that the runtime
+// rejected before execution.
+func (m Message) GetInvalidToolUses() []InvalidToolUseBlock {
+	var uses []InvalidToolUseBlock
+	for _, block := range m.Content {
+		if invalid, ok := block.(InvalidToolUseBlock); ok {
+			uses = append(uses, invalid)
 		}
 	}
 	return uses

@@ -276,20 +276,23 @@ func (t *Tool) Schema() types.JSONSchema {
 		"type": "object",
 		"properties": map[string]any{
 			"id": map[string]any{
-				"type": "string", "description": i18n.Text(lang, i18n.KeyToolInspectRequestIDDescription),
+				"type": "string", "maxLength": maximumRequestID,
+				"description": i18n.Text(lang, i18n.KeyToolInspectRequestIDDescription),
 			},
 			"kind": map[string]any{
 				"type": "string", "enum": []string{KindRead, KindSearch, KindGlob},
 				"description": i18n.Text(lang, i18n.KeyToolInspectRequestKindDescription),
 			},
 			"path": map[string]any{
-				"type": "string", "description": i18n.Text(lang, i18n.KeyToolInspectRequestPathDescription),
+				"type": "string", "maxLength": maximumPath,
+				"description": i18n.Text(lang, i18n.KeyToolInspectRequestPathDescription),
 			},
 			"pattern": map[string]any{
-				"type": "string", "description": i18n.Text(lang, i18n.KeyToolInspectRequestPatternDescription),
+				"type": "string", "maxLength": maximumPattern,
+				"description": i18n.Text(lang, i18n.KeyToolInspectRequestPatternDescription),
 			},
 			"ranges": map[string]any{
-				"type": "array", "items": rangeSchema,
+				"type": "array", "items": rangeSchema, "maxItems": maximumRanges,
 				"description": i18n.Text(lang, i18n.KeyToolInspectRequestRangesDescription),
 			},
 			"context":     toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectRequestContextDescription), 0, true),
@@ -300,7 +303,7 @@ func (t *Tool) Schema() types.JSONSchema {
 	}
 	return types.StrictObjectSchema(map[string]any{
 		"requests": map[string]any{
-			"type": "array", "items": requestSchema,
+			"type": "array", "items": requestSchema, "maxItems": maximumRequests,
 			"description": i18n.Text(lang, i18n.KeyToolInspectInputRequestsDescription),
 		},
 		"cursor": map[string]any{

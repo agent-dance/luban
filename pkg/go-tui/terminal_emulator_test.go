@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"unicode/utf8"
+
+	"github.com/rivo/uniseg"
 )
 
 // EmulatorTerminal is a terminal emulator for testing that processes ANSI escape
@@ -136,16 +139,31 @@ func (e *EmulatorTerminal) WriteDirect(b []byte) (int, error) {
 			e.cursorCol = 0
 			i++
 		} else {
-			// Printable character
-			if e.cursorRow >= 0 && e.cursorRow < e.height &&
-				e.cursorCol >= 0 && e.cursorCol < e.width {
-				e.screen[e.cursorRow][e.cursorCol] = rune(s[i])
-				e.cursorCol++
-			} else if e.cursorCol >= e.width {
-				// At end of line; real terminals wrap, but for our tests
-				// we just stop advancing
+			// Decode a printable span as terminal grapheme clusters. Real terminals
+			// advance by the width of the complete cluster, not once per UTF-8 byte
+			// or Unicode code point.
+			end := i
+			for end < len(s) && s[end] != '\033' && s[end] != '\n' && s[end] != '\r' {
+				end++
 			}
-			i++
+			graphemes := uniseg.NewGraphemes(s[i:end])
+			for graphemes.Next() {
+				cluster := graphemes.Str()
+				clusterWidth := graphemes.Width()
+				if clusterWidth <= 0 {
+					continue
+				}
+				if e.cursorRow >= 0 && e.cursorRow < e.height &&
+					e.cursorCol >= 0 && e.cursorCol < e.width {
+					first, _ := utf8.DecodeRuneInString(cluster)
+					e.screen[e.cursorRow][e.cursorCol] = first
+					for offset := 1; offset < clusterWidth && e.cursorCol+offset < e.width; offset++ {
+						e.screen[e.cursorRow][e.cursorCol+offset] = ' '
+					}
+					e.cursorCol += clusterWidth
+				}
+			}
+			i = end
 		}
 	}
 	return len(b), nil

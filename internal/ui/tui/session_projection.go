@@ -211,6 +211,16 @@ func projectPersistedBlock(
 			ObservationID: fallbackID,
 		}, &baseObservation, false, nil
 
+	case types.InvalidToolUseBlock:
+		return &Message{
+			Kind:          MsgWarning,
+			Text:          i18n.Format(lang, i18n.KeyTUIInvalidToolUse, block.Name),
+			ToolName:      block.Name,
+			ToolUseID:     block.ID,
+			ObservationID: fallbackID,
+			Outcome:       OutcomeFailed,
+		}, &baseObservation, false, nil
+
 	case types.ToolUseBlock:
 		observation := baseObservation
 		observation.ToolUseID = block.ID

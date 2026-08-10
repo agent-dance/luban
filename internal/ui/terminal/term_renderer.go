@@ -24,6 +24,7 @@ import (
 // It respects NO_COLOR and TERM=dumb automatically via lipgloss.
 type TermRenderer struct {
 	w          io.Writer
+	lineState  *terminalLineStateWriter
 	cacheDebug CacheBreakDebugDetector
 
 	// Styles — initialised once in NewTermRenderer.
@@ -38,9 +39,34 @@ type TermRenderer struct {
 	toolBoxStyle  lipgloss.Style
 }
 
+// terminalLineStateWriter lets line-oriented chrome such as usage receipts
+// avoid being joined to a streamed model response that omitted its final
+// newline. It observes bytes only; the underlying output remains unchanged.
+type terminalLineStateWriter struct {
+	w                io.Writer
+	wrote            bool
+	endedWithNewline bool
+}
+
+func (w *terminalLineStateWriter) Write(p []byte) (int, error) {
+	n, err := w.w.Write(p)
+	if n > 0 {
+		w.wrote = true
+		w.endedWithNewline = p[n-1] == '\n'
+	}
+	return n, err
+}
+
+func (w *terminalLineStateWriter) ensureLineBoundary() {
+	if w.wrote && !w.endedWithNewline {
+		_, _ = fmt.Fprintln(w)
+	}
+}
+
 // NewTermRenderer creates a TermRenderer that writes to w.
 func NewTermRenderer(w io.Writer) *TermRenderer {
-	r := &TermRenderer{w: w}
+	lineState := &terminalLineStateWriter{w: w}
+	r := &TermRenderer{w: lineState, lineState: lineState}
 	p := theme.Current()
 
 	r.greenStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(p.Success))
@@ -186,6 +212,7 @@ func (r *TermRenderer) Usage(u *types.Usage) {
 		return
 	}
 	if u.CacheReadInputTokens > 0 || u.CacheCreationInputTokens > 0 {
+		r.lineState.ensureLineBoundary()
 		msg := i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyTerminalCacheUsage,
 			u.CacheReadInputTokens/1000,
 			u.CacheCreationInputTokens/1000,

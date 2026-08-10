@@ -10,6 +10,7 @@ func TestProviderResidualKeysCoverEveryLanguage(t *testing.T) {
 	keys := []Key{
 		KeyProviderOpenAIStreamChunkParseFailed,
 		KeyProviderResponsesCompletedParseFailed,
+		KeyProviderResponsesIncompleteParseFailed,
 		KeyProviderResponsesFailedParseFailed,
 	}
 	diagnostic := errors.New("invalid character 'x'")
@@ -35,6 +36,7 @@ func TestProviderResidualKeysPreserveEnglishContract(t *testing.T) {
 	}{
 		{KeyProviderOpenAIStreamChunkParseFailed, "failed to parse stream chunk: unexpected EOF"},
 		{KeyProviderResponsesCompletedParseFailed, "failed to parse response.completed: unexpected EOF"},
+		{KeyProviderResponsesIncompleteParseFailed, "failed to parse response.incomplete: unexpected EOF"},
 		{KeyProviderResponsesFailedParseFailed, "failed to parse response.failed: unexpected EOF"},
 	}
 

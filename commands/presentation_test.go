@@ -384,7 +384,8 @@ func TestCommandPresentationResolvesDynamicRiskAndAliases(t *testing.T) {
 		t.Fatalf("quit error = %v", err)
 	}
 	terminal = events[len(events)-1]
-	if terminal.Command != "exit" || terminal.Outcome != commands.CommandOutcomeExitRequested {
+	if terminal.Command != "exit" || terminal.Outcome != commands.CommandOutcomeExitRequested ||
+		terminal.Risk != commands.CommandRiskLow || terminal.Display != commands.CommandDisplayReceipt || terminal.Result != "" {
 		t.Fatalf("alias presentation = %+v", terminal)
 	}
 }

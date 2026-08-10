@@ -311,3 +311,59 @@ func TestBuffer_WideChar_ChainedOverwrite(t *testing.T) {
 		t.Errorf("Cell(4, 0).Rune = %q, want '吗'", b.Cell(4, 0).Rune)
 	}
 }
+
+func TestBuffer_SetString_StoresCompleteGraphemeClusters(t *testing.T) {
+	tests := []struct {
+		name      string
+		text      string
+		wantWidth int
+		wantRune  rune
+		wantTail  string
+		wantNextX int
+	}{
+		{name: "variation selector", text: "✏️A", wantWidth: 3, wantRune: '✏', wantTail: "️", wantNextX: 2},
+		{name: "combining mark", text: "e\u0301A", wantWidth: 2, wantRune: 'e', wantTail: "\u0301", wantNextX: 1},
+		{name: "ZWJ emoji", text: "👩🏽\u200d💻A", wantWidth: 3, wantRune: '👩', wantTail: "🏽\u200d💻", wantNextX: 2},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			buf := NewBuffer(12, 1)
+			if got := buf.SetString(0, 0, test.text, NewStyle()); got != test.wantWidth {
+				t.Fatalf("SetString width = %d, want %d", got, test.wantWidth)
+			}
+			primary := buf.Cell(0, 0)
+			if primary.Rune != test.wantRune || primary.Tail != test.wantTail {
+				t.Fatalf("primary cell = {%q %q}, want {%q %q}", primary.Rune, primary.Tail, test.wantRune, test.wantTail)
+			}
+			if got := int(primary.Width); got != test.wantNextX {
+				t.Fatalf("primary width = %d, want %d", got, test.wantNextX)
+			}
+			if primary.Width > 1 && !buf.Cell(1, 0).IsContinuation() {
+				t.Fatal("wide grapheme is missing its continuation cell")
+			}
+			if got := buf.Cell(test.wantNextX, 0).Rune; got != 'A' {
+				t.Fatalf("following cell rune = %q, want A at x=%d", got, test.wantNextX)
+			}
+			if got := buf.StringTrimmed(); got != test.text {
+				t.Fatalf("StringTrimmed = %q, want %q", got, test.text)
+			}
+		})
+	}
+}
+
+func TestBuffer_DiffDetectsGraphemeTailChanges(t *testing.T) {
+	buf := NewBuffer(4, 1)
+	buf.SetString(0, 0, "✏️", NewStyle())
+	buf.Swap()
+
+	buf.Clear()
+	buf.SetString(0, 0, "✏︎", NewStyle())
+	changes := buf.Diff()
+	if len(changes) == 0 {
+		t.Fatal("variation-selector change was omitted from the buffer diff")
+	}
+	if changes[0].Cell.Tail != "︎" {
+		t.Fatalf("changed tail = %q, want text-presentation selector", changes[0].Cell.Tail)
+	}
+}

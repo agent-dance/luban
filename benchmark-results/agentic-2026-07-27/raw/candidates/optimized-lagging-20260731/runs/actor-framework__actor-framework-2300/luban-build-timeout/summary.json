@@ -1,0 +1,51 @@
+{
+  "instance_id": "actor-framework__actor-framework-2300",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785497841.656703,
+  "elapsed_seconds": 360.391,
+  "timeout_seconds": 360,
+  "timed_out": true,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 275213,
+    "cached_input_tokens": 234496,
+    "cache_read_input_tokens": 234496,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 4670,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.460933,
+  "tool_calls": 14,
+  "tool_calls_by_type": {
+    "Inspect": 10,
+    "ApplyPatch": 1,
+    "Run": 3
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "libcaf_net/caf/net/abstract_actor_shell.cpp",
+      "libcaf_net/caf/net/actor_shell.test.cpp"
+    ],
+    "additions": 26,
+    "deletions": 2
+  },
+  "final_text": "The implementation and regression test are in place, and the patch passes whitespace validation. I’ll now configure a minimal local build, compile the net test target, and run only the actor-shell suite.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v4",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 14,
+  "llm_successful_calls": 14,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 198.882918,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v4",
+    "sha256": "3b6068d8c6e4efc1e8569cb36fd2fa5568585db9a3dba58333eda68c22023277"
+  }
+}

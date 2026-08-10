@@ -190,9 +190,5 @@ func (e *Element) TableRowSeparator() bool {
 
 // stringWidth returns the display width of a string in terminal cells.
 func stringWidth(s string) int {
-	width := 0
-	for _, r := range s {
-		width += RuneWidth(r)
-	}
-	return width
+	return StringWidth(s)
 }

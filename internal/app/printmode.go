@@ -23,6 +23,7 @@ type PrintModeConfig struct {
 	CWD               string
 	Query             string
 	Verbose           bool
+	Resume            bool
 }
 
 // RunPrintMode executes a single query in the already-resolved startup session,
@@ -35,6 +36,12 @@ func RunPrintMode(eng engine.Engine, r presentation.Renderer, cfg PrintModeConfi
 
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
+	if cfg.Resume {
+		if _, err := eng.Resume(ctx, cfg.SessionID); err != nil {
+			r.Error(engine.UserFacingError(i18n.DetectOrLoadLanguage(), err))
+			return 1
+		}
+	}
 
 	ch, err := eng.Query(ctx, engine.QueryRequest{
 		SessionID:         cfg.SessionID,

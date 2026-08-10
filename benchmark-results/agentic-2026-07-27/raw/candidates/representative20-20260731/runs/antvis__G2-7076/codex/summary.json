@@ -1,0 +1,50 @@
+{
+  "instance_id": "antvis__G2-7076",
+  "language": "ts",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785487012.081632,
+  "elapsed_seconds": 436.181,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1398335,
+    "cached_input_tokens": 1308416,
+    "output_tokens": 13007,
+    "reasoning_output_tokens": 7079,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 1308416,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 1.494013,
+  "tool_calls": 30,
+  "tool_calls_by_type": {
+    "command_execution": 27,
+    "file_change": 3
+  },
+  "patch": {
+    "files_changed": 1,
+    "files": [
+      "src/interaction/tooltip.ts"
+    ],
+    "additions": 7,
+    "deletions": 3
+  },
+  "final_text": "已修复折线图 `tooltip:show` 日期落后一项的问题。\n\n- 精确命中序列点时，直接通过 scale 反解当前值，避免分类 scale 的边界反解返回前一项：[tooltip.ts](/private/tmp/luban-agent-benchmark-work/repos/antvis__G2-7076/codex/src/interaction/tooltip.ts:1049)\n- 新增分类日期折线图回归测试：[api-chart-on-series-tooltip.spec.ts](/private/tmp/luban-agent-benchmark-work/repos/antvis__G2-7076/codex/__tests__/integration/api-chart-on-series-tooltip.spec.ts:1)\n- `git diff --check` 通过。\n- 聚焦测试未能启动，因为仓库未安装依赖，缺少 `cross-env`。未提交更改。",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 30,
+  "llm_successful_calls": 30,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 433.208061,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

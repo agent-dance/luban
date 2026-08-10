@@ -9,10 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	agentcontract "github.com/agent-dance/luban/internal/contracts/agent"
 	"github.com/agent-dance/luban/internal/contracts/stream"
@@ -272,6 +275,22 @@ func restoreTrackerConversationUsageFromMeta(tracker *ui.CostTracker, usage *ses
 	})
 }
 
+func sessionUsageMetaFromTUIView(view tui.DurableSessionView) *session.SessionUsageMeta {
+	usage := view.Usage
+	return &session.SessionUsageMeta{
+		InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens,
+		CacheReadTokens: usage.CacheReadTokens, CacheCreateTokens: usage.CacheCreateTokens,
+		HasCompacted: usage.HasCompacted, CompactionBaselineKnown: usage.CompactionBaselineKnown,
+		RoundUsageKnown: usage.RoundUsageKnown, CompactionCount: usage.CompactionCount,
+		CompletedRoundInputTokens: usage.CompletedRoundInputTokens, CompletedRoundOutputTokens: usage.CompletedRoundOutputTokens,
+		InputTokensAtCompact: usage.InputTokensAtCompact, CacheReadAtCompact: usage.CacheReadAtCompact,
+		LastInputTokens: usage.LastInputTokens, LastOutputTokens: usage.LastOutputTokens,
+		LastCacheReadTokens: usage.LastCacheReadTokens, LastCacheCreateTokens: usage.LastCacheCreateTokens,
+		WebSearchRequests: usage.WebSearchRequests, CumulativeCost: usage.CumulativeCost, CostKnown: view.SessionCostKnown,
+		UsedTokens: usage.UsedTokens, MaxTokens: usage.MaxTokens,
+	}
+}
+
 func flushTUIUsageUpdates(app tuiActivityApp, tracker *ui.CostTracker) bool {
 	if app.UpdateSync(func() { syncTUIUsageFromTracker(app.State(), tracker) }) {
 		return true
@@ -405,8 +424,34 @@ type tuiLLMRequestEpochRenderer interface {
 	LLMRequestStatusAtEpoch(uint64, stream.EventType, stream.RequestStatusEvent)
 }
 
+type tuiLLMActivityContextRenderer interface {
+	LLMActivityAtContext(presentation.ToolEventContext, tui.LLMCallStage, string, ...int)
+}
+
+type tuiLLMActivityEpochRenderer interface {
+	LLMActivityAtEpoch(uint64, tui.LLMCallStage, string, ...int)
+}
+
 type tuiAggregateFreezer interface {
 	FreezeAggregatesAtEpoch(uint64, string, string)
+}
+
+func progressMetadataInt(metadata map[string]any, key string) int {
+	if metadata == nil {
+		return 0
+	}
+	switch value := metadata[key].(type) {
+	case int:
+		return value
+	case int32:
+		return int(value)
+	case int64:
+		return int(value)
+	case float64:
+		return int(value)
+	default:
+		return 0
+	}
 }
 
 type tuiSessionSnapshotPublisher interface {
@@ -874,10 +919,10 @@ func RunTUIREPL(ctx context.Context, cfg TUIREPLConfig, sigHandler *SignalHandle
 		if tuiAppRef == nil || inputScheduler == nil {
 			return false
 		}
-		// Foreground input is an admission request, not an implicit queueing
-		// operation. A busy turn must leave the composer's draft and attachments
-		// intact; queueing remains available only through an explicit surface.
-		admitted, _ := inputScheduler.TrySubmit(inputStr, tuiAppRef.State().TakePendingImages, false)
+		// A busy foreground admits the composer submission into the scheduler's
+		// FIFO. Escape can then interrupt the active turn and promote its oldest
+		// queued successor; idle submissions still start immediately.
+		admitted, _ := inputScheduler.TrySubmit(inputStr, tuiAppRef.State().TakePendingImages, true)
 		if !admitted {
 			tuiAppRef.Renderer().Warning(i18n.Text(tuiAppRef.State().Language.Get(), i18n.KeyREPLTUIQueryRunning))
 		}
@@ -900,9 +945,9 @@ func RunTUIREPL(ctx context.Context, cfg TUIREPLConfig, sigHandler *SignalHandle
 			handleTUIInputSubmission(submission.ctx, cfg, tuiApp, cmdReg, storeAdapter, ql, tracker, submission, sigHandler, runTracked)
 		},
 		tuiApp.State().TryCancelQuery,
-		func(count int) {
+		func(queued []string) {
 			tuiApp.GoTuiApp().QueueUpdateLossless(func() {
-				tuiApp.State().QueuedInputCount.Set(count)
+				tuiApp.State().QueuedInputTexts.Set(queued)
 			})
 		},
 	)
@@ -1957,13 +2002,15 @@ func handleTUIInputSubmission(
 		deferredActionCtx = ctx
 	}
 
-	inputStr := submission.text
-	rawInput := inputStr
-	inputStr = strings.TrimSpace(inputStr)
-	pendingImageCount := len(tuiApp.State().PendingImages.Get())
+	pendingImages := tuiApp.State().PendingImages.Get()
 	if submission.imagesCaptured {
-		pendingImageCount = len(submission.images)
+		pendingImages = append([]tui.ImageAttachment(nil), submission.images...)
 	}
+	rawInput, imagePositions := extractPendingImagePositions(submission.text, pendingImages)
+	inputStr := rawInput
+	inputStr = strings.TrimSpace(inputStr)
+	imagePositions = adjustPendingImagePositionsForTrim(rawInput, inputStr, imagePositions)
+	pendingImageCount := len(pendingImages)
 	if inputStr == "" && pendingImageCount == 0 {
 		return
 	}
@@ -2001,7 +2048,7 @@ func handleTUIInputSubmission(
 	// Build command context for slash commands.
 	// Command output goes via r.Info() so it renders as system info
 	// rather than assistant text.
-	buildCmdCtx := func() *commands.Context {
+	buildCmdCtx := func(suppressTerminalOutput bool) *commands.Context {
 		totalIn, totalOut := tracker.TotalTokens()
 		cacheRead, cacheMake := tracker.TotalCacheTokens()
 		webSearchRequests := tracker.TotalWebSearchRequests()
@@ -2016,11 +2063,18 @@ func handleTUIInputSubmission(
 		sessionScopedOutput := newSessionScopedTUICommandOutput(tuiApp.State(), sessionID, commandCrossedSessionBoundary.Load, func(s string) {
 			r.Info(commands.RedactCommandPresentationText(s, 0))
 		})
+		presentationSink := newTUICommandPresentationSink(tuiApp, sessionID, tuiApp.State().SessionEpoch.Get(), commandRunID, sessionScopedOutput)
+		if suppressTerminalOutput {
+			// /compact owns a live, in-place progress component and terminal
+			// receipt. Replaying the captured command prose after completion
+			// would put its present-tense "running" text after the success event.
+			presentationSink = newTUICommandPresentationSink(tuiApp, sessionID, tuiApp.State().SessionEpoch.Get(), commandRunID)
+		}
 		return &commands.Context{
 			Language:              tuiApp.State().Language.Get(),
 			QueryLoop:             ql,
 			OnEvent:               sessionScopedOutput,
-			OnCommandPresentation: newTUICommandPresentationSink(tuiApp, sessionID, tuiApp.State().SessionEpoch.Get(), commandRunID, sessionScopedOutput),
+			OnCommandPresentation: presentationSink,
 			CWD:                   currentCWD(cfg),
 			CurrentProjectDir:     projectDir,
 			SessionID:             sessionID,
@@ -2415,7 +2469,7 @@ func handleTUIInputSubmission(
 			appendUserMessage(nil)
 		}
 		prevSessionID := *cfg.SessionID
-		cmdCtx := buildCmdCtx()
+		cmdCtx := buildCmdCtx(cmd.Name() == "compact")
 		var goalActivationObjective string
 		cmdCtx.OnGoalActivated = func(objective string) {
 			goalActivationObjective = strings.TrimSpace(objective)
@@ -2575,10 +2629,6 @@ func handleTUIInputSubmission(
 	req.ProjectRoot = currentRuntimeProjectRoot(cfg)
 	req.SessionProjectDir = currentProjectDir(cfg)
 
-	pendingImages := tuiApp.State().PendingImages.Get()
-	if submission.imagesCaptured {
-		pendingImages = append([]tui.ImageAttachment(nil), submission.images...)
-	}
 	hasImages := len(pendingImages) > 0 || queryRequestHasImage(req)
 	if hasImages && !currentModelSupportsImages(cfg, ql.Model()) {
 		r.Warning(i18n.Text(tuiApp.State().Language.Get(), i18n.KeyREPLTUIImageUnsupported))
@@ -2594,33 +2644,146 @@ func handleTUIInputSubmission(
 	// append the clipboard images. If it's a plain text request (Message only),
 	// convert it to a Content-based request so images can be included.
 	if len(pendingImages) > 0 {
-		req = attachPendingImagesToQuery(req, pendingImages)
+		req = attachPendingImagesToQuery(req, pendingImages, imagePositions)
 	}
 
 	tuiRunQuery(ctx, cfg, tuiApp, req, tracker, sigHandler)
 }
 
-func attachPendingImagesToQuery(req engine.QueryRequest, images []tui.ImageAttachment) engine.QueryRequest {
+func attachPendingImagesToQuery(req engine.QueryRequest, images []tui.ImageAttachment, positions ...map[int]pendingImagePosition) engine.QueryRequest {
 	if len(images) == 0 {
 		return req
 	}
-	if len(req.Content) == 0 {
-		if req.Message != "" {
-			req.Content = append(req.Content, types.TextBlock{Type: types.ContentTypeText, Text: req.Message})
+	if len(req.Content) != 0 || len(positions) == 0 {
+		if len(req.Content) == 0 {
+			if req.Message != "" {
+				req.Content = append(req.Content, types.TextBlock{Type: types.ContentTypeText, Text: req.Message})
+			}
+			req.Message = ""
 		}
-		req.Message = ""
+		for _, image := range images {
+			req.Content = append(req.Content, pendingImageBlock(image))
+		}
+		return req
 	}
-	for _, image := range images {
-		req.Content = append(req.Content, types.ImageBlock{
-			Type: types.ContentTypeImage,
-			Source: &types.ImageSource{
-				Type:      "base64",
-				MediaType: image.MediaType,
-				Data:      image.Base64,
-			},
-		})
+
+	ordered := append([]tui.ImageAttachment(nil), images...)
+	textRunes := []rune(req.Message)
+	positionByID := positions[0]
+	attachmentOrder := make(map[int]int, len(images))
+	for index, image := range images {
+		attachmentOrder[image.ID] = index
 	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		left, leftSet := positionByID[ordered[i].ID]
+		right, rightSet := positionByID[ordered[j].ID]
+		if !leftSet {
+			left = pendingImagePosition{offset: len(textRunes), order: len(positionByID) + attachmentOrder[ordered[i].ID]}
+		}
+		if !rightSet {
+			right = pendingImagePosition{offset: len(textRunes), order: len(positionByID) + attachmentOrder[ordered[j].ID]}
+		}
+		if left.offset != right.offset {
+			return left.offset < right.offset
+		}
+		return left.order < right.order
+	})
+	cursor := 0
+	for _, image := range ordered {
+		placement, ok := positionByID[image.ID]
+		if !ok {
+			placement.offset = len(textRunes)
+		}
+		position := min(max(placement.offset, cursor), len(textRunes))
+		if position > cursor {
+			req.Content = append(req.Content, types.TextBlock{Type: types.ContentTypeText, Text: string(textRunes[cursor:position])})
+		}
+		req.Content = append(req.Content, pendingImageBlock(image))
+		cursor = position
+	}
+	if cursor < len(textRunes) {
+		req.Content = append(req.Content, types.TextBlock{Type: types.ContentTypeText, Text: string(textRunes[cursor:])})
+	}
+	req.Message = ""
 	return req
+}
+
+func pendingImageBlock(image tui.ImageAttachment) types.ImageBlock {
+	return types.ImageBlock{
+		Type: types.ContentTypeImage,
+		Source: &types.ImageSource{
+			Type:      "base64",
+			MediaType: image.MediaType,
+			Data:      image.Base64,
+		},
+	}
+}
+
+type pendingImagePlaceholderMatch struct {
+	image tui.ImageAttachment
+	start int
+	end   int
+}
+
+type pendingImagePosition struct {
+	offset int
+	order  int
+}
+
+func extractPendingImagePositions(text string, images []tui.ImageAttachment) (string, map[int]pendingImagePosition) {
+	matches := make([]pendingImagePlaceholderMatch, 0, len(images))
+	for _, image := range images {
+		token := " " + image.Placeholder + " "
+		start := strings.Index(text, token)
+		if start < 0 {
+			token = image.Placeholder
+			start = strings.Index(text, token)
+		}
+		if start >= 0 && token != "" {
+			matches = append(matches, pendingImagePlaceholderMatch{image: image, start: start, end: start + len(token)})
+		}
+	}
+	sort.SliceStable(matches, func(i, j int) bool { return matches[i].start < matches[j].start })
+
+	positions := make(map[int]pendingImagePosition, len(matches))
+	var output strings.Builder
+	runeCount := 0
+	cursor := 0
+	appendSegment := func(segment string) {
+		if segment == "" {
+			return
+		}
+		if output.Len() > 0 {
+			last, _ := utf8.DecodeLastRuneInString(output.String())
+			first, _ := utf8.DecodeRuneInString(segment)
+			if !unicode.IsSpace(last) && !unicode.IsSpace(first) {
+				output.WriteByte(' ')
+				runeCount++
+			}
+		}
+		output.WriteString(segment)
+		runeCount += utf8.RuneCountInString(segment)
+	}
+	for order, match := range matches {
+		if match.start < cursor {
+			continue
+		}
+		appendSegment(text[cursor:match.start])
+		positions[match.image.ID] = pendingImagePosition{offset: runeCount, order: order}
+		cursor = match.end
+	}
+	appendSegment(text[cursor:])
+	return output.String(), positions
+}
+
+func adjustPendingImagePositionsForTrim(raw, trimmed string, positions map[int]pendingImagePosition) map[int]pendingImagePosition {
+	leadingRunes := utf8.RuneCountInString(raw) - utf8.RuneCountInString(strings.TrimLeftFunc(raw, unicode.IsSpace))
+	maximum := utf8.RuneCountInString(trimmed)
+	for id, position := range positions {
+		position.offset = min(max(position.offset-leadingRunes, 0), maximum)
+		positions[id] = position
+	}
+	return positions
 }
 
 func newSessionScopedTUICommandOutput(state *tui.AppState, sessionID string, crossedBoundary func() bool, output func(string)) func(string) {
@@ -2810,7 +2973,16 @@ func persistTUISessionLifecycleAtBoundaryWithUpdate(cfg TUIREPLConfig, state *tu
 	if captureErr != nil {
 		return captureErr
 	}
-	return tui.SaveSessionViewCapture(cfg.Repo.ArtifactsDir(*cfg.SessionID, projectDir), capture)
+	// Publish the exact restorable view before its metadata projection. If the
+	// checkpoint fails, metadata must remain at the last restorable boundary.
+	// If metadata fails, surface the error while retaining the checkpoint so a
+	// later lifecycle save can reconcile the summary from a fresh capture.
+	if err := tui.SaveSessionViewCapture(cfg.Repo.ArtifactsDir(*cfg.SessionID, projectDir), capture); err != nil {
+		return err
+	}
+	return saveTUISessionMeta(cfg, *cfg.SessionID, projectDir, session.SessionMeta{
+		Usage: sessionUsageMetaFromTUIView(capture.View),
+	})
 }
 
 func saveTUISessionMeta(cfg TUIREPLConfig, sessionID, projectDir string, meta session.SessionMeta) error {
@@ -3583,25 +3755,26 @@ func populateModelPickerEntries(p *tui.ModelPickerState, catalog *provider.Model
 		if m.ContextWindow > 0 {
 			ctxK = tui.FmtContextWindow(m.ContextWindow)
 		}
-		reasoningEffort := provider.DefaultReasoningEffort(m.ReasoningEfforts)
+		reasoningEffort := provider.DefaultReasoningEffortForModel(m)
 		if providerName == currentProvider && modelPickerModelMatches(m, currentModel) && modelPickerEffortAvailable(m.ReasoningEfforts, currentEffort) {
 			reasoningEffort = currentEffort
 		}
 		entries[i] = tui.ModelPickerEntry{
-			Provider:          m.Provider,
-			ModelID:           m.ID,
-			DisplayName:       m.Name,
-			ContextK:          ctxK,
-			ContextTokens:     m.ContextWindow,
-			ContextOverridden: m.ContextOverridden,
-			CostIn:            m.CostPer1MIn,
-			CostOut:           m.CostPer1MOut,
-			CostCurrency:      m.BillingCurrency(),
-			CanReason:         m.CanReason,
-			CanSeeImages:      m.CanSeeImages,
-			ReasoningEfforts:  append([]string(nil), m.ReasoningEfforts...),
-			ReasoningEffort:   reasoningEffort,
-			IsDefault:         m.IsDefault,
+			Provider:               m.Provider,
+			ModelID:                m.ID,
+			DisplayName:            m.Name,
+			ContextK:               ctxK,
+			ContextTokens:          m.ContextWindow,
+			ContextOverridden:      m.ContextOverridden,
+			CostIn:                 m.CostPer1MIn,
+			CostOut:                m.CostPer1MOut,
+			CostCurrency:           m.BillingCurrency(),
+			CanReason:              m.CanReason,
+			CanSeeImages:           m.CanSeeImages,
+			ReasoningEfforts:       append([]string(nil), m.ReasoningEfforts...),
+			DefaultReasoningEffort: m.DefaultReasoningEffort,
+			ReasoningEffort:        reasoningEffort,
+			IsDefault:              m.IsDefault,
 		}
 	}
 	p.Entries = entries
@@ -3895,11 +4068,15 @@ func tuiRunQuery(
 
 	var runErr error
 	providerRequestCompleted := false
+	var renderedRuntimeErrors []*types.APIError
 	terminalContext := base
 	for evt := range ch {
 		if evt.Final {
 			runErr = evt.Error
 		} else {
+			if evt.Inner.Type == stream.EventError && evt.Inner.Error != nil {
+				renderedRuntimeErrors = append(renderedRuntimeErrors, evt.Inner.Error)
+			}
 			switch evt.Inner.Type {
 			case stream.EventRequestStart, stream.EventRequestFailed:
 				providerRequestCompleted = false
@@ -3922,7 +4099,9 @@ func tuiRunQuery(
 			r.InfoAtContext(terminalContext, i18n.Text(tuiApp.State().Language.Get(), i18n.KeyREPLTUIQueryCancelled))
 		} else {
 			lang := tuiApp.State().Language.Get()
-			r.ErrorAtContext(terminalContext, i18n.Format(lang, i18n.KeyREPLQueryFailed, engine.UserFacingError(lang, runErr)))
+			if !runtimeErrorCauseAlreadyRendered(runErr, renderedRuntimeErrors) {
+				r.ErrorAtContext(terminalContext, i18n.Format(lang, i18n.KeyREPLQueryFailed, engine.UserFacingError(lang, runErr)))
+			}
 			if status, update := terminalTUIProviderStatus(runErr, providerRequestCompleted); update {
 				r.SetProviderStatusAtContext(terminalContext, status)
 			}
@@ -3931,6 +4110,32 @@ func tuiRunQuery(
 		// Query succeeded — provider is connected
 		r.SetProviderStatusAtContext(terminalContext, tui.StatusConnected)
 	}
+}
+
+func runtimeErrorCauseAlreadyRendered(runErr error, rendered []*types.APIError) bool {
+	if runErr == nil {
+		return false
+	}
+	terminal, terminalIsAPIError := provider.AsAPIError(runErr)
+	for _, apiErr := range rendered {
+		if apiErr == nil {
+			continue
+		}
+		if errors.Is(runErr, apiErr) {
+			return true
+		}
+		// Provider/runtime adapters may preserve a failure by value while
+		// wrapping it with localized context. errors.Is only recognizes the
+		// original pointer because APIError intentionally has no broad Is
+		// method. Within one query, an exact structured copy is still the same
+		// already-rendered failure; comparing the complete value avoids both a
+		// duplicate main error and accidental suppression of another request
+		// whose status, request ID, message, or protocol evidence differs.
+		if terminalIsAPIError && terminal != nil && reflect.DeepEqual(*terminal, *apiErr) {
+			return true
+		}
+	}
+	return false
 }
 
 func currentCWD(cfg TUIREPLConfig) string {
@@ -3985,6 +4190,8 @@ func makeTUIEventHandler(r presentation.Renderer, tracker *ui.CostTracker, getCo
 	compactionBoundaryRenderer, hasCompactionBoundaryRenderer := r.(tuiCompactionBoundaryEpochRenderer)
 	goalStatusRenderer, hasGoalStatusRenderer := r.(tuiGoalStatusEpochRenderer)
 	llmRequestRenderer, hasLLMRequestRenderer := r.(tuiLLMRequestEpochRenderer)
+	llmActivityContextRenderer, hasLLMActivityContextRenderer := r.(tuiLLMActivityContextRenderer)
+	llmActivityEpochRenderer, hasLLMActivityEpochRenderer := r.(tuiLLMActivityEpochRenderer)
 	aggregateFreezer, hasAggregateFreezer := r.(tuiAggregateFreezer)
 	activeToolSpinners := make(map[string]func())
 	var anonymousToolSpinners []func()
@@ -4191,6 +4398,21 @@ func makeTUIEventHandler(r presentation.Renderer, tracker *ui.CostTracker, getCo
 		case stream.EventUserInterruption:
 			stopAllToolSpinners()
 		case stream.EventProgress:
+			if event.Progress != nil && (event.Progress.Stage == stream.ProgressStageLLMToolInput || event.Progress.Stage == stream.ProgressStageLLMWaitingAfterTools) {
+				stage, toolName := tui.LLMStageWaitingAfterTools, ""
+				toolInputBytes := 0
+				if event.Progress.Stage == stream.ProgressStageLLMToolInput {
+					stage = tui.LLMStageToolInput
+					toolName, _ = event.Progress.Metadata["tool_name"].(string)
+					toolInputBytes = progressMetadataInt(event.Progress.Metadata, "tool_input_bytes")
+				}
+				if hasLLMActivityContextRenderer {
+					llmActivityContextRenderer.LLMActivityAtContext(eventContext, stage, toolName, toolInputBytes)
+				} else if hasLLMActivityEpochRenderer {
+					llmActivityEpochRenderer.LLMActivityAtEpoch(baseContext.SessionEpoch, stage, toolName, toolInputBytes)
+				}
+				break
+			}
 			if !hasActivityRenderer || event.Progress == nil {
 				break
 			}
@@ -4293,8 +4515,16 @@ func compactionProgressActivityInLanguage(lang i18n.Language, ctx presentation.T
 
 func localizedCompactionProgressMessage(lang i18n.Language, message string) string {
 	switch strings.ToLower(strings.TrimSpace(message)) {
-	case "compacting", "compact_start", "auto_compact_attempt":
+	case "accepted", "compacting", "compact_start", "compact_accepted", "auto_compact_attempt":
 		return i18n.Text(lang, i18n.KeyREPLTUICompactionCompacting)
+	case "preparing", "compact_preparing":
+		return i18n.Text(lang, i18n.KeyTUICompactProgressPreparing)
+	case "summarizing", "compact_summarizing":
+		return i18n.Text(lang, i18n.KeyTUICompactProgressSummarizing)
+	case "installing", "compact_installing":
+		return i18n.Text(lang, i18n.KeyTUICompactProgressInstalling)
+	case "persisting", "compact_persisting":
+		return i18n.Text(lang, i18n.KeyTUICompactProgressPersisting)
 	case "failed", "compact_failed", "compact_failure", "auto_compact_failure":
 		return i18n.Text(lang, i18n.KeyREPLTUICompactionFailed)
 	case "cancelled", "canceled", "compact_cancelled":
@@ -4324,19 +4554,27 @@ type manualCompactionEventEngine interface {
 }
 
 func runManualCompactionEventsInLanguage(ctx context.Context, eng engine.Engine, sessionID, customInstructions string, lang i18n.Language, onEvent func(stream.Event)) error {
-	before, err := eng.Sessions().Load(sessionID)
-	if err != nil {
-		return err
-	}
 	turnID := sessionID + ":manual-compact:" + uuid.NewString()
 	base := stream.Event{
 		TurnID: turnID, ActorID: "assistant", ActorType: "runtime", WorkUnitID: "context-compaction",
 	}
-	emitProgress := func(stage, status string, terminalErr error) {
+	var progressMu sync.Mutex
+	progressRank := 0
+	emitProgress := func(stage, status string, rank int, terminalErr error, details map[string]any) {
 		if onEvent == nil {
 			return
 		}
+		progressMu.Lock()
+		if rank <= progressRank {
+			progressMu.Unlock()
+			return
+		}
+		progressRank = rank
+		progressMu.Unlock()
 		metadata := map[string]any{"trigger": "manual", "status": status}
+		for key, value := range details {
+			metadata[key] = value
+		}
 		if terminalErr != nil {
 			metadata["error"] = terminalErr.Error()
 		}
@@ -4345,12 +4583,31 @@ func runManualCompactionEventsInLanguage(ctx context.Context, eng engine.Engine,
 		event.Progress = &stream.ProgressEvent{Stage: stage, Message: status, Metadata: metadata}
 		onEvent(event)
 	}
-	emitProgress("compact_start", "compacting", nil)
+	emitProgress("compact_accepted", "accepted", 1, nil, nil)
+	emitProgress("compact_preparing", "preparing", 2, nil, nil)
+	before, err := eng.Sessions().Load(sessionID)
+	if err != nil {
+		emitProgress("compact_failed", "failed", 6, err, nil)
+		return err
+	}
+	emitProgress("compact_summarizing", "summarizing", 3, nil, nil)
 	var compactErr error
 	var completedBoundary *stream.CompactBoundaryEvent
 	if eventEngine, ok := eng.(manualCompactionEventEngine); ok {
 		_, compactErr = eventEngine.CompactWithEvents(ctx, sessionID, customInstructions, func(event stream.Event) {
 			switch event.Type {
+			case stream.EventProgress:
+				if event.Progress == nil {
+					return
+				}
+				stage, status, rank, ok := canonicalManualCompactionProgress(event.Progress.Stage)
+				if !ok || rank >= 6 {
+					// The wrapper owns the authoritative terminal transition after
+					// reloading the committed session. Publishing the engine's
+					// buffered terminal here would complete the component too early.
+					return
+				}
+				emitProgress(stage, status, rank, nil, event.Progress.Metadata)
 			case stream.EventCompactBoundary:
 				if event.Compact != nil {
 					boundary := cloneCompactBoundaryEvent(*event.Compact)
@@ -4371,6 +4628,12 @@ func runManualCompactionEventsInLanguage(ctx context.Context, eng engine.Engine,
 	} else {
 		_, compactErr = eng.Compact(ctx, sessionID, customInstructions)
 	}
+	if cancelErr := ctx.Err(); cancelErr != nil {
+		// User cancellation owns the terminal projection. A provider can race
+		// Esc with an invalid/empty response, but that diagnostic must not turn
+		// the explicitly cancelled command into a failed command.
+		compactErr = errors.Join(cancelErr, compactErr)
+	}
 	if compactErr != nil {
 		stage, status := "compact_failed", "failed"
 		if errors.Is(compactErr, context.Canceled) {
@@ -4381,12 +4644,18 @@ func runManualCompactionEventsInLanguage(ctx context.Context, eng engine.Engine,
 		// observers, so keep the original error text there. The returned error is
 		// localized for the user-facing command surface while retaining the
 		// original error chain.
-		emitProgress(stage, status, compactErr)
+		emitProgress(stage, status, 6, compactErr, nil)
 		return localizedErr
 	}
+	// Engines with structured lifecycle events publish these phases at their
+	// real boundaries. The fallback keeps older Engine implementations
+	// coherent without inventing a percentage; monotonic ranking deduplicates
+	// phases already observed from an event-bearing engine.
+	emitProgress("compact_installing", "installing", 4, nil, nil)
+	emitProgress("compact_persisting", "persisting", 5, nil, nil)
 	after, err := eng.Sessions().Load(sessionID)
 	if err != nil {
-		emitProgress("compact_failed", "failed", err)
+		emitProgress("compact_failed", "failed", 6, err, nil)
 		return err
 	}
 	if onEvent != nil {
@@ -4403,8 +4672,40 @@ func runManualCompactionEventsInLanguage(ctx context.Context, eng engine.Engine,
 		event.Compact = &boundary
 		onEvent(event)
 	}
-	emitProgress("compact_end", "idle", nil)
+	details := map[string]any{"before_messages": len(before), "after_messages": len(after), "measurement": "local_estimate"}
+	if completedBoundary != nil {
+		details["pre_compact_token_count"] = completedBoundary.PreCompactTokenCount
+		retained := completedBoundary.TruePostCompactTokenCount
+		if retained == 0 {
+			retained = completedBoundary.PostCompactTokenCount
+		}
+		details["post_compact_token_count"] = retained
+	}
+	emitProgress("compact_end", "completed", 6, nil, details)
 	return nil
+}
+
+func canonicalManualCompactionProgress(stage string) (canonical, status string, rank int, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(stage)) {
+	case "compact_start", "compact_accepted":
+		return "compact_accepted", "accepted", 1, true
+	case "compact_preparing":
+		return "compact_preparing", "preparing", 2, true
+	case "compact_summarizing":
+		return "compact_summarizing", "summarizing", 3, true
+	case "compact_installing":
+		return "compact_installing", "installing", 4, true
+	case "compact_persisting":
+		return "compact_persisting", "persisting", 5, true
+	case "compact_end", "compact_success", "auto_compact_success":
+		return "compact_end", "completed", 6, true
+	case "compact_failed", "compact_failure", "auto_compact_failure":
+		return "compact_failed", "failed", 6, true
+	case "compact_cancelled":
+		return "compact_cancelled", "cancelled", 6, true
+	default:
+		return "", "", 0, false
+	}
 }
 
 func manualCompactionBoundary(before, after []types.Message) stream.CompactBoundaryEvent {

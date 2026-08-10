@@ -1,0 +1,52 @@
+{
+  "instance_id": "assistant-ui__assistant-ui-3866",
+  "language": "ts",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785586129.77351,
+  "elapsed_seconds": 225.484,
+  "timeout_seconds": 230,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 169874,
+    "cached_input_tokens": 130560,
+    "cache_read_input_tokens": 130560,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 4705,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.403,
+  "tool_calls": 12,
+  "tool_calls_by_type": {
+    "Inspect": 7,
+    "ApplyPatch": 1,
+    "Run": 4
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      ".changeset/curly-apes-stream.md",
+      "packages/react-langchain/src/index.ts",
+      "packages/react-langchain/src/useStreamRuntime.ts"
+    ],
+    "additions": 30,
+    "deletions": 4
+  },
+  "final_text": "Implemented `useLangChainState<T>` in `@assistant-ui/react-langchain`.\n\n- Added overloads with optional default values.\n- Exposed reactive `useStream().values` through runtime extras.\n- Exported the hook from the package entry point.\n- Added a patch changeset.\n- Preserves valid `null` and falsy values; defaults only when state is `undefined`.\n\nVerification was attempted, but pnpm required unavailable offline metadata for its pinned executable, so build and Biome checks could not run. Final source inspection confirmed no generated or unintended files.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v6",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 13,
+  "llm_successful_calls": 13,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 221.92119,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v6",
+    "sha256": "9d10949097467ef37b86b5f80bed545f6af7307e2bbbe50864ae537edea85b8b"
+  }
+}

@@ -1,0 +1,210 @@
+diff --git a/springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java b/springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java
+index 681a615..5563783 100644
+--- a/springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java
++++ b/springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java
+@@ -469,7 +469,7 @@ public abstract class AbstractRequestService {
+ 			return true;
+ 		if (isRequiredAnnotation(parameter))
+ 			return false;
+-		if (isRequestBodyWithMapType(parameter))
++		if (isRequestBodyOrPartWithMapType(parameter))
+ 			return false;
+ 		return isRequestTypeToIgnore(parameter.getParameterType());
+ 	}
+@@ -490,19 +490,20 @@ public abstract class AbstractRequestService {
+ 	}
+ 
+ 	/**
+-	 * Is request body with map type
++	 * Is request body or request part with map type
+ 	 *
+ 	 * @param parameter the parameter
+ 	 * @return the boolean
+ 	 */
+-	private boolean isRequestBodyWithMapType(MethodParameter parameter) {
++	private boolean isRequestBodyOrPartWithMapType(MethodParameter parameter) {
+ 		// Exclude parameters from the Actuator package
+ 		if (parameter.getContainingClass().getPackageName().startsWith("org.springframework.boot.actuate")) {
+ 			return false;
+ 		}
+-		// Check for @RequestBody annotation
++		// Check for @RequestBody or @RequestPart annotation
+ 		org.springframework.web.bind.annotation.RequestBody requestBody = parameter.getParameterAnnotation(org.springframework.web.bind.annotation.RequestBody.class);
+-		if (requestBody == null) {
++		RequestPart requestPart = parameter.getParameterAnnotation(RequestPart.class);
++		if (requestBody == null && requestPart == null) {
+ 			return false;
+ 		}
+ 		// Check if the parameter type is assignable to Map
+diff --git a/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app119/HelloController.java b/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app119/HelloController.java
+index dbc4b95..8908b4b 100644
+--- a/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app119/HelloController.java
++++ b/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app119/HelloController.java
+@@ -24,6 +24,8 @@
+ 
+ package test.org.springdoc.api.v30.app119;
+ 
++import java.util.Map;
++
+ import io.swagger.v3.oas.annotations.Operation;
+ import io.swagger.v3.oas.annotations.Parameter;
+ import io.swagger.v3.oas.annotations.media.Content;
+@@ -39,6 +41,14 @@ import org.springframework.web.multipart.MultipartFile;
+ @RestController
+ public class HelloController {
+ 
++	@Operation(description = "Passing a map works")
++	@PostMapping(value = "map-works", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
++	public String map(
++			@Parameter(description = "A JSON object for file mapping", required = true)
++			@RequestPart Map<String, Object> fileMapping) {
++		return "Received file mapping with " + fileMapping.size() + " entries";
++	}
++
+ 	@Operation(summary = "Multiple files and JSON payloads as multi part request")
+ 	@PostMapping(
+ 			value = "multi",
+@@ -54,4 +64,4 @@ public class HelloController {
+ 			@RequestPart(value = "file2", required = false) @Parameter(description = "This is file2") final MultipartFile file2) {
+ 		return "Hello World " + jsonRequest.getName();
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v31/app119/HelloController.java b/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v31/app119/HelloController.java
+index 3bc16f6..52f0236 100644
+--- a/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v31/app119/HelloController.java
++++ b/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v31/app119/HelloController.java
+@@ -24,6 +24,8 @@
+ 
+ package test.org.springdoc.api.v31.app119;
+ 
++import java.util.Map;
++
+ import io.swagger.v3.oas.annotations.Operation;
+ import io.swagger.v3.oas.annotations.Parameter;
+ import io.swagger.v3.oas.annotations.media.Content;
+@@ -39,6 +41,14 @@ import org.springframework.web.multipart.MultipartFile;
+ @RestController
+ public class HelloController {
+ 
++	@Operation(description = "Passing a map works")
++	@PostMapping(value = "map-works", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
++	public String map(
++			@Parameter(description = "A JSON object for file mapping", required = true)
++			@RequestPart Map<String, Object> fileMapping) {
++		return "Received file mapping with " + fileMapping.size() + " entries";
++	}
++
+ 	@Operation(summary = "Multiple files and JSON payloads as multi part request")
+ 	@PostMapping(
+ 			value = "multi",
+@@ -54,4 +64,4 @@ public class HelloController {
+ 			@RequestPart(value = "file2", required = false) @Parameter(description = "This is file2") final MultipartFile file2) {
+ 		return "Hello World " + jsonRequest.getName();
+ 	}
+-}
+\ No newline at end of file
++}
+diff --git a/springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.0.1/app119.json b/springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.0.1/app119.json
+index 5f03c53..8070289 100644
+--- a/springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.0.1/app119.json
++++ b/springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.0.1/app119.json
+@@ -11,6 +11,46 @@
+     }
+   ],
+   "paths": {
++    "/map-works": {
++      "post": {
++        "tags": [
++          "hello-controller"
++        ],
++        "description": "Passing a map works",
++        "operationId": "map",
++        "requestBody": {
++          "content": {
++            "multipart/form-data": {
++              "schema": {
++                "required": [
++                  "fileMapping"
++                ],
++                "type": "object",
++                "properties": {
++                  "fileMapping": {
++                    "type": "object",
++                    "additionalProperties": {},
++                    "description": "A JSON object for file mapping"
++                  }
++                }
++              }
++            }
++          }
++        },
++        "responses": {
++          "200": {
++            "description": "OK",
++            "content": {
++              "*/*": {
++                "schema": {
++                  "type": "string"
++                }
++              }
++            }
++          }
++        }
++      }
++    },
+     "/multi": {
+       "post": {
+         "tags": [
+diff --git a/springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.1.0/app119.json b/springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.1.0/app119.json
+index beaf56a..cfddb3e 100644
+--- a/springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.1.0/app119.json
++++ b/springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.1.0/app119.json
+@@ -11,6 +11,46 @@
+     }
+   ],
+   "paths": {
++    "/map-works": {
++      "post": {
++        "tags": [
++          "hello-controller"
++        ],
++        "description": "Passing a map works",
++        "operationId": "map",
++        "requestBody": {
++          "content": {
++            "multipart/form-data": {
++              "schema": {
++                "required": [
++                  "fileMapping"
++                ],
++                "type": "object",
++                "properties": {
++                  "fileMapping": {
++                    "type": "object",
++                    "additionalProperties": {},
++                    "description": "A JSON object for file mapping"
++                  }
++                }
++              }
++            }
++          }
++        },
++        "responses": {
++          "200": {
++            "description": "OK",
++            "content": {
++              "*/*": {
++                "schema": {
++                  "type": "string"
++                }
++              }
++            }
++          }
++        }
++      }
++    },
+     "/multi": {
+       "post": {
+         "tags": [

@@ -43,6 +43,9 @@ const (
 	KeyToolRunRevisionChanged     Key = "tool.run.error.revision_changed"
 	KeyToolRunPatchCommitRequired Key = "tool.run.error.patch_commit_required"
 	KeyToolRunCommittedUnverified Key = "tool.run.result.committed_unverified"
+	KeyToolRunSealReceiptMissing  Key = "tool.run.result.seal_receipt_missing"
+	KeyToolRunSealPlanUnsupported Key = "tool.run.result.seal_plan_unsupported"
+	KeyToolRunSealSafetyFailed    Key = "tool.run.result.seal_safety_failed"
 
 	KeyToolRunPermissionStep Key = "tool.run.permission.step"
 	KeyToolRunSummary        Key = "tool.run.result.summary"
@@ -68,6 +71,8 @@ var toolRunKeys = [...]Key{
 	KeyToolRunTypedResultInvalid, KeyToolRunPermissionStep, KeyToolRunSummary,
 	KeyToolRunSkippedAfterPatch, KeyToolRunRevisionChanged,
 	KeyToolRunPatchCommitRequired, KeyToolRunCommittedUnverified,
+	KeyToolRunSealReceiptMissing, KeyToolRunSealPlanUnsupported,
+	KeyToolRunSealSafetyFailed,
 	KeyToolRunStepResult, KeyToolRunStdout, KeyToolRunStderr, KeyToolRunOutputOmitted,
 }
 
@@ -137,12 +142,12 @@ func init() {
 		"Festes Zeichenbudget für die Ausgabeauszüge aller Schritte.", "全ステップの出力抜粋で共有する厳密な文字数上限。",
 		"모든 단계 출력 발췌문이 공유하는 엄격한 문자 예산입니다.", "Жёсткий общий лимит символов для фрагментов вывода всех шагов.")
 	add(KeyToolRunSchemaRequiresPatchCommit,
-		"Whether this Run depends on a preceding ApplyPatch commit in the same response.",
-		"此 Run 是否依赖同一响应中前置 ApplyPatch 的成功提交。",
-		"Gibt an, ob dieser Run von einem vorangehenden ApplyPatch-Commit in derselben Antwort abhängt.",
-		"この Run が同じ応答内の先行する ApplyPatch の commit に依存するかどうか。",
-		"이 Run이 같은 응답의 선행 ApplyPatch commit에 종속되는지 여부입니다.",
-		"Зависит ли этот Run от commit предшествующего ApplyPatch в том же ответе.")
+		"Within one assistant response, an immediately preceding ApplyPatch is bound by default. Set false only when this Run is deliberately independent; omission elsewhere creates no scheduling dependency.",
+		"在同一条助手响应中，默认绑定紧邻此 Run 的前一个 ApplyPatch。仅当此 Run 确实独立时才设为 false；在其他位置省略该字段不会建立调度依赖。",
+		"Innerhalb einer einzelnen Assistentenantwort wird ein unmittelbar vorangehendes ApplyPatch standardmäßig gebunden. Setzen Sie den Wert nur dann auf false, wenn dieser Run bewusst unabhängig ist; wird das Feld an anderer Stelle weggelassen, entsteht keine Planungsabhängigkeit.",
+		"同じアシスタント応答内では、直前の ApplyPatch が既定でこの Run に紐付けられます。この Run を意図的に独立させる場合に限り false を指定してください。それ以外の位置で省略してもスケジューリング依存関係は作成されません。",
+		"하나의 어시스턴트 응답 안에서는 바로 앞의 ApplyPatch가 기본적으로 이 Run에 바인딩됩니다. 이 Run을 의도적으로 독립 실행할 때만 false로 설정하세요. 다른 위치에서 이 필드를 생략해도 스케줄링 종속 관계는 만들어지지 않습니다.",
+		"В пределах одного ответа ассистента непосредственно предшествующий ApplyPatch по умолчанию привязывается к этому Run. Указывайте false только для намеренно независимого Run; пропуск поля в другом месте не создаёт зависимости планирования.")
 
 	add(KeyToolRunInvalidInput, "Run input is invalid.", "Run 输入无效。", "Die Run-Eingabe ist ungültig.", "Run の入力が無効です。", "Run 입력이 올바르지 않습니다.", "Недопустимые входные данные Run.")
 	add(KeyToolRunStepsRequired, "Run requires at least one step.", "Run 至少需要一个步骤。", "Run benötigt mindestens einen Schritt.", "Run には 1 つ以上のステップが必要です。", "Run에는 단계가 하나 이상 필요합니다.", "Для Run требуется хотя бы один шаг.")
@@ -193,6 +198,27 @@ func init() {
 		"Run が workspace を変更した可能性があります。生成された revision を seal し、読み取り専用 Run で確認するまでは、この Run のチェックは検証証拠になりません。",
 		"Run이 workspace를 변경했을 수 있습니다. 생성된 revision을 seal하고 읽기 전용 Run으로 검사하기 전까지 이 Run의 검사는 검증 증거가 아닙니다.",
 		"Run мог изменить рабочую область. Его проверки не считаются доказательством, пока итоговая ревизия не запечатана и не проверена Run только для чтения.")
+	add(KeyToolRunSealReceiptMissing,
+		"This Run had no bound ApplyPatch receipt, so possible workspace changes could not be sealed. Inspect the diff. If a real source change remains, make it with ApplyPatch, then verify with a read-only Run. A no-op patch cannot issue a receipt; if no change remains, report that this query lacks adoption or sealing authority.",
+		"此 Run 未绑定 ApplyPatch 回执，因此无法封存可能产生的工作区变更。请检查 diff。若仍需实际修改源代码，请用 ApplyPatch 完成，再用只读 Run 验证。空操作补丁无法签发回执；若已无需修改，请报告本次查询缺少采纳或封存该状态的权限。",
+		"Dieser Run hatte keinen gebundenen ApplyPatch-Beleg; mögliche Workspace-Änderungen konnten daher nicht versiegelt werden. Prüfen Sie den Diff. Falls noch eine echte Quelländerung nötig ist, führen Sie sie mit ApplyPatch aus und verifizieren Sie danach mit einem schreibgeschützten Run. Ein No-op-Patch kann keinen Beleg ausstellen; falls keine Änderung mehr nötig ist, melden Sie, dass dieser Abfrage die Berechtigung zur Übernahme oder Versiegelung fehlt.",
+		"この Run には ApplyPatch の receipt が紐付いていなかったため、workspace に生じた可能性のある変更を seal できませんでした。diff を確認してください。実際のソース変更がまだ必要なら ApplyPatch で行い、その後に読み取り専用 Run で検証してください。no-op patch では receipt を発行できません。変更が不要なら、この query には現在の状態を adopt または seal する権限がないことを報告してください。",
+		"이 Run에는 바인딩된 ApplyPatch receipt가 없어 workspace에 생겼을 수 있는 변경을 seal할 수 없습니다. diff를 확인하세요. 실제 소스 변경이 남아 있다면 ApplyPatch로 수행한 다음 읽기 전용 Run으로 검증하세요. no-op patch는 receipt를 발급할 수 없습니다. 변경이 남아 있지 않다면 이 query에 현재 상태를 adopt하거나 seal할 권한이 없다고 보고하세요.",
+		"У этого Run не было привязанной квитанции ApplyPatch, поэтому возможные изменения рабочей области нельзя было запечатать. Просмотрите diff. Если ещё требуется реальное изменение исходников, внесите его через ApplyPatch, затем проверьте с помощью Run только для чтения. Пустой патч не может выдать квитанцию; если изменений больше не требуется, сообщите, что у этого запроса нет полномочий принять или запечатать текущее состояние.")
+	add(KeyToolRunSealPlanUnsupported,
+		"This Run graph contains a workspace-writing step that cannot be sealed. Move source edits to ApplyPatch; keep Run limited to tests, builds, static checks, and read-only observations.",
+		"此 Run 图包含无法封存的工作区写入步骤。请把源代码编辑移到 ApplyPatch，并将 Run 限定为测试、构建、静态检查和只读观察。",
+		"Dieser Run-Graph enthält einen schreibenden Workspace-Schritt, der nicht versiegelt werden kann. Verschieben Sie Quelländerungen nach ApplyPatch und beschränken Sie Run auf Tests, Builds, statische Prüfungen und schreibgeschützte Beobachtungen.",
+		"この Run グラフには seal できない workspace 書き込みステップが含まれています。ソース編集は ApplyPatch に移し、Run はテスト、ビルド、静的チェック、読み取り専用の確認に限定してください。",
+		"이 Run 그래프에는 seal할 수 없는 workspace 쓰기 단계가 있습니다. 소스 편집은 ApplyPatch로 옮기고 Run은 테스트, 빌드, 정적 검사, 읽기 전용 확인에만 사용하세요.",
+		"Граф Run содержит шаг записи в рабочую область, который нельзя запечатать. Перенесите правки исходников в ApplyPatch, а Run используйте только для тестов, сборки, статических проверок и операций чтения.")
+	add(KeyToolRunSealSafetyFailed,
+		"Run could not seal the revision because safety check %s failed. Inspect the diff. If a real source change remains, make it with ApplyPatch, then verify with a read-only Run. Do not invent a no-op change; if no change remains, report missing adoption or sealing authority.",
+		"Run 无法封存该版本，因为安全检查 %s 未通过。请检查 diff。若仍需实际修改源代码，请用 ApplyPatch 完成，再用只读 Run 验证。不要伪造空操作变更；若已无需修改，请报告缺少采纳或封存该状态的权限。",
+		"Run konnte die Revision nicht versiegeln, weil die Sicherheitsprüfung %s fehlgeschlagen ist. Prüfen Sie den Diff. Falls noch eine echte Quelländerung nötig ist, führen Sie sie mit ApplyPatch aus und verifizieren Sie danach mit einem schreibgeschützten Run. Erfinden Sie keine No-op-Änderung; falls keine Änderung mehr nötig ist, melden Sie die fehlende Berechtigung zur Übernahme oder Versiegelung.",
+		"安全チェック %s に失敗したため、Run は revision を seal できませんでした。diff を確認してください。実際のソース変更がまだ必要なら ApplyPatch で行い、その後に読み取り専用 Run で検証してください。no-op の変更を作らないでください。変更が不要なら、adopt または seal する権限がないことを報告してください。",
+		"안전 검사 %s에 실패하여 Run이 revision을 seal하지 못했습니다. diff를 확인하세요. 실제 소스 변경이 남아 있다면 ApplyPatch로 수행한 다음 읽기 전용 Run으로 검증하세요. no-op 변경을 만들지 마세요. 변경이 남아 있지 않다면 adopt 또는 seal 권한이 없다고 보고하세요.",
+		"Run не смог запечатать ревизию: проверка безопасности %s завершилась неудачно. Просмотрите diff. Если ещё требуется реальное изменение исходников, внесите его через ApplyPatch, затем проверьте с помощью Run только для чтения. Не создавайте фиктивное пустое изменение; если изменений больше не требуется, сообщите об отсутствии полномочий принять или запечатать состояние.")
 
 	add(KeyToolRunPermissionStep, "Step %q requires permission: %s", "步骤 %q 需要权限：%s", "Schritt %q benötigt eine Berechtigung: %s", "ステップ %q には権限が必要です: %s", "%q 단계에 권한이 필요합니다: %s", "Для шага %q требуется разрешение: %s")
 	add(KeyToolRunSummary, "Run finished: %d succeeded, %d failed, %d timed out, %d cancelled, %d skipped.", "Run 已完成：%d 个成功，%d 个失败，%d 个超时，%d 个取消，%d 个跳过。", "Run beendet: %d erfolgreich, %d fehlgeschlagen, %d mit Zeitüberschreitung, %d abgebrochen, %d übersprungen.", "Run 完了: 成功 %d、失敗 %d、タイムアウト %d、キャンセル %d、スキップ %d。", "Run 완료: 성공 %d개, 실패 %d개, 시간 초과 %d개, 취소 %d개, 건너뜀 %d개.", "Run завершён: успешно — %d, с ошибкой — %d, по тайм-ауту — %d, отменено — %d, пропущено — %d.")

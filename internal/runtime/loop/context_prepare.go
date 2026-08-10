@@ -24,11 +24,14 @@ func (q *QueryLoop) prepareMessagesForQuery(ctx context.Context, state *QuerySta
 		snapshot = snapshots[0]
 	}
 	messagesForQuery := compact.GetMessagesAfterCompactBoundaryForScope(state.Messages, q.internalControlScope)
+	// Durable audit-only blocks must be removed before any estimator, budgeter,
+	// microcompactor, semantic compactor, or hook can observe the model view.
+	messagesForQuery = compact.StripProviderPrivateBlocks(messagesForQuery)
 	// Preserve the actual pre-replacement model-visible source before
 	// microcompact, result budgeting, or staged-collapse projections can remove
 	// exact skill envelopes. Only this source can prove which bodies may be
 	// considered for bounded post-compact reattachment.
-	postCompactSkillRecoverySource := compact.StripContentReplacementBlocks(messagesForQuery)
+	postCompactSkillRecoverySource := compact.StripProviderPrivateBlocks(messagesForQuery)
 	lossyProviderProjection := false
 
 	messagesForQuery, records, replacementErrs := compact.ApplyToolResultBudget(messagesForQuery, q.contentReplacementState, q.resultStore, nil)
@@ -38,7 +41,7 @@ func (q *QueryLoop) prepareMessagesForQuery(ctx context.Context, state *QuerySta
 	if len(records) > 0 {
 		state.Messages = q.installContentReplacementRecords(state.Messages, records)
 	}
-	messagesForQuery = compact.StripContentReplacementBlocks(messagesForQuery)
+	messagesForQuery = compact.StripProviderPrivateBlocks(messagesForQuery)
 	if q.toolBudget != nil {
 		messagesForQuery = q.toolBudget.Apply(messagesForQuery)
 	}
@@ -187,7 +190,7 @@ func (q *QueryLoop) prepareMessagesForQuery(ctx context.Context, state *QuerySta
 		q.ctxWindow.UpdateLocalEstimate(*requestEstimate)
 	}
 
-	return preparedMessagesForQuery{Messages: compact.StripContentReplacementBlocks(messagesForQuery)}, nil
+	return preparedMessagesForQuery{Messages: compact.StripProviderPrivateBlocks(messagesForQuery)}, nil
 }
 
 func (q *QueryLoop) runAutoCompaction(ctx context.Context, messages []types.Message, requestEstimate *compact.ModelContextTokenEstimate, turnCount int, onEvent func(stream.Event)) (*compact.CompactionResult, bool, error) {

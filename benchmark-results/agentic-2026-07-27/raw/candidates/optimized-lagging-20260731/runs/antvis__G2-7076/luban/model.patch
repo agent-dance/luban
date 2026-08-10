@@ -1,0 +1,95 @@
+diff --git a/__tests__/integration/api-chart-emit-series-tooltip.spec.ts b/__tests__/integration/api-chart-emit-series-tooltip.spec.ts
+index 3f4b1ad..c1b8d60 100644
+--- a/__tests__/integration/api-chart-emit-series-tooltip.spec.ts
++++ b/__tests__/integration/api-chart-emit-series-tooltip.spec.ts
+@@ -1,3 +1,4 @@
++import { Chart } from '../../src';
+ import { chartEmitSeriesTooltip as render } from '../plots/api/chart-emit-series-tooltip';
+ import { kebabCase } from './utils/kebabCase';
+ import {
+@@ -6,9 +7,46 @@ import {
+   receiveExpectData,
+ } from './utils/event';
+ import { createNodeGCanvas } from './utils/createNodeGCanvas';
++import { sleep } from './utils/sleep';
+ import './utils/useCustomFetch';
+ import './utils/useSnapshotMatchers';
+ 
++describe('chart series tooltip events', () => {
++  const canvas = createNodeGCanvas(800, 500);
++
++  it('should emit the last selected date during the throttle window', async () => {
++    const chart = new Chart({
++      canvas,
++      container: document.createElement('div'),
++    });
++    const dates = [new Date('2024-01-01'), new Date('2024-01-02')];
++    chart.options({
++      type: 'line',
++      data: dates.map((date, value) => ({ date, value })),
++      encode: { x: 'date', y: 'value' },
++    });
++    await chart.render();
++
++    const selected = [];
++    chart.on('tooltip:show', ({ nativeEvent, data }) => {
++      if (nativeEvent) selected.push(data.data.x);
++    });
++
++    chart.emit('tooltip:show', { data: { data: { x: dates[0] } } });
++    chart.emit('tooltip:show', { data: { data: { x: dates[1] } } });
++    await sleep(80);
++
++    expect(selected.map((date) => date.getTime())).toEqual(
++      dates.map((date) => date.getTime()),
++    );
++    chart.destroy();
++  });
++
++  afterAll(() => {
++    canvas?.destroy();
++  });
++});
++
+ describe.skip('chart.emit', () => {
+   const dir = `${__dirname}/snapshots/api/${kebabCase(render.name)}`;
+   const canvas = createNodeGCanvas(800, 500);
+diff --git a/site/docs/manual/component/tooltip.en.md b/site/docs/manual/component/tooltip.en.md
+index 19d9683..22f5d7e 100644
+--- a/site/docs/manual/component/tooltip.en.md
++++ b/site/docs/manual/component/tooltip.en.md
+@@ -354,7 +354,7 @@ When configuring `tooltip.items` for composite charts, you need to configure nod
+ | series        | Whether it's a series element tooltip                                                                                    | `boolean`                                                                                                              | `false`                       | Multi-line, multi-bar charts |
+ | shared        | Whether elements with same x share tooltip                                                                               | `boolean`                                                                                                              | `false`                       |                              |
+ | sort          | Item sorter                                                                                                              | `(d: TooltipItemValue) => any`                                                                                         | -                             |                              |
+-| trailing      | Whether to update tooltip at the end of time interval                                                                    | `boolean`                                                                                                              | `false`                       |                              |
++| trailing      | Whether to update tooltip at the end of time interval                                                                    | `boolean`                                                                                                              | `true` for series tooltips, otherwise `false` |                    |
+ | wait          | Time interval for tooltip update in milliseconds                                                                         | `number`                                                                                                               | `50`                          |                              |
+ 
+ #### crosshairs
+diff --git a/site/docs/manual/component/tooltip.zh.md b/site/docs/manual/component/tooltip.zh.md
+index 2e8e030..d72c637 100644
+--- a/site/docs/manual/component/tooltip.zh.md
++++ b/site/docs/manual/component/tooltip.zh.md
+@@ -354,7 +354,7 @@ chart.options({
+ | series        | 是否是系列元素的 tooltip                                                                                          | `boolean`                                                                                                              | `false`                        | 多条折线、多组柱状图 |
+ | shared        | 相同 x 的元素是否共享 tooltip                                                                                     | `boolean`                                                                                                              | `false`                        |                      |
+ | sort          | item 排序器                                                                                                       | `(d: TooltipItemValue) => any`                                                                                         | -                              |                      |
+-| trailing      | 是否在时间间隔结束的时候更新提示信息                                                                              | `boolean`                                                                                                              | `false`                        |                      |
++| trailing      | 是否在时间间隔结束的时候更新提示信息                                                                              | `boolean`                                                                                                              | 系列 tooltip 为 `true`，其他为 `false` |                      |
+ | wait          | 提示信息更新的时间间隔，单位为毫秒                                                                                | `number`                                                                                                               | `50`                           |                      |
+ 
+ #### crosshairs
+diff --git a/src/interaction/tooltip.ts b/src/interaction/tooltip.ts
+index 4c82910..7d276ba 100644
+--- a/src/interaction/tooltip.ts
++++ b/src/interaction/tooltip.ts
+@@ -903,7 +903,7 @@ export function seriesTooltip(
+     emitter,
+     wait = 50,
+     leading = true,
+-    trailing = false,
++    trailing = true,
+     startX = 0,
+     startY = 0,
+     body = true,

@@ -9,7 +9,9 @@ import importlib.util
 import json
 import os
 import ssl
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,7 +20,50 @@ from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parent
+REPOSITORY_ROOT = ROOT.parent.parent
+REPRESENTATIVE20_CATALOG = REPOSITORY_ROOT / "benchmark" / "agentic" / "localbench" / "catalog" / "representative20.json"
+FROZEN_INSTANCES = ROOT / "raw" / "candidates" / "representative20-20260731" / "metadata" / "selected_instances.json"
+UPSTREAM_IDLE_TIMEOUT_SECONDS = max(
+    1.0,
+    float(os.environ.get("LOCAL5_UPSTREAM_IDLE_TIMEOUT_SECONDS", "90")),
+)
 LEGACY = ROOT.parent / "agentic-2026-07-26" / "run_benchmark.py"
+BENCHMARK_OFFLINE_ENV = {
+    "CARGO_NET_OFFLINE": "true",
+    "GOPROXY": "off",
+    "GOSUMDB": "off",
+    # Keep a single verification command from consuming most of the agent's
+    # wall-clock budget. The Run schema exposes this cap to the model.
+    "LUBAN_CODE_BASH_MAX_TIMEOUT_MS": "45000",
+    # Maven's shell-only wrapper downloads the Maven distribution before the
+    # Maven offline flag can take effect. Point that bootstrap at a closed
+    # loopback port so benchmark verification fails fast without network I/O.
+    "MVNW_REPOURL": "http://127.0.0.1:9",
+    "MAVEN_ARGS": "--offline",
+    "NPM_CONFIG_OFFLINE": "true",
+    "PNPM_CONFIG_OFFLINE": "true",
+    "YARN_ENABLE_NETWORK": "0",
+    "PIP_NO_INDEX": "1",
+    "UV_OFFLINE": "1",
+}
+GENERATED_TOP_LEVEL_DIRECTORIES = (
+    ".gradle", ".luban-build", ".next", "build", "coverage",
+    "dist", "node_modules", "out", "target",
+)
+GENERATED_TOP_LEVEL_PATTERNS = (".luban-build-*", "build-*", "build_*")
+
+
+def load_upstream_key() -> str:
+    key = os.environ.pop("LOCAL5_UPSTREAM_KEY", "")
+    if key:
+        return key
+    auth_file = os.environ.get("LOCAL5_UPSTREAM_AUTH_FILE", "").strip()
+    entry_name = os.environ.get("LOCAL5_UPSTREAM_AUTH_ENTRY", "").strip()
+    if not auth_file or not entry_name:
+        return ""
+    document = json.loads(Path(auth_file).expanduser().read_text(encoding="utf-8"))
+    entry = (document.get("entries") or {}).get(entry_name) or {}
+    return str(entry.get("api_key") or "")
 
 
 def load_legacy():
@@ -28,14 +73,52 @@ def load_legacy():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.ROOT = ROOT
-    module.RUNS_DIR = ROOT / "raw" / "runs"
-    module.METADATA_DIR = ROOT / "raw" / "metadata"
-    module.SAFE_CHILD_ENV_KEYS = set(module.SAFE_CHILD_ENV_KEYS) | {"OPENAI_BASE_URL"}
+    module.RUNS_DIR = Path(
+        os.environ.get("LOCAL5_RUNS_DIR", ROOT / "raw" / "runs")
+    ).resolve()
+    module.METADATA_DIR = Path(
+        os.environ.get("LOCAL5_METADATA_DIR", ROOT / "raw" / "metadata")
+    ).resolve()
+    module.SAFE_CHILD_ENV_KEYS = set(module.SAFE_CHILD_ENV_KEYS) | {"OPENAI_BASE_URL"} | set(BENCHMARK_OFFLINE_ENV)
     module.SAFE_CHILD_ENV_KEYS.discard("CODEX_LB_API_KEY")
     return module
 
 
 legacy = load_legacy()
+representative20 = json.loads(REPRESENTATIVE20_CATALOG.read_text(encoding="utf-8"))
+legacy.SELECTED = {row["instance_id"]: row["language"] for row in representative20}
+
+
+def load_frozen_instances() -> dict[str, dict]:
+    rows = json.loads(FROZEN_INSTANCES.read_text(encoding="utf-8"))
+    by_id = {row["instance_id"]: row for row in rows}
+    missing = sorted(set(legacy.SELECTED) - set(by_id))
+    if missing:
+        raise RuntimeError(f"frozen benchmark metadata is missing: {', '.join(missing)}")
+    return {instance_id: dict(by_id[instance_id]) for instance_id in legacy.SELECTED}
+
+
+legacy.load_instances = load_frozen_instances
+original_write_metadata = legacy.write_metadata
+
+
+def write_representative20_metadata(instances: dict[str, dict], include_gold: bool = False) -> None:
+    original_write_metadata(instances, include_gold=include_gold)
+    experiment_path = legacy.METADATA_DIR / "experiment.json"
+    experiment = json.loads(experiment_path.read_text(encoding="utf-8"))
+    experiment["parquet_sha256"] = {
+        "cpp": "5afc7db10f28232cc9c13de316ecec146f2da4c76de3bb460b934f5e271b0ec0",
+        "go": "76d2b5dff0f3fac8303d30fa85495539e487d25974ad7c21cd21a545cb4756e2",
+        "java": "cc04473f299dbdbbb6c4061da3c68367cd460e28e40c04234f4887e0fc234220",
+        "rust": "ea90be54a621c0c0280b77d5e2dee9650bc1d4ae087f9b9b06af821bcd8662d7",
+        "ts": "7e23783e27230c9cfab1035690035c25523043d6af635bc78da3fd2010c32714",
+    }
+    experiment["selection_manifest"] = str(REPRESENTATIVE20_CATALOG.with_suffix(".selection.json").relative_to(REPOSITORY_ROOT))
+    experiment["task_count"] = len(legacy.SELECTED)
+    experiment_path.write_text(json.dumps(experiment, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+legacy.write_metadata = write_representative20_metadata
 
 
 class RequestMeter:
@@ -44,15 +127,27 @@ class RequestMeter:
         if upstream.scheme != "https" or not upstream.hostname:
             raise RuntimeError("LOCAL5_UPSTREAM must be an HTTPS origin")
         self.upstream = upstream
-        self.key = os.environ.pop("LOCAL5_UPSTREAM_KEY", "")
+        self.key = load_upstream_key()
         if not self.key:
             raise RuntimeError("LOCAL5_UPSTREAM_KEY is required")
         self.output = output
         self.records: list[dict] = []
         self.lock = threading.Lock()
+        self.connections: set[http.client.HTTPSConnection] = set()
         self.sequence = 0
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self.server.daemon_threads = True
+        self.server.block_on_close = False
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.output.write_text("", encoding="utf-8")
+
+    def _record(self, record: dict) -> None:
+        encoded = json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+        with self.lock:
+            self.records.append(record)
+            with self.output.open("a", encoding="utf-8") as stream:
+                stream.write(encoded)
 
     def _handler(self):
         meter = self
@@ -104,9 +199,11 @@ class RequestMeter:
                     connection = http.client.HTTPSConnection(
                         meter.upstream.hostname,
                         meter.upstream.port or 443,
-                        timeout=3600,
+                        timeout=UPSTREAM_IDLE_TIMEOUT_SECONDS,
                         context=ssl.create_default_context(),
                     )
+                    with meter.lock:
+                        meter.connections.add(connection)
                     connection.request(self.command, path, body=body, headers=headers)
                     response = connection.getresponse()
                     status = response.status
@@ -126,7 +223,11 @@ class RequestMeter:
                     self.send_header("Connection", "close")
                     self.end_headers()
                     while True:
-                        chunk = response.read(65536)
+                        # Responses is an SSE stream. read(amt) may wait until
+                        # amt bytes arrive, which deadlocks small completed
+                        # responses behind this proxy; read1 forwards each
+                        # available upstream chunk immediately.
+                        chunk = response.read1(65536)
                         if not chunk:
                             break
                         response_bytes += len(chunk)
@@ -159,8 +260,10 @@ class RequestMeter:
                         "request_id_sha256": request_id_hash,
                         "error_class": error_class,
                     }
-                    with meter.lock:
-                        meter.records.append(record)
+                    meter._record(record)
+                    if connection is not None:
+                        with meter.lock:
+                            meter.connections.discard(connection)
 
         return Handler
 
@@ -172,11 +275,22 @@ class RequestMeter:
         self.thread.start()
 
     def stop(self) -> list[dict]:
+        with self.lock:
+            connections = list(self.connections)
+        for connection in connections:
+            connection.close()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=5)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            with self.lock:
+                if not self.connections:
+                    break
+            time.sleep(0.01)
         self.key = ""
-        records = sorted(self.records, key=lambda item: item["sequence"])
+        with self.lock:
+            records = sorted(self.records, key=lambda item: item["sequence"])
         self.output.write_text(
             "".join(json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n" for item in records),
             encoding="utf-8",
@@ -204,10 +318,11 @@ def codex_command(repo: Path, prompt: str) -> list[str]:
 
 
 def luban_command(repo: Path, prompt: str, debug_path: Path) -> list[str]:
+    effort = os.environ.get("LOCAL5_LUBAN_EFFORT", legacy.EFFORT).strip() or legacy.EFFORT
     return [
         os.environ["LOCAL5_LUBAN_BIN"],
-        "--print", "--model", legacy.MODEL, "--provider", "custom-local-meter", "--api", "responses",
-        "--reasoning-effort", legacy.EFFORT,
+        "--print", "--model", legacy.MODEL, "--provider", "openai", "--api", "responses",
+        "--reasoning-effort", effort,
         "--pinned-model", "--no-model-fallback", "--output-format", "stream-json",
         "--allow-all", "--allowed-tools", "Inspect,ApplyPatch,Run",
         "--disallowed-tools", "WebSearch,WebFetch,Agent,Skill,TeamCreate,SendMessage",
@@ -218,6 +333,41 @@ def luban_command(repo: Path, prompt: str, debug_path: Path) -> list[str]:
 legacy.codex_command = codex_command
 legacy.luban_command = luban_command
 original_run_agent = legacy.run_agent
+
+
+def capture_workspace_patch(repo: Path) -> str:
+    """Capture tracked and non-ignored untracked changes without touching the real index."""
+    with tempfile.TemporaryDirectory(prefix="luban-benchmark-index-") as directory:
+        index_path = Path(directory) / "index"
+        env = os.environ.copy()
+        env["GIT_INDEX_FILE"] = str(index_path)
+        git = [
+            "git", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false",
+            "-c", "submodule.recurse=false",
+        ]
+        subprocess.run(
+            [*git, "read-tree", "HEAD"], cwd=repo, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+        )
+        generated_excludes = [
+            pathspec
+            for directory in GENERATED_TOP_LEVEL_DIRECTORIES
+            for pathspec in (f":(exclude){directory}", f":(exclude){directory}/**")
+        ]
+        generated_excludes.extend(
+            pathspec
+            for pattern in GENERATED_TOP_LEVEL_PATTERNS
+            for pathspec in (f":(exclude,glob){pattern}", f":(exclude,glob){pattern}/**")
+        )
+        subprocess.run(
+            [*git, "add", "-A", "--", ".", *generated_excludes], cwd=repo, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+        )
+        result = subprocess.run(
+            [*git, "--no-pager", "diff", "--cached", "--binary", "HEAD", "--"],
+            cwd=repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True,
+        )
+    return result.stdout.decode("utf-8")
 
 
 def metered_run_agent(instance: dict, agent: str, timeout: int) -> dict:
@@ -235,6 +385,7 @@ def metered_run_agent(instance: dict, agent: str, timeout: int) -> dict:
     prior_home = os.environ.get("HOME")
     prior_lang = os.environ.get("LANG")
     prior_lc_all = os.environ.get("LC_ALL")
+    prior_offline = {name: os.environ.get(name) for name in BENCHMARK_OFFLINE_ENV}
     isolated_home = run_dir / "empty-home"
     isolated_home.mkdir(mode=0o700, exist_ok=True)
     luban_config = isolated_home / ".luban-code"
@@ -244,15 +395,17 @@ def metered_run_agent(instance: dict, agent: str, timeout: int) -> dict:
         json.dumps(
             {
                 "entries": {
-                    "custom-local-meter": {
-                        "provider": "custom-local-meter",
+                    "openai": {
+                        "provider": "openai",
                         "auth_method": "api_key",
                         "api_key": "local-benchmark-placeholder",
                         "expires_at": "0001-01-01T00:00:00Z",
                         "base_url": meter.base_url,
                         "api_style": "openai",
+                        "api_format": "responses",
+                        "disable_strict_tools": True,
+                        "disable_prompt_cache_options": True,
                         "display_name": "local-meter",
-                        "user_defined": True,
                     }
                 }
             },
@@ -272,8 +425,13 @@ def metered_run_agent(instance: dict, agent: str, timeout: int) -> dict:
     if agent == "luban":
         os.environ["LANG"] = "en_US.UTF-8"
         os.environ["LC_ALL"] = "en_US.UTF-8"
+    os.environ.update(BENCHMARK_OFFLINE_ENV)
     try:
         summary = original_run_agent(instance, agent, timeout)
+        repo = legacy.WORK_ROOT / "repos" / instance["instance_id"] / agent
+        patch = capture_workspace_patch(repo)
+        (run_dir / "model.patch").write_text(patch, encoding="utf-8")
+        summary["patch"] = legacy.patch_stats(patch)
     finally:
         records = meter.stop()
         if prior_base is None:
@@ -296,11 +454,20 @@ def metered_run_agent(instance: dict, agent: str, timeout: int) -> dict:
             os.environ.pop("LC_ALL", None)
         else:
             os.environ["LC_ALL"] = prior_lc_all
+        for name, value in prior_offline.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
     generations = [item for item in records if item["method"] == "POST" and item["endpoint"] == "responses"]
     summary["llm_calls"] = len(generations)
     summary["llm_successful_calls"] = sum(200 <= item["status"] < 300 for item in generations)
     summary["llm_failed_calls"] = sum(not (200 <= item["status"] < 300) for item in generations)
     summary["provider_request_seconds"] = round(sum(item["elapsed_seconds"] for item in generations), 6)
+    if agent == "luban":
+        effort = os.environ.get("LOCAL5_LUBAN_EFFORT", legacy.EFFORT).strip() or legacy.EFFORT
+        summary["reasoning_effort"] = effort
+        summary["command_public"]["reasoning_effort"] = effort
     summary["binary"] = {
         "path": os.environ["LOCAL5_CODEX_BIN"] if agent == "codex" else os.environ["LOCAL5_LUBAN_BIN"],
         "sha256": hashlib.sha256(

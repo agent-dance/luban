@@ -236,6 +236,69 @@ func TestTranscriptToolSegmentFailureIsAlertAndCollapsedAfterSettlement(t *testi
 	}
 }
 
+func TestTranscriptToolSegmentTreatsHasMoreAsNormalPagination(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangEN)
+	state.SessionID.Set("pagination-session")
+	state.Activities = NewActivityStore(ActivityScope{SessionID: "pagination-session", Epoch: state.SessionEpoch.Get()})
+	ctx := ToolEventContext{
+		SessionID: "pagination-session", TurnID: "turn-1", ActorID: "assistant",
+		WorkUnitID: "foreground", Outcome: OutcomePartial,
+	}
+	call := types.ToolUseBlock{ID: "inspect-page", Name: "Inspect", Input: map[string]any{}}
+	if err := state.ApplyToolCall(ctx, call); err != nil {
+		t.Fatal(err)
+	}
+	if err := state.ApplyToolResult(ctx, types.ToolResultBlock{
+		ToolUseID: call.ID, Content: "page one", Outcome: types.ToolOutcomePartial,
+		Completeness: types.ToolResultCompleteness{
+			Source: types.ToolResultCompletenessComplete,
+			View:   types.ToolResultCompletenessPagination,
+			Pagination: &types.ToolResultPagination{
+				Offset: 0, Limit: 1, NextOffset: 1, HasMore: true,
+			},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	messages := state.Messages.Get()
+	if len(messages) != 1 {
+		t.Fatalf("pagination messages = %+v", messages)
+	}
+	segment := newTranscriptToolSegment(messages)
+	if segment.Alert || segment.IssueCount != 0 || segment.Messages[0].IsError {
+		t.Fatalf("normal pagination became an alert: %+v", segment)
+	}
+	observation, ok := state.Observations.Get(toolObservationID(ctx.SessionID, call.ID))
+	if !ok {
+		t.Fatal("pagination observation missing")
+	}
+	icon, color := toolPresentationIconAndColor(observation.Presentation, observation.Outcome)
+	if icon != "…" || color != gtui.Cyan {
+		t.Fatalf("pagination icon=%q color=%v", icon, color)
+	}
+	activity, ok := state.Activities.Get("tool:" + call.ID)
+	if !ok || activity.Lifecycle != ActivityLifecycleCompleted || activity.Outcome != OutcomeSucceeded {
+		t.Fatalf("pagination activity=%+v ok=%t", activity, ok)
+	}
+}
+
+func TestTranscriptToolSegmentKeepsSourceLossAsAttention(t *testing.T) {
+	message := segmentTestTool("inspect-truncated", "Inspect", "assistant", "foreground", OutcomePartial)
+	message.Completeness = types.ToolResultCompleteness{
+		Source: types.ToolResultCompletenessSourceTruncated,
+		View:   types.ToolResultCompletenessPagination,
+		Pagination: &types.ToolResultPagination{
+			Offset: 0, Limit: 1, NextOffset: 1, HasMore: true,
+		},
+	}
+	segment := newTranscriptToolSegment([]Message{message})
+	if !segment.Alert || segment.IssueCount != 1 {
+		t.Fatalf("source loss was normalized as pagination: %+v", segment)
+	}
+}
+
 func TestTranscriptToolSegmentStructuredSuccessStaysInGroupButDefaultsCollapsed(t *testing.T) {
 	read := segmentTestTool("read", "Read", "assistant", "foreground", OutcomeSucceeded)
 	write := segmentTestTool("write", "Write", "assistant", "foreground", OutcomeSucceeded)

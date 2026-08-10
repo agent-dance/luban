@@ -49,7 +49,7 @@ type tuiInputScheduler struct {
 	prepare        func(*tuiInputSubmission) bool
 	run            func(tuiInputSubmission)
 	cancelActive   func() bool
-	onQueueChanged func(int)
+	onQueueChanged func([]string)
 }
 
 func newTUIInputScheduler(
@@ -57,7 +57,7 @@ func newTUIInputScheduler(
 	prepare func(*tuiInputSubmission) bool,
 	run func(tuiInputSubmission),
 	cancelActive func() bool,
-	onQueueChanged func(int),
+	onQueueChanged func([]string),
 ) *tuiInputScheduler {
 	return &tuiInputScheduler{
 		launch: launch, prepare: prepare, run: run, cancelActive: cancelActive, onQueueChanged: onQueueChanged,
@@ -82,9 +82,9 @@ func (s *tuiInputScheduler) TrySubmit(text string, captureImages func() []tui.Im
 			submission.images = append([]tui.ImageAttachment(nil), captureImages()...)
 		}
 		s.pending = append(s.pending, submission)
-		count := len(s.pending)
+		queued := s.queuedTextsLocked()
 		s.mu.Unlock()
-		s.publishQueueCount(count)
+		s.publishQueue(queued)
 		return true, true
 	}
 	s.active = true
@@ -146,14 +146,14 @@ func (s *tuiInputScheduler) finishSubmission() {
 	if len(s.pending) == 0 {
 		s.active = false
 		s.mu.Unlock()
-		s.publishQueueCount(0)
+		s.publishQueue(nil)
 		return
 	}
 	next := s.pending[0]
 	s.pending = append([]tuiInputSubmission(nil), s.pending[1:]...)
-	count := len(s.pending)
+	queued := s.queuedTextsLocked()
 	s.mu.Unlock()
-	s.publishQueueCount(count)
+	s.publishQueue(queued)
 	if !s.launchSubmission(next) {
 		s.stopAndDiscard()
 	}
@@ -164,11 +164,19 @@ func (s *tuiInputScheduler) stopAndDiscard() {
 	s.active = false
 	s.pending = nil
 	s.mu.Unlock()
-	s.publishQueueCount(0)
+	s.publishQueue(nil)
 }
 
-func (s *tuiInputScheduler) publishQueueCount(count int) {
+func (s *tuiInputScheduler) queuedTextsLocked() []string {
+	queued := make([]string, len(s.pending))
+	for index, submission := range s.pending {
+		queued[index] = submission.text
+	}
+	return queued
+}
+
+func (s *tuiInputScheduler) publishQueue(queued []string) {
 	if s.onQueueChanged != nil {
-		s.onQueueChanged(count)
+		s.onQueueChanged(queued)
 	}
 }

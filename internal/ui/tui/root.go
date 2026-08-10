@@ -27,6 +27,7 @@ import (
 	"github.com/agent-dance/luban/permissions"
 	"github.com/agent-dance/luban/skills"
 	"github.com/grindlemire/go-tui"
+	"github.com/rivo/uniseg"
 )
 
 // truncateRunes safely truncates a string to at most maxRunes Unicode code
@@ -86,13 +87,14 @@ func textAreaVisibleLines(text string, width int) int {
 		}
 
 		lineWidth := 0
-		for _, r := range para {
-			rw := tui.RuneWidth(r)
-			if lineWidth > 0 && lineWidth+rw > width {
+		graphemes := uniseg.NewGraphemes(para)
+		for graphemes.Next() {
+			clusterWidth := graphemes.Width()
+			if lineWidth > 0 && lineWidth+clusterWidth > width {
 				lines++
 				lineWidth = 0
 			}
-			lineWidth += rw
+			lineWidth += clusterWidth
 		}
 		if lineWidth > 0 || para == "" {
 			lines++
@@ -146,6 +148,7 @@ type RootComponent struct {
 	decisionScrollTarget   *tui.State[decisionScrollTarget]
 	historyStart           *tui.State[int]
 	llmWorkingFrame        *tui.State[uint64]
+	compactProgressFrame   *tui.State[uint64]
 
 	slashCommands          []SlashCommandEntry
 	slashDismissedForInput string
@@ -167,6 +170,12 @@ type RootComponent struct {
 	copyFeedback      *tui.State[string]
 	copyFeedbackTimer *time.Timer // single resettable timer; nil when idle
 	clipboardWriter   func(i18n.Language, string) error
+	imageOpener       func(string) error
+	imageOpenMu       sync.Mutex
+	openedImagePaths  []string
+	messageImageRefs  *tui.RefMap[int]
+	messageImages     map[int]ImageAttachment
+	nextMessageImage  int
 
 	// An unmodified transcript drag cannot reach native terminal selection
 	// while mouse reporting is active. Show a brief status hint once per drag.
@@ -294,6 +303,7 @@ func newRootComponent(state *AppState, onSubmit func(string), trySubmit func(str
 		decisionScrollTarget:           tui.NewState(decisionScrollDetails),
 		historyStart:                   tui.NewState(-1),
 		llmWorkingFrame:                tui.NewState(uint64(0)),
+		compactProgressFrame:           tui.NewState(uint64(0)),
 		slash:                          tui.NewState[*slashSuggestionsState](nil),
 		scrollY:                        tui.NewState(0),
 		stickToBottom:                  tui.NewState(true),
@@ -304,6 +314,9 @@ func newRootComponent(state *AppState, onSubmit func(string), trySubmit func(str
 		copyFeedback:                   tui.NewState(""),
 		transcriptSelectionHintVisible: tui.NewState(false),
 		clipboardWriter:                writeToClipboardInLanguage,
+		imageOpener:                    openImagePath,
+		messageImageRefs:               tui.NewRefMap[int](),
+		messageImages:                  make(map[int]ImageAttachment),
 		languageSaver:                  i18n.SaveLanguage,
 		slashCommands:                  cloneSlashCommands(slashCommands),
 		now:                            time.Now,
@@ -441,16 +454,26 @@ func (c *RootComponent) handleInputTextChanged(text string) {
 
 func (c *RootComponent) submitInput(displayText string) {
 	c.handleInputTextChanged(displayText)
-	text := displayText
+	submissionText := displayText
 	for _, paste := range c.pastes {
-		text = strings.Replace(text, paste.placeholder, paste.text, 1)
+		submissionText = strings.Replace(submissionText, paste.placeholder, paste.text, 1)
 	}
+	text := submissionText
 	for _, image := range c.state.PendingImages.Get() {
 		text = removeImageComposerPlaceholder(text, image.Placeholder)
 	}
+	// Empty Enter is a local no-op. It must not enter foreground admission,
+	// otherwise a busy query turns an empty composer into a misleading
+	// "query already running" warning. Image-only submissions remain valid.
+	if strings.TrimSpace(text) == "" && len(c.state.PendingImages.Get()) == 0 {
+		return
+	}
 	admitted := false
 	if c.trySubmit != nil {
-		admitted = c.trySubmit(text)
+		// Keep atomic image markers in the admitted snapshot. The REPL strips
+		// them before hooks/commands and uses their exact positions to build
+		// ordered multimodal blocks. This also makes queued turns self-contained.
+		admitted = c.trySubmit(submissionText)
 	} else if c.onSubmit != nil {
 		c.onSubmit(text)
 		admitted = true
@@ -607,7 +630,7 @@ func (c *RootComponent) BindApp(app *tui.App) {
 	c.state.ContextMeasurement.BindApp(app)
 	c.state.PendingImages.BindApp(app)
 	c.state.PendingImageSelected.BindApp(app)
-	c.state.QueuedInputCount.BindApp(app)
+	c.state.QueuedInputTexts.BindApp(app)
 	c.state.SessionPicker.BindApp(app)
 	c.state.ForkPicker.BindApp(app)
 	c.state.ModelPicker.BindApp(app)
@@ -680,15 +703,25 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 
 	status := c.renderStatusBar(termWidth)
 	statusRows := status.HeightForWidth(termWidth)
+	queuedInputs := c.state.QueuedInputTexts.Get()
+	queuedInputRows := len(queuedInputs)
 
 	// Reserve rows for chrome: banner (3) + spacer (1) + status bar (dynamic) +
-	// optional centered LLM status band (top spacer + status) + optional slash
-	// suggestions + input (dynamic). The existing status-bar spacer is the
-	// matching bottom half of the LLM status band.
+	// queued input previews + optional centered LLM status band (top spacer +
+	// one working row or two problem rows) + optional slash suggestions + input (dynamic). The existing
+	// status-bar spacer is the matching bottom half of the LLM status band.
 	llmStatusRows := 0
 	llmStatus := c.state.LLMCall.Get()
 	if llmStatus != nil {
 		llmStatusRows = 2
+		if llmStatus.Phase != LLMCallWorking {
+			llmStatusRows = 3
+		}
+	}
+	compactProgress := c.state.CompactionProgress.Get()
+	compactProgressRows := 0
+	if compactProgress != nil {
+		compactProgressRows = 2
 	}
 	slashRows := 0
 	if suggestions := c.slash.Get(); suggestions != nil && len(suggestions.Items) > 0 {
@@ -738,9 +771,9 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 	if taskViewRows > 0 {
 		taskTopSpacingRows = 1
 	}
-	chromeRows := 3 + 1 + statusRows + llmStatusRows + slashRows + permissionRows + askUserRows + goalViewRows + taskTopSpacingRows + taskViewRows + activityViewRows + decisionReceiptRows + inputRowHeight
+	chromeRows := 3 + 1 + statusRows + queuedInputRows + llmStatusRows + compactProgressRows + slashRows + permissionRows + askUserRows + goalViewRows + taskTopSpacingRows + taskViewRows + activityViewRows + decisionReceiptRows + inputRowHeight
 	if compactDecision {
-		llmStatusRows, slashRows, goalViewRows, taskTopSpacingRows, taskViewRows, activityViewRows = 0, 0, 0, 0, 0, 0
+		llmStatusRows, compactProgressRows, queuedInputRows, slashRows, goalViewRows, taskTopSpacingRows, taskViewRows, activityViewRows = 0, 0, 0, 0, 0, 0, 0, 0
 		chromeRows = permissionRows + askUserRows + inputRowHeight
 	}
 
@@ -808,10 +841,18 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 		root.AddChild(tui.New(tui.WithHeight(1), tui.WithWidthPercent(100)))
 		root.AddChild(c.renderLLMStatus(llmStatus))
 	}
+	if !compactDecision && compactProgressRows > 0 {
+		root.AddChild(c.renderCompactionProgress(compactProgress, len(queuedInputs)))
+	}
 
 	// --- Spacer above status bar ---
 	if !compactDecision {
 		root.AddChild(tui.New(tui.WithHeight(1), tui.WithWidthPercent(100)))
+	}
+
+	// --- Queued composer submissions ---
+	if !compactDecision && queuedInputRows > 0 {
+		root.AddChild(c.renderQueuedInputs(queuedInputs))
 	}
 
 	// --- Status bar (cost + context) ---
@@ -1097,6 +1138,9 @@ func (c *RootComponent) renderMessageArea(maxHeight int) *tui.Element {
 	// Header refs belong to the current element tree. Rebuild the map on each
 	// render so mouse hit-testing never targets stale, scrolled-away elements.
 	c.segmentRefs = tui.NewRefMap[string]()
+	c.messageImageRefs = tui.NewRefMap[int]()
+	c.messageImages = make(map[int]ImageAttachment)
+	c.nextMessageImage = 0
 
 	items := c.boundedTranscriptRenderItems(maxHeight)
 	if len(items) == 0 {
@@ -1662,18 +1706,17 @@ func wrapTerminalCellLines(text string, width int) []string {
 		}
 		var current strings.Builder
 		cells := 0
-		for _, char := range paragraph {
-			charWidth := tui.RuneWidth(char)
-			if charWidth <= 0 {
-				charWidth = 1
-			}
-			if cells > 0 && cells+charWidth > width {
+		graphemes := uniseg.NewGraphemes(paragraph)
+		for graphemes.Next() {
+			cluster := graphemes.Str()
+			clusterWidth := graphemes.Width()
+			if cells > 0 && cells+clusterWidth > width {
 				lines = append(lines, current.String())
 				current.Reset()
 				cells = 0
 			}
-			current.WriteRune(char)
-			cells += charWidth
+			current.WriteString(cluster)
+			cells += clusterWidth
 		}
 		if current.Len() > 0 {
 			lines = append(lines, current.String())
@@ -1916,11 +1959,16 @@ func (c *RootComponent) renderMessage(msg Message) *tui.Element {
 		// Show image attachments as [Image #N] tags
 		for _, img := range msg.Images {
 			tag := fmt.Sprintf("  %s", i18n.Format(c.state.Language.Get(), i18n.KeyImageAttachment, img.ID, img.MediaType))
-			container.AddChild(tui.New(
+			tagElement := tui.New(
 				tui.WithText(tag),
 				tui.WithTextStyle(tui.NewStyle().Foreground(tui.Cyan).Dim()),
 				tui.WithWidthPercent(100),
-			))
+			)
+			imageKey := c.nextMessageImage
+			c.nextMessageImage++
+			c.messageImageRefs.Put(imageKey, tagElement)
+			c.messageImages[imageKey] = img
+			container.AddChild(tagElement)
 		}
 		return container
 
@@ -1935,15 +1983,58 @@ func (c *RootComponent) renderMessage(msg Message) *tui.Element {
 			tui.WithDirection(tui.Column),
 			tui.WithWidthPercent(100),
 		)
+		reply := tui.New(
+			tui.WithDisplay(tui.DisplayFlex),
+			tui.WithDirection(tui.Row),
+			tui.WithWidthPercent(100),
+		)
+		reply.AddChild(tui.New(
+			tui.WithText("● "),
+			tui.WithTextStyle(tui.NewStyle().Dim()),
+			tui.WithWidth(2),
+			tui.WithFlexShrink(0),
+		))
+		body := tui.New(
+			tui.WithDirection(tui.Column),
+			tui.WithMinWidth(0),
+			tui.WithFlexGrow(1),
+			tui.WithFlexShrink(1),
+		)
 		if msg.Stream != nil {
 			for _, el := range msg.Stream.Elements() {
-				container.AddChild(el)
+				body.AddChild(el)
 			}
 		} else {
 			mdElements := renderMarkdown(msg.Text)
 			for _, el := range mdElements {
-				container.AddChild(el)
+				body.AddChild(el)
 			}
+		}
+		reply.AddChild(body)
+		container.AddChild(reply)
+		if msg.WorkDuration > 0 {
+			label := "─ " + i18n.Format(c.state.Language.Get(), i18n.KeyAssistantWorkedFor, formatAssistantWorkDuration(msg.WorkDuration)) + " "
+			completion := tui.New(
+				tui.WithDisplay(tui.DisplayFlex),
+				tui.WithDirection(tui.Row),
+				tui.WithWidthPercent(100),
+				tui.WithHeight(1),
+			)
+			completion.AddChild(tui.New(
+				tui.WithText(label),
+				tui.WithTextStyle(tui.NewStyle().Dim()),
+				tui.WithWidth(terminalCellWidth(label)),
+				tui.WithFlexShrink(1),
+				tui.WithWrap(false),
+				tui.WithTruncate(true),
+			))
+			completion.AddChild(tui.New(
+				tui.WithHR(),
+				tui.WithMinWidth(1),
+				tui.WithFlexGrow(1),
+				tui.WithTextStyle(tui.NewStyle().Dim()),
+			))
+			container.AddChild(completion)
 		}
 		return container
 
@@ -2150,6 +2241,9 @@ func toolPresentationIconAndColor(presentation FormattedPresentation, outcome Ob
 	if presentation.Retrying || presentation.Lifecycle == PresentationLifecycleRetrying {
 		return "↻", tui.Yellow
 	}
+	if observationIsNormalPagination(outcome, presentation.Completeness) {
+		return "…", tui.Cyan
+	}
 	switch presentation.Lifecycle {
 	case PresentationLifecycleSpawning, PresentationLifecycleQueued:
 		return "◌", tui.Cyan
@@ -2313,9 +2407,9 @@ func (c *RootComponent) renderSendUserMessage(msg Message) *tui.Element {
 	return container
 }
 
-// renderThinking renders the complete provider reasoning text. Thinking is
-// never collapsed: truncating a streamed block makes an intact reasoning
-// message look as though transport or persistence lost content.
+// renderThinking keeps provider reasoning behind the transcript's explicit
+// show-all control. The durable message remains lossless; the default screen
+// projection is bounded so a long reasoning block cannot dominate scrollback.
 func (c *RootComponent) renderThinking(msg Message) *tui.Element {
 	container := tui.New(
 		tui.WithDirection(tui.Column),
@@ -2325,6 +2419,21 @@ func (c *RootComponent) renderThinking(msg Message) *tui.Element {
 		tui.WithText(i18n.Text(c.state.Language.Get(), i18n.KeyThinkingTitle)),
 		tui.WithTextStyle(tui.NewStyle().Dim().Italic()),
 	))
+	if !c.state.TranscriptShowAll.Get() {
+		if preview := thinkingPreview(msg.Text, 80); preview != "" {
+			container.AddChild(tui.New(
+				tui.WithText("  "+preview),
+				tui.WithTextStyle(tui.NewStyle().Dim()),
+				tui.WithWidthPercent(100),
+			))
+		}
+		container.AddChild(tui.New(
+			tui.WithText("  "+i18n.Text(c.state.Language.Get(), i18n.KeyThinkingCollapsedHint)),
+			tui.WithTextStyle(tui.NewStyle().Dim().Italic()),
+			tui.WithWidthPercent(100),
+		))
+		return container
+	}
 	for _, line := range strings.Split(msg.Text, "\n") {
 		container.AddChild(tui.New(
 			tui.WithText("  "+line),
@@ -2333,6 +2442,24 @@ func (c *RootComponent) renderThinking(msg Message) *tui.Element {
 		))
 	}
 	return container
+}
+
+func thinkingPreview(text string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		runes := []rune(line)
+		if len(runes) > limit {
+			return string(runes[:limit]) + "…"
+		}
+		return line
+	}
+	return ""
 }
 
 // renderToolCallLine renders a standalone ToolCall (not grouped with a result).
@@ -2621,10 +2748,11 @@ func firstNonEmptyString(values ...string) string {
 }
 
 const (
-	llmWorkingShimmerFrameInterval = 32 * time.Millisecond
+	llmWorkingShimmerFrameInterval = 125 * time.Millisecond
 	llmWorkingShimmerSweepDuration = 2 * time.Second
 	llmWorkingShimmerPadding       = 10
 	llmWorkingShimmerBandHalfWidth = 5.0
+	llmActivitySlowStageThreshold  = 30 * time.Second
 )
 
 var llmWorkingShimmerStart = time.Now()
@@ -2668,6 +2796,57 @@ func formatLLMStatusDuration(duration time.Duration) string {
 		return rounded.String()
 	}
 	return formatPresentationDuration(duration.Milliseconds())
+}
+
+func formatAssistantWorkDuration(duration time.Duration) string {
+	if duration < 0 {
+		duration = 0
+	}
+	totalSeconds := int64(duration.Round(time.Second) / time.Second)
+	hours := totalSeconds / 3600
+	minutes := totalSeconds % 3600 / 60
+	seconds := totalSeconds % 60
+	if hours > 0 {
+		return fmt.Sprintf("%dh %02dm %02ds", hours, minutes, seconds)
+	}
+	if minutes > 0 {
+		return fmt.Sprintf("%dm %02ds", minutes, seconds)
+	}
+	return fmt.Sprintf("%ds", seconds)
+}
+
+func llmActivityText(lang i18n.Language, status *LLMCallStatus) string {
+	if status == nil {
+		return i18n.Text(lang, i18n.KeyActivityWorking)
+	}
+	switch status.Stage {
+	case LLMStagePreparing:
+		return i18n.Text(lang, i18n.KeyLLMActivityPreparing)
+	case LLMStageWaitingFirstToken:
+		return i18n.Text(lang, i18n.KeyLLMActivityWaitingFirstToken)
+	case LLMStageThinking:
+		return i18n.Text(lang, i18n.KeyLLMActivityThinking)
+	case LLMStageToolInput:
+		detail := strings.Join(strings.Fields(sanitizePresentationTerminalText(status.StageDetail)), " ")
+		var activity string
+		if detail == "" {
+			activity = i18n.Text(lang, i18n.KeyLLMActivityGeneratingToolInputGeneric)
+		} else {
+			activity = i18n.Format(lang, i18n.KeyLLMActivityGeneratingToolInput, truncateRunes(detail, 48, ""))
+		}
+		if status.ToolInputBytes > 0 {
+			return i18n.Format(lang, i18n.KeyLLMActivityToolInputReceived, activity, formatPresentationBytes(int64(status.ToolInputBytes)))
+		}
+		return activity
+	case LLMStageToolExecution:
+		return i18n.Text(lang, i18n.KeyLLMActivityRunningTools)
+	case LLMStageWaitingAfterTools:
+		return i18n.Text(lang, i18n.KeyLLMActivityWaitingAfterTools)
+	case LLMStageResponse:
+		return i18n.Text(lang, i18n.KeyLLMActivityGeneratingResponse)
+	default:
+		return i18n.Text(lang, i18n.KeyActivityWorking)
+	}
 }
 
 func llmWorkingShimmerSpans(text string, elapsed time.Duration, trueColor bool) []tui.StyledSpan {
@@ -2730,10 +2909,14 @@ func llmWorkingShimmerSpansAtPositionWithPalette(
 }
 
 func (c *RootComponent) renderLLMStatus(status *LLMCallStatus) *tui.Element {
-	row := tui.New(
+	statusHeight := 1
+	if status.Phase != LLMCallWorking {
+		statusHeight = 2
+	}
+	statusView := tui.New(
 		tui.WithDisplay(tui.DisplayFlex),
-		tui.WithDirection(tui.Row),
-		tui.WithHeight(1),
+		tui.WithDirection(tui.Column),
+		tui.WithHeight(statusHeight),
 		tui.WithWidthPercent(100),
 		tui.WithTruncate(true),
 	)
@@ -2767,43 +2950,68 @@ func (c *RootComponent) renderLLMStatus(status *LLMCallStatus) *tui.Element {
 		if c.app != nil && c.app.Terminal() != nil {
 			trueColor = c.app.Terminal().Caps().TrueColor
 		}
-		spans := []tui.StyledSpan{{Text: "  ", Style: tui.NewStyle()}}
-		spans = append(spans, llmWorkingShimmerSpans("•", elapsed, trueColor)...)
+		spans := llmWorkingShimmerSpans("•", elapsed, trueColor)
 		spans = append(spans, tui.StyledSpan{Text: " ", Style: tui.NewStyle()})
-		spans = append(spans, llmWorkingShimmerSpans(i18n.Text(lang, i18n.KeyActivityWorking), elapsed, trueColor)...)
+		spans = append(spans, llmWorkingShimmerSpans(llmActivityText(lang, status), elapsed, trueColor)...)
 		dimStyle := tui.NewStyle().Dim()
+		if status.Stage != "" && !status.StageStartedAt.IsZero() {
+			stageElapsed := now.Sub(status.StageStartedAt)
+			if stageElapsed < 0 {
+				stageElapsed = 0
+			}
+			spans = append(spans, tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMActivityStageElapsed,
+				formatLLMStatusDuration(stageElapsed)), Style: dimStyle})
+			if stageElapsed >= llmActivitySlowStageThreshold {
+				spans = append(spans, tui.StyledSpan{Text: " · " + i18n.Text(lang, i18n.KeyLLMActivitySlowStage), Style: dimStyle})
+			}
+		}
 		spans = append(spans,
 			tui.StyledSpan{Text: " " + i18n.Format(lang, i18n.KeyLLMRequestInterruptStatus,
 				formatLLMStatusDuration(total)), Style: dimStyle},
-			tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMRequestMetrics,
-				requestDuration, firstToken), Style: dimStyle},
 		)
-		row.AddChild(tui.New(
+		if status.Attempt > 0 && status.MaxRetries > 0 {
+			spans = append(spans, tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMRequestAttempt, status.Attempt, status.MaxRetries+1), Style: dimStyle})
+		}
+		spans = append(spans, tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMRequestMetrics,
+			requestDuration, firstToken), Style: dimStyle})
+		statusView.AddChild(tui.New(
 			tui.WithStyledSpans(spans),
 			tui.WithWrap(false),
 			tui.WithTruncate(true),
 		))
-		return row
+		return statusView
 	}
 
-	primary := i18n.Text(lang, i18n.KeyLLMRequestProblem)
-	row.AddChild(tui.New(
-		tui.WithText("  "+primary),
-		tui.WithTextStyle(tui.NewStyle().Foreground(tui.Yellow)),
-	))
-
-	var detail string
+	header := i18n.Text(lang, i18n.KeyLLMRequestProblem)
 	if status.Phase == LLMCallRetrying {
-		detail = i18n.Format(lang, i18n.KeyLLMRequestRetrying, status.Attempt, status.MaxRetries, formatPresentationDuration(status.RetryDelay.Milliseconds()), status.Error)
-	} else {
-		detail = i18n.Format(lang, i18n.KeyLLMRequestError, status.Error)
+		key := i18n.KeyLLMRequestRetrying
+		switch status.RetryKind {
+		case "request":
+			key = i18n.KeyLLMRequestRequestRetrying
+		case "stream":
+			key = i18n.KeyLLMRequestReconnecting
+		}
+		header = i18n.Format(lang, key, status.Attempt, status.MaxRetries, formatPresentationDuration(status.RetryDelay.Milliseconds()))
 	}
-	row.AddChild(tui.New(
-		tui.WithText("  "+detail),
-		tui.WithTextStyle(tui.NewStyle().Dim()),
+	statusView.AddChild(tui.New(
+		tui.WithText(header),
+		tui.WithTextStyle(tui.NewStyle().Foreground(tui.Yellow)),
+		tui.WithHeight(1),
+		tui.WithWrap(false),
 		tui.WithTruncate(true),
 	))
-	return row
+	problem := strings.Join(strings.Fields(sanitizePresentationTerminalText(status.Error)), " ")
+	if problem == "" {
+		problem = "—"
+	}
+	statusView.AddChild(tui.New(
+		tui.WithText(i18n.Format(lang, i18n.KeyLLMRequestProblemDetail, problem)),
+		tui.WithTextStyle(tui.NewStyle().Dim()),
+		tui.WithHeight(1),
+		tui.WithWrap(false),
+		tui.WithTruncate(true),
+	))
+	return statusView
 }
 
 func (c *RootComponent) tickLLMWorkingShimmer() {
@@ -3773,7 +3981,7 @@ func (c *RootComponent) renderReasoningPhase(outer *tui.Element, mp *ModelPicker
 		outer.AddChild(tui.New(tui.WithText(i18n.Text(c.state.Language.Get(), i18n.KeyReasoningPickerEmpty))))
 		return outer
 	}
-	defaultEffort := DefaultReasoningEffort(model.ReasoningEfforts)
+	defaultEffort := defaultReasoningEffortForEntry(model)
 	for i, effort := range model.ReasoningEfforts {
 		prefix := "  "
 		style := tui.NewStyle()
@@ -4110,6 +4318,32 @@ func (c *RootComponent) renderEditLimitsPhase(outer *tui.Element, mp *ModelPicke
 	return outer
 }
 
+func (c *RootComponent) renderQueuedInputs(inputs []string) *tui.Element {
+	container := tui.New(
+		tui.WithDirection(tui.Column),
+		tui.WithHeight(len(inputs)),
+		tui.WithWidthPercent(100),
+	)
+	for _, input := range inputs {
+		preview := strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) {
+				return ' '
+			}
+			return r
+		}, input)
+		preview = strings.Join(strings.Fields(preview), " ")
+		container.AddChild(tui.New(
+			tui.WithText("› "+preview),
+			tui.WithTextStyle(tui.NewStyle().Foreground(tui.Yellow)),
+			tui.WithWidthPercent(100),
+			tui.WithHeight(1),
+			tui.WithWrap(false),
+			tui.WithTruncate(true),
+		))
+	}
+	return container
+}
+
 // renderStatusBar creates the cost/context status line.
 //
 // Layout: [Mode badge] [Context meter] [provider dot] [session/feedback]
@@ -4225,7 +4459,7 @@ func (c *RootComponent) renderStatusBar(termWidth int) *tui.Element {
 			priority:   2,
 		})
 	}
-	if queued := c.state.QueuedInputCount.Get(); queued > 0 {
+	if queued := len(c.state.QueuedInputTexts.Get()); queued > 0 {
 		segments = append(segments, statusSegment{
 			text:       i18n.Format(c.state.Language.Get(), i18n.KeyTUIInputQueuedStatus, queued),
 			style:      tui.NewStyle().Foreground(tui.Yellow),
@@ -4386,13 +4620,15 @@ func truncateTerminalCells(text string, maxCells int) string {
 	}
 	var truncated strings.Builder
 	used := 0
-	for _, r := range text {
-		width := tui.RuneWidth(r)
-		if used+width > remaining {
+	graphemes := uniseg.NewGraphemes(text)
+	for graphemes.Next() {
+		cluster := graphemes.Str()
+		clusterWidth := graphemes.Width()
+		if used+clusterWidth > remaining {
 			break
 		}
-		truncated.WriteRune(r)
-		used += width
+		truncated.WriteString(cluster)
+		used += clusterWidth
 	}
 	truncated.WriteString(suffix)
 	return truncated.String()
@@ -4526,11 +4762,7 @@ func slashCommandColumnWidth(items []SlashCommandEntry) int {
 }
 
 func terminalCellWidth(s string) int {
-	width := 0
-	for _, r := range s {
-		width += tui.RuneWidth(r)
-	}
-	return width
+	return tui.StringWidth(s)
 }
 
 func padRightCells(s string, width int) string {
@@ -5131,6 +5363,13 @@ func (c *RootComponent) HandleMouse(me tui.MouseEvent) bool {
 			}
 		}
 		return false
+	}
+
+	if me.Button == tui.MouseLeft && me.Action == tui.MousePress && me.Mod == tui.ModNone && !c.hasPickerOverlay() {
+		if image, ok := c.imageAttachmentAtPoint(me.X, me.Y); ok {
+			c.openImageAttachment(image)
+			return true
+		}
 	}
 
 	// --- Mouse wheel scrolling ---
@@ -6044,11 +6283,15 @@ func (c *RootComponent) KeyMap() tui.KeyMap {
 				c.dismissSlashSuggestions()
 				return
 			}
+			if compacting := c.state.CompactionProgress.Get(); compacting != nil && compacting.Running() {
+				c.state.TryCancelQuery()
+				return
+			}
 			if c.state.ExpandedView.Get() != "" {
 				c.state.SetExpandedView("")
 				return
 			}
-			if c.state.HasActiveQuery() && c.state.QueuedInputCount.Get() > 0 && c.onSteerQueued != nil {
+			if c.state.HasActiveQuery() && len(c.state.QueuedInputTexts.Get()) > 0 && c.onSteerQueued != nil {
 				c.onSteerQueued()
 				return
 			}
@@ -6348,6 +6591,10 @@ func (c *RootComponent) Watchers() []tui.Watcher {
 		// Match Codex's left-to-right working shimmer and refresh its wall-clock
 		// duration while a model turn is active. Idle ticks do not enter the UI queue.
 		llmWorkingShimmerWatcher{root: c},
+		// Context compaction has no trustworthy percentage while the LLM is
+		// summarizing. Animate a bounded indeterminate bar without polling the
+		// provider or adding high-frequency terminal writes.
+		compactProgressWatcher{root: c},
 		// Auto-scroll to bottom when new messages arrive (if following).
 		// Uses scrollToBottom() which queries the real maxY from the Ref
 		// element, avoiding the math.MaxInt sentinel problem.

@@ -28,6 +28,15 @@ type failingFlightVerificationTool struct {
 	*fusionVerificationTool
 }
 
+type planUnsafeFlightRunTool struct {
+	*fusionVerificationTool
+}
+
+type successfulThenFailingFlightPatchTool struct {
+	*fusionMutationTool
+	calls int
+}
+
 func (t *failingFlightVerificationTool) Execute(ctx context.Context, _ map[string]any) (types.ToolResult, error) {
 	receipt, ok := workspacerevision.FromContext(ctx)
 	if !ok || t.ledger.Validate(receipt) != nil {
@@ -45,6 +54,26 @@ func (t *failingFlightVerificationTool) Execute(ctx context.Context, _ map[strin
 			"verification.config_digest": string(digestFlightValues("failing-flight-verification-config")),
 		},
 	}, nil
+}
+
+func (t *planUnsafeFlightRunTool) Execute(context.Context, map[string]any) (types.ToolResult, error) {
+	return types.ToolResult{
+		Content: "run plan is not revision safe", IsError: true, Outcome: types.ToolOutcomeFailed,
+		Metadata: map[string]string{
+			"stepCount":                  "1",
+			"verification.status":        "committed_unverified",
+			"verification.safety_reason": "plan_not_revision_safe",
+			"mutation.status":            "possible",
+		},
+	}, nil
+}
+
+func (t *successfulThenFailingFlightPatchTool) Execute(ctx context.Context, input map[string]any) (types.ToolResult, error) {
+	t.calls++
+	if t.calls == 1 {
+		return t.fusionMutationTool.Execute(ctx, input)
+	}
+	return types.ToolResult{Content: "anchor ambiguous", IsError: true, Outcome: types.ToolOutcomeFailed}, nil
 }
 
 func newFlightControllerFixture(t *testing.T) flightControllerFixture {
@@ -191,16 +220,19 @@ func TestAgenticFlightSameResponseFusionDoesNotAddTerminalDeferral(t *testing.T)
 
 func TestAgenticFlightStaleAndFailedRunCannotComplete(t *testing.T) {
 	for _, test := range []struct {
-		name     string
-		outcome  types.ToolOutcome
-		metadata map[string]string
+		name            string
+		outcome         types.ToolOutcome
+		metadata        map[string]string
+		wantAction      agenticFlightTerminalAction
+		wantDisposition string
 	}{
-		{name: "stale", outcome: types.ToolOutcomeFailed, metadata: map[string]string{"verification.status": "revision_mismatch"}},
+		{name: "stale", outcome: types.ToolOutcomeFailed, metadata: map[string]string{"verification.status": "revision_mismatch"},
+			wantAction: agenticFlightTerminalContinue, wantDisposition: flightDispositionVerificationRequired},
 		{name: "failed", outcome: types.ToolOutcomeFailed, metadata: map[string]string{
 			"verification.status":        "revision_bound",
 			"verification.kind":          "targeted_test",
 			"verification.config_digest": string(digestFlightValues("failed-test-run-config")),
-		}},
+		}, wantAction: agenticFlightTerminalBlocked, wantDisposition: flightDispositionIncompleteUnverified},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newFlightControllerFixture(t)
@@ -216,7 +248,7 @@ func TestAgenticFlightStaleAndFailedRunCannotComplete(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if decision.Action != agenticFlightTerminalContinue || decision.Disposition != flightDispositionVerificationRequired {
+			if decision.Action != test.wantAction || decision.Disposition != test.wantDisposition {
 				t.Fatalf("failed/stale verification decision = %+v", decision)
 			}
 			if fixture.controller.state.TerminalDisposition == flight.TerminalCompleted {
@@ -351,7 +383,8 @@ func TestAgenticFlightCommittedUnverifiedInvalidatesAuthority(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if decision.Action != agenticFlightTerminalContinue || decision.Disposition != flightDispositionVerificationRequired {
+			if decision.Action != agenticFlightTerminalBlocked || decision.Disposition != flightDispositionIncompleteUnverified ||
+				decision.Blocker != flight.CompletionWorkspaceUnknown {
 				t.Fatalf("mutating Run completion decision=%+v", decision)
 			}
 		})
@@ -374,6 +407,63 @@ func TestAgenticFlightCommittedUnverifiedInvalidatesAuthority(t *testing.T) {
 			t.Fatalf("standalone mutating Run facts=%+v", last)
 		}
 	})
+}
+
+func TestAgenticFlightFailedTransactionalPatchPreservesUnknownWorkspace(t *testing.T) {
+	fixture := newFlightControllerFixture(t)
+	runUse := types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "plan-unsafe-run", Name: "Run", Input: map[string]any{}}
+	runResult := types.ToolResultBlock{
+		Type: types.ContentTypeToolResult, ToolUseID: runUse.ID, IsError: true, Outcome: types.ToolOutcomeFailed,
+		Metadata: map[string]string{
+			"stepCount":                  "1",
+			"verification.status":        "committed_unverified",
+			"verification.safety_reason": "plan_not_revision_safe",
+			"mutation.status":            "possible",
+		},
+	}
+	observeFlightRound(t, fixture.controller, []types.ToolUseBlock{runUse}, []types.ToolResultBlock{runResult})
+	unknownEpoch := fixture.controller.state.MutationEpoch
+	if fixture.controller.state.WorkspaceDigestKnown || unknownEpoch == 0 {
+		t.Fatalf("committed-unverified Run did not make workspace unknown: %+v", fixture.controller.state)
+	}
+
+	patchUse := types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "failed-patch", Name: "ApplyPatch", Input: map[string]any{}}
+	patchResult := types.ToolResultBlock{
+		Type: types.ContentTypeToolResult, ToolUseID: patchUse.ID, Content: "anchor ambiguous",
+		IsError: true, Outcome: types.ToolOutcomeFailed,
+	}
+	observeFlightRound(t, fixture.controller, []types.ToolUseBlock{patchUse}, []types.ToolResultBlock{patchResult})
+	if fixture.controller.state.WorkspaceDigestKnown || fixture.controller.state.MutationEpoch != unknownEpoch {
+		t.Fatalf("failed transactional patch changed unknown workspace state: %+v", fixture.controller.state)
+	}
+	if len(fixture.controller.state.PendingIntents) != 0 {
+		t.Fatalf("failed transactional patch left an open intent: %+v", fixture.controller.state.PendingIntents)
+	}
+}
+
+func TestAgenticFlightWorkspaceUnknownStopsWithoutRecoveryChurn(t *testing.T) {
+	fixture := newFlightControllerFixture(t)
+	patchUse, patchResult := fixture.patchResult(t, "patch-before-unsealed-runs")
+	observeFlightRound(t, fixture.controller, []types.ToolUseBlock{patchUse}, []types.ToolResultBlock{patchResult})
+
+	use := types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "unsealed", Name: "Run", Input: map[string]any{}}
+	result := types.ToolResultBlock{
+		Type: types.ContentTypeToolResult, ToolUseID: use.ID, Outcome: types.ToolOutcomeSucceeded,
+		Metadata: map[string]string{
+			"stepCount":                  "1",
+			"verification.status":        "committed_unverified",
+			"verification.safety_reason": "plan_not_revision_safe",
+		},
+	}
+	observeFlightRound(t, fixture.controller, []types.ToolUseBlock{use}, []types.ToolResultBlock{result})
+	decision, err := fixture.controller.requestFinal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Action != agenticFlightTerminalBlocked || decision.Blocker != flight.CompletionWorkspaceUnknown ||
+		decision.Disposition != flightDispositionIncompleteUnverified {
+		t.Fatalf("unknown-workspace decision = %+v", decision)
+	}
 }
 
 func TestAgenticFlightFormatterVerificationUsesFinalRevision(t *testing.T) {
@@ -420,7 +510,8 @@ func TestAgenticFlightFormatterVerificationUsesFinalRevision(t *testing.T) {
 				if state.VerifiedEpoch != state.MutationEpoch || state.VerificationReceipt == nil || decision.Action != agenticFlightTerminalComplete {
 					t.Fatalf("passing formatter/test did not verify final revision: state=%+v decision=%+v", state, decision)
 				}
-			} else if state.VerifiedEpoch >= state.MutationEpoch || state.VerificationReceipt != nil || decision.Action != agenticFlightTerminalContinue {
+			} else if state.VerifiedEpoch >= state.MutationEpoch || state.VerificationReceipt != nil ||
+				decision.Action != agenticFlightTerminalBlocked || decision.Disposition != flightDispositionIncompleteUnverified {
 				t.Fatalf("failing formatter/test became completion evidence: state=%+v decision=%+v", state, decision)
 			}
 		})
@@ -443,7 +534,7 @@ func TestAgenticFlightRevisionBoundObservationCannotComplete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decision.Action != agenticFlightTerminalContinue || decision.Disposition != flightDispositionVerificationRequired {
+	if decision.Action != agenticFlightTerminalBlocked || decision.Disposition != flightDispositionIncompleteUnverified {
 		t.Fatalf("observation decision = %+v", decision)
 	}
 	if fixture.controller.state.MutationEpoch != epoch || fixture.controller.state.VerifiedEpoch != 0 || !fixture.controller.currentRevision.Valid() {
@@ -493,7 +584,8 @@ func TestAgenticFlightIsQueryLocalAndDoesNotReuseReceipt(t *testing.T) {
 	reg := registry.New()
 	reg.Register(parityTool{name: "Inspect", content: "inspected"})
 	reg.Register(&fusionMutationTool{ledger: fixture.ledger, root: fixture.root, path: fixture.path})
-	reg.Register(&fusionVerificationTool{ledger: fixture.ledger, path: fixture.path})
+	verification := &fusionVerificationTool{ledger: fixture.ledger, path: fixture.path}
+	reg.Register(verification)
 	resumed, err := newAgenticFlightController(reg, QueryConfigSnapshot{ProjectRoot: fixture.root, CWD: fixture.root}, "query-2", []types.Message{types.UserMessage("next")})
 	if err != nil {
 		t.Fatal(err)
@@ -503,6 +595,13 @@ func TestAgenticFlightIsQueryLocalAndDoesNotReuseReceipt(t *testing.T) {
 	}
 	if _, ok := workspacerevision.FromContext(resumed.bindVerificationContext(context.Background())); ok {
 		t.Fatal("new query bound a stale receipt")
+	}
+	result, err := verification.Execute(resumed.bindVerificationContext(context.Background()), map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || result.Metadata["verification.status"] != "revision_mismatch" {
+		t.Fatalf("receipt-less Run in a new query = %+v", result)
 	}
 }
 
@@ -549,6 +648,56 @@ func TestQueryLoopAgenticFlightDefersPrematureFinalThenCompletes(t *testing.T) {
 	}
 }
 
+func TestQueryLoopAgenticFlightCrossTurnCommittedUnverifiedRunThenFailedPatchKeepsHistoryPaired(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(path, []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := workspacerevision.NewLedger()
+	reg := registry.New()
+	reg.Register(parityTool{name: "Inspect", content: "inspected"})
+	reg.Register(&successfulThenFailingFlightPatchTool{fusionMutationTool: &fusionMutationTool{
+		ledger: ledger, root: root, path: path,
+	}})
+	reg.Register(&planUnsafeFlightRunTool{fusionVerificationTool: &fusionVerificationTool{ledger: ledger, path: path}})
+	provider := newParityFakeProvider([]parityProviderTurn{
+		{Events: parityToolUseEventsWithUsage("patch-committed-cross-turn", "ApplyPatch", `{}`, nil)},
+		{Events: parityToolUseEventsWithUsage("run-plan-unsafe-cross-turn", "Run", `{}`, nil)},
+		{Events: parityToolUseEventsWithUsage("patch-failed-cross-turn", "ApplyPatch", `{}`, nil)},
+		{Events: parityTextEvents("continue")},
+	})
+	query := New(provider, reg, Config{MaxTurns: 6, MaxTokens: 1024, ProjectRoot: root, CWD: root})
+	if err := query.Run(context.Background(), "change it", func(stream.Event) {}); err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.Calls) != 4 {
+		t.Fatalf("provider calls = %d, want 4", len(provider.Calls))
+	}
+
+	assertPaired := func(messages []types.Message, toolUseID string) {
+		t.Helper()
+		useIndex, resultIndex := -1, -1
+		for messageIndex, message := range messages {
+			for _, use := range message.GetToolUses() {
+				if use.ID == toolUseID {
+					useIndex = messageIndex
+				}
+			}
+			for _, block := range message.Content {
+				if result, ok := block.(types.ToolResultBlock); ok && result.ToolUseID == toolUseID {
+					resultIndex = messageIndex
+				}
+			}
+		}
+		if useIndex < 0 || resultIndex != useIndex+1 {
+			t.Fatalf("tool call %q was not followed by its result: use=%d result=%d messages=%+v", toolUseID, useIndex, resultIndex, messages)
+		}
+	}
+	assertPaired(provider.Calls[3].Messages, "patch-failed-cross-turn")
+	assertPaired(query.Messages(), "patch-failed-cross-turn")
+}
+
 func TestQueryLoopAgenticFlightFusionAndReadOnlyDoNotAddProviderRounds(t *testing.T) {
 	t.Run("fusion", func(t *testing.T) {
 		root := t.TempDir()
@@ -564,7 +713,7 @@ func TestQueryLoopAgenticFlightFusionAndReadOnlyDoNotAddProviderRounds(t *testin
 		provider := newParityFakeProvider([]parityProviderTurn{
 			{Events: committedFlightToolUseEvents(t,
 				types.ToolUseBlock{ID: "patch-fused-query", Name: "ApplyPatch"},
-				types.ToolUseBlock{ID: "run-fused-query", Name: "Run", Input: map[string]any{"requires_patch_commit": true}},
+				types.ToolUseBlock{ID: "run-fused-query", Name: "Run"},
 			)},
 			{Events: parityTextEvents("complete")},
 		})
@@ -725,5 +874,48 @@ func TestQueryLoopAgenticFlightStopHookPreventContinuationCommitsVerifiedTermina
 	}
 	if len(provider.Calls) != 2 || disposition != flightDispositionCompletedVerified {
 		t.Fatalf("calls=%d disposition=%q", len(provider.Calls), disposition)
+	}
+}
+
+func TestAgenticInvestigationTrackerNudgeIsBoundedAndPreMutation(t *testing.T) {
+	tracker := &agenticInvestigationTracker{preMutationInspects: flightInvestigationNudgeThreshold - 1}
+	if tracker.takeNudge() {
+		t.Fatal("nudge fired before the investigation threshold")
+	}
+	tracker.preMutationInspects++
+	if !tracker.takeNudge() {
+		t.Fatal("nudge did not fire at the investigation threshold")
+	}
+	if tracker.takeNudge() {
+		t.Fatal("nudge fired more than once")
+	}
+
+	mutated := &agenticInvestigationTracker{
+		preMutationInspects: flightInvestigationNudgeThreshold,
+		mutationAttempted:   true,
+	}
+	if mutated.takeNudge() {
+		t.Fatal("nudge fired after a mutation attempt")
+	}
+}
+
+func TestAgenticInvestigationTrackerVerificationConvergenceNudgeIsBounded(t *testing.T) {
+	tracker := &agenticInvestigationTracker{}
+	runUse := types.ToolUseBlock{ID: "run-before-patch", Name: "Run"}
+	runResult := types.ToolResultBlock{ToolUseID: runUse.ID, Outcome: types.ToolOutcomeFailed}
+	tracker.observe([]types.ToolUseBlock{runUse}, []types.ToolResultBlock{runResult})
+	if tracker.takeVerificationConvergenceNudge() {
+		t.Fatal("verification nudge fired before a mutation")
+	}
+
+	patchUse := types.ToolUseBlock{ID: "patch", Name: "ApplyPatch"}
+	patchResult := types.ToolResultBlock{ToolUseID: patchUse.ID, Outcome: types.ToolOutcomeSucceeded}
+	tracker.observe([]types.ToolUseBlock{patchUse}, []types.ToolResultBlock{patchResult})
+	tracker.observe([]types.ToolUseBlock{runUse}, []types.ToolResultBlock{runResult})
+	if !tracker.takeVerificationConvergenceNudge() {
+		t.Fatal("verification nudge did not fire after an invoked post-mutation Run")
+	}
+	if tracker.takeVerificationConvergenceNudge() {
+		t.Fatal("verification nudge fired more than once")
 	}
 }

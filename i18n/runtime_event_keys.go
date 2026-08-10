@@ -19,6 +19,7 @@ const (
 	KeyRuntimeTransientAPIError           Key = "runtime.api.transient_error"
 	KeyRuntimeStreamInterruptedPartial    Key = "runtime.stream.interrupted_partial"
 	KeyRuntimeStreamRetryFullHistory      Key = "runtime.stream.retry_full_history"
+	KeyRuntimeStreamTransportFallback     Key = "runtime.stream.transport_fallback"
 	KeyRuntimeResponseTruncated           Key = "runtime.response.truncated"
 	KeyRuntimeResponseRetryMaxTokens      Key = "runtime.response.retry_max_tokens"
 	KeyRuntimeResponseRecovery            Key = "runtime.response.recovery_continuation"
@@ -117,8 +118,10 @@ func init() {
 		"Stream interrupted; discarding %d uncommitted blocks", "stream 已中断；正在丢弃 %d 个未提交 block", "Stream unterbrochen; %d nicht bestätigte Blöcke werden verworfen",
 		"stream が中断されました。%d 個の未コミット block を破棄します", "stream이 중단되었습니다. 커밋되지 않은 block %d개를 폐기합니다", "Поток прерван; неподтверждённые блоки (%d) отброшены")
 	add(KeyRuntimeStreamRetryFullHistory,
-		"Stream failed; clearing the response chain and retrying with full message history", "stream 失败；正在清除 response chain，并使用完整消息历史重试", "Stream fehlgeschlagen; Response-Chain wird gelöscht und mit vollständigem Nachrichtenverlauf erneut versucht",
-		"stream に失敗しました。response chain を消去し、完全なメッセージ履歴で再試行します", "stream 실패. response chain을 지우고 전체 메시지 기록으로 다시 시도합니다", "Ошибка stream; цепочка ответов очищена, повтор с полной историей сообщений")
+		"Stream failed; reconnecting %d/%d in %s with full message history", "stream 失败；第 %d/%d 次重连将在 %s 后使用完整消息历史进行", "Stream fehlgeschlagen; Neuverbindung %d/%d in %s mit vollständigem Nachrichtenverlauf",
+		"stream に失敗しました。%d/%d 回目の再接続を %s 後に完全なメッセージ履歴で行います", "stream 실패. %d/%d번째 재연결을 %s 후 전체 메시지 기록으로 진행합니다", "Ошибка stream; переподключение %d/%d через %s с полной историей сообщений")
+	add(KeyRuntimeStreamTransportFallback,
+		"Repeated stream failures; falling back from %s to %s", "stream 连续失败；正在从 %s 降级到 %s", "Wiederholte Stream-Fehler; Fallback von %s auf %s", "stream が繰り返し失敗したため、%s から %s に切り替えます", "stream이 반복해서 실패하여 %s에서 %s(으)로 전환합니다", "Повторные сбои stream; переключение с %s на %s")
 	add(KeyRuntimeResponseTruncated,
 		"Response truncated (max_tokens)", "响应已截断（max_tokens）", "Antwort gekürzt (max_tokens)", "応答が切り詰められました（max_tokens）", "응답이 잘렸습니다(max_tokens)", "Ответ усечён (max_tokens)")
 	add(KeyRuntimeResponseRetryMaxTokens,

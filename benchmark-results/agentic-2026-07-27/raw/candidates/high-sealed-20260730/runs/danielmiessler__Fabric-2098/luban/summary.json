@@ -1,0 +1,51 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "high",
+  "started_at_unix": 1785395810.7701912,
+  "elapsed_seconds": 168.118,
+  "timeout_seconds": 900,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 309669,
+    "cached_input_tokens": 254464,
+    "cache_read_input_tokens": 254464,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 4287,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.531867,
+  "tool_calls": 12,
+  "tool_calls_by_type": {
+    "Inspect": 10,
+    "ApplyPatch": 1,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/plugins/ai/codex/codex.go",
+      "internal/plugins/ai/codex/codex_test.go"
+    ],
+    "additions": 53,
+    "deletions": 3
+  },
+  "final_text": "Fixed Codex non-streaming empty responses.\n\n- Preserves SSE delta text when `response.completed` contains no output.\n- Keeps completed-response extraction preferred for citations and richer metadata.\n- Added regression coverage for empty completed payloads.\n\nVerification: `go test ./internal/plugins/ai/codex` passed; formatting check passed.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-optimized-20260730b",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "high",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 13,
+  "llm_successful_calls": 13,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 137.927813,
+  "binary": {
+    "path": "/private/tmp/luban-local5-optimized-20260730b",
+    "sha256": "6294a57b59bbe8a0a685a3fc5cb8c7d70662e799ca55826549634a20f0644a59"
+  }
+}

@@ -496,10 +496,9 @@ func TestSkillsSurfaceAcceptanceLayoutExactGraphemeWidthDoesNotEllipsize(t *test
 		id           skills.SkillID
 		text         string
 		wantSemantic string
-		atomic       bool
 	}{
-		{name: "emoji ZWJ", id: "skill:project:exact-emoji", text: "👩🏽‍💻", atomic: true},
-		{name: "variation selector", id: "skill:project:exact-variation", text: "✈️", atomic: true},
+		{name: "emoji ZWJ", id: "skill:project:exact-emoji", text: "👩🏽‍💻", wantSemantic: "👩🏽‍💻"},
+		{name: "variation selector", id: "skill:project:exact-variation", text: "✈️", wantSemantic: "✈️"},
 		{name: "combining NFC", id: "skill:project:exact-combining", text: "e\u0301", wantSemantic: "é"},
 	}
 	for _, test := range tests {
@@ -539,19 +538,8 @@ func TestSkillsSurfaceAcceptanceLayoutExactGraphemeWidthDoesNotEllipsize(t *test
 			if rowText == suffix || suffix == "" {
 				t.Fatalf("selected row lost its checkbox prefix or atomic grapheme: %q", rowText)
 			}
-			if test.wantSemantic != "" {
-				if suffix != test.wantSemantic {
-					t.Fatalf("NFC-representable grapheme changed semantics: got=%q want=%q", suffix, test.wantSemantic)
-				}
-			} else if test.atomic {
-				if suffix == test.text {
-					t.Fatalf("renderer-incompatible grapheme was emitted verbatim instead of an atomic safe representation: %q", suffix)
-				}
-				for _, originalRune := range test.text {
-					if strings.ContainsRune(suffix, originalRune) {
-						t.Fatalf("atomic replacement leaked a partial original grapheme rune %q: original=%q replacement=%q", originalRune, test.text, suffix)
-					}
-				}
+			if suffix != test.wantSemantic {
+				t.Fatalf("grapheme changed semantics: got=%q want=%q", suffix, test.wantSemantic)
 			}
 			buffer := gtui.NewBuffer(width, 5)
 			panel.Render(buffer, width, 5)

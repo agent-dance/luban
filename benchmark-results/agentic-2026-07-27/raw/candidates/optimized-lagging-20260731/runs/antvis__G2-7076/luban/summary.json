@@ -1,0 +1,53 @@
+{
+  "instance_id": "antvis__G2-7076",
+  "language": "ts",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785588326.219077,
+  "elapsed_seconds": 371.822,
+  "timeout_seconds": 440,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 608376,
+    "cached_input_tokens": 539136,
+    "cache_read_input_tokens": 539136,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 7428,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.838608,
+  "tool_calls": 20,
+  "tool_calls_by_type": {
+    "Inspect": 16,
+    "ApplyPatch": 2,
+    "Run": 2
+  },
+  "patch": {
+    "files_changed": 4,
+    "files": [
+      "__tests__/integration/api-chart-emit-series-tooltip.spec.ts",
+      "site/docs/manual/component/tooltip.en.md",
+      "site/docs/manual/component/tooltip.zh.md",
+      "src/interaction/tooltip.ts"
+    ],
+    "additions": 45,
+    "deletions": 7
+  },
+  "final_text": "已完成修复：系列 tooltip 节流现在会执行尾缘更新，确保 `tooltip:show` 最终返回当前选中的日期，而非上一日期。\n\n- 新增双日期连续选择回归测试。\n- 显式 `trailing: false` 仍可保留旧行为。\n- 更新中英文文档。\n- `git diff --check` 通过。\n- 运行时测试受限于本地依赖未安装且禁止联网，未能执行 Vitest。",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v9",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 22,
+  "llm_successful_calls": 22,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 368.241013,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260801-v9",
+    "sha256": "3a6624fe2cb74f4635118231bd352c5087e7fc2c5cd39a8538702cade13f72db"
+  }
+}

@@ -49,33 +49,33 @@ func init() {
 		}
 	}
 	add(KeyUsageSession,
-		"Session: in %s · %d%% cached · out %s · %s%.4f",
-		"会话：输入 %s · 缓存 %d%% · 输出 %s · %s%.4f",
-		"Sitzung: %s ein · %d%% im Cache · %s aus · %s%.4f",
-		"セッション: 入力 %s · キャッシュ %d%% · 出力 %s · %s%.4f",
-		"세션: 입력 %s · 캐시 %d%% · 출력 %s · %s%.4f",
-		"Сеанс: вход %s · %d%% из кэша · выход %s · %s%.4f")
+		"Session total: in %s · %d%% cached · out %s · %s%.4f",
+		"会话累计：输入 %s · 缓存 %d%% · 输出 %s · %s%.4f",
+		"Sitzung gesamt: %s ein · %d%% im Cache · %s aus · %s%.4f",
+		"セッション累計: 入力 %s · キャッシュ %d%% · 出力 %s · %s%.4f",
+		"세션 누계: 입력 %s · 캐시 %d%% · 출력 %s · %s%.4f",
+		"Сеанс суммарно: вход %s · %d%% из кэша · выход %s · %s%.4f")
 	add(KeyUsageSessionUnknownCost,
-		"Session: in %s · %d%% cached · out %s · cost unknown",
-		"会话：输入 %s · 缓存 %d%% · 输出 %s · 费用未知",
-		"Sitzung: %s ein · %d%% im Cache · %s aus · Kosten unbekannt",
-		"セッション: 入力 %s · キャッシュ %d%% · 出力 %s · 料金不明",
-		"세션: 입력 %s · 캐시 %d%% · 출력 %s · 비용 알 수 없음",
-		"Сеанс: вход %s · %d%% из кэша · выход %s · стоимость неизвестна")
+		"Session total: in %s · %d%% cached · out %s · cost unknown",
+		"会话累计：输入 %s · 缓存 %d%% · 输出 %s · 费用未知",
+		"Sitzung gesamt: %s ein · %d%% im Cache · %s aus · Kosten unbekannt",
+		"セッション累計: 入力 %s · キャッシュ %d%% · 出力 %s · 料金不明",
+		"세션 누계: 입력 %s · 캐시 %d%% · 출력 %s · 비용 알 수 없음",
+		"Сеанс суммарно: вход %s · %d%% из кэша · выход %s · стоимость неизвестна")
 	add(KeyUsageSessionNoCache,
-		"Session: in %s · out %s · %s%.4f",
-		"会话：输入 %s · 输出 %s · %s%.4f",
-		"Sitzung: %s ein · %s aus · %s%.4f",
-		"セッション: 入力 %s · 出力 %s · %s%.4f",
-		"세션: 입력 %s · 출력 %s · %s%.4f",
-		"Сеанс: вход %s · выход %s · %s%.4f")
+		"Session total: in %s · out %s · %s%.4f",
+		"会话累计：输入 %s · 输出 %s · %s%.4f",
+		"Sitzung gesamt: %s ein · %s aus · %s%.4f",
+		"セッション累計: 入力 %s · 出力 %s · %s%.4f",
+		"세션 누계: 입력 %s · 출력 %s · %s%.4f",
+		"Сеанс суммарно: вход %s · выход %s · %s%.4f")
 	add(KeyUsageSessionNoCacheUnknownCost,
-		"Session: in %s · out %s · cost unknown",
-		"会话：输入 %s · 输出 %s · 费用未知",
-		"Sitzung: %s ein · %s aus · Kosten unbekannt",
-		"セッション: 入力 %s · 出力 %s · 料金不明",
-		"세션: 입력 %s · 출력 %s · 비용 알 수 없음",
-		"Сеанс: вход %s · выход %s · стоимость неизвестна")
+		"Session total: in %s · out %s · cost unknown",
+		"会话累计：输入 %s · 输出 %s · 费用未知",
+		"Sitzung gesamt: %s ein · %s aus · Kosten unbekannt",
+		"セッション累計: 入力 %s · 出力 %s · 料金不明",
+		"세션 누계: 입력 %s · 출력 %s · 비용 알 수 없음",
+		"Сеанс суммарно: вход %s · выход %s · стоимость неизвестна")
 	add(KeyUsageSessionCompacted,
 		"Session: in %s (%s total) · %d%% cached · out %s · %s%.4f",
 		"会话：输入 %s（累计 %s）· 缓存 %d%% · 输出 %s · %s%.4f",
@@ -105,20 +105,20 @@ func init() {
 		"세션: 입력 %s (총 %s) · 출력 %s · 비용 알 수 없음",
 		"Сеанс: вход %s (всего %s) · выход %s · стоимость неизвестна")
 	add(KeyUsageSessionUnavailable,
-		"Session: usage unknown", "会话：用量未知", "Sitzung: Nutzung unbekannt",
-		"セッション: 使用量不明", "세션: 사용량 알 수 없음", "Сеанс: использование неизвестно")
+		"Session total: usage unknown", "会话累计：用量未知", "Sitzung gesamt: Nutzung unbekannt",
+		"セッション累計: 使用量不明", "세션 누계: 사용량 알 수 없음", "Сеанс суммарно: использование неизвестно")
 	add(KeyUsageSessionNarrow,
-		"S: in %s · %d%% cached · out %s · %s%.2f", "会话：输入 %s · 缓存 %d%% · 输出 %s · %s%.2f", "S: %s ein · %d%% im Cache · %s aus · %s%.2f",
-		"セッション: 入力 %s · キャッシュ %d%% · 出力 %s · %s%.2f", "세션: 입력 %s · 캐시 %d%% · 출력 %s · %s%.2f", "С: вход %s · %d%% из кэша · выход %s · %s%.2f")
+		"Total: in %s · %d%% cached · out %s · %s%.2f", "会话累计：输入 %s · 缓存 %d%% · 输出 %s · %s%.2f", "Gesamt: %s ein · %d%% im Cache · %s aus · %s%.2f",
+		"セッション累計: 入力 %s · キャッシュ %d%% · 出力 %s · %s%.2f", "세션 누계: 입력 %s · 캐시 %d%% · 출력 %s · %s%.2f", "Итого: вход %s · %d%% из кэша · выход %s · %s%.2f")
 	add(KeyUsageSessionNarrowUnknownCost,
-		"S: in %s · %d%% cached · out %s · cost unknown", "会话：输入 %s · 缓存 %d%% · 输出 %s · 费用未知", "S: %s ein · %d%% im Cache · %s aus · Kosten unbekannt",
-		"セッション: 入力 %s · キャッシュ %d%% · 出力 %s · 料金不明", "세션: 입력 %s · 캐시 %d%% · 출력 %s · 비용 알 수 없음", "С: вход %s · %d%% из кэша · выход %s · стоимость неизвестна")
+		"Total: in %s · %d%% cached · out %s · cost unknown", "会话累计：输入 %s · 缓存 %d%% · 输出 %s · 费用未知", "Gesamt: %s ein · %d%% im Cache · %s aus · Kosten unbekannt",
+		"セッション累計: 入力 %s · キャッシュ %d%% · 出力 %s · 料金不明", "세션 누계: 입력 %s · 캐시 %d%% · 출력 %s · 비용 알 수 없음", "Итого: вход %s · %d%% из кэша · выход %s · стоимость неизвестна")
 	add(KeyUsageSessionNarrowNoCache,
-		"S: in %s · out %s · %s%.2f", "会话：输入 %s · 输出 %s · %s%.2f", "S: %s ein · %s aus · %s%.2f",
-		"セッション: 入力 %s · 出力 %s · %s%.2f", "세션: 입력 %s · 출력 %s · %s%.2f", "С: вход %s · выход %s · %s%.2f")
+		"Total: in %s · out %s · %s%.2f", "会话累计：输入 %s · 输出 %s · %s%.2f", "Gesamt: %s ein · %s aus · %s%.2f",
+		"セッション累計: 入力 %s · 出力 %s · %s%.2f", "세션 누계: 입력 %s · 출력 %s · %s%.2f", "Итого: вход %s · выход %s · %s%.2f")
 	add(KeyUsageSessionNarrowNoCacheUnknownCost,
-		"S: in %s · out %s · cost unknown", "会话：输入 %s · 输出 %s · 费用未知", "S: %s ein · %s aus · Kosten unbekannt",
-		"セッション: 入力 %s · 出力 %s · 料金不明", "세션: 입력 %s · 출력 %s · 비용 알 수 없음", "С: вход %s · выход %s · стоимость неизвестна")
+		"Total: in %s · out %s · cost unknown", "会话累计：输入 %s · 输出 %s · 费用未知", "Gesamt: %s ein · %s aus · Kosten unbekannt",
+		"セッション累計: 入力 %s · 出力 %s · 料金不明", "세션 누계: 입력 %s · 출력 %s · 비용 알 수 없음", "Итого: вход %s · выход %s · стоимость неизвестна")
 	add(KeyUsageSessionCompactedNarrow,
 		"S: in %s/%s · %d%% cached · out %s · %s%.2f", "会话：输入 %s/%s · 缓存 %d%% · 输出 %s · %s%.2f", "S: %s/%s ein · %d%% im Cache · %s aus · %s%.2f",
 		"セッション: 入力 %s/%s · キャッシュ %d%% · 出力 %s · %s%.2f", "세션: 입력 %s/%s · 캐시 %d%% · 출력 %s · %s%.2f", "С: вход %s/%s · %d%% из кэша · выход %s · %s%.2f")

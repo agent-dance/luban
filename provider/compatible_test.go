@@ -231,7 +231,9 @@ func TestCredentialStoreRestoresAndDeletesUserCompatibleProvider(t *testing.T) {
 	entry := CredentialEntry{
 		Provider: "custom-example.com", AuthMethod: "api_key", APIKey: "key",
 		BaseURL: "https://example.com/v1", APIStyle: APIStyleAnthropic, APIFormat: "chat-completions",
-		DisplayName: "Example", UserDefined: true,
+		DisableStrictTools:        true,
+		DisablePromptCacheOptions: true,
+		DisplayName:               "Example", UserDefined: true,
 		Models: []ModelInfo{{ID: "model-a", Provider: "custom-example.com", Name: "Model A", CostCurrency: "USD"}},
 	}
 	if err := store.Set(entry); err != nil {
@@ -249,7 +251,7 @@ func TestCredentialStoreRestoresAndDeletesUserCompatibleProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveCredentialConfig: %v", err)
 	}
-	if resolved.APIStyle != entry.APIStyle || resolved.APIFormat != entry.APIFormat || resolved.BaseURL != entry.BaseURL || resolved.APIKey != entry.APIKey {
+	if resolved.APIStyle != entry.APIStyle || resolved.APIFormat != entry.APIFormat || resolved.BaseURL != entry.BaseURL || resolved.APIKey != entry.APIKey || !resolved.DisableStrictTools || !resolved.DisablePromptCacheOptions {
 		t.Fatalf("restored config = %+v", resolved)
 	}
 	if !registry.UnregisterUserProvider(entry.Provider) {

@@ -1,0 +1,2 @@
+{"elapsed_seconds":901.438827,"endpoint":"responses","error_class":"","method":"POST","request_bytes":14502,"request_id_sha256":"15c6c7159f5d14fba4f982727c7caa00cacdfb49065dda2054520b3c0a17689c","response_bytes":12686868,"sequence":0,"status":200}
+{"elapsed_seconds":897.519002,"endpoint":"responses","error_class":"BrokenPipeError","method":"POST","request_bytes":14502,"request_id_sha256":"013d32c5da9caa57154f5b9335168f30c8f4f9f468990a77f88bcba2862b1241","response_bytes":12637996,"sequence":1,"status":200}

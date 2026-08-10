@@ -186,3 +186,16 @@ func TestANSITerminalFlush_LastColumnWrapsOnNextPrintable(t *testing.T) {
 		t.Fatalf("row 1 = %q, want %q", got, "x")
 	}
 }
+
+func TestANSITerminalFlush_EmitsCompleteGrapheme(t *testing.T) {
+	rec := &ansiBytesRecorder{}
+	term := NewANSITerminalWithCaps(rec, strings.NewReader(""), Capabilities{Unicode: true})
+	buf := NewBuffer(8, 1)
+	buf.SetString(0, 0, "✏️A", NewStyle())
+
+	term.Flush(buf.Diff())
+
+	if got := rec.String(); !strings.Contains(got, "✏️A") {
+		t.Fatalf("ANSI output omitted part of the grapheme: %q", got)
+	}
+}

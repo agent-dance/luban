@@ -85,8 +85,8 @@ func (f FormattedPresentation) Facts(outcome ObservationOutcome) PresentationFac
 
 var staticToolFamilies = map[string]CommandFamily{
 	"Bash": FamilyShell, "PowerShell": FamilyShell,
-	"Read":  FamilyFileRead,
-	"Write": FamilyFileWrite, "Edit": FamilyFileWrite, "NotebookEdit": FamilyFileWrite,
+	"Read": FamilyFileRead, "Inspect": FamilyFileRead,
+	"Write": FamilyFileWrite, "Edit": FamilyFileWrite, "NotebookEdit": FamilyFileWrite, "ApplyPatch": FamilyFileWrite,
 	"Glob": FamilySearch, "Grep": FamilySearch, "LSP": FamilySearch, "ToolSearch": FamilySearch,
 	"WebFetch": FamilyWeb, "WebSearch": FamilyWeb,
 	"ListMcpResourcesTool": FamilyMCP, "ReadMcpResourceTool": FamilyMCP,
@@ -106,9 +106,9 @@ var staticToolFamilies = map[string]CommandFamily{
 
 var semanticToolActionKeys = map[string]i18n.Key{
 	"Bash": i18n.KeyToolActionRunCommand, "PowerShell": i18n.KeyToolActionRunCommand,
-	"Read":  i18n.KeyToolActionReadFile,
-	"Write": i18n.KeyToolActionCreateFile,
-	"Edit":  i18n.KeyToolActionUpdateFile, "NotebookEdit": i18n.KeyToolActionEditNotebook,
+	"Read": i18n.KeyToolActionReadFile, "Inspect": i18n.KeyToolActionInspectCode,
+	"Write": i18n.KeyToolActionCreateFile, "ApplyPatch": i18n.KeyToolActionUpdateFile,
+	"Edit": i18n.KeyToolActionUpdateFile, "NotebookEdit": i18n.KeyToolActionEditNotebook,
 	"Glob": i18n.KeyToolActionFindFiles, "Grep": i18n.KeyToolActionSearchText, "LSP": i18n.KeyToolActionInspectCode, "ToolSearch": i18n.KeyToolActionFindTools,
 	"WebFetch": i18n.KeyToolActionFetchWeb, "WebSearch": i18n.KeyToolActionSearchWeb,
 	"ListMcpResourcesTool": i18n.KeyToolActionListMCPResources,
@@ -691,6 +691,38 @@ func presentationShellReadConsumer(name string, args []string) bool {
 func formatPresentationSummary(lang i18n.Language, toolName string, input map[string]any, outcome ObservationOutcome, data map[string]any, metadata map[string]string, formatted FormattedPresentation) string {
 	state := observationOutcomeLabelInLanguage(lang, outcome)
 	actionLabel := semanticToolActionInLanguage(lang, toolName)
+	if toolName == "ApplyPatch" {
+		parts := []string{actionLabel}
+		if bytes, ok := presentationInt(stringMapAsAny(metadata), "apply_patch.parameter_bytes"); ok && bytes > 0 {
+			parts = append(parts, i18n.Format(lang, i18n.KeyPresentationToolParameterSize, formatPresentationBytes(bytes)))
+		}
+		files, filesOK := presentationInt(stringMapAsAny(metadata), "apply_patch.changed_files")
+		added, addedOK := presentationInt(stringMapAsAny(metadata), "apply_patch.additions")
+		removed, removedOK := presentationInt(stringMapAsAny(metadata), "apply_patch.deletions")
+		if filesOK || addedOK || removedOK {
+			parts = append(parts, i18n.Format(lang, i18n.KeyPresentationToolPatchChanges, files, added, removed))
+		}
+		if bytes, ok := presentationInt(stringMapAsAny(metadata), "apply_patch.receipt_bytes"); ok && bytes > 0 {
+			parts = append(parts, i18n.Format(lang, i18n.KeyPresentationToolReceiptSize, formatPresentationBytes(bytes)))
+		}
+		if outcome != OutcomeSucceeded && outcome != OutcomeRunning {
+			parts = append(parts, state)
+		}
+		return joinPresentationParts(parts)
+	}
+	if toolName == "Inspect" {
+		parts := []string{actionLabel}
+		if failures, ok := presentationInt(stringMapAsAny(metadata), "inspect.partial_failure_count"); ok && failures > 0 {
+			parts = append(parts, i18n.Format(lang, i18n.KeyPresentationInspectPartialFailures, failures))
+		}
+		if succeeded, ok := presentationInt(stringMapAsAny(metadata), "inspect.successful_request_count"); ok && succeeded > 0 {
+			parts = append(parts, i18n.Format(lang, i18n.KeyPresentationInspectOtherSuccessful, succeeded))
+		}
+		if outcome != OutcomeSucceeded && outcome != OutcomeRunning {
+			parts = append(parts, state)
+		}
+		return joinPresentationParts(parts)
+	}
 	switch formatted.Family {
 	case FamilyFileRead:
 		file := presentationNestedMap(data, "file")
@@ -1139,6 +1171,29 @@ func notebookEditVerb(lang i18n.Language, operation string) string {
 
 func formatPresentationDetails(lang i18n.Language, input map[string]any, outcome ObservationOutcome, data map[string]any, metadata map[string]string, content string, formatted FormattedPresentation) []string {
 	lines := make([]string, 0, 6)
+	if encoded := strings.TrimSpace(metadata["inspect.partial_failures"]); encoded != "" {
+		var failures []struct {
+			RequestID string `json:"request_id"`
+			Kind      string `json:"kind"`
+			Path      string `json:"path"`
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+		}
+		if json.Unmarshal([]byte(encoded), &failures) == nil {
+			for _, failure := range failures {
+				cause := firstNonEmptyString(failure.Message, failure.Code)
+				if failure.Code != "" && failure.Message != "" {
+					cause = failure.Code + ": " + failure.Message
+				}
+				lines = append(lines, i18n.Format(lang, i18n.KeyPresentationInspectPartialFailure,
+					failure.RequestID, failure.Kind, sanitizePresentationLocatorInLanguage(lang, failure.Path),
+					cause))
+			}
+		}
+		if succeeded, ok := presentationInt(stringMapAsAny(metadata), "inspect.successful_request_count"); ok && succeeded > 0 {
+			lines = append(lines, i18n.Format(lang, i18n.KeyPresentationInspectOtherSuccessful, succeeded))
+		}
+	}
 	if formatted.Object != "" {
 		lines = append(lines, i18n.Format(lang, i18n.KeyPresentationObjectValue, formatted.Object))
 	}

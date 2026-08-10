@@ -363,6 +363,9 @@ func (t *Tool) renderPage(ctx context.Context, workspace workspaceSnapshot, gene
 			"new_chars":        strconv.Itoa(page.modelStats.NewChars),
 			"reused_chars":     strconv.Itoa(page.modelStats.ReusedChars),
 		}
+		for key, value := range inspectPartialDiagnosticMetadata(state.batch) {
+			metadata[key] = value
+		}
 		if len(page.OmittedRequestIDs) > 0 {
 			metadata["omitted_request_ids"] = strings.Join(page.OmittedRequestIDs, ",")
 		}

@@ -10,11 +10,11 @@ import (
 )
 
 func TestParseOptionsAcceptsTaskSizeEqualsForm(t *testing.T) {
-	parsed, help, err := parseOptions(i18n.LangEN, []string{"--task-size=3", "--with-codex"})
+	parsed, help, err := parseOptions(i18n.LangEN, []string{"--task-size=20", "--with-codex"})
 	if err != nil || help {
 		t.Fatalf("parseOptions() help=%t err=%v", help, err)
 	}
-	if parsed.taskSize != 3 || !parsed.withCodex || parsed.resultsRoot != "benchmark-results" || parsed.agentTimeout != 1800 || parsed.evaluatorTimeout != 2700 {
+	if parsed.taskSize != 20 || !parsed.withCodex || parsed.resultsRoot != "benchmark-results" || parsed.agentTimeout != 1800 || parsed.evaluatorTimeout != 2700 {
 		t.Fatalf("parseOptions() = %#v", parsed)
 	}
 }
@@ -32,10 +32,10 @@ func TestRunMainHelpIsLocalized(t *testing.T) {
 
 func TestRunMainRejectsCatalogOverflowBeforeExecution(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if code := runMain(context.Background(), []string{"--task-size=6"}, &stdout, &stderr); code != 2 {
+	if code := runMain(context.Background(), []string{"--task-size=21"}, &stdout, &stderr); code != 2 {
 		t.Fatalf("runMain() = %d", code)
 	}
-	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "1") || !strings.Contains(stderr.String(), "5") {
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), "1") || !strings.Contains(stderr.String(), "20") {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

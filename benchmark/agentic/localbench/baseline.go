@@ -102,6 +102,12 @@ func validateCodexBaseline(snapshot CodexBaselineSnapshot, tasks []TaskSelection
 		if _, ok := secureRelativePath(evaluation.EvidenceRoot); !ok {
 			return errors.New("codex baseline evaluation evidence path is invalid")
 		}
+		if evaluation.EvidenceFile != "" && (filepath.Base(evaluation.EvidenceFile) != evaluation.EvidenceFile || evaluation.EvidenceFile == ".") {
+			return errors.New("codex baseline evaluation evidence file is invalid")
+		}
+		if evaluation.Adjudicated && evaluation.EvidenceFile == "" {
+			return errors.New("codex baseline adjudication evidence is missing")
+		}
 	}
 	return nil
 }

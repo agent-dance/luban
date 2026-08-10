@@ -101,6 +101,13 @@ type SessionStore interface {
 	Rename(sessionID, title string) error
 }
 
+// CurrentSessionStore is the optional precise lookup surface used by
+// /session current. Implementations should resolve only the active project's
+// session instead of enumerating unrelated project stores.
+type CurrentSessionStore interface {
+	Current(sessionID string) (SessionListEntry, error)
+}
+
 // GoalRuntime persists goal state without exposing session storage to commands.
 type GoalRuntime interface {
 	LoadGoal() (*goal.Goal, error)

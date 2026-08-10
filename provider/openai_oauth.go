@@ -220,6 +220,8 @@ func ResolveCredentialConfig(r *ProviderRegistry, providerName string) (Config, 
 	}
 	cfg.APIStyle = ParseAPIStyle(string(entry.APIStyle))
 	cfg.APIFormat = normalizeOpenAIAPIFormat(entry.APIFormat)
+	cfg.DisableStrictTools = entry.DisableStrictTools
+	cfg.DisablePromptCacheOptions = entry.DisablePromptCacheOptions
 	return cfg, nil
 }
 

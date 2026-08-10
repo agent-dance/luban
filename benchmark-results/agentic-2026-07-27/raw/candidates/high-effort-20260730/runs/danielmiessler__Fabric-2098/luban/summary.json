@@ -1,0 +1,51 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "high",
+  "started_at_unix": 1785395344.1534562,
+  "elapsed_seconds": 346.36,
+  "timeout_seconds": 900,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 978395,
+    "cached_input_tokens": 902656,
+    "cache_read_input_tokens": 902656,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 10461,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.143853,
+  "tool_calls": 23,
+  "tool_calls_by_type": {
+    "Inspect": 13,
+    "ApplyPatch": 5,
+    "Run": 5
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/plugins/ai/codex/codex.go",
+      "internal/plugins/ai/codex/codex_test.go"
+    ],
+    "additions": 71,
+    "deletions": 3
+  },
+  "final_text": "Fixed Codex empty responses by falling back to streamed deltas when completed output is missing, empty, or whitespace-only.\n\nAdded regression coverage for all three completion variants while preserving richer completed responses and citations.\n\nVerification:\n- Codex package tests passed.\n- Final `git diff --check` passed.\n- No live Codex API validation performed.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-optimized-20260730",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 25,
+  "llm_successful_calls": 25,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 305.794546,
+  "binary": {
+    "path": "/private/tmp/luban-local5-optimized-20260730",
+    "sha256": "21f880c25c636010bf4da950aac80313136d6b8fd621019778f113f85bb99446"
+  }
+}

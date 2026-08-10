@@ -128,20 +128,34 @@ func TestDeepSeekChatUsesDocumentedGenerationFields(t *testing.T) {
 		t.Fatalf("DeepSeek reasoning_effort = %#v, want high", got)
 	}
 	thinking, ok := request["thinking"].(map[string]any)
-	if !ok || thinking["type"] != "disabled" {
-		t.Fatalf("DeepSeek default thinking control = %#v, want explicitly disabled", request["thinking"])
+	if !ok || thinking["type"] != "enabled" {
+		t.Fatalf("DeepSeek default thinking control = %#v, want enabled", request["thinking"])
 	}
 
-	enabled := captureOpenAIChatRequestTask10(t, Config{
+	disabled := captureOpenAIChatRequestTask10(t, Config{
 		ProviderName: "deepseek",
 		Model:        "deepseek-v4-flash",
 	}, Params{
 		Messages: []types.Message{types.UserMessage("hello")},
-		Thinking: &ThinkingConfig{Enabled: true},
+		Thinking: &ThinkingConfig{Enabled: false},
 	})
-	thinking, ok = enabled["thinking"].(map[string]any)
-	if !ok || thinking["type"] != "enabled" {
-		t.Fatalf("DeepSeek enabled thinking control = %#v", enabled["thinking"])
+	thinking, ok = disabled["thinking"].(map[string]any)
+	if !ok || thinking["type"] != "disabled" {
+		t.Fatalf("DeepSeek disabled thinking control = %#v", disabled["thinking"])
+	}
+}
+
+func TestDeepSeekChatReplaysReasoningContentForToolTurns(t *testing.T) {
+	message := types.Message{
+		Role: types.RoleAssistant,
+		Content: []types.ContentBlock{
+			types.ThinkingBlock{Type: types.ContentTypeThinking, Thinking: "inspect first"},
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "call_read", Name: "Read", Input: map[string]any{"path": "README.md"}},
+		},
+	}
+	converted := convertAssistantMessageForDialect(message, DialectDeepSeek)
+	if converted.ReasoningContent != "inspect first" {
+		t.Fatalf("reasoning_content = %q, want preserved reasoning", converted.ReasoningContent)
 	}
 }
 

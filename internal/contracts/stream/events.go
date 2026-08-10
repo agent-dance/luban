@@ -85,6 +85,7 @@ type RequestStatusEvent struct {
 	MaxRetries             int    `json:"max_retries,omitempty"`
 	RetryCount             int    `json:"retry_count,omitempty"`
 	RetryDelayMilliseconds int64  `json:"retry_delay_ms,omitempty"`
+	RetryKind              string `json:"retry_kind,omitempty"`
 	RequestMilliseconds    int64  `json:"request_ms,omitempty"`
 	FirstTokenMilliseconds int64  `json:"first_token_ms,omitempty"`
 	TotalMilliseconds      int64  `json:"total_ms,omitempty"`
@@ -172,6 +173,16 @@ type ProgressEvent struct {
 	VerifiedEpoch uint64         `json:"verified_epoch,omitempty"`
 	Metadata      map[string]any `json:"metadata,omitempty"`
 }
+
+const (
+	// ProgressStageLLMToolInput is emitted when the provider opens a tool-use
+	// block and as content-free received-byte milestones arrive. It exposes
+	// neither partial tool input nor a synthetic percentage.
+	ProgressStageLLMToolInput = "llm_tool_input"
+	// ProgressStageLLMWaitingAfterTools is emitted only after tool results and
+	// continuation gates have committed and another model round will begin.
+	ProgressStageLLMWaitingAfterTools = "llm_waiting_after_tools"
+)
 
 type GoalStatusEvent struct {
 	Status    string                     `json:"status,omitempty"`

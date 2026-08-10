@@ -35,18 +35,19 @@
 
 <section class="section" id="conclusion">
   <h2>{{tr "agentic.local5.section.conclusion"}}</h2>
-  {{if .Headline.Available}}
-  <div class="callout warn"><strong>{{tr "agentic.local5.conclusion.no_comprehensive_superiority"}}</strong><br>{{tf "agentic.local5.conclusion.measured" .Headline.LubanResolved .Headline.Tasks .Headline.CodexResolved .Headline.Tasks .Headline.LubanCalls .Headline.CodexCalls .Headline.CallsDelta .Headline.WallDelta .Headline.CostDelta}}</div>
+{{if .Headline.Available}}
+  <div class="callout warn"><strong>{{tr "agentic.local5.conclusion.no_comprehensive_superiority"}}</strong><br>{{if .Headline.Adjudicated}}{{tf "agentic.local5.conclusion.measured_adjudicated" .Headline.LubanResolved .Headline.Tasks .Headline.CodexResolved .Headline.Tasks .Headline.LubanCalls .Headline.CodexCalls .Headline.CallsDelta .Headline.WallDelta .Headline.CostDelta}}{{else}}{{tf "agentic.local5.conclusion.measured" .Headline.LubanResolved .Headline.Tasks .Headline.CodexResolved .Headline.Tasks .Headline.LubanCalls .Headline.CodexCalls .Headline.CallsDelta .Headline.WallDelta .Headline.CostDelta}}{{end}}</div>
   <div class="callout">{{tf "agentic.local5.conclusion.cache_context" .Headline.CachePointDelta .Headline.LubanCached .Headline.CodexCached}}</div>
-  {{else}}<div class="callout warn">{{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
-  <p class="note">{{tr "agentic.local5.conclusion.raw_projection_scope"}}</p>
+  {{if .Headline.Adjudicated}}<div class="callout">{{tr "agentic.local5.conclusion.adjudication_scope"}}</div>{{end}}
+{{else}}<div class="callout warn">{{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
+{{if not .Headline.Adjudicated}}<p class="note">{{tr "agentic.local5.conclusion.raw_projection_scope"}}</p>{{end}}
 </section>
 
 <section class="section" id="current-comparison">
   <h2>{{tr "agentic.local5.section.current_comparison"}}</h2>
   <div class="grid">
     <div class="stat"><code>sealed_run_summaries</code><strong>{{.RunSlotsObserved}}/{{.AgentSlotCount}}</strong></div>
-    <div class="stat"><code>strict_agent_evaluations</code><strong>{{.EvaluationSlotsObserved}}/{{.AgentSlotCount}}</strong></div>
+    <div class="stat"><code>effective_agent_evaluations</code><strong>{{.EvaluationSlotsObserved}}/{{.AgentSlotCount}}</strong></div>
     <div class="stat"><code>paired_run_evaluation</code><strong>{{.PairSlotsObserved}}/{{.AgentSlotCount}}</strong></div>
     <div class="stat"><code>gold_oracle_reports</code><strong>{{.GoldObserved}}/{{.TaskCount}}</strong></div>
   </div>
@@ -95,17 +96,17 @@
     </tr></thead>
     <tbody>{{range .Tasks}}{{$task := .}}{{range .Runs}}<tr>
       <td><code>{{$task.ID}}</code><br><strong>{{.Agent}}</strong>{{if $task.Language}} · <code>{{$task.Language}}</code>{{end}}<br><span class="note"><code>gold={{if $task.GoldAvailable}}sealed{{else}}N/A{{end}}</code></span></td>
-      <td>{{if and .RunAvailable .EvaluationAvailable}}<span class="status {{resultClass .Resolved}}">{{result .Resolved}}</span>{{else}}<span class="status unknown">{{tr "agentic.report.not_applicable"}}</span>{{end}}<br><span class="note"><code>run={{if .RunAvailable}}sealed{{else}}N/A{{end}};eval={{if .EvaluationAvailable}}sealed{{else}}N/A{{end}}</code></span></td>
-      {{if .RunAvailable}}
+      <td>{{if and .RunAvailable .EvaluationAvailable}}{{if .Adjudicated}}<span class="status good">{{tr "agentic.local5.status.adjudicated_pass"}}</span>{{else}}<span class="status {{resultClass .Resolved}}">{{result .Resolved}}</span>{{end}}{{else}}<span class="status unknown">{{tr "agentic.report.not_applicable"}}</span>{{end}}<br><span class="note"><code>run={{if .RunAvailable}}sealed{{else}}N/A{{end}};eval={{if .EvaluationAvailable}}{{if .Adjudicated}}adjudicated{{else}}sealed{{end}}{{else}}N/A{{end}}</code></span></td>
+{{if .RunAvailable}}
       <td class="num">{{seconds .ElapsedSeconds}}<br><code>provider_http={{seconds .ProviderRequestSeconds}}</code><br><code>exit={{.ExitCode}};timeout={{.TimedOut}}</code></td>
       <td class="num"><strong>{{integer .LLMCalls}}</strong><br><code>http_2xx={{integer .LLMSuccessful}};http_non_2xx={{integer .LLMFailed}}</code></td>
       <td class="num"><code>{{integer64 .InputTokens}} / {{integer64 .CachedTokens}} / {{integer64 .CacheWriteTokens}} / {{integer64 .OutputTokens}}</code></td>
       <td class="num">{{percent .CacheRatio}}</td>
       <td class="num"><code>deduplicated={{cost .EstimatedCost}}</code><br><code>runner_receipt={{cost .RunnerEstimatedCost}}</code></td>
       <td class="num">{{integer .ToolCalls}}{{range .ToolTypes}}<br><code>{{.Name}}={{.Count}}</code>{{end}}</td>
-      {{else}}
+{{else}}
       <td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td><td class="num">{{tr "agentic.report.not_applicable"}}</td>
-      {{end}}
+{{end}}
       <td>{{if .RunAvailable}}<code>{{.BinaryPath}}</code><br><code>{{.BinarySHA256}}</code>{{end}}<div class="links">{{range .RawArtifactLinks}}<a href="{{.Href}}"><code>{{.Label}}</code></a>{{else}}{{tr "agentic.report.not_applicable"}}{{end}}{{if and $task.GoldAvailable (eq .Agent "codex")}}<a href="{{$task.GoldLink.Href}}"><code>{{$task.GoldLink.Label}}</code></a>{{end}}</div></td>
     </tr>{{end}}{{end}}</tbody>
   </table></div>
@@ -113,8 +114,8 @@
 
 <section class="section" id="shared-pass-comparison">
   <h2>{{tr "agentic.local5.section.shared_pass_comparison"}}</h2>
-  {{if .SharedPass.Available}}
-  <div class="callout good">{{tf "agentic.local5.caveat.shared_pass_scope" .SharedPass.TaskCount}}</div>
+{{if .SharedPass.Available}}
+  <div class="callout good">{{if .Headline.Adjudicated}}{{tf "agentic.local5.caveat.shared_pass_adjudicated_scope" .SharedPass.TaskCount}}{{else}}{{tf "agentic.local5.caveat.shared_pass_scope" .SharedPass.TaskCount}}{{end}}</div>
   <h3>{{tr "agentic.report.section.aggregate_results"}}</h3>
   <div class="table-wrap"><table>
     <thead><tr><th>{{tr "agentic.report.header.metric"}}</th><th class="num"><code>Codex</code></th><th class="num"><code>Luban</code></th><th class="num"><code>Luban/Codex</code></th><th class="num">{{tr "agentic.report.header.relative_change"}}</th></tr></thead>
@@ -128,7 +129,7 @@
   {{if .SharedPass.LubanLongerSlower}}<div class="callout warn">{{tf "agentic.local5.shared_pass.longer_slower" .SharedPass.CodexInputPerCall .SharedPass.LubanInputPerCall .SharedPass.InputPerCallDelta .SharedPass.CodexProviderPerCall .SharedPass.LubanProviderPerCall .SharedPass.ProviderPerCallDelta .SharedPass.CodexOutputPerCall .SharedPass.LubanOutputPerCall .SharedPass.OutputPerCallDelta}}</div>{{else}}<div class="callout">{{tr "agentic.local5.shared_pass.normalized_neutral"}}</div>{{end}}
 
   <h3>{{tr "agentic.report.section.task_results"}}</h3>
-  {{range .SharedPass.Tasks}}
+{{range .SharedPass.Tasks}}
   <h3><code>{{.ID}}</code> · <code>{{.Language}}</code></h3>
   <div class="table-wrap"><table>
     <thead><tr><th>{{tr "agentic.report.header.metric"}}</th><th class="num"><code>Codex</code></th><th class="num"><code>Luban</code></th><th class="num"><code>Luban/Codex</code></th><th class="num">{{tr "agentic.report.header.relative_change"}}</th></tr></thead>
@@ -139,13 +140,13 @@
     <div class="stat"><code>Luban_tool_taxonomy</code><strong>{{.Luban.ToolCalls}}</strong>{{range .Luban.ToolTypes}}<span class="note"><code>{{.Name}}={{.Count}}</code></span><br>{{end}}</div>
   </div>
   <div class="links">{{range .CodexLinks}}<a href="{{.Href}}"><code>codex/{{.Label}}</code></a>{{end}}{{range .LubanLinks}}<a href="{{.Href}}"><code>luban/{{.Label}}</code></a>{{end}}</div>
-  {{end}}
-  {{else}}<div class="callout warn">{{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
+{{end}}
+{{else}}<div class="callout warn">{{tr "agentic.local5.caveat.incomplete_refusal"}}</div>{{end}}
 </section>
 
 <section class="section" id="efficiency-diagnosis">
   <h2>{{tr "agentic.local5.section.efficiency_diagnosis"}}</h2>
-  {{if .Efficiency.Available}}
+{{if .Efficiency.Available}}
   <div class="callout warn"><strong>{{tr "agentic.local5.efficiency.primary_conclusion"}}</strong></div>
   <div class="table-wrap"><table>
     <thead><tr><th><code>metric</code></th><th class="num"><code>old_luban</code></th><th class="num"><code>new_luban</code></th><th class="num">{{tr "agentic.report.header.relative_change"}}</th></tr></thead>

@@ -244,6 +244,44 @@ func TestRolledBackPatchDoesNotAdvanceOrInvalidateCurrentState(t *testing.T) {
 	}
 }
 
+func TestProvenTransactionalFailurePreservesUnknownWorkspace(t *testing.T) {
+	state := testState(t, LedgerLimits{})
+	state = mustReduce(t, state, ToolExecuted{Facts: ToolExecutionFacts{
+		ToolID: "Run", ExecutionSequence: 1, Invoked: true, EffectScope: EffectScopeWorkspaceWrite,
+		ExecutionOutcome: ExecutionFailed, FailureFingerprint: "plan-unsafe-run",
+		MutationOutcome: MutationPossible, VerificationKind: VerificationNone, VerificationOutcome: VerificationNotRun,
+		BeforeDigest: "workspace-0", ActionFingerprint: "plan-unsafe-run-action",
+	}})
+	if state.WorkspaceDigestKnown || state.MutationEpoch != 1 || state.WorkspaceRevision != 1 {
+		t.Fatalf("committed-unverified Run did not make workspace unknown: %+v", state)
+	}
+
+	rolledBack, effects := mustReduceEffects(t, state, ToolExecuted{Facts: ToolExecutionFacts{
+		ToolID: "ApplyPatch", ExecutionSequence: 2, Invoked: true, EffectScope: EffectScopeWorkspaceWrite,
+		ExecutionOutcome: ExecutionFailed, FailureFingerprint: "patch-anchor-ambiguous",
+		MutationOutcome: MutationNone, NoMutationProven: true,
+		VerificationKind: VerificationNone, VerificationOutcome: VerificationNotRun,
+		ActionFingerprint: "failed-transactional-patch",
+	}})
+	if rolledBack.WorkspaceDigestKnown || rolledBack.MutationEpoch != 1 || rolledBack.WorkspaceRevision != 1 {
+		t.Fatalf("proven transaction failure changed unknown workspace authority: %+v", rolledBack)
+	}
+	if effects.MutationAdvanced || effects.WorkspaceReconciled || effects.VerificationInvalidated {
+		t.Fatalf("proven transaction failure produced workspace effects: %+v", effects)
+	}
+}
+
+func TestNoMutationProofRequiresFailedTransactionalWrite(t *testing.T) {
+	state := testState(t, LedgerLimits{})
+	assertTransitionError(t, state, ToolExecuted{Facts: ToolExecutionFacts{
+		ToolID: "Inspect", ExecutionSequence: 1, Invoked: true, EffectScope: EffectScopeWorkspaceRead,
+		ExecutionOutcome: ExecutionFailed, FailureFingerprint: "invalid-no-mutation-proof",
+		MutationOutcome: MutationNone, NoMutationProven: true,
+		VerificationKind: VerificationNone, VerificationOutcome: VerificationNotRun,
+		ActionFingerprint: "invalid-no-mutation-proof-action",
+	}}, ErrorInvalidFacts)
+}
+
 func TestCompletionGateAllowsOneOptionalFailureButBlocksRepeatedFingerprint(t *testing.T) {
 	state := completionReadyState(t)
 	for index := 1; index <= int(state.Limits.RepeatedFailureTrigger); index++ {

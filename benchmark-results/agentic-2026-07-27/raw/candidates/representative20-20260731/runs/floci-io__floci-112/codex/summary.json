@@ -1,0 +1,51 @@
+{
+  "instance_id": "floci-io__floci-112",
+  "language": "java",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785479312.485544,
+  "elapsed_seconds": 191.918,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 403844,
+    "cached_input_tokens": 339968,
+    "output_tokens": 6663,
+    "reasoning_output_tokens": 4089,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 339968,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 0.689254,
+  "tool_calls": 13,
+  "tool_calls_by_type": {
+    "command_execution": 12,
+    "file_change": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "src/main/java/io/github/hectorvent/floci/services/s3/S3Controller.java",
+      "src/test/java/io/github/hectorvent/floci/services/s3/S3IntegrationTest.java"
+    ],
+    "additions": 42,
+    "deletions": 4
+  },
+  "final_text": "Implemented the S3 `CopyObject` fix.\n\n- Percent-decodes `x-amz-copy-source` using UTF-8 before object lookup.\n- Preserves literal `+` characters and returns `InvalidArgument` for malformed encoding.\n- Added an integration regression test covering Japanese multibyte keys.\n- `git diff --check` passes.\n\nThe focused Maven test could not start because Maven isn’t installed and the wrapper distribution isn’t vendored; network use was prohibited.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 14,
+  "llm_successful_calls": 14,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 185.697401,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "instance_id": "springdoc__springdoc-openapi-3051",
+  "language": "java",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785483844.7783098,
+  "elapsed_seconds": 274.017,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 902600,
+    "cached_input_tokens": 822016,
+    "output_tokens": 9169,
+    "reasoning_output_tokens": 3527,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 822016,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 1.088998,
+  "tool_calls": 17,
+  "tool_calls_by_type": {
+    "command_execution": 15,
+    "file_change": 2
+  },
+  "patch": {
+    "files_changed": 5,
+    "files": [
+      "springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java",
+      "springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app119/HelloController.java",
+      "springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v31/app119/HelloController.java",
+      "springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.0.1/app119.json",
+      "springdoc-openapi-starter-webmvc-api/src/test/resources/results/3.1.0/app119.json"
+    ],
+    "additions": 113,
+    "deletions": 12
+  },
+  "final_text": "Implemented the multipart `@RequestPart Map<…>` fix.\n\n- Map request parts are no longer filtered as framework parameters.\n- They now generate named multipart object schemas with `additionalProperties`, descriptions, and required status.\n- Added OpenAPI 3.0 and 3.1 regression coverage.\n\nValidation: JSON fixtures and `git diff --check` passed. Maven tests couldn’t run because neither Maven nor a Maven wrapper is available.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 18,
+  "llm_successful_calls": 18,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 271.432484,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

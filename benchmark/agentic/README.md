@@ -1,5 +1,22 @@
 # Agentic Coding Benchmark Harness v2
 
+> 最新阶段报告：已冻结 20 题目录，并按要求在第 15 题后停止；新增题未执行 Docker 官方判分。详见[根目录摘要](../../README.md)与[15 题 HTML 报告](../../benchmark-results/agentic-2026-07-27/representative15-report.html)。
+
+## 五题 Pilot 实测：Luban 逐项耗时与 Token 均低于 Codex，质量持平
+
+以 Codex 为 `0%` 基准；负值表示 Luban 用量更低。Luban 除 kube 使用 `high` 外，其余任务均使用默认 `medium`。
+
+| 任务 | 耗时：Luban / Codex（变化） | Token：Luban / Codex（变化） | LLM 调用：Luban / Codex（变化） | resolved：Luban / Codex |
+| --- | ---: | ---: | ---: | ---: |
+| Fabric | 169.3s / 219.5s（−22.9%） | 128,319 / 581,257（−77.9%） | 8 / 14（−42.9%） | 是 / 是 |
+| agents-js | 265.3s / 521.9s（−49.2%） | 666,894 / 1,429,141（−53.3%） | 22 / 30（−26.7%） | 是 / 是 |
+| kube | 253.7s / 319.1s（−20.5%） | 402,703 / 644,164（−37.5%） | 16 / 19（−15.8%） | 否 / 否 |
+| skim | 277.3s / 513.9s（−46.0%） | 582,076 / 1,518,938（−61.7%） | 17 / 28（−39.3%） | 是 / 是 |
+| IWYU | 277.3s / 616.0s（−55.0%） | 431,561 / 2,238,240（−80.7%） | 20 / 37（−45.9%） | 否 / 否 |
+| **合计** | **1,242.9s / 2,190.4s（−43.3%）** | **2,211,553 / 6,411,740（−65.5%）** | **83 / 128（−35.2%）** | **3/5 / 3/5** |
+
+[查看机器可读结果与逐项评测工件](../../benchmark-results/agentic-2026-07-27/raw/candidates/selected-optimized-20260730.json)。
+
 本目录实现 Luban 与 Codex 的可复现、配对 Agentic Coding 测评。正式目标是 DeepSWE v1.1 的 113 题公开语料；5 题 pilot 只用于优化迭代，不能作为公开总分。下述正式设施独立于仓库根目录下已有的 `benchmark-results/`；快速本机入口则会把每次新报告写入该目录。
 
 ## 一键本机测评与 HTML 报告
@@ -8,15 +25,15 @@
 
 ```bash
 go install ./benchmark/agentic/cmd/benchmark
-benchmark --task-size=5 --with-codex
-benchmark --task-size=5
+benchmark --task-size=20 --with-codex
+benchmark --task-size=20
 ```
 
 不安装时也可在仓库内执行：
 
 ```bash
-./bin/benchmark --task-size=5 --with-codex
-./bin/benchmark --task-size=5
+./bin/benchmark --task-size=20 --with-codex
+./bin/benchmark --task-size=20
 ```
 
 首次执行或需要更新 Codex 对照时添加 `--with-codex`。该次运行会产出独立的
@@ -25,9 +42,12 @@ Codex JSON/HTML 快照，并把它原子更新为后续测评的冻结基线。�
 若新的 Codex 运行或 gold oracle 证据不完整，旧基线不会被替换。较大
 `task-size` 不能复用覆盖题目较少的基线，必须通过 `--with-codex` 扩充。
 
-当前代表题库包含 5 道预注册的 SWE-bench-Live MultiLang 题目，因此
-`task-size` 接受 `1..5`；扩充固化 catalog 后，该上限会随之扩大。题目始终按
-预注册顺序选择前 N 道，不在运行时随机抽样。
+当前代表题库包含 20 道预注册的 SWE-bench-Live MultiLang 题目，每种语言
+（C++、Go、Java、Rust、TypeScript）各 4 道，因此 `task-size` 接受 `1..20`。
+题目始终按预注册顺序选择前 N 道，不在运行时随机抽样；前 5 道与原 pilot
+完全一致。选择规则、数据文件 SHA-256 和最终顺序冻结在
+`localbench/catalog/representative20.selection.json`，可使用同目录的
+`generate_representative20.py` 从固定 revision 的 parquet 文件复建。
 
 每次执行都会创建一个不覆盖旧数据的新目录：
 

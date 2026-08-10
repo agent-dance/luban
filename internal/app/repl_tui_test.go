@@ -797,10 +797,11 @@ func TestValidateCustomEndpoint(t *testing.T) {
 func TestPopulateModelPickerEntriesUsesCurrentReasoningEffort(t *testing.T) {
 	catalog := provider.NewModelCatalog()
 	catalog.Register(provider.ModelInfo{CostCurrency: "USD",
-		Provider:         "openai",
-		ID:               "gpt-5.5",
-		Aliases:          []string{"gpt-current"},
-		ReasoningEfforts: []string{"low", "medium", "high", "xhigh"},
+		Provider:               "openai",
+		ID:                     "gpt-5.5",
+		Aliases:                []string{"gpt-current"},
+		ReasoningEfforts:       []string{"low", "medium", "high", "xhigh"},
+		DefaultReasoningEffort: "high",
 	})
 
 	picker := &tui.ModelPickerState{}
@@ -813,8 +814,11 @@ func TestPopulateModelPickerEntriesUsesCurrentReasoningEffort(t *testing.T) {
 	}
 
 	populateModelPickerEntries(picker, catalog, "openai", "anthropic", "gpt-current", "high")
-	if got := picker.Entries[0].ReasoningEffort; got != "medium" {
-		t.Fatalf("non-current ReasoningEffort = %q, want default medium", got)
+	if got := picker.Entries[0].ReasoningEffort; got != "high" {
+		t.Fatalf("non-current ReasoningEffort = %q, want catalog default high", got)
+	}
+	if got := picker.Entries[0].DefaultReasoningEffort; got != "high" {
+		t.Fatalf("picker DefaultReasoningEffort = %q, want high", got)
 	}
 }
 

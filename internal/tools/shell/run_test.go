@@ -377,6 +377,109 @@ func TestRunBindsSuccessfulVerificationToWorkspaceRevision(t *testing.T) {
 	}
 }
 
+func TestRunRevisionSafeGraphAllowsReadOnlyObservations(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/observation\n\ngo 1.22\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(root, "source.go")
+	if err := os.WriteFile(sourcePath, []byte("package observation\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := workspacerevision.NewLedger()
+	receipt, err := ledger.Commit(root, []string{sourcePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeRoot := filepath.Join(t.TempDir(), "verification-runtime")
+	tool := NewRunTool(&BashTool{
+		CWD: root, AllowedDirs: []string{root}, WorkspaceRevisions: ledger,
+		RunVerificationRoot: func() string { return runtimeRoot },
+	})
+	input := map[string]any{
+		"steps": []any{
+			map[string]any{"id": "where", "argv": []any{"pwd"}},
+			map[string]any{"id": "test", "argv": []any{"go", "test", "./..."}},
+		},
+	}
+	result := executeApprovedRevisionRunForTest(t, tool, input, receipt)
+	assertRunRevisionBound(t, result, 1, "full_test", false)
+}
+
+func TestRunRevisionSafeTestAndGofmtDiffSealRevision(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/formatcheck\n\ngo 1.22\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(root, "source.go")
+	if err := os.WriteFile(sourcePath, []byte("package formatcheck\n\nfunc Value() int { return 1 }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := workspacerevision.NewLedger()
+	receipt, err := ledger.Commit(root, []string{sourcePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeRoot := filepath.Join(t.TempDir(), "verification-runtime")
+	tool := NewRunTool(&BashTool{
+		CWD: root, AllowedDirs: []string{root}, WorkspaceRevisions: ledger,
+		RunVerificationRoot: func() string { return runtimeRoot },
+	})
+	input := map[string]any{
+		"requires_patch_commit": true,
+		"steps": []any{
+			map[string]any{"id": "test", "argv": []any{"go", "test", "./..."}},
+			map[string]any{"id": "format-check", "argv": []any{"gofmt", "-d", "source.go"}},
+		},
+	}
+	result := executeApprovedRevisionRunForTest(t, tool, input, receipt)
+	assertRunRevisionBound(t, result, 1, "full_test", false)
+}
+
+func TestRunRevisionSafeGraphPreservesObservationBeforeFormatter(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module example.com/observationformat\n\ngo 1.22\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sourcePath := filepath.Join(root, "source.go")
+	if err := os.WriteFile(sourcePath, []byte("package observationformat\nfunc Add(a,b int)int{return a+b}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ledger := workspacerevision.NewLedger()
+	receipt, err := ledger.Commit(root, []string{sourcePath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeRoot := filepath.Join(t.TempDir(), "verification-runtime")
+	tool := NewRunTool(&BashTool{
+		CWD: root, AllowedDirs: []string{root}, WorkspaceRevisions: ledger,
+		RunVerificationRoot: func() string { return runtimeRoot },
+	})
+	input := map[string]any{
+		"requires_patch_commit": true,
+		"steps": []any{
+			map[string]any{"id": "where", "argv": []any{"pwd"}},
+			map[string]any{"id": "format", "argv": []any{"gofmt", "-w", "source.go"}, "depends_on": []any{"where"}},
+			map[string]any{"id": "test", "argv": []any{"go", "test", "./..."}, "depends_on": []any{"format"}},
+		},
+	}
+	result := executeApprovedRevisionRunForTest(t, tool, input, receipt)
+	output := requireRunOutput(t, result)
+	if len(output.Steps) != 3 {
+		t.Fatalf("observation/formatter/test steps=%+v", output.Steps)
+	}
+	for index, step := range output.Steps {
+		if step.Status != runStatusSucceeded {
+			t.Fatalf("step %d status=%q, output=%+v", index, step.Status, output.Steps)
+		}
+	}
+	assertRunRevisionBound(t, result, 2, "full_test", true)
+	formatted, err := os.ReadFile(sourcePath)
+	if err != nil || !strings.Contains(string(formatted), "func Add(a, b int) int") {
+		t.Fatalf("formatter output=%q err=%v", formatted, err)
+	}
+}
+
 func TestRunRejectsStaleRevisionBeforeVerification(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "source.txt")
@@ -495,6 +598,12 @@ func TestRunVerificationSafeFormatterAndTestSealFinalRevision(t *testing.T) {
 			}
 			if test.writesSource {
 				assertRunCommittedUnverified(t, tool, result)
+				if reason := result.Metadata["verification.safety_reason"]; reason != "verification_changed_source" {
+					t.Fatalf("seal safety reason=%q", reason)
+				}
+				if warning := toolRuntimeFormat(i18n.KeyToolRunSealSafetyFailed, "verification_changed_source"); !strings.Contains(result.Content, warning) {
+					t.Fatalf("seal safety warning missing from %q", result.Content)
+				}
 				if _, err := os.Stat(filepath.Join(root, "generated.go")); err != nil {
 					t.Fatalf("source-writing test did not write its marker: %v", err)
 				}
@@ -558,8 +667,29 @@ func TestRunWriteOutsidePatchReceiptIsCommittedUnverified(t *testing.T) {
 		t.Fatalf("write result=%+v", result)
 	}
 	assertRunCommittedUnverified(t, tool, result)
+	if reason := result.Metadata["verification.safety_reason"]; reason != "plan_not_revision_safe" {
+		t.Fatalf("seal safety reason=%q", reason)
+	}
+	if warning := toolRuntimeText(i18n.KeyToolRunSealPlanUnsupported); !strings.Contains(result.Content, warning) {
+		t.Fatalf("unsupported-plan warning missing from %q", result.Content)
+	}
 	if content, readErr := os.ReadFile(filepath.Join(root, "outside-patch-receipt.txt")); readErr != nil || string(content) != "surprise" {
 		t.Fatalf("outside receipt write=%q err=%v", content, readErr)
+	}
+}
+
+func TestRunUnboundWriteExplainsMissingRevisionReceipt(t *testing.T) {
+	root := t.TempDir()
+	tool := NewRunTool(&BashTool{CWD: root, AllowedDirs: []string{root}, WorkspaceRevisions: workspacerevision.NewLedger()})
+	result := executeApprovedRunForTest(t, tool, map[string]any{
+		"steps": []any{map[string]any{"id": "write", "shell_script": "printf changed > changed.txt"}},
+	})
+	assertRunCommittedUnverified(t, tool, result)
+	if reason := result.Metadata["verification.safety_reason"]; reason != "revision_receipt_unavailable" {
+		t.Fatalf("seal safety reason=%q", reason)
+	}
+	if warning := toolRuntimeText(i18n.KeyToolRunSealReceiptMissing); !strings.Contains(result.Content, warning) {
+		t.Fatalf("missing-receipt warning absent from %q", result.Content)
 	}
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 func TestProviderStreamKeysCoverEveryLanguage(t *testing.T) {
-	for _, key := range []Key{KeyProviderStreamInitialIdleTimeout, KeyProviderStreamActiveIdleTimeout} {
+	for _, key := range []Key{KeyProviderStreamIdleTimeout, KeyProviderStreamInitialIdleTimeout, KeyProviderStreamActiveIdleTimeout} {
 		for _, lang := range AllLanguages() {
 			got := Format(lang, key, 90*time.Second)
 			if got == "" || got == "["+string(key)+"]" || !strings.Contains(got, "1m30s") {

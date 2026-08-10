@@ -1,0 +1,52 @@
+{
+  "instance_id": "openai__openai-agents-js-375",
+  "language": "ts",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785397207.8305302,
+  "elapsed_seconds": 265.308,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 660415,
+    "cached_input_tokens": 595968,
+    "cache_read_input_tokens": 595968,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 6479,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.814589,
+  "tool_calls": 21,
+  "tool_calls_by_type": {
+    "Inspect": 15,
+    "ApplyPatch": 4,
+    "Run": 2
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      "packages/agents-core/src/run.ts",
+      "packages/agents-core/src/runImplementation.ts",
+      "packages/agents-core/test/run.stream.test.ts"
+    ],
+    "additions": 69,
+    "deletions": 20
+  },
+  "final_text": "Implemented the streaming lifecycle fix.\n\nChanges:\n- Streaming runs now accumulate model usage before lifecycle hooks.\n- Streaming completion emits runner and agent `agent_end` hooks.\n- Centralized tool-final completion hooks to prevent duplicate `agent_end` events.\n- Added a focused regression test and patch changeset.\n\nVerification:\n- `git diff --check` passed.\n- Tests/type checking could not run because repository dependencies (`node_modules`, Vitest, Zod, etc.) are unavailable.",
+  "command_public": {
+    "executable": "/private/tmp/luban-local5-optimized-20260730c",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 22,
+  "llm_successful_calls": 22,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 257.992701,
+  "binary": {
+    "path": "/private/tmp/luban-local5-optimized-20260730c",
+    "sha256": "eb81a978a2b9efb5047f3dad133d0396f93bc09d026daeff556ab5e98dd621e2"
+  }
+}

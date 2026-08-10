@@ -599,9 +599,14 @@ func TestRunCompactionResultContractUsesExactProjectedInput(t *testing.T) {
 
 func TestRunCompactionResultContractFreezesNestedInputBeforeCompactorMutation(t *testing.T) {
 	mutableInput := map[string]any{"path": "before", "nested": map[string]any{"value": "before"}}
-	input := []types.Message{{Role: types.RoleAssistant, Content: []types.ContentBlock{types.ToolUseBlock{
-		Type: types.ContentTypeToolUse, ID: "mutating-tool", Name: "Read", Input: mutableInput,
-	}}}}
+	input := []types.Message{
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{types.ToolUseBlock{
+			Type: types.ContentTypeToolUse, ID: "mutating-tool", Name: "Read", Input: mutableInput,
+		}}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			ToolUseID: "mutating-tool", Content: "before", Outcome: types.ToolOutcomeSucceeded,
+		}),
+	}
 	durable := executioncontract.CloneMessages(input)
 	q := New(nil, nil, Config{MaxContextTokens: 100})
 	q.SetMessages(durable)

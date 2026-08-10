@@ -1,0 +1,111 @@
+diff --git a/springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java b/springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java
+index 681a615..9ea5786 100644
+--- a/springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java
++++ b/springdoc-openapi-starter-common/src/main/java/org/springdoc/core/service/AbstractRequestService.java
+@@ -469,7 +469,7 @@ public abstract class AbstractRequestService {
+ 			return true;
+ 		if (isRequiredAnnotation(parameter))
+ 			return false;
+-		if (isRequestBodyWithMapType(parameter))
++		if (isRequestBodyOrPartWithMapType(parameter))
+ 			return false;
+ 		return isRequestTypeToIgnore(parameter.getParameterType());
+ 	}
+@@ -490,19 +490,20 @@ public abstract class AbstractRequestService {
+ 	}
+ 
+ 	/**
+-	 * Is request body with map type
++	 * Is request body or request part with map type.
+ 	 *
+ 	 * @param parameter the parameter
+ 	 * @return the boolean
+ 	 */
+-	private boolean isRequestBodyWithMapType(MethodParameter parameter) {
++	private boolean isRequestBodyOrPartWithMapType(MethodParameter parameter) {
+ 		// Exclude parameters from the Actuator package
+ 		if (parameter.getContainingClass().getPackageName().startsWith("org.springframework.boot.actuate")) {
+ 			return false;
+ 		}
+-		// Check for @RequestBody annotation
++		// Check for @RequestBody or @RequestPart annotation
+ 		org.springframework.web.bind.annotation.RequestBody requestBody = parameter.getParameterAnnotation(org.springframework.web.bind.annotation.RequestBody.class);
+-		if (requestBody == null) {
++		RequestPart requestPart = parameter.getParameterAnnotation(RequestPart.class);
++		if (requestBody == null && requestPart == null) {
+ 			return false;
+ 		}
+ 		// Check if the parameter type is assignable to Map
+diff --git a/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app3051/SpringDocApp3051Test.java b/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app3051/SpringDocApp3051Test.java
+new file mode 100644
+index 0000000..eff126c
+--- /dev/null
++++ b/springdoc-openapi-starter-webmvc-api/src/test/java/test/org/springdoc/api/v30/app3051/SpringDocApp3051Test.java
+@@ -0,0 +1,67 @@
++/*
++ * Copyright 2019-2025 the original author or authors.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      https://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package test.org.springdoc.api.v30.app3051;
++
++import java.util.Map;
++
++import io.swagger.v3.oas.annotations.Parameter;
++import org.junit.jupiter.api.Test;
++import org.springdoc.core.utils.Constants;
++import test.org.springdoc.api.AbstractCommonTest;
++
++import org.springframework.boot.autoconfigure.SpringBootApplication;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.http.MediaType;
++import org.springframework.test.context.TestPropertySource;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.RequestPart;
++import org.springframework.web.bind.annotation.RestController;
++
++import static org.hamcrest.Matchers.hasItem;
++import static org.hamcrest.Matchers.is;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++@SpringBootTest
++@TestPropertySource(properties = { "springdoc.api-docs.version=openapi_3_0" })
++class SpringDocApp3051Test extends AbstractCommonTest {
++
++	@Test
++	void mapRequestPartIsIncludedInMultipartRequestBody() throws Exception {
++		mockMvc.perform(get(Constants.DEFAULT_API_DOCS_URL))
++				.andExpect(status().isOk())
++				.andExpect(jsonPath("$.paths['/map-works'].post.requestBody.content['multipart/form-data'].schema.required", hasItem("fileMapping")))
++				.andExpect(jsonPath("$.paths['/map-works'].post.requestBody.content['multipart/form-data'].schema.properties.fileMapping.type", is("object")))
++				.andExpect(jsonPath("$.paths['/map-works'].post.requestBody.content['multipart/form-data'].schema.properties.fileMapping.description", is("A JSON object for file mapping")));
++	}
++
++	@SpringBootApplication
++	static class SpringDocTestApp {
++	}
++
++	@RestController
++	static class MapRequestPartController {
++
++		@PostMapping(value = "/map-works", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
++		String map(
++				@Parameter(description = "A JSON object for file mapping", required = true)
++				@RequestPart Map<String, Object> fileMapping) {
++			return Integer.toString(fileMapping.size());
++		}
++	}
++}

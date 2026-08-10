@@ -108,6 +108,7 @@ const (
 	QueryTransitionReactiveCompactRetry    QueryTransition = "reactive_compact_retry"
 	QueryTransitionMaxOutputTokensEscalate QueryTransition = "max_output_tokens_escalate"
 	QueryTransitionMaxOutputTokensRecovery QueryTransition = "max_output_tokens_recovery"
+	QueryTransitionToolInputRecovery       QueryTransition = "tool_input_recovery"
 	QueryTransitionStopHookBlocking        QueryTransition = "stop_hook_blocking"
 	QueryTransitionGoalContinuation        QueryTransition = "goal_continuation"
 	QueryTransitionTokenBudgetContinuation QueryTransition = "token_budget_continuation"
@@ -259,6 +260,8 @@ type QueryState struct {
 	TurnCount                    int
 	AutoCompactTracking          AutoCompactTracking
 	MaxOutputTokensRecoveryCount int
+	ToolInputRecoveryCount       int
+	ToolInputRecoveryTools       []string
 	HasAttemptedReactiveCompact  bool
 	MaxOutputTokensOverride      int
 	TaskBudgetRemaining          *int

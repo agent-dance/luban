@@ -1,0 +1,60 @@
+{
+  "instance_id": "eza-community__eza-1664",
+  "language": "rust",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785494591.39462,
+  "elapsed_seconds": 245.34,
+  "timeout_seconds": 600,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 387598,
+    "cached_input_tokens": 336384,
+    "cache_read_input_tokens": 336384,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 6879,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.630632,
+  "tool_calls": 14,
+  "tool_calls_by_type": {
+    "Inspect": 11,
+    "ApplyPatch": 1,
+    "Run": 2
+  },
+  "patch": {
+    "files_changed": 11,
+    "files": [
+      "README.md",
+      "completions/bash/eza",
+      "completions/fish/eza.fish",
+      "completions/nush/eza.nu",
+      "completions/pwsh/_eza.ps1",
+      "completions/zsh/_eza",
+      "man/eza.1.md",
+      "src/options/file_name.rs",
+      "src/options/parser.rs",
+      "tests/ptests/ptest_2439b7d68089135b.stdout",
+      "tests/ptests/ptest_a689ab7558716dda.toml"
+    ],
+    "additions": 74,
+    "deletions": 32
+  },
+  "final_text": "Implemented `--hyperlink[=WHEN]` with:\n\n- `always`: hyperlinks even when piped\n- `auto` / `automatic`: hyperlinks only on a TTY\n- `never`: hyperlinks disabled\n- Bare `--hyperlink` defaults to `auto`\n- No flag remains disabled\n\nAdded focused unit coverage and updated documentation, help snapshots, shell completions, and hyperlink fixtures.\n\nVerification:\n- Rust formatting passed\n- Bash and Zsh completion syntax passed\n- Cargo tests were blocked by the offline environment missing the cached `backtrace` dependency\n- PowerShell and Fish executables were unavailable for syntax checks",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v3",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 15,
+  "llm_successful_calls": 15,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 242.604295,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v3",
+    "sha256": "6515cd515bd7e929b21662b0fdc30e8f9cccbf3e89e6329456876f35fe922a2e"
+  }
+}

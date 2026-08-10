@@ -1,0 +1,51 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "codex",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at_unix": 1785394525.4931788,
+  "elapsed_seconds": 219.515,
+  "timeout_seconds": 900,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 572782,
+    "cached_input_tokens": 491520,
+    "output_tokens": 8475,
+    "reasoning_output_tokens": 4221,
+    "cache_write_input_tokens": 0,
+    "cache_read_input_tokens": 491520,
+    "cache_creation_input_tokens": 0
+  },
+  "estimated_cost_usd": 0.90632,
+  "tool_calls": 13,
+  "tool_calls_by_type": {
+    "command_execution": 12,
+    "file_change": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/plugins/ai/codex/codex.go",
+      "internal/plugins/ai/codex/codex_test.go"
+    ],
+    "additions": 142,
+    "deletions": 6
+  },
+  "final_text": "Implemented the Codex empty-response fix.\n\n- Preserves accumulated text deltas when `response.completed` contains no output.\n- Falls back to `response.output_text.done` when deltas are omitted.\n- Applies equivalent fallback behavior to streaming responses.\n- Added regression tests in [codex_test.go](/private/tmp/luban-agent-benchmark-work/repos/danielmiessler__Fabric-2098/codex/internal/plugins/ai/codex/codex_test.go).\n\nValidation: `gofmt` and `git diff --check` pass. Go tests could not run because the offline environment lacks Go 1.25.1 and the toolchain manager attempted to download it.",
+  "command_public": {
+    "executable": "/opt/homebrew/bin/codex",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "xhigh",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 14,
+  "llm_successful_calls": 14,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 216.698354,
+  "binary": {
+    "path": "/opt/homebrew/bin/codex",
+    "sha256": "134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477"
+  }
+}

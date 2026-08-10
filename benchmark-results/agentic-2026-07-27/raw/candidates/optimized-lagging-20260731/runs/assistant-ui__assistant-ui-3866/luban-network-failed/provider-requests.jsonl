@@ -1,0 +1,9 @@
+{"elapsed_seconds":6.609878,"endpoint":"responses","error_class":"","method":"POST","request_bytes":15904,"request_id_sha256":"33147f269fb157fce5e54978f142502bf1371be7bcf513d8f82545b0e4c617b4","response_bytes":87409,"sequence":0,"status":200}
+{"elapsed_seconds":3.823164,"endpoint":"responses","error_class":"","method":"POST","request_bytes":33216,"request_id_sha256":"de11679ee9785a236377d279b4faf53556ca69e5aeeb61b94cc0219c97c19126","response_bytes":46216,"sequence":1,"status":200}
+{"elapsed_seconds":6.664897,"endpoint":"responses","error_class":"","method":"POST","request_bytes":39270,"request_id_sha256":"79beba257009424b89a8c1055abecfdb9d69e0ee80379d3e436cdb441dae4da4","response_bytes":88068,"sequence":2,"status":200}
+{"elapsed_seconds":10.215537,"endpoint":"responses","error_class":"","method":"POST","request_bytes":56443,"request_id_sha256":"ef5debb2487de44ad04c70dfba90441d5814255642ccac0078e57b91d697b330","response_bytes":111264,"sequence":3,"status":200}
+{"elapsed_seconds":101.337289,"endpoint":"responses","error_class":"TimeoutError","method":"POST","request_bytes":74620,"request_id_sha256":"","response_bytes":0,"sequence":4,"status":502}
+{"elapsed_seconds":30.013436,"endpoint":"responses","error_class":"gaierror","method":"POST","request_bytes":74620,"request_id_sha256":"","response_bytes":0,"sequence":5,"status":502}
+{"elapsed_seconds":30.011566,"endpoint":"responses","error_class":"gaierror","method":"POST","request_bytes":74620,"request_id_sha256":"","response_bytes":0,"sequence":6,"status":502}
+{"elapsed_seconds":30.011959,"endpoint":"responses","error_class":"gaierror","method":"POST","request_bytes":74620,"request_id_sha256":"","response_bytes":0,"sequence":7,"status":502}
+{"elapsed_seconds":22.083299,"endpoint":"responses","error_class":"AttributeError","method":"POST","request_bytes":74620,"request_id_sha256":"c5d4f38f24696c30c5954cddc106e8625ce61bf2bc291b43c0ddacd585d296e6","response_bytes":11581,"sequence":8,"status":200}

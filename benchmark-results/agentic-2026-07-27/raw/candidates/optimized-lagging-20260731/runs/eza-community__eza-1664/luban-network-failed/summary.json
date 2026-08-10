@@ -1,0 +1,46 @@
+{
+  "instance_id": "eza-community__eza-1664",
+  "language": "rust",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785492290.24507,
+  "elapsed_seconds": 133.254,
+  "timeout_seconds": 600,
+  "timed_out": false,
+  "exit_code": 1,
+  "usage": {
+    "input_tokens": 72926,
+    "cached_input_tokens": 39936,
+    "cache_read_input_tokens": 39936,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 2644,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 0.264238,
+  "tool_calls": 6,
+  "tool_calls_by_type": {
+    "Inspect": 6
+  },
+  "patch": {
+    "files_changed": 0,
+    "files": [],
+    "additions": 0,
+    "deletions": 0
+  },
+  "final_text": "The root cause is that `--hyperlink` is a boolean mapped directly to “on,” while icons/classification retain an automatic mode and consult stdout’s TTY state during rendering. I’ll make bare `--hyperlink` default to `auto`, preserve forced output via `always`, add `never`, and update user-facing completions/docs and tests.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v2",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 12,
+  "llm_successful_calls": 7,
+  "llm_failed_calls": 5,
+  "provider_request_seconds": 127.320395,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-optimized-20260731-v2",
+    "sha256": "a2269a978d2d4a01afa036dfcf9f166d77bec862144bbc0701abaa16fffdb2f6"
+  }
+}

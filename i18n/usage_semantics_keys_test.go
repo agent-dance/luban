@@ -9,20 +9,20 @@ func TestUsageSemanticsNarrowCJKUsesFullLabels(t *testing.T) {
 		args []any
 		want string
 	}{
-		{LangZH, KeyUsageSessionNarrow, []any{"9.4K", 40, "302", "$", 0.04}, "会话：输入 9.4K · 缓存 40% · 输出 302 · $0.04"},
-		{LangZH, KeyUsageSessionNarrowUnknownCost, []any{"9.4K", 40, "302"}, "会话：输入 9.4K · 缓存 40% · 输出 302 · 费用未知"},
+		{LangZH, KeyUsageSessionNarrow, []any{"9.4K", 40, "302", "$", 0.04}, "会话累计：输入 9.4K · 缓存 40% · 输出 302 · $0.04"},
+		{LangZH, KeyUsageSessionNarrowUnknownCost, []any{"9.4K", 40, "302"}, "会话累计：输入 9.4K · 缓存 40% · 输出 302 · 费用未知"},
 		{LangZH, KeyUsageSessionCompactedNarrow, []any{"9.4K", "12K", 40, "302", "$", 0.04}, "会话：输入 9.4K/12K · 缓存 40% · 输出 302 · $0.04"},
 		{LangZH, KeyUsageSessionCompactedNarrowUnknownCost, []any{"9.4K", "12K", 40, "302"}, "会话：输入 9.4K/12K · 缓存 40% · 输出 302 · 费用未知"},
-		{LangZH, KeyUsageSessionNarrowNoCache, []any{"9.4K", "302", "$", 0.04}, "会话：输入 9.4K · 输出 302 · $0.04"},
-		{LangZH, KeyUsageSessionNarrowNoCacheUnknownCost, []any{"9.4K", "302"}, "会话：输入 9.4K · 输出 302 · 费用未知"},
+		{LangZH, KeyUsageSessionNarrowNoCache, []any{"9.4K", "302", "$", 0.04}, "会话累计：输入 9.4K · 输出 302 · $0.04"},
+		{LangZH, KeyUsageSessionNarrowNoCacheUnknownCost, []any{"9.4K", "302"}, "会话累计：输入 9.4K · 输出 302 · 费用未知"},
 		{LangZH, KeyUsageSessionCompactedNarrowNoCache, []any{"9.4K", "12K", "302", "$", 0.04}, "会话：输入 9.4K/12K · 输出 302 · $0.04"},
 		{LangZH, KeyUsageSessionCompactedNarrowNoCacheUnknownCost, []any{"9.4K", "12K", "302"}, "会话：输入 9.4K/12K · 输出 302 · 费用未知"},
-		{LangJA, KeyUsageSessionNarrow, []any{"9.4K", 40, "302", "$", 0.04}, "セッション: 入力 9.4K · キャッシュ 40% · 出力 302 · $0.04"},
-		{LangJA, KeyUsageSessionNarrowUnknownCost, []any{"9.4K", 40, "302"}, "セッション: 入力 9.4K · キャッシュ 40% · 出力 302 · 料金不明"},
+		{LangJA, KeyUsageSessionNarrow, []any{"9.4K", 40, "302", "$", 0.04}, "セッション累計: 入力 9.4K · キャッシュ 40% · 出力 302 · $0.04"},
+		{LangJA, KeyUsageSessionNarrowUnknownCost, []any{"9.4K", 40, "302"}, "セッション累計: 入力 9.4K · キャッシュ 40% · 出力 302 · 料金不明"},
 		{LangJA, KeyUsageSessionCompactedNarrow, []any{"9.4K", "12K", 40, "302", "$", 0.04}, "セッション: 入力 9.4K/12K · キャッシュ 40% · 出力 302 · $0.04"},
 		{LangJA, KeyUsageSessionCompactedNarrowUnknownCost, []any{"9.4K", "12K", 40, "302"}, "セッション: 入力 9.4K/12K · キャッシュ 40% · 出力 302 · 料金不明"},
-		{LangKO, KeyUsageSessionNarrow, []any{"9.4K", 40, "302", "$", 0.04}, "세션: 입력 9.4K · 캐시 40% · 출력 302 · $0.04"},
-		{LangKO, KeyUsageSessionNarrowUnknownCost, []any{"9.4K", 40, "302"}, "세션: 입력 9.4K · 캐시 40% · 출력 302 · 비용 알 수 없음"},
+		{LangKO, KeyUsageSessionNarrow, []any{"9.4K", 40, "302", "$", 0.04}, "세션 누계: 입력 9.4K · 캐시 40% · 출력 302 · $0.04"},
+		{LangKO, KeyUsageSessionNarrowUnknownCost, []any{"9.4K", 40, "302"}, "세션 누계: 입력 9.4K · 캐시 40% · 출력 302 · 비용 알 수 없음"},
 		{LangKO, KeyUsageSessionCompactedNarrow, []any{"9.4K", "12K", 40, "302", "$", 0.04}, "세션: 입력 9.4K/12K · 캐시 40% · 출력 302 · $0.04"},
 		{LangKO, KeyUsageSessionCompactedNarrowUnknownCost, []any{"9.4K", "12K", 40, "302"}, "세션: 입력 9.4K/12K · 캐시 40% · 출력 302 · 비용 알 수 없음"},
 	}
@@ -35,7 +35,7 @@ func TestUsageSemanticsNarrowCJKUsesFullLabels(t *testing.T) {
 
 func TestUsageSemanticsFormatsNativeCurrencySymbol(t *testing.T) {
 	got := Format(LangZH, KeyUsageSessionNarrow, "9.4K", 40, "302", "¥", 0.04)
-	if want := "会话：输入 9.4K · 缓存 40% · 输出 302 · ¥0.04"; got != want {
+	if want := "会话累计：输入 9.4K · 缓存 40% · 输出 302 · ¥0.04"; got != want {
 		t.Fatalf("Format() = %q, want %q", got, want)
 	}
 }

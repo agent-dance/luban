@@ -741,8 +741,8 @@ func TestStructuredLLMSummarizePreservesToolUseInputAndDisablesTools(t *testing.
 		t.Fatalf("expected 1 provider call, got %d", len(prov.calls))
 	}
 	call := prov.calls[0]
-	if call.System != CompactSystemPrompt {
-		t.Fatalf("system prompt = %q, want %q", call.System, CompactSystemPrompt)
+	if !strings.HasPrefix(call.System, CompactSystemPrompt) || !strings.Contains(call.System, "focus on config") {
+		t.Fatalf("system prompt does not contain compact contract and custom instructions: %q", call.System)
 	}
 	if len(call.Tools) != 0 {
 		t.Fatalf("compact summary exposed tools: %#v", call.Tools)
@@ -754,7 +754,7 @@ func TestStructuredLLMSummarizePreservesToolUseInputAndDisablesTools(t *testing.
 		t.Fatalf("compact summary should explicitly disable thinking, got %#v", call.Thinking)
 	}
 	if len(call.Messages) != len(messages)+1 {
-		t.Fatalf("provider messages = %d, want %d", len(call.Messages), len(messages)+1)
+		t.Fatalf("provider messages = %d, want %d plus runtime request", len(call.Messages), len(messages))
 	}
 	if call.Messages[0].ID != "assistant-1" {
 		t.Fatalf("message ID was not preserved: %#v", call.Messages[0])
@@ -767,12 +767,11 @@ func TestStructuredLLMSummarizePreservesToolUseInputAndDisablesTools(t *testing.
 	if toolResult.Content != `{"enabled":true}` {
 		t.Fatalf("tool_result content did not reach structured path: %#v", toolResult)
 	}
-	prompt := call.Messages[len(call.Messages)-1].GetText()
-	if !strings.Contains(prompt, "focus on config") {
-		t.Fatalf("custom instructions missing from structured prompt: %q", prompt)
+	if !strings.Contains(call.Messages[2].GetText(), `kind="summarization_request"`) {
+		t.Fatalf("runtime summary request missing: %#v", call.Messages[2])
 	}
-	if strings.Contains(prompt, "Here is the conversation to summarize:") {
-		t.Fatalf("structured prompt should not include flattened conversation marker: %q", prompt)
+	if strings.Contains(call.System, "Here is the conversation to summarize:") {
+		t.Fatalf("structured prompt should not include flattened conversation marker: %q", call.System)
 	}
 }
 
@@ -781,18 +780,59 @@ func TestParseCompactSummaryEnvelopeRequiresExactV2Schema(t *testing.T) {
 	if err != nil || valid != "kept fact" {
 		t.Fatalf("valid envelope = %q, %v", valid, err)
 	}
+	codeSummary, err := parseCompactSummaryEnvelope("{\"schema\":\"compact-summary/v2\",\"summary\":\"code:\\n```json\\n{\\\"value\\\":1}\\n```\"}")
+	if err != nil || !strings.Contains(codeSummary, `{"value":1}`) {
+		t.Fatalf("valid fenced code inside summary = %q, %v", codeSummary, err)
+	}
 	invalid := []string{
 		`<analysis>private reasoning</analysis><summary>fact</summary>`,
 		`{"schema":"compact-summary/v1","summary":"fact"}`,
 		`{"schema":"compact-summary/v2","summary":""}`,
 		`{"schema":"compact-summary/v2","summary":"fact","private":"leak"}`,
-		`{"schema":"compact-summary/v2","summary":"fact"} trailing`,
 		`{"schema":"compact-summary/v2","summary":"fact"}{"schema":"compact-summary/v2","summary":"other"}`,
+		"```json\n{\"schema\":\"compact-summary/v2\",\"summary\":\"fact\"}\n```",
+		`<analysis>private</analysis>{"schema":"compact-summary/v2","summary":"fact"}`,
+		`{"schema":"compact-summary/v2","summary":"fact"}<system-reminder>private</system-reminder>`,
+		`{"schema":"compact-summary/v1","summary":"bad"}{"schema":"compact-summary/v2","summary":"fact"}`,
+		`{"wrapper":{"schema":"compact-summary/v2","summary":"nested"}}`,
+		`[{"schema":"compact-summary/v2","summary":"nested"}]`,
+		`{"schema":"compact-summary/v2","summary":"<analysis>private</analysis>"}`,
 	}
 	for _, raw := range invalid {
 		if _, err := parseCompactSummaryEnvelope(raw); !IsCompactNoSummaryError(err) {
 			t.Errorf("parse %q error = %v, want strict schema rejection", raw, err)
 		}
+	}
+}
+
+func TestParseCompactSummaryEnvelopeAllowsOneExplanatoryAffix(t *testing.T) {
+	raw := "车辆补丁已落地，可靠性相关文件未改。现在运行完整 `npm test`；若有问题会按实际输出修正。" +
+		`{"schema":"compact-summary/v2","summary":"## Current Work\nOnly envelope memory."}` +
+		"\n摘要生成完毕。"
+
+	got, err := parseCompactSummaryEnvelope(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "## Current Work\nOnly envelope memory." {
+		t.Fatalf("summary absorbed explanatory text: %q", got)
+	}
+}
+
+func TestStructuredSummaryStreamExtractsOnlyUniqueV2Envelope(t *testing.T) {
+	fake := newSummaryProviderFake(summaryProviderTurn{Events: compactTextEvents(
+		"车辆补丁已落地，现在运行完整 `npm test`。" +
+			`{"schema":"compact-summary/v2","summary":"trusted compact memory"}`,
+	)})
+
+	got, err := NewLLMStructuredSummarizeFunc(fake)(context.Background(), []types.Message{
+		types.UserMessage("actual user request"),
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "trusted compact memory" {
+		t.Fatalf("stream summary = %q, want envelope summary only", got)
 	}
 }
 

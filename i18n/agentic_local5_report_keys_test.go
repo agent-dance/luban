@@ -6,7 +6,7 @@ import (
 )
 
 func TestAgenticLocal5SemanticCopyCoversEveryLanguage(t *testing.T) {
-	const expectedKeys = 53
+	const expectedKeys = 57
 	if got := len(agenticLocal5Keys); got != expectedKeys {
 		t.Fatalf("agentic local-five report key count = %d, want %d", got, expectedKeys)
 	}
@@ -51,6 +51,9 @@ func TestAgenticLocal5CriticalDefinitionsRemainExplicit(t *testing.T) {
 		KeyAgenticLocal5OptimizationInspectCursorCompatibility: {"requests:[]", "max_*", "two-call", "zero"},
 		KeyAgenticLocal5ConclusionNoComprehensiveSuperiority:   {"not demonstrated", "comprehensive superiority"},
 		KeyAgenticLocal5ConclusionMeasured:                     {"strict raw", "POSTs", "task duration", "estimated cost"},
+		KeyAgenticLocal5ConclusionMeasuredAdjudicated:          {"adjudicated", "POSTs", "task duration", "estimated cost"},
+		KeyAgenticLocal5ConclusionAdjudicationScope:            {"3/5", "587", "original 2/5", "not a rewrite"},
+		KeyAgenticLocal5StatusAdjudicatedPass:                  {"pass", "diagnostic adjudication"},
 		KeyAgenticLocal5EfficiencyPrimaryConclusion:            {"Tool wrappers", "end-to-end efficiency"},
 		KeyAgenticLocal5EfficiencyCompletionTail:               {"upper-bound", "cannot be assumed wholly wasted"},
 		KeyAgenticLocal5EfficiencyFlightProof:                  {"write-effect", "proof obligation", "5/43", "37/43"},
@@ -60,8 +63,9 @@ func TestAgenticLocal5CriticalDefinitionsRemainExplicit(t *testing.T) {
 		KeyAgenticLocal5LimitationMutableRawNoManifest:         {"mutable", "SHA-256 manifest"},
 		KeyAgenticLocal5Footer:                                 {"self-contained", "mutable", "not a content-addressed manifest"},
 		KeyAgenticLocal5CaveatSharedPassScope:                  {"both agents passed", "strict evaluator", "one observed run", "unconditional", "statistical superiority"},
+		KeyAgenticLocal5CaveatSharedPassAdjudicatedScope:       {"effective evaluator", "production-only", "unconditional", "statistical superiority"},
 		KeyAgenticLocal5CaveatSharedPassToolTaxonomy:           {"different tool catalogs", "diagnostic only", "not like-for-like"},
-		KeyAgenticLocal5SharedPassLongerSlower:                 {"input per POST is close", "provider time per POST", "output tokens per POST", "two-task sample", "does not establish causation"},
+		KeyAgenticLocal5SharedPassLongerSlower:                 {"input per POST is close", "provider time per POST", "output tokens per POST", "quality-conditioned sample", "does not establish causation"},
 	}
 	for key, fragments := range checks {
 		copy := Text(LangEN, key)
@@ -75,9 +79,11 @@ func TestAgenticLocal5CriticalDefinitionsRemainExplicit(t *testing.T) {
 
 func TestAgenticLocal5SharedPassScopeFormatsEveryLanguage(t *testing.T) {
 	for _, language := range AllLanguages() {
-		got := Format(language, KeyAgenticLocal5CaveatSharedPassScope, 2)
-		if !strings.Contains(got, "2") || strings.Contains(got, "%!") {
-			t.Errorf("Format(%s, shared-pass scope, 2) = %q", language.Code(), got)
+		for _, key := range []Key{KeyAgenticLocal5CaveatSharedPassScope, KeyAgenticLocal5CaveatSharedPassAdjudicatedScope} {
+			got := Format(language, key, 2)
+			if !strings.Contains(got, "2") || strings.Contains(got, "%!") {
+				t.Errorf("Format(%s, %q, 2) = %q", language.Code(), key, got)
+			}
 		}
 	}
 }

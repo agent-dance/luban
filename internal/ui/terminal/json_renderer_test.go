@@ -514,7 +514,7 @@ func TestJSONRenderer_AgenticMetricsAreContentFree(t *testing.T) {
 	}
 	r.RenderRequestMetrics(ctx, stream.EventRequestFailed, &stream.RequestStatusEvent{
 		RequestID: "request-metrics", StartedAt: "2026-07-26T00:00:00Z", EndedAt: "2026-07-26T00:00:01Z",
-		Attempt: 2, MaxRetries: 3, RetryCount: 1, FirstTokenMilliseconds: 120, TotalMilliseconds: 400,
+		Attempt: 2, MaxRetries: 3, RetryCount: 1, RetryKind: "stream", FirstTokenMilliseconds: 120, TotalMilliseconds: 400,
 		InputTokens: 100, CacheReadInputTokens: 80, CacheWriteInputTokens: 5, OutputTokens: 10,
 		Error: secret,
 	})
@@ -529,7 +529,7 @@ func TestJSONRenderer_AgenticMetricsAreContentFree(t *testing.T) {
 		t.Fatalf("metrics lines = %#v", lines)
 	}
 	request, ok := lines[0]["request_status"].(map[string]any)
-	if !ok || request["request_id"] != "request-metrics" || request["cache_read_input_tokens"] != float64(80) || request["failed"] != true {
+	if !ok || request["request_id"] != "request-metrics" || request["cache_read_input_tokens"] != float64(80) || request["failed"] != true || request["retry_kind"] != "stream" {
 		t.Fatalf("request metrics = %#v", request)
 	}
 	round, ok := lines[1]["tool_round"].(map[string]any)

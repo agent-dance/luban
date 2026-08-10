@@ -1,0 +1,12 @@
+{
+  "schema_version": "agentic-local-evaluation-adjudication/v1",
+  "instance_id": "skim-rs__skim-1044",
+  "agent": "codex",
+  "original_report": "report.json",
+  "effective_report": "effective-report.json",
+  "reason_code": "candidate_test_name_collision",
+  "excluded_candidate_paths": [
+    "tests/options.rs"
+  ],
+  "effective_resolved": true
+}

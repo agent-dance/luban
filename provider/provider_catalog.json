@@ -206,35 +206,47 @@
     "CostCurrency": "USD"
   },
   {
-    "APIFormat": "chat-completions",
-    "CacheReadPer1M": 0.02,
+    "APIFormat": "responses",
+    "CacheReadPer1M": 0.0028,
     "CanReason": true,
     "CanSeeImages": false,
     "CanUseTools": true,
     "ContextWindow": 1048576,
-    "CostCurrency": "CNY",
-    "CostPer1MIn": 1,
-    "CostPer1MOut": 2,
+    "CostCurrency": "USD",
+    "CostPer1MIn": 0.14,
+    "CostPer1MOut": 0.28,
+    "DefaultReasoningEffort": "high",
     "ID": "deepseek-v4-flash",
     "IsDefault": true,
     "MaxOutput": 393216,
     "Name": "DeepSeek V4 Flash",
-    "Provider": "deepseek"
+    "Provider": "deepseek",
+    "ReasoningEfforts": [
+      "low",
+      "high",
+      "max"
+    ]
   },
   {
     "APIFormat": "chat-completions",
-    "CacheReadPer1M": 0.025,
+    "CacheReadPer1M": 0.003625,
     "CanReason": true,
     "CanSeeImages": false,
     "CanUseTools": true,
     "ContextWindow": 1048576,
-    "CostCurrency": "CNY",
-    "CostPer1MIn": 3,
-    "CostPer1MOut": 6,
+    "CostCurrency": "USD",
+    "CostPer1MIn": 0.435,
+    "CostPer1MOut": 0.87,
+    "DefaultReasoningEffort": "high",
     "ID": "deepseek-v4-pro",
     "MaxOutput": 393216,
     "Name": "DeepSeek V4 Pro",
-    "Provider": "deepseek"
+    "Provider": "deepseek",
+    "ReasoningEfforts": [
+      "low",
+      "high",
+      "max"
+    ]
   },
   {
     "APIFormat": "chat-completions",

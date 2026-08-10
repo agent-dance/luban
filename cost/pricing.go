@@ -21,8 +21,7 @@ type ModelPricing struct {
 //
 // To add a new model: append an entry with its canonical name prefix.
 var modelPricingTable = []modelPricingEntry{
-	// DeepSeek's global API publishes these USD rates. The model catalog also
-	// carries the China-platform native-CNY prices for provider selection UI.
+	// DeepSeek's global API and the provider catalog use these USD rates.
 	{prefix: "deepseek-v4-flash", pricing: ModelPricing{
 		InputPerMtok:     0.14,
 		OutputPerMtok:    0.28,

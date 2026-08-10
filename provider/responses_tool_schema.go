@@ -17,7 +17,7 @@ func convertToolsToResponsesAPIForSemantics(tools []types.ToolDefinition, strict
 		if t.IsCustom() {
 			tool := map[string]any{
 				"type":        "custom",
-				"name":        t.Name,
+				"name":        responsesToolNameForSemantics(semantics, t.Name, true),
 				"description": t.Description,
 			}
 			if t.Format != nil {
@@ -36,7 +36,7 @@ func convertToolsToResponsesAPIForSemantics(tools []types.ToolDefinition, strict
 		}
 		strict := strictMode && t.Strict
 		var parameters any = schema
-		if semantics == ResponsesSemanticsOpenAIPublic {
+		if semantics == ResponsesSemanticsOpenAIPublic || semantics == ResponsesSemanticsDeepSeek {
 			parameters = canonicalOpenAIResponsesToolSchema(schema, strict)
 		}
 		tool := map[string]any{
@@ -51,6 +51,35 @@ func convertToolsToResponsesAPIForSemantics(tools []types.ToolDefinition, strict
 		result = append(result, tool)
 	}
 	return result
+}
+
+func responsesCustomToolDefinitionsSupported(semantics ResponsesSemantics, model string, definitions []types.ToolDefinition) bool {
+	if !supportsOpenAIResponsesCustomTools(semantics, model) {
+		return false
+	}
+	if semantics != ResponsesSemanticsDeepSeek {
+		return true
+	}
+	for _, definition := range definitions {
+		if definition.IsCustom() && definition.Name != "ApplyPatch" && definition.Name != "apply_patch" {
+			return false
+		}
+	}
+	return true
+}
+
+func responsesToolNameForSemantics(semantics ResponsesSemantics, name string, custom bool) string {
+	if semantics == ResponsesSemanticsDeepSeek && custom && (name == "ApplyPatch" || name == "apply_patch") {
+		return "apply_patch"
+	}
+	return name
+}
+
+func responsesLocalToolNameForSemantics(semantics ResponsesSemantics, name string, custom bool) string {
+	if semantics == ResponsesSemanticsDeepSeek && custom && name == "apply_patch" {
+		return "ApplyPatch"
+	}
+	return name
 }
 
 func definitionsHaveCustomTools(definitions []types.ToolDefinition) bool {

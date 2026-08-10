@@ -1,0 +1,123 @@
+diff --git a/crates/napi/src/bindgen_runtime/iterator.rs b/crates/napi/src/bindgen_runtime/iterator.rs
+index d28d626..50dbfae 100644
+--- a/crates/napi/src/bindgen_runtime/iterator.rs
++++ b/crates/napi/src/bindgen_runtime/iterator.rs
+@@ -232,6 +232,93 @@ pub unsafe extern "C" fn symbol_generator<T: Generator>(
+     "Define properties on Generator object failed"
+   );
+ 
++  // Iterator helpers are exposed through Iterator.prototype in runtimes that
++  // implement the proposal (Node.js 22+). N-API objects otherwise inherit
++  // directly from Object.prototype, so opt into the native iterator prototype
++  // when it is available while retaining compatibility with older runtimes.
++  let mut global = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe { sys::napi_get_global(env, &mut global) },
++    "Get global object failed"
++  );
++  let mut iterator_constructor = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe {
++      sys::napi_get_named_property(
++        env,
++        global,
++        c"Iterator".as_ptr().cast(),
++        &mut iterator_constructor,
++      )
++    },
++    "Get Iterator constructor failed"
++  );
++  let mut iterator_constructor_type = sys::ValueType::napi_undefined;
++  check_status_or_throw!(
++    env,
++    unsafe { sys::napi_typeof(env, iterator_constructor, &mut iterator_constructor_type) },
++    "Get Iterator constructor type failed"
++  );
++  if iterator_constructor_type == sys::ValueType::napi_function {
++    let mut iterator_prototype = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_get_named_property(
++          env,
++          iterator_constructor,
++          c"prototype".as_ptr().cast(),
++          &mut iterator_prototype,
++        )
++      },
++      "Get Iterator prototype failed"
++    );
++    let mut object_constructor = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_get_named_property(
++          env,
++          global,
++          c"Object".as_ptr().cast(),
++          &mut object_constructor,
++        )
++      },
++      "Get Object constructor failed"
++    );
++    let mut set_prototype_of = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_get_named_property(
++          env,
++          object_constructor,
++          c"setPrototypeOf".as_ptr().cast(),
++          &mut set_prototype_of,
++        )
++      },
++      "Get Object.setPrototypeOf failed"
++    );
++    let arguments = [generator_object, iterator_prototype];
++    let mut set_prototype_result = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_call_function(
++          env,
++          object_constructor,
++          set_prototype_of,
++          arguments.len(),
++          arguments.as_ptr(),
++          &mut set_prototype_result,
++        )
++      },
++      "Set Generator object prototype failed"
++    );
++  }
++
+   generator_object
+ }
+ 
+diff --git a/examples/napi/__tests__/generator.spec.ts b/examples/napi/__tests__/generator.spec.ts
+index c7c52c9..adf2a40 100644
+--- a/examples/napi/__tests__/generator.spec.ts
++++ b/examples/napi/__tests__/generator.spec.ts
+@@ -59,3 +59,20 @@ for (const [index, factory] of [
+     })
+   })
+ }
++
++test('should inherit native iterator helpers when available', (t) => {
++  if (typeof Iterator === 'undefined') {
++    t.pass()
++    return
++  }
++
++  const iterator = new Fib()[Symbol.iterator]()
++  const iteratorWithHelpers = iterator as typeof iterator & {
++    [Symbol.iterator](): unknown
++    take(limit: number): { toArray(): number[] }
++  }
++
++  t.is(Object.getPrototypeOf(iterator), Iterator.prototype)
++  t.is(iteratorWithHelpers[Symbol.iterator](), iterator)
++  t.deepEqual(iteratorWithHelpers.take(3).toArray(), [1, 1, 2])
++})

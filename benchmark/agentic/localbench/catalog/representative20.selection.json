@@ -1,0 +1,72 @@
+{
+  "schema_version": "agentic-local-selection/v1",
+  "dataset": "SWE-bench-Live/MultiLang",
+  "dataset_revision": "608f7ae9ab8ea1f9f0d030fe04562cf6bd1a0c8b",
+  "seed": "representative20-v1",
+  "parquet_sha256": {
+    "cpp": "5afc7db10f28232cc9c13de316ecec146f2da4c76de3bb460b934f5e271b0ec0",
+    "go": "76d2b5dff0f3fac8303d30fa85495539e487d25974ad7c21cd21a545cb4756e2",
+    "java": "cc04473f299dbdbbb6c4061da3c68367cd460e28e40c04234f4887e0fc234220",
+    "rust": "ea90be54a621c0c0280b77d5e2dee9650bc1d4ae087f9b9b06af821bcd8662d7",
+    "ts": "7e23783e27230c9cfab1035690035c25523043d6af635bc78da3fd2010c32714"
+  },
+  "rules": {
+    "preserved_prefix_count": 5,
+    "target_per_language": 4,
+    "minimum_FAIL_TO_PASS": 1,
+    "maximum_FAIL_TO_PASS": 50,
+    "minimum_PASS_TO_PASS": 1,
+    "maximum_PASS_TO_PASS": 1000,
+    "required_nonempty_fields": [
+      "instance_id",
+      "repo",
+      "problem_statement",
+      "patch",
+      "test_patch",
+      "docker_image"
+    ],
+    "unique_repository": true,
+    "ranking": "sha256(seed + NUL + revision + NUL + language + NUL + instance_id)",
+    "addition_order": "round-robin: cpp, go, java, rust, ts"
+  },
+  "ordered_instance_ids": [
+    "danielmiessler__Fabric-2098",
+    "openai__openai-agents-js-375",
+    "kubernetes__kube-state-metrics-2926",
+    "skim-rs__skim-1044",
+    "include-what-you-use__include-what-you-use-1991",
+    "ninja-build__ninja-2749",
+    "charmbracelet__crush-766",
+    "floci-io__floci-112",
+    "eza-community__eza-1664",
+    "assistant-ui__assistant-ui-3866",
+    "actor-framework__actor-framework-2300",
+    "lima-vm__lima-3923",
+    "springdoc__springdoc-openapi-3051",
+    "napi-rs__napi-rs-2784",
+    "antvis__G2-7076",
+    "apache__kvrocks-3084",
+    "gitlab4j__gitlab4j-api-1266",
+    "biomejs__biome-9995",
+    "mikro-orm__mikro-orm-7464",
+    "opendataloader-project__opendataloader-pdf-383"
+  ],
+  "addition_ranks": {
+    "ninja-build__ninja-2749": "1177e579af7369c7581f9eb99464eb40732d32fdd6127aca62ee81fd7e03cdb6",
+    "charmbracelet__crush-766": "02b5aa89156416182c47a75ccf964f99f89c37752936a12dd0aedd938ef44e47",
+    "floci-io__floci-112": "07433b411781520a31378d3ad053fb99c519b0048d8ca46a905766a7b16b534d",
+    "eza-community__eza-1664": "29a15ed3a004bbc160faaea20ddfe60d73f70ab921c3b30744f7f8e395beb94f",
+    "assistant-ui__assistant-ui-3866": "028e5cf32815ee24d7f378c30cf659d6d45e9b52800b53f2fc6628bcab9eabc0",
+    "actor-framework__actor-framework-2300": "241f4d6e765a38c3d63ddaaa718b4aa5cfb114cf812accd29b189b1333c7d00d",
+    "lima-vm__lima-3923": "048d2381941531975926934676b9a24d0ce300850ea4ecfcccc6d686cb392228",
+    "springdoc__springdoc-openapi-3051": "085e7b1d5a7a356bee67af2afddf7fdebaed32afff2be13c82e44092de4baa2f",
+    "napi-rs__napi-rs-2784": "33c499a95f6e38b80399b8ecadbf627792053f261b8dfa2a900742f8e3e9fff6",
+    "antvis__G2-7076": "0f4cd67d7cb7ff41979a200da29064e6e5de79d10916bc8db23253b946e93071",
+    "apache__kvrocks-3084": "3db47af1bfcc20daef9ee7ea8f5344214520844d2ee97ab604d9fbc70a683275",
+    "gitlab4j__gitlab4j-api-1266": "09f5aad1a11fce38e7494fb8460503ff74f1af156aee63491587b0d6aeb57ef1",
+    "biomejs__biome-9995": "47126ddb1d8be39ac6740ea74e127e652f0a96ef647c532241c30864ced4f34e",
+    "mikro-orm__mikro-orm-7464": "25b8065a5143f8c7e926cf50ea27936e0283329ee9024c72771116abbb139226",
+    "opendataloader-project__opendataloader-pdf-383": "28f52d3664015a16518a308e83f326f18075bc9812394b8c699aad653adf2dcb"
+  },
+  "catalog_sha256": "07f029078b523fb095ab2ff02c66214f5db11573370b2bb552a456203b4f40a1"
+}

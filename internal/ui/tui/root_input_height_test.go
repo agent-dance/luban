@@ -21,3 +21,22 @@ func TestTextAreaVisibleLinesClampsEmptyToOneLine(t *testing.T) {
 		t.Fatalf("textAreaVisibleLines(empty) = %d, want 1", got)
 	}
 }
+
+func TestTerminalLayoutHelpersKeepGraphemeClustersAtomic(t *testing.T) {
+	if got := textAreaVisibleLines("✏️✏️", 2); got != 2 {
+		t.Fatalf("variation-selector graphemes used %d lines, want 2", got)
+	}
+
+	lines := wrapTerminalCellLines("✏️A", 2)
+	if len(lines) != 2 || lines[0] != "✏️" || lines[1] != "A" {
+		t.Fatalf("wrapTerminalCellLines split a grapheme: %#v", lines)
+	}
+
+	const mixed = "👩🏽‍💻A"
+	if got := terminalCellWidth(mixed); got != 3 {
+		t.Fatalf("terminalCellWidth(%q) = %d, want 3", mixed, got)
+	}
+	if got := truncateTerminalCells(mixed, 3); got != mixed {
+		t.Fatalf("truncateTerminalCells changed an exact-width grapheme string: %q", got)
+	}
+}

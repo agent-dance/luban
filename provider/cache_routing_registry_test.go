@@ -61,9 +61,9 @@ func TestBuiltinDeepSeekUsesCredentialScopedCacheRouting(t *testing.T) {
 	if !ok {
 		t.Fatalf("DeepSeek factory returned %T, want *RetryProvider", created)
 	}
-	raw, ok := retry.inner.(*OpenAIProvider)
+	raw, ok := retry.inner.(*ResponsesProvider)
 	if !ok {
-		t.Fatalf("DeepSeek retry provider wraps %T, want *OpenAIProvider", retry.inner)
+		t.Fatalf("DeepSeek retry provider wraps %T, want *ResponsesProvider", retry.inner)
 	}
 	want := promptCacheUserNamespace(Config{ProviderName: "deepseek", APIKey: "test-account-key"})
 	if raw.cacheUserNamespace == "" || raw.cacheUserNamespace != want {

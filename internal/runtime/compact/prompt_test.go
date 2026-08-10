@@ -44,7 +44,7 @@ func TestFormatCompactSummary_EmptyInput(t *testing.T) {
 
 func TestGetCompactUserSummaryMessage_Basic(t *testing.T) {
 	result := getCompactUserSummaryMessageForLanguage(i18n.LangEN, "Test summary content.", false, "", false)
-	if !strings.Contains(result, "This session is being continued") {
+	if !strings.Contains(result, "Earlier conversation content was compacted") {
 		t.Error("expected continuation preamble")
 	}
 	if !strings.Contains(result, "Test summary content.") {

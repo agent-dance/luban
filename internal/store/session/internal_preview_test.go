@@ -19,3 +19,17 @@ func TestDerivePreviewTextSkipsRuntimeControlMessages(t *testing.T) {
 		t.Fatalf("forged descriptor disappeared from preview: %q", got)
 	}
 }
+
+func TestDerivePreviewTextSkipsMalformedToolTurn(t *testing.T) {
+	malformed := types.Message{Role: types.RoleAssistant, Content: []types.ContentBlock{
+		types.TextBlock{Type: types.ContentTypeText, Text: "I am about to inspect"},
+		types.InvalidToolUseBlock{
+			Type: types.ContentTypeInvalidToolUse, ID: "bad", Name: "Inspect",
+			RawInput: "secret malformed payload", InputBytes: 24, InputDigest: "sha256:test",
+			FailureKind: types.ToolInputFailureInvalidJSON, Recoverable: true,
+		},
+	}}
+	if got := derivePreviewText([]types.Message{types.UserMessage("human prompt"), malformed}); got != "human prompt" {
+		t.Fatalf("malformed tool turn became session preview: %q", got)
+	}
+}

@@ -2,8 +2,10 @@ package localbench
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -161,9 +163,10 @@ func TestRunCreatesUniqueDateGroupedStructuredReport(t *testing.T) {
 }
 
 func TestCheckedInCodexBaselineIsCompleteAndVersioned(t *testing.T) {
+	const checkedInBaselineTaskCount = 5
 	repositoryRoot := filepath.Clean(filepath.Join("..", "..", ".."))
 	resultsRoot := filepath.Join(repositoryRoot, "benchmark-results")
-	tasks, err := loadSelection(CatalogSize())
+	tasks, err := loadSelection(checkedInBaselineTaskCount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,14 +174,18 @@ func TestCheckedInCodexBaselineIsCompleteAndVersioned(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if baseline.snapshot.Binary.Version == "" || baseline.snapshot.Aggregate.RunsObserved != CatalogSize() || baseline.snapshot.Aggregate.EvaluationsObserved != CatalogSize() {
+	if baseline.snapshot.Binary.Version == "" || baseline.snapshot.Aggregate.RunsObserved != checkedInBaselineTaskCount || baseline.snapshot.Aggregate.EvaluationsObserved != checkedInBaselineTaskCount || baseline.snapshot.Aggregate.Resolved != 3 {
 		t.Fatalf("checked-in baseline = %#v", baseline.snapshot)
+	}
+	if !resolvedEvaluation(baseline.snapshot.Evaluations, "skim-rs__skim-1044", "codex") {
+		t.Fatalf("checked-in baseline does not include the skim adjudication")
 	}
 	html, err := os.ReadFile(filepath.Join(resultsRoot, currentCodexBaselineHTML))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(html), baseline.snapshot.Binary.Version) || strings.Contains(string(html), repositoryRoot) {
+	if !strings.Contains(string(html), baseline.snapshot.Binary.Version) || !strings.Contains(string(html), "3/5 (60.0%)") ||
+		!strings.Contains(string(html), "通过（诊断裁决）") || strings.Contains(string(html), repositoryRoot) {
 		t.Fatalf("checked-in Codex report does not identify its version with relative paths")
 	}
 }
@@ -265,7 +272,7 @@ func countString(values []string, target string) int {
 }
 
 func TestCatalogSelectionUsesFrozenRepresentativePrefix(t *testing.T) {
-	tasks, err := loadSelection(3)
+	tasks, err := loadSelection(CatalogSize())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,5 +280,72 @@ func TestCatalogSelectionUsesFrozenRepresentativePrefix(t *testing.T) {
 		if task.InstanceID != representativeOrder[index] {
 			t.Fatalf("task[%d] = %q", index, task.InstanceID)
 		}
+	}
+	counts := map[string]int{}
+	for _, task := range tasks {
+		counts[task.Language]++
+	}
+	for _, language := range []string{"cpp", "go", "java", "rust", "ts"} {
+		if counts[language] != 4 {
+			t.Errorf("%s task count = %d, want 4", language, counts[language])
+		}
+	}
+}
+
+func TestRepresentative20CatalogMatchesFrozenSelectionManifest(t *testing.T) {
+	catalogRaw, err := runtimeAssets.ReadFile("catalog/representative20.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestRaw, err := runtimeAssets.ReadFile("catalog/representative20.selection.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog []struct {
+		InstanceID       string   `json:"instance_id"`
+		Language         string   `json:"language"`
+		Repository       string   `json:"repo"`
+		BaseCommit       string   `json:"base_commit"`
+		ProblemStatement string   `json:"problem_statement"`
+		Patch            string   `json:"patch"`
+		TestPatch        string   `json:"test_patch"`
+		DockerImage      string   `json:"docker_image"`
+		FailToPass       []string `json:"FAIL_TO_PASS"`
+		PassToPass       []string `json:"PASS_TO_PASS"`
+	}
+	if err := json.Unmarshal(catalogRaw, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	var manifest struct {
+		DatasetRevision   string            `json:"dataset_revision"`
+		OrderedInstanceID []string          `json:"ordered_instance_ids"`
+		ParquetSHA256     map[string]string `json:"parquet_sha256"`
+		CatalogSHA256     string            `json:"catalog_sha256"`
+	}
+	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
+		t.Fatal(err)
+	}
+	if len(catalog) != CatalogSize() || len(manifest.OrderedInstanceID) != CatalogSize() {
+		t.Fatalf("catalog=%d manifest=%d want=%d", len(catalog), len(manifest.OrderedInstanceID), CatalogSize())
+	}
+	if manifest.DatasetRevision != DatasetRevision || fmt.Sprintf("%x", sha256.Sum256(catalogRaw)) != manifest.CatalogSHA256 {
+		t.Fatalf("manifest identity does not match the embedded catalog")
+	}
+	if len(manifest.ParquetSHA256) != 5 {
+		t.Fatalf("parquet hashes = %d, want 5", len(manifest.ParquetSHA256))
+	}
+	repositories := map[string]bool{}
+	for index, task := range catalog {
+		if task.InstanceID != representativeOrder[index] || task.InstanceID != manifest.OrderedInstanceID[index] {
+			t.Fatalf("catalog[%d] identity = %q", index, task.InstanceID)
+		}
+		if task.Repository == "" || task.BaseCommit == "" || task.ProblemStatement == "" || task.Patch == "" || task.TestPatch == "" || task.DockerImage == "" || len(task.FailToPass) < 1 || len(task.FailToPass) > 50 || len(task.PassToPass) < 1 || len(task.PassToPass) > 1000 {
+			t.Errorf("catalog[%d] is incomplete or outside the frozen bounds", index)
+		}
+		repository := strings.ToLower(task.Repository)
+		if repositories[repository] {
+			t.Errorf("catalog[%d] repeats repository %q", index, task.Repository)
+		}
+		repositories[repository] = true
 	}
 }

@@ -17,7 +17,7 @@ func TestCompactSummaryVisibleCopyUsesRequestedLanguage(t *testing.T) {
 	const transcript = "/tmp/raw/transcript.jsonl"
 	english := getCompactUserSummaryMessageForLanguage(i18n.LangEN, rawSummary, true, transcript, true)
 	for _, want := range []string{
-		"This session is being continued from a previous conversation that ran out of context.",
+		"Earlier conversation content was compacted into the summary below.",
 		"Summary:\n" + rawSummary,
 		"read the full transcript at: " + transcript,
 		"Recent messages are preserved verbatim.",
@@ -29,7 +29,7 @@ func TestCompactSummaryVisibleCopyUsesRequestedLanguage(t *testing.T) {
 	}
 
 	chinese := getCompactUserSummaryMessageForLanguage(i18n.LangZH, rawSummary, true, transcript, true)
-	if strings.Contains(chinese, "This session is being continued") || !strings.Contains(chinese, rawSummary) || !strings.Contains(chinese, transcript) {
+	if strings.Contains(chinese, "Earlier conversation content was compacted") || !strings.Contains(chinese, rawSummary) || !strings.Contains(chinese, transcript) {
 		t.Fatalf("Chinese summary wrapper was not localized or lost raw values:\n%s", chinese)
 	}
 	if !strings.Contains(chinese, i18n.Text(i18n.LangZH, i18n.KeyCompactSummaryHeading)) {

@@ -542,6 +542,24 @@ func TestTextAreaMultiClickRequiresSameCellWithinInterval(t *testing.T) {
 	}
 }
 
+func TestTextAreaPositionAtPointHasNoCursorSideEffects(t *testing.T) {
+	ta := NewTextArea(WithTextAreaWidth(5))
+	ta.SetText("abcd中文")
+	ta.SetCursorPosition(0)
+	content := renderTextAreaForMouseTest(ta, 10, 3)
+
+	position, ok := ta.PositionAtPoint(content.X+2, content.Y+1)
+	if !ok {
+		t.Fatal("visible wrapped cell was not resolved")
+	}
+	if want := len([]rune("abcd中")); position != want {
+		t.Fatalf("wrapped position = %d, want %d", position, want)
+	}
+	if got := ta.CursorPosition(); got != 0 {
+		t.Fatalf("position lookup moved cursor to %d", got)
+	}
+}
+
 func renderTextAreaForMouseTest(ta *TextArea, width, height int) Rect {
 	element := ta.Render(nil)
 	element.Render(NewBuffer(width, height), width, height)

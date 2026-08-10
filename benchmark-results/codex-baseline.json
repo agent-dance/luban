@@ -354,21 +354,25 @@
       "instance_id": "skim-rs__skim-1044",
       "language": "rust",
       "agent": "codex",
-      "resolved": false,
-      "elapsed_seconds": 803.012,
+      "resolved": true,
+      "adjudicated": true,
+      "elapsed_seconds": 277.103,
       "FAIL_TO_PASS": {
         "expected": 1,
-        "failed": [],
-        "missing": [
+        "passed": [
           "skim::options::opt_border_none"
-        ]
+        ],
+        "failed": [],
+        "missing": []
       },
       "PASS_TO_PASS": {
         "expected": 587,
+        "passed_count": 587,
         "failed": [],
-        "missing_count": 587
+        "missing_count": 0
       },
-      "evidence_root": "raw/evaluation/skim-rs__skim-1044/codex"
+      "evidence_root": "raw/evaluation/skim-rs__skim-1044/codex",
+      "evidence_file": "effective-report.json"
     },
     {
       "instance_id": "include-what-you-use__include-what-you-use-1991",
@@ -511,7 +515,7 @@
     "tasks_selected": 5,
     "runs_observed": 5,
     "evaluations_observed": 5,
-    "resolved": 2,
+    "resolved": 3,
     "task_duration_seconds": 2285.88,
     "provider_request_seconds": 2264.66987,
     "llm_calls": 127,

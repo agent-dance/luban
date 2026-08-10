@@ -195,23 +195,26 @@ func TestProcessStreamInvalidToolJSON(t *testing.T) {
 	if !gotWarning {
 		t.Error("expected warning event for invalid JSON")
 	}
-	// H12: malformed JSON should produce a text block instead of a tool_use block
+	// Malformed JSON is durable audit state, never assistant prose and never an
+	// executable tool call.
 	uses := msg.GetToolUses()
 	if len(uses) != 0 {
 		t.Fatalf("expected 0 tool uses for bad JSON (should be skipped), got %d", len(uses))
 	}
-	// Should have a text block with the skip message
-	found := false
-	for _, block := range msg.Content {
-		if tb, ok := block.(types.TextBlock); ok {
-			if strings.Contains(tb.Text, "skipped: malformed input JSON") {
-				found = true
-				break
-			}
-		}
+	invalid := msg.GetInvalidToolUses()
+	if len(invalid) != 1 {
+		t.Fatalf("invalid tool uses = %#v, want one structured failure", invalid)
 	}
-	if !found {
-		t.Error("expected text block with skip message for malformed JSON tool")
+	if invalid[0].Name != "Bash" || invalid[0].ID != "tool_bad" || invalid[0].FailureKind != types.ToolInputFailureInvalidJSON || !invalid[0].Recoverable {
+		t.Fatalf("invalid tool use = %#v", invalid[0])
+	}
+	if invalid[0].RawInput != `{invalid json` || invalid[0].InputBytes != len(`{invalid json`) || !strings.HasPrefix(invalid[0].InputDigest, "sha256:") {
+		t.Fatalf("invalid tool diagnostic = %#v", invalid[0])
+	}
+	for _, block := range msg.Content {
+		if _, ok := block.(types.TextBlock); ok {
+			t.Fatalf("malformed tool input was converted into assistant prose: %#v", msg.Content)
+		}
 	}
 }
 

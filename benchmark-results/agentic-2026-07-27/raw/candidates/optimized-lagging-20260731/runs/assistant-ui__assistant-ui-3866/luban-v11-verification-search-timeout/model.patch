@@ -1,0 +1,79 @@
+diff --git a/.changeset/friendly-chains-share-state.md b/.changeset/friendly-chains-share-state.md
+new file mode 100644
+index 0000000..04cd728
+--- /dev/null
++++ b/.changeset/friendly-chains-share-state.md
+@@ -0,0 +1,5 @@
++---
++"@assistant-ui/react-langchain": patch
++---
++
++feat: add `useLangChainState` for reading custom LangGraph state values from the existing stream runtime
+diff --git a/packages/react-langchain/src/index.ts b/packages/react-langchain/src/index.ts
+index 5ae6d4b..87d44e4 100644
+--- a/packages/react-langchain/src/index.ts
++++ b/packages/react-langchain/src/index.ts
+@@ -1,6 +1,7 @@
+ export {
+   useStreamRuntime,
+   useLangChainInterruptState,
++  useLangChainState,
+   useLangChainSubmit,
+ } from "./useStreamRuntime";
+ export type { UseStreamRuntimeOptions } from "./useStreamRuntime";
+diff --git a/packages/react-langchain/src/useStreamRuntime.ts b/packages/react-langchain/src/useStreamRuntime.ts
+index f94b45b..8958bea 100644
+--- a/packages/react-langchain/src/useStreamRuntime.ts
++++ b/packages/react-langchain/src/useStreamRuntime.ts
+@@ -25,6 +25,7 @@ const symbolLangChainRuntimeExtras = Symbol("langchain-runtime-extras");
+ 
+ type LangChainRuntimeExtras = {
+   [symbolLangChainRuntimeExtras]: true;
++  values: unknown;
+   interrupt: { value?: unknown } | undefined;
+   interrupts: readonly { value?: unknown }[];
+   submit: (
+@@ -180,11 +181,12 @@ const useStreamThreadRuntime = ({
+   const extras = useMemo(
+     (): LangChainRuntimeExtras => ({
+       [symbolLangChainRuntimeExtras]: true,
++      values: stream.values,
+       interrupt: stream.interrupt,
+       interrupts: stream.interrupts,
+       submit: stream.submit,
+     }),
+-    [stream.interrupt, stream.interrupts, stream.submit],
++    [stream.values, stream.interrupt, stream.interrupts, stream.submit],
+   );
+ 
+   // biome-ignore lint/correctness/useHookAtTopLevel: intentional conditional/nested hook usage
+@@ -282,6 +284,29 @@ export const useLangChainInterruptState = () => {
+   });
+ };
+ 
++/**
++ * Read a custom state value from the current LangGraph thread.
++ */
++export function useLangChainState<T>(key: string): T | undefined;
++export function useLangChainState<T>(key: string, defaultValue: T): T;
++export function useLangChainState<T>(
++  key: string,
++  defaultValue?: T,
++): T | undefined {
++  return useAuiState((s) => {
++    const extras = s.thread.extras;
++    if (!extras) return defaultValue;
++
++    const values = asLangChainRuntimeExtras(extras).values;
++    const value =
++      typeof values === "object" && values !== null
++        ? (values as Record<string, unknown>)[key]
++        : undefined;
++
++    return value === undefined ? defaultValue : (value as T);
++  });
++}
++
+ /**
+  * Returns a function to submit raw state updates to the LangGraph agent,
+  * bypassing the normal message flow. Useful for sending interrupt resume

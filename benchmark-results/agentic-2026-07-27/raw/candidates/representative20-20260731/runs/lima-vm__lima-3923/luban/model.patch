@@ -1,0 +1,73 @@
+diff --git a/cmd/limactl/prune.go b/cmd/limactl/prune.go
+index ee1196e..6ef9e50 100644
+--- a/cmd/limactl/prune.go
++++ b/cmd/limactl/prune.go
+@@ -80,6 +80,9 @@ func knownLocations(ctx context.Context) (map[string]limatype.File, error) {
+ 		if err != nil {
+ 			return nil, err
+ 		}
++		if instance.Config == nil {
++			return nil, fmt.Errorf("instance %q has no valid configuration: %v", instanceName, instance.Errors)
++		}
+ 		maps.Copy(locations, locationsFromLimaYAML(instance.Config))
+ 	}
+ 
+@@ -107,6 +110,9 @@ func knownLocations(ctx context.Context) (map[string]limatype.File, error) {
+ 
+ func locationsFromLimaYAML(y *limatype.LimaYAML) map[string]limatype.File {
+ 	locations := make(map[string]limatype.File)
++	if y == nil {
++		return locations
++	}
+ 	for _, f := range y.Images {
+ 		locations[downloader.CacheKey(f.Location)] = f.File
+ 		if f.Kernel != nil {
+diff --git a/pkg/driver/external/server/server.go b/pkg/driver/external/server/server.go
+index a6068be..92e0c3c 100644
+--- a/pkg/driver/external/server/server.go
++++ b/pkg/driver/external/server/server.go
+@@ -198,14 +198,14 @@ func handlePreConfiguredDriverAction(driver driver.Driver) {
+ 	}
+ 
+ 	config := &payload.Config
+-	if err := driver.AcceptConfig(config, payload.FilePath); err != nil {
+-		fmt.Fprintf(os.Stderr, "Failed to accept config: %v", err)
+-	}
+-
+ 	if err := driver.FillConfig(config, payload.FilePath); err != nil {
+ 		fmt.Fprintf(os.Stderr, "Failed to fill config: %v", err)
+ 	}
+ 
++	if err := driver.AcceptConfig(config, payload.FilePath); err != nil {
++		fmt.Fprintf(os.Stderr, "Failed to accept config: %v", err)
++	}
++
+ 	if err := encoder.Encode(*config); err != nil {
+ 		fmt.Fprintf(os.Stderr, "Error encoding response: %v", err)
+ 	}
+diff --git a/pkg/driverutil/vm.go b/pkg/driverutil/vm.go
+index 4e54235..95ac7a9 100644
+--- a/pkg/driverutil/vm.go
++++ b/pkg/driverutil/vm.go
+@@ -41,10 +41,19 @@ func validateConfigAgainstDriver(ctx context.Context, y *limatype.LimaYAML, file
+ 		return handlePreConfiguredDriverAction(ctx, y, extDriver.Path, filePath)
+ 	}
+ 
+-	if err := intDriver.AcceptConfig(y, filePath); err != nil {
++	return fillAndAcceptConfig(intDriver, y, filePath)
++}
++
++type configDriver interface {
++	FillConfig(cfg *limatype.LimaYAML, filePath string) error
++	AcceptConfig(cfg *limatype.LimaYAML, filePath string) error
++}
++
++func fillAndAcceptConfig(intDriver configDriver, y *limatype.LimaYAML, filePath string) error {
++	if err := intDriver.FillConfig(y, filePath); err != nil {
+ 		return err
+ 	}
+-	if err := intDriver.FillConfig(y, filePath); err != nil {
++	if err := intDriver.AcceptConfig(y, filePath); err != nil {
+ 		return err
+ 	}
+ 

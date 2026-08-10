@@ -25,6 +25,10 @@ from urllib.parse import urlsplit
 
 MODEL = "gpt-5.6-sol"
 EFFORT = "xhigh"
+UPSTREAM_IDLE_TIMEOUT_SECONDS = max(
+    1.0,
+    float(os.environ.get("AGENTIC_BENCHMARK_UPSTREAM_IDLE_TIMEOUT_SECONDS", "90")),
+)
 PRICE = {"input": 5.0, "cached": 0.5, "cache_write": 6.25, "output": 30.0}
 SAFE_ENV = {
     "PATH", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE",
@@ -69,9 +73,21 @@ class RequestMeter:
         self.output = output
         self.records: list[dict] = []
         self.lock = threading.Lock()
+        self.connections: set[http.client.HTTPSConnection] = set()
         self.sequence = 0
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler())
+        self.server.daemon_threads = True
+        self.server.block_on_close = False
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.output.parent.mkdir(parents=True, exist_ok=True)
+        self.output.write_text("", encoding="utf-8")
+
+    def _record(self, record: dict) -> None:
+        encoded = json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+        with self.lock:
+            self.records.append(record)
+            with self.output.open("a", encoding="utf-8") as stream:
+                stream.write(encoded)
 
     def _handler(self):
         meter = self
@@ -115,8 +131,10 @@ class RequestMeter:
                 try:
                     connection = http.client.HTTPSConnection(
                         meter.upstream.hostname, meter.upstream.port or 443,
-                        timeout=3600, context=ssl.create_default_context(),
+                        timeout=UPSTREAM_IDLE_TIMEOUT_SECONDS, context=ssl.create_default_context(),
                     )
+                    with meter.lock:
+                        meter.connections.add(connection)
                     connection.request(self.command, path, body=body, headers=headers)
                     response = connection.getresponse()
                     status = response.status
@@ -131,7 +149,9 @@ class RequestMeter:
                     self.send_header("Connection", "close")
                     self.end_headers()
                     while True:
-                        chunk = response.read(65536)
+                        # Responses is an SSE stream. read(amt) can wait for a
+                        # full buffer and strand a small completed response.
+                        chunk = response.read1(65536)
                         if not chunk:
                             break
                         response_bytes += len(chunk)
@@ -164,8 +184,10 @@ class RequestMeter:
                         "request_id_sha256": request_id_hash,
                         "error_class": error_class,
                     }
-                    with meter.lock:
-                        meter.records.append(record)
+                    meter._record(record)
+                    if connection is not None:
+                        with meter.lock:
+                            meter.connections.discard(connection)
 
         return Handler
 
@@ -177,11 +199,22 @@ class RequestMeter:
         self.thread.start()
 
     def stop(self) -> list[dict]:
+        with self.lock:
+            connections = list(self.connections)
+        for connection in connections:
+            connection.close()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=5)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            with self.lock:
+                if not self.connections:
+                    break
+            time.sleep(0.01)
         self.key = ""
-        records = sorted(self.records, key=lambda item: item["sequence"])
+        with self.lock:
+            records = sorted(self.records, key=lambda item: item["sequence"])
         self.output.write_text(
             "".join(json.dumps(item, sort_keys=True, separators=(",", ":")) + "\n" for item in records),
             encoding="utf-8",

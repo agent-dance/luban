@@ -12,17 +12,18 @@ import (
 	"github.com/agent-dance/luban/i18n"
 )
 
-// Responses streams are intentionally not governed by a request-wide timeout:
-// an xhigh reasoning request can remain healthy for a long time as long as the
-// server keeps the SSE transport alive. The watchdog below limits only periods
-// with no bytes at all. SSE comments and future event types therefore count as
-// transport progress even when they do not produce model-visible deltas.
+// Responses streams are intentionally not governed by a request-wide timeout.
+// Match Codex CLI's stream_idle_timeout_ms policy: a complete SSE event or
+// WebSocket frame is stream activity, and five minutes without such activity
+// means the connection is lost. Raw socket bytes and SSE comments do not reset
+// the deadline because they are not complete stream events.
 const (
-	defaultResponsesInitialIdleTimeout = 4 * time.Minute
-	defaultResponsesActiveIdleTimeout  = 90 * time.Second
-	maxResponsesInitialIdleTimeout     = 5 * time.Minute
-	maxResponsesActiveIdleTimeout      = 2 * time.Minute
+	defaultResponsesInitialIdleTimeout = 5 * time.Minute
+	defaultResponsesActiveIdleTimeout  = 5 * time.Minute
+	maxResponsesInitialIdleTimeout     = 60 * time.Minute
+	maxResponsesActiveIdleTimeout      = 60 * time.Minute
 
+	responsesStreamIdleTimeoutEnv  = "LUBAN_CODE_RESPONSES_STREAM_IDLE_TIMEOUT_MS"
 	responsesInitialIdleTimeoutEnv = "LUBAN_CODE_RESPONSES_INITIAL_IDLE_TIMEOUT_MS"
 	responsesActiveIdleTimeoutEnv  = "LUBAN_CODE_RESPONSES_ACTIVE_IDLE_TIMEOUT_MS"
 )
@@ -40,6 +41,14 @@ type streamWatchdogConfig struct {
 }
 
 func responsesStreamWatchdogConfig() streamWatchdogConfig {
+	if strings.TrimSpace(os.Getenv(responsesStreamIdleTimeoutEnv)) != "" {
+		idle := boundedPositiveDurationFromEnv(
+			responsesStreamIdleTimeoutEnv,
+			defaultResponsesInitialIdleTimeout,
+			maxResponsesInitialIdleTimeout,
+		)
+		return streamWatchdogConfig{initialIdle: idle, activeIdle: idle}
+	}
 	return streamWatchdogConfig{
 		initialIdle: boundedPositiveDurationFromEnv(
 			responsesInitialIdleTimeoutEnv,
@@ -70,9 +79,9 @@ func boundedPositiveDurationFromEnv(name string, fallback, upperBound time.Durat
 }
 
 // StreamIdleTimeoutError is returned only when a live streaming response has
-// made no byte-level progress for its phase-specific deadline. It is distinct
-// from context cancellation and from a request-wide deadline, and is safe for
-// the query loop to replay from its last committed response boundary.
+// produced no complete stream event for its deadline. It is distinct from
+// context cancellation and from a request-wide deadline, and is safe for the
+// query loop to replay from its last committed response boundary.
 type StreamIdleTimeoutError struct {
 	Phase   streamWatchdogPhase
 	IdleFor time.Duration
@@ -82,20 +91,17 @@ func (e *StreamIdleTimeoutError) Error() string {
 	if e == nil {
 		return ""
 	}
-	key := i18n.KeyProviderStreamInitialIdleTimeout
-	if e.Phase == streamWatchdogActive {
-		key = i18n.KeyProviderStreamActiveIdleTimeout
-	}
-	return i18n.Format(i18n.DetectOrLoadLanguage(), key, e.IdleFor)
+	return i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderStreamIdleTimeout, e.IdleFor)
 }
 
 func (e *StreamIdleTimeoutError) Timeout() bool   { return true }
 func (e *StreamIdleTimeoutError) Temporary() bool { return true }
 
-// streamWatchdogBody closes the underlying response body when its byte-progress
-// deadline expires. Closing Response.Body is what unblocks a pending network
-// Read; the wrapper then replaces the transport's incidental close error with a
-// stable typed disposition.
+// streamWatchdogBody closes the underlying response body when its stream-
+// activity deadline expires. Closing Response.Body is what unblocks a pending
+// network Read; the wrapper then replaces the transport's incidental close
+// error with a stable typed disposition. Read deliberately does not renew the
+// deadline: only the Responses event parser can prove a complete event.
 type streamWatchdogBody struct {
 	body   io.ReadCloser
 	config streamWatchdogConfig
@@ -144,9 +150,6 @@ func (w *streamWatchdogBody) Read(p []byte) (int, error) {
 	n, err := w.body.Read(p)
 
 	w.mu.Lock()
-	if n > 0 && w.timedOut == nil && !w.closed {
-		w.resetDeadlineLocked(time.Now())
-	}
 	timeoutErr := w.timedOut
 	w.mu.Unlock()
 
@@ -170,13 +173,12 @@ func (w *streamWatchdogBody) Close() error {
 	return w.body.Close()
 }
 
-// markOutputActive switches to the shorter post-output idle budget. It is
-// called only for non-empty content/reasoning/tool-argument deltas, not for
-// response.created or a reasoning item shell that may precede long xhigh work.
-func (w *streamWatchdogBody) markOutputActive() {
+// markActivity switches to the active phase on the first complete stream event
+// and renews the deadline for every later event.
+func (w *streamWatchdogBody) markActivity() {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.closed || w.timedOut != nil || w.phase == streamWatchdogActive {
+	if w.closed || w.timedOut != nil {
 		return
 	}
 	w.phase = streamWatchdogActive
@@ -207,8 +209,9 @@ func (w *streamWatchdogBody) fire() {
 	}
 	now := time.Now()
 	if remaining := w.deadline.Sub(now); remaining > 0 {
-		// A Read may have reset the deadline while this callback was already
-		// scheduled. Re-check the monotonic deadline before declaring a stall.
+		// A stream event may have reset the deadline while this callback was
+		// already scheduled. Re-check the monotonic deadline before declaring a
+		// stall.
 		w.timer.Reset(remaining)
 		w.mu.Unlock()
 		return

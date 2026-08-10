@@ -16,6 +16,8 @@ func TestUserFacingErrorUsesSemanticCopy(t *testing.T) {
 	}{
 		{ErrNoSessions, i18n.KeyAuxSessionNoSessions, "no sessions"},
 		{ErrSessionDeleted, i18n.KeyAuxSessionDeleted, "deleted"},
+		{ErrCorruptSessionMetadata, i18n.KeyAuxSessionMetadataCorrupt, "corrupt metadata"},
+		{ErrIncompatibleSessionMetadata, i18n.KeyAuxSessionMetadataIncompatible, "incompatible metadata"},
 		{fs.ErrNotExist, i18n.KeyAuxSessionNotFound, "not found"},
 		{errors.New("session x exists in 2 projects"), i18n.KeyAuxSessionAmbiguous, "ambiguous"},
 		{errors.New("database unavailable"), i18n.KeyAuxSessionFailed, "fallback"},

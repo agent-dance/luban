@@ -206,6 +206,17 @@ type evaluationData struct {
 	PassToPass                 passToPassData `json:"PASS_TO_PASS"`
 }
 
+type evaluationAdjudication struct {
+	SchemaVersion         string   `json:"schema_version"`
+	InstanceID            string   `json:"instance_id"`
+	Agent                 string   `json:"agent"`
+	OriginalReport        string   `json:"original_report"`
+	EffectiveReport       string   `json:"effective_report"`
+	ReasonCode            string   `json:"reason_code"`
+	ExcludedCandidatePath []string `json:"excluded_candidate_paths"`
+	EffectiveResolved     bool     `json:"effective_resolved"`
+}
+
 type failToPassData struct {
 	Expected *int     `json:"expected"`
 	Passed   []string `json:"passed"`
@@ -277,6 +288,7 @@ type taskRunData struct {
 	Agent                  string
 	RunAvailable           bool
 	EvaluationAvailable    bool
+	Adjudicated            bool
 	Resolved               bool
 	ElapsedSeconds         float64
 	ProviderRequestSeconds float64
@@ -335,6 +347,7 @@ type agentData struct {
 	BinarySHA256           string
 	RawResolved            int
 	RawEvaluationsObserved int
+	AdjudicatedResolved    int
 }
 
 type headlineData struct {
@@ -350,6 +363,7 @@ type headlineData struct {
 	CachePointDelta string
 	LubanCached     int64
 	CodexCached     int64
+	Adjudicated     bool
 }
 
 type efficiencyDiagnosis struct {
@@ -494,6 +508,7 @@ type reportData struct {
 	OptimizationEvidence     []optimizationEvidenceRow
 	BaselineIncidentObserved bool
 	SharedPass               sharedPassData
+	AdjudicationsObserved    int
 }
 
 func main() {
@@ -650,12 +665,17 @@ func compileReport(options options, language i18n.Language) (reportData, error) 
 		}
 		for _, agentID := range localAgents {
 			summaryPath := filepath.Join(options.rootPath, "raw", "runs", taskID, agentID, "summary.json")
-			evaluationPath := filepath.Join(options.rootPath, "raw", "evaluation", taskID, agentID, "report.json")
+			originalEvaluationPath := filepath.Join(options.rootPath, "raw", "evaluation", taskID, agentID, "report.json")
+			evaluationPath, adjudicationPath, adjudicated, err := resolveEvaluationPath(originalEvaluationPath, taskID, agentID)
+			if err != nil {
+				return reportData{}, err
+			}
 			var summary runSummary
 			var evaluation evaluationData
 			run := taskRunData{
 				Agent:            agentID,
-				RawArtifactLinks: rawLinks(options, taskID, agentID, summaryPath, evaluationPath),
+				Adjudicated:      adjudicated,
+				RawArtifactLinks: rawLinks(options, taskID, agentID, summaryPath, originalEvaluationPath, evaluationPath, adjudicationPath),
 			}
 			aggregate := aggregates[agentID]
 			providerRequestsPath := filepath.Join(filepath.Dir(summaryPath), "provider-requests.jsonl")
@@ -712,6 +732,10 @@ func compileReport(options options, language i18n.Language) (reportData, error) 
 				aggregate.RawEvaluationsObserved++
 				if *evaluation.Resolved {
 					aggregate.RawResolved++
+					if adjudicated {
+						aggregate.AdjudicatedResolved++
+						data.AdjudicationsObserved++
+					}
 				}
 			}
 			if goldAvailable && evaluationDecoded && validateCompletedEvaluation(taskID, agentID, evaluation, gold) == nil {
@@ -728,7 +752,9 @@ func compileReport(options options, language i18n.Language) (reportData, error) 
 				}
 			}
 			latestEvidence = math.Max(latestEvidence, evidenceUnix(summaryPath))
+			latestEvidence = math.Max(latestEvidence, evidenceUnix(originalEvaluationPath))
 			latestEvidence = math.Max(latestEvidence, evidenceUnix(evaluationPath))
+			latestEvidence = math.Max(latestEvidence, evidenceUnix(adjudicationPath))
 			task.Runs = append(task.Runs, run)
 		}
 		data.Tasks = append(data.Tasks, task)
@@ -771,6 +797,7 @@ func buildHeadline(codex, luban agentData) headlineData {
 		CachePointDelta: pointDelta(codex.CacheRatio, luban.CacheRatio),
 		LubanCached:     luban.CachedTokens,
 		CodexCached:     codex.CachedTokens,
+		Adjudicated:     codex.AdjudicatedResolved > 0 || luban.AdjudicatedResolved > 0,
 	}
 	return result
 }
@@ -1142,6 +1169,31 @@ func validateCompletedEvaluation(taskID, agentID string, evaluation, gold evalua
 	return nil
 }
 
+func resolveEvaluationPath(originalPath, taskID, agentID string) (string, string, bool, error) {
+	adjudicationPath := filepath.Join(filepath.Dir(originalPath), "adjudication.json")
+	var adjudication evaluationAdjudication
+	if err := decodeJSONFile(adjudicationPath, &adjudication); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return originalPath, "", false, nil
+		}
+		return "", adjudicationPath, false, i18n.NewError(i18n.KeyAgenticLocal5CaveatIncompleteRefusal)
+	}
+	if adjudication.SchemaVersion != "agentic-local-evaluation-adjudication/v1" || adjudication.InstanceID != taskID ||
+		adjudication.Agent != agentID || adjudication.OriginalReport != filepath.Base(originalPath) ||
+		filepath.Base(adjudication.EffectiveReport) != adjudication.EffectiveReport || adjudication.EffectiveReport == "" ||
+		adjudication.ReasonCode == "" || !adjudication.EffectiveResolved || len(adjudication.ExcludedCandidatePath) == 0 {
+		return "", adjudicationPath, false, i18n.NewError(i18n.KeyAgenticLocal5CaveatIncompleteRefusal)
+	}
+	effectivePath := filepath.Join(filepath.Dir(originalPath), adjudication.EffectiveReport)
+	var effective evaluationData
+	if err := decodeJSONFile(effectivePath, &effective); err != nil || effective.InstanceID != taskID || effective.Agent != agentID ||
+		effective.Resolved == nil || *effective.Resolved != adjudication.EffectiveResolved ||
+		!equalStringSets(effective.DiagnosticExcludedPaths, adjudication.ExcludedCandidatePath) {
+		return "", adjudicationPath, false, i18n.NewError(i18n.KeyAgenticLocal5CaveatIncompleteRefusal)
+	}
+	return effectivePath, adjudicationPath, true, nil
+}
+
 func validateEvaluationPartitions(evaluation evaluationData) error {
 	if *evaluation.FailToPass.Expected <= 0 || *evaluation.PassToPass.Expected <= 0 || *evaluation.PassToPass.PassedCount < 0 || *evaluation.PassToPass.MissingCount < 0 ||
 		*evaluation.FailToPass.Expected != len(evaluation.FailToPass.Passed)+len(evaluation.FailToPass.Failed)+len(evaluation.FailToPass.Missing) ||
@@ -1338,18 +1390,31 @@ func optimizationCards(options options) []optimizationCard {
 	return result
 }
 
-func rawLinks(options options, taskID, agentID, summaryPath, evaluationPath string) []artifactLink {
+func rawLinks(options options, taskID, agentID, summaryPath, originalEvaluationPath, effectiveEvaluationPath, adjudicationPath string) []artifactLink {
 	outputDir := filepath.Dir(options.outputPath)
-	links := make([]artifactLink, 0, 7)
+	links := make([]artifactLink, 0, 9)
 	for _, required := range []struct {
 		label string
 		path  string
 	}{
 		{label: "summary.json", path: summaryPath},
-		{label: "evaluation/report.json", path: evaluationPath},
+		{label: "evaluation/report.json", path: originalEvaluationPath},
 	} {
 		if info, err := os.Stat(required.path); err == nil && info.Mode().IsRegular() {
 			links = append(links, artifactLink{Label: required.label, Href: relativeHref(outputDir, required.path)})
+		}
+	}
+	if effectiveEvaluationPath != originalEvaluationPath {
+		for _, adjudicated := range []struct {
+			label string
+			path  string
+		}{
+			{label: "evaluation/effective-report.json", path: effectiveEvaluationPath},
+			{label: "evaluation/adjudication.json", path: adjudicationPath},
+		} {
+			if info, err := os.Stat(adjudicated.path); err == nil && info.Mode().IsRegular() {
+				links = append(links, artifactLink{Label: adjudicated.label, Href: relativeHref(outputDir, adjudicated.path)})
+			}
 		}
 	}
 	runRoot := filepath.Join(options.rootPath, "raw", "runs", taskID, agentID)

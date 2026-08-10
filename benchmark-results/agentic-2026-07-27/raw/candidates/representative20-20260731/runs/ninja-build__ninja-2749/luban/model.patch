@@ -1,0 +1,80 @@
+diff --git a/src/build_test.cc b/src/build_test.cc
+index 5ba87fa..70c6b17 100644
+--- a/src/build_test.cc
++++ b/src/build_test.cc
+@@ -3793,6 +3793,41 @@ TEST_F(BuildTest, DyndepBuildDiscoverOutputAndDepfileInput) {
+   EXPECT_TRUE(builder_.AlreadyUpToDate());
+ }
+ 
++TEST_F(BuildTest, DyndepLoadUpdatesEarlierDepfileInput) {
++  // A depfile input may be visited before an order-only input loads the
++  // dyndep file that reveals its producing edge.  Verify that the dependent
++  // is made dirty in the same scan as the producing edge.
++  ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
++"rule touch\n"
++"  command = touch $out\n"
++"rule with_depfile\n"
++"  command = touch $out\n"
++"  depfile = $out.d\n"
++"build stamp: touch trigger || dd\n"
++"  dyndep = dd\n"
++"build copy: with_depfile || stamp\n"
++));
++  fs_.Create("dd",
++"ninja_dyndep_version = 1\n"
++"build stamp | other: dyndep\n"
++);
++  fs_.Create("stamp", "");
++  fs_.Create("other", "");
++  fs_.Create("copy", "");
++  fs_.Create("copy.d", "copy: other\n");
++  fs_.Tick();
++  fs_.Create("trigger", "");
++
++  string err;
++  EXPECT_TRUE(builder_.AddTarget("copy", &err));
++  ASSERT_EQ("", err);
++  EXPECT_EQ(builder_.Build(&err), ExitSuccess);
++  EXPECT_EQ("", err);
++  EXPECT_EQ(std::vector<std::string>({ "touch stamp", "touch copy" }),
++            command_runner_.commands_ran_);
++  EXPECT_TRUE(builder_.AlreadyUpToDate());
++}
++
+ TEST_F(BuildTest, DyndepBuildDiscoverNowWantEdge) {
+   // Verify that a dyndep file can be built and loaded to discover
+   // that an edge is actually wanted due to a missing implicit output.
+diff --git a/src/graph.cc b/src/graph.cc
+index 8e6ff69..a23acad 100644
+--- a/src/graph.cc
++++ b/src/graph.cc
+@@ -168,15 +168,26 @@ bool DependencyScan::RecomputeNodeDirty(Node* node, std::vector<Node*>* stack,
+   validation_nodes->insert(validation_nodes->end(),
+       edge->validations_.begin(), edge->validations_.end());
+ 
+-  // Visit all inputs; we're dirty if any of the inputs are dirty.
+-  Node* most_recent_input = NULL;
++  // Visit all inputs first.  A dyndep loaded while visiting a later input may
++  // give an earlier input a producing edge, so do not use input dirty states
++  // until every input has had a chance to update the graph.
+   for (vector<Node*>::iterator i = edge->inputs_.begin();
+        i != edge->inputs_.end(); ++i) {
+     // Visit this input.
+     if (!RecomputeNodeDirty(*i, stack, validation_nodes, err))
+       return false;
++  }
++
++  // Visit and evaluate the inputs again now that any dyndep files encountered
++  // above have been loaded.  Usually the visit is a no-op because their edges
++  // are already marked VisitDone, but it recomputes an input whose producing
++  // edge was discovered after that input's first visit.
++  Node* most_recent_input = NULL;
++  for (vector<Node*>::iterator i = edge->inputs_.begin();
++       i != edge->inputs_.end(); ++i) {
++    if (!RecomputeNodeDirty(*i, stack, validation_nodes, err))
++      return false;
+ 
+-    // If an input is not ready, neither are our outputs.
+     if (Edge* in_edge = (*i)->in_edge()) {
+       if (!in_edge->outputs_ready_)
+         edge->outputs_ready_ = false;

@@ -1,0 +1,165 @@
+diff --git a/crates/napi/src/bindgen_runtime/iterator.rs b/crates/napi/src/bindgen_runtime/iterator.rs
+index d28d626..1a872dd 100644
+--- a/crates/napi/src/bindgen_runtime/iterator.rs
++++ b/crates/napi/src/bindgen_runtime/iterator.rs
+@@ -117,12 +117,7 @@ pub unsafe extern "C" fn symbol_generator<T: Generator>(
+     },
+     "Get callback info from generator function failed"
+   );
+-  let mut generator_object = ptr::null_mut();
+-  check_status_or_throw!(
+-    env,
+-    unsafe { sys::napi_create_object(env, &mut generator_object) },
+-    "Create Generator object failed"
+-  );
++  let generator_object = unsafe { create_generator_object(env) };
+   let mut next_function = ptr::null_mut();
+   check_status_or_throw!(
+     env,
+@@ -235,6 +230,108 @@ pub unsafe extern "C" fn symbol_generator<T: Generator>(
+   generator_object
+ }
+ 
++unsafe fn create_generator_object(env: sys::napi_env) -> sys::napi_value {
++  let mut global = ptr::null_mut();
++  check_status_or_throw!(
++    env,
++    unsafe { sys::napi_get_global(env, &mut global) },
++    "Get global object failed",
++  );
++
++  // Iterator helpers are inherited from Iterator.prototype. Older runtimes do
++  // not expose the Iterator constructor, so retain the plain object fallback.
++  let mut has_iterator = false;
++  check_status_or_throw!(
++    env,
++    unsafe {
++      sys::napi_has_named_property(env, global, c"Iterator".as_ptr().cast(), &mut has_iterator)
++    },
++    "Check global Iterator failed",
++  );
++
++  if has_iterator {
++    let mut iterator_constructor = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_get_named_property(
++          env,
++          global,
++          c"Iterator".as_ptr().cast(),
++          &mut iterator_constructor,
++        )
++      },
++      "Get global Iterator failed",
++    );
++    let mut iterator_prototype = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_get_named_property(
++          env,
++          iterator_constructor,
++          c"prototype".as_ptr().cast(),
++          &mut iterator_prototype,
++        )
++      },
++      "Get Iterator.prototype failed",
++    );
++
++    let mut object_constructor = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_get_named_property(
++          env,
++          global,
++          c"Object".as_ptr().cast(),
++          &mut object_constructor,
++        )
++      },
++      "Get global Object failed",
++    );
++    let mut object_create = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_get_named_property(
++          env,
++          object_constructor,
++          c"create".as_ptr().cast(),
++          &mut object_create,
++        )
++      },
++      "Get Object.create failed",
++    );
++
++    let args = [iterator_prototype];
++    let mut generator_object = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe {
++        sys::napi_call_function(
++          env,
++          object_constructor,
++          object_create,
++          args.len(),
++          args.as_ptr(),
++          &mut generator_object,
++        )
++      },
++      "Create Generator object with Iterator.prototype failed",
++    );
++    generator_object
++  } else {
++    let mut generator_object = ptr::null_mut();
++    check_status_or_throw!(
++      env,
++      unsafe { sys::napi_create_object(env, &mut generator_object) },
++      "Create Generator object failed",
++    );
++    generator_object
++  }
++}
++
+ extern "C" fn generator_next<T: Generator>(
+   env: sys::napi_env,
+   info: sys::napi_callback_info,
+diff --git a/examples/napi/__tests__/generator.spec.ts b/examples/napi/__tests__/generator.spec.ts
+index c7c52c9..dc7489f 100644
+--- a/examples/napi/__tests__/generator.spec.ts
++++ b/examples/napi/__tests__/generator.spec.ts
+@@ -2,6 +2,11 @@ import test from 'ava'
+ 
+ import { Fib, Fib2, Fib3, shutdownRuntime } from '../index.cjs'
+ 
++type IteratorWithHelpers<T> = Iterator<T> & {
++  [Symbol.iterator](): IteratorWithHelpers<T>
++  take(limit: number): { toArray(): T[] }
++}
++
+ test.after(() => {
+   shutdownRuntime()
+ })
+@@ -58,4 +63,21 @@ for (const [index, factory] of [
+       done: true,
+     })
+   })
++
++  test(`should inherit Iterator helpers #${index}`, (t) => {
++    const iteratorConstructor = (
++      globalThis as typeof globalThis & {
++        Iterator?: Function & { prototype: object }
++      }
++    ).Iterator
++    if (typeof iteratorConstructor !== 'function') {
++      t.pass()
++      return
++    }
++
++    const iterator = factory()[Symbol.iterator]() as IteratorWithHelpers<number>
++    t.true(iteratorConstructor.prototype.isPrototypeOf(iterator))
++    t.is(iterator[Symbol.iterator](), iterator)
++    t.deepEqual(iterator.take(5).toArray(), [1, 1, 2, 3, 5])
++  })
+ }

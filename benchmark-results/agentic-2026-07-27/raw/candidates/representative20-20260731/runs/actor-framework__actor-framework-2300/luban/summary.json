@@ -1,0 +1,52 @@
+{
+  "instance_id": "actor-framework__actor-framework-2300",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "medium",
+  "started_at_unix": 1785482004.862056,
+  "elapsed_seconds": 1439.363,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1059017,
+    "cached_input_tokens": 990720,
+    "cache_read_input_tokens": 990720,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 11492,
+    "reasoning_output_tokens": null
+  },
+  "estimated_cost_usd": 1.181605,
+  "tool_calls": 26,
+  "tool_calls_by_type": {
+    "Inspect": 12,
+    "ApplyPatch": 5,
+    "Run": 9
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      "libcaf_net/caf/net/abstract_actor_shell.cpp",
+      "libcaf_net/caf/net/abstract_actor_shell.hpp",
+      "libcaf_net/caf/net/actor_shell.test.cpp"
+    ],
+    "additions": 33,
+    "deletions": 6
+  },
+  "final_text": "Implemented and sealed the actor-shell fix:\n\n- Resume processing stops once `quit()` closes the mailbox.\n- Closed mailboxes are never popped.\n- Added a timeout-handler regression test verifying termination and `request_timeout`.\n- Hardened the test to require a valid shell handle.\n\nVerification:\n- Actor-shell suites previously passed 25/25 checks.\n- Syntax-only compilation passed.\n- Final `git diff --check` passed.",
+  "command_public": {
+    "executable": "/private/tmp/luban-agent-benchmark-bin/luban-representative20-20260731",
+    "model": "gpt-5.6-sol",
+    "reasoning_effort": "medium",
+    "provider": "same custom OpenAI-compatible endpoint"
+  },
+  "llm_calls": 31,
+  "llm_successful_calls": 31,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1334.193599,
+  "binary": {
+    "path": "/private/tmp/luban-agent-benchmark-bin/luban-representative20-20260731",
+    "sha256": "484cdff16065c275cb60e545e37ae7f36b6afef71519309bd329cee0f9c413ac"
+  }
+}

@@ -14,14 +14,19 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
-const defaultMaxAttempts = 3
+const (
+	defaultRequestMaxAttempts = 5
+	defaultStreamMaxAttempts  = 6
+	maxRequestMaxAttempts     = 101
+	maxStreamMaxAttempts      = 101
+)
 
-// AttemptController owns the raw-attempt budget for one logical generation.
-// The provider's pre-stream retries and the runtime's uncommitted stream
-// replays share this controller, so composing the two layers cannot multiply
-// the configured limit.
+// AttemptController owns one retry budget. The runtime creates a generation-
+// scoped controller for stream reconnects, while RetryProvider creates a fresh
+// request-scoped controller for each attempt to establish a stream.
 type AttemptController struct {
-	config RetryConfig
+	config        RetryConfig
+	requestConfig RetryConfig
 
 	mu              sync.Mutex
 	attempts        int
@@ -30,11 +35,13 @@ type AttemptController struct {
 }
 
 type attemptControllerContextKey struct{}
+type requestAttemptControllerContextKey struct{}
 
 // NewAttemptController creates a generation-scoped controller. A zero-value
 // configuration receives the same production defaults as RetryProvider.
 func NewAttemptController(config RetryConfig) *AttemptController {
-	return &AttemptController{config: normalizeRetryConfig(config)}
+	config = normalizeRetryConfig(config)
+	return &AttemptController{config: config, requestConfig: config}
 }
 
 // AttemptControllerForProvider creates a controller from the retry policy of
@@ -49,7 +56,12 @@ func AttemptControllerForProvider(p Provider, fallback ...RetryConfig) *AttemptC
 			config = DefaultRetryConfig()
 		}
 	}
-	return NewAttemptController(config)
+	config = normalizeRetryConfig(config)
+	requestConfig := config
+	config.MaxAttempts = config.StreamMaxAttempts
+	controller := NewAttemptController(config)
+	controller.requestConfig = requestConfig
+	return controller
 }
 
 // WithAttemptController binds a generation budget to all nested provider
@@ -69,45 +81,78 @@ func attemptControllerFromContext(ctx context.Context) *AttemptController {
 	return controller
 }
 
+func withRequestAttemptController(ctx context.Context, controller *AttemptController) context.Context {
+	if ctx == nil || controller == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, requestAttemptControllerContextKey{}, controller)
+}
+
+func requestAttemptControllerFromContext(ctx context.Context) *AttemptController {
+	if ctx == nil {
+		return nil
+	}
+	controller, _ := ctx.Value(requestAttemptControllerContextKey{}).(*AttemptController)
+	return controller
+}
+
 // beginNestedTransportAttempt charges a second or later HTTP request performed
 // inside one Provider.CreateStream call (for example, a protocol or optional-
-// field compatibility fallback). The outer provider decorator already charged
-// the first request. Providers without a bound generation controller retain
-// their standalone behavior.
+// field compatibility fallback). The outer RetryProvider already charged the
+// first request. Providers without a bound request controller retain their
+// standalone behavior.
 func beginNestedTransportAttempt(ctx context.Context, cause error) error {
-	controller := attemptControllerFromContext(ctx)
+	controller := requestAttemptControllerFromContext(ctx)
 	if controller == nil {
 		return nil
 	}
 	controller.recordError(cause)
-	_, err := controller.beginAttempt()
-	return err
+	nextAttempt, err := controller.beginAttempt()
+	if err != nil {
+		return err
+	}
+	if cause != nil {
+		// Nested compatibility and transport fallbacks previously consumed the
+		// request budget invisibly. Project the failed request before the
+		// replacement begins so interactive clients can show the same
+		// reconnecting + additional-details state as Codex StreamErrorEvent.
+		notifyRetryObserver(ctx, RetryEvent{
+			Attempt:    nextAttempt - 1,
+			MaxRetries: controller.MaxAttempts() - 1,
+			Delay:      0,
+			Err:        cause,
+			Kind:       "request",
+		})
+	}
+	return nil
 }
 
-// CreateStreamAttempt performs one controller-aware provider call. A
-// RetryProvider consumes the budget around each call to its raw inner provider;
-// raw providers are charged here. ProviderRef is handled without double-counting.
+// CreateStreamAttempt charges exactly one response-stream attempt. Any
+// RetryProvider nested inside the call owns a separate HTTP request budget.
 func CreateStreamAttempt(ctx context.Context, controller *AttemptController, p Provider, params Params) (<-chan types.StreamEvent, error) {
 	if controller == nil {
 		controller = AttemptControllerForProvider(p)
 	}
 	ctx = WithAttemptController(ctx, controller)
-	if providerManagesAttempts(p) {
-		return p.CreateStream(ctx, params)
-	}
 	if _, err := controller.beginAttempt(); err != nil {
 		return nil, err
+	}
+	if !providerManagesRequestAttempts(p) {
+		requestController := NewAttemptController(controller.requestConfig)
+		if _, err := requestController.beginAttempt(); err != nil {
+			return nil, err
+		}
+		ctx = withRequestAttemptController(ctx, requestController)
 	}
 	stream, err := p.CreateStream(ctx, params)
 	controller.recordError(err)
 	return stream, err
 }
 
-// MaxAttempts is the total number of raw calls allowed, including the initial
-// call. The production default is three.
+// MaxAttempts is the total number of attempts in this controller's scope.
 func (c *AttemptController) MaxAttempts() int {
 	if c == nil {
-		return defaultMaxAttempts
+		return defaultStreamMaxAttempts
 	}
 	return c.config.MaxAttempts
 }
@@ -122,9 +167,8 @@ func (c *AttemptController) Attempts() int {
 	return c.attempts
 }
 
-// CanRetry is the sole generation-scoped retry admission check. It combines
-// the typed provider disposition with the shared raw-call budget; runtime and
-// provider decorators must not maintain an independent retry policy.
+// CanRetry combines the typed provider disposition with this controller's
+// scope-local budget.
 func (c *AttemptController) CanRetry(err error) bool {
 	if c == nil || !ClassifyAttemptError(err).Retryable() {
 		return false
@@ -134,10 +178,10 @@ func (c *AttemptController) CanRetry(err error) bool {
 	return c.attempts < c.config.MaxAttempts
 }
 
-// RetryDelay returns the bounded delay before another raw call. It applies
-// exponential full jitter and treats Retry-After as a server-provided minimum,
-// while still enforcing MaxDelay. false means the failure is permanent or the
-// generation budget is exhausted.
+// RetryDelay returns the delay before another attempt. It applies exponential
+// backoff with ±10% jitter. Retry-After is authoritative when longer than the
+// computed delay, as it is in Codex CLI. false means the failure is permanent
+// or this scope's budget is exhausted.
 func (c *AttemptController) RetryDelay(err error) (time.Duration, bool) {
 	if c == nil || !ClassifyAttemptError(err).Retryable() {
 		return 0, false
@@ -156,14 +200,8 @@ func (c *AttemptController) RetryDelay(err error) (time.Duration, bool) {
 	if delay < 0 {
 		delay = 0
 	}
-	if delay > capDelay {
-		delay = capDelay
-	}
 	if retryAfter := parseRetryAfter(err, c.config.now()); retryAfter > delay {
 		delay = retryAfter
-	}
-	if delay > c.config.MaxDelay {
-		delay = c.config.MaxDelay
 	}
 	return delay, true
 }
@@ -213,6 +251,9 @@ func (c *AttemptController) exhausted(err error) error {
 	if err == nil {
 		err = c.lastErr
 	}
+	if c.attempts < c.config.MaxAttempts {
+		return err
+	}
 	return c.exhaustedErrorLocked(err)
 }
 
@@ -243,19 +284,34 @@ type AttemptLimitError struct {
 	Cause       error
 }
 
+// AttemptErrorStage/Class/ReplaySafety make a request-budget exhaustion a
+// terminal boundary for the outer stream loop. The preserved cause remains
+// available through errors.Is/As, but it must not start a second request retry
+// loop and multiply the configured budget.
+func (e *AttemptLimitError) AttemptErrorStage() types.ProviderErrorStage {
+	return types.ProviderErrorStageConnect
+}
+
+func (e *AttemptLimitError) AttemptErrorClass() types.ProviderErrorClass {
+	return types.ProviderErrorClassPermanent
+}
+
+func (e *AttemptLimitError) AttemptReplaySafety() types.ProviderReplaySafety {
+	return types.ProviderReplayUnsafe
+}
+
 func (e *AttemptLimitError) Error() string {
 	if e == nil {
 		return ""
 	}
-	retries := e.MaxAttempts - 1
+	retries := e.Attempts - 1
 	if retries < 0 {
 		retries = 0
 	}
-	message := i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderRetryExceededWithoutCause, retries)
 	if e.Cause != nil {
-		return message + ": " + e.Cause.Error()
+		return i18n.WrapError(i18n.KeyProviderRetryExceededWithCause, e.Cause, retries).Error()
 	}
-	return message
+	return i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderRetryExceededWithoutCause, retries)
 }
 
 func (e *AttemptLimitError) Unwrap() error {
@@ -272,12 +328,12 @@ func IsAttemptLimit(err error) bool {
 	return errors.As(err, &limit)
 }
 
-func providerManagesAttempts(p Provider) bool {
+func providerManagesRequestAttempts(p Provider) bool {
 	switch current := p.(type) {
 	case *RetryProvider:
 		return true
 	case *ProviderRef:
-		return providerManagesAttempts(current.Get())
+		return providerManagesRequestAttempts(current.Get())
 	default:
 		return false
 	}
@@ -299,6 +355,15 @@ func normalizeRetryConfig(config RetryConfig) RetryConfig {
 	if config.MaxAttempts <= 0 {
 		config.MaxAttempts = defaults.MaxAttempts
 	}
+	if config.StreamMaxAttempts <= 0 {
+		config.StreamMaxAttempts = defaults.StreamMaxAttempts
+	}
+	if config.MaxAttempts > maxRequestMaxAttempts {
+		config.MaxAttempts = maxRequestMaxAttempts
+	}
+	if config.StreamMaxAttempts > maxStreamMaxAttempts {
+		config.StreamMaxAttempts = maxStreamMaxAttempts
+	}
 	if config.BaseDelay <= 0 {
 		config.BaseDelay = defaults.BaseDelay
 	}
@@ -309,7 +374,7 @@ func normalizeRetryConfig(config RetryConfig) RetryConfig {
 		config.BaseDelay = config.MaxDelay
 	}
 	if config.jitter == nil {
-		config.jitter = fullJitter
+		config.jitter = codexJitter
 	}
 	if config.now == nil {
 		config.now = time.Now
@@ -317,16 +382,12 @@ func normalizeRetryConfig(config RetryConfig) RetryConfig {
 	return config
 }
 
-func fullJitter(upper time.Duration) time.Duration {
-	if upper <= 0 {
+func codexJitter(delay time.Duration) time.Duration {
+	if delay <= 0 {
 		return 0
 	}
-	// Int64N is half-open; adding one allows the configured cap itself while
-	// guarding the practically unreachable duration overflow case.
-	if upper == time.Duration(1<<63-1) {
-		return time.Duration(rand.Int64N(int64(upper)))
-	}
-	return time.Duration(rand.Int64N(int64(upper) + 1))
+	factor := 0.9 + rand.Float64()*0.2
+	return time.Duration(float64(delay) * factor)
 }
 
 func exponentialDelay(base, maximum time.Duration, retryIndex int) time.Duration {

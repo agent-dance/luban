@@ -352,7 +352,7 @@ func TestRunUserQueryForwardsProviderRequestLifecycle(t *testing.T) {
 			SessionID: "session-request-status",
 			Event: Event{Type: eventType, RequestStatus: &RequestStatusEvent{
 				RequestID: "request-transport", Phase: "untrusted_phase", Status: "untrusted_status",
-				Attempt: 2, MaxAttempts: 3, RetryDelayMilliseconds: 500,
+				Attempt: 2, MaxAttempts: 3, RetryDelayMilliseconds: 500, RetryKind: "request",
 				ErrorCode: errorCode, ErrorMessage: secret,
 			}},
 		})
@@ -391,7 +391,7 @@ func TestRunUserQueryForwardsProviderRequestLifecycle(t *testing.T) {
 		status := statusMessage.Event.RequestStatus
 		if statusMessage.Type != "stream_event" || statusMessage.Event.Type != eventType || status == nil ||
 			status.RequestID != "request-transport" || status.Phase != string(eventType) || status.Status != wantStatuses[index] ||
-			status.Attempt != 2 || status.MaxAttempts != 3 {
+			status.Attempt != 2 || status.MaxAttempts != 3 || status.RetryKind != "request" {
 			t.Fatalf("request lifecycle message[%d] = %+v", index, statusMessage)
 		}
 		switch eventType {

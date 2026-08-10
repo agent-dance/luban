@@ -1,0 +1,142 @@
+diff --git a/src/build_test.cc b/src/build_test.cc
+index 5ba87fa..0e59fe1 100644
+--- a/src/build_test.cc
++++ b/src/build_test.cc
+@@ -3432,6 +3432,73 @@ TEST_F(BuildTest, DyndepReadyCircular) {
+   EXPECT_EQ("dependency cycle: circ -> in -> circ", err);
+ }
+ 
++TEST_F(BuildTest, DyndepReadyOutputUsedByDepfile) {
++  // A depfile input may initially look like a source file and then become a
++  // generated file when a later order-only input loads its dyndep file.  If
++  // the generating edge is dirty, the depfile consumer must be dirty too.
++  ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
++"rule touch\n"
++"  command = touch $out\n"
++"build stamp: touch in || dd\n"
++"  dyndep = dd\n"
++"build copy: touch || stamp\n"
++"  depfile = copy.d\n"
++  ));
++  fs_.Create("dd",
++"ninja_dyndep_version = 1\n"
++"build stamp | other: dyndep\n"
++  );
++  fs_.Create("stamp", "");
++  fs_.Create("other", "");
++  fs_.Create("copy", "");
++  fs_.Create("copy.d", "copy: other\n");
++  fs_.Tick();
++  fs_.Create("in", "");
++
++  string err;
++  EXPECT_TRUE(builder_.AddTarget("copy", &err));
++  ASSERT_EQ("", err);
++  EXPECT_EQ(builder_.Build(&err), ExitSuccess);
++  EXPECT_EQ("", err);
++  EXPECT_EQ(std::vector<std::string>({"touch stamp", "touch copy"}),
++            command_runner_.commands_ran_);
++}
++
++TEST_F(BuildTest, DyndepReadyOutputUsedByDepfileFromOtherEdge) {
++  // The edge that produces the depfile input may not have been reachable
++  // until another edge loads their shared dyndep file.
++  ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
++"rule touch\n"
++"  command = touch $out\n"
++"build producer: touch in || dd\n"
++"  dyndep = dd\n"
++"build trigger: touch || dd\n"
++"  dyndep = dd\n"
++"build copy: touch || trigger\n"
++"  depfile = copy.d\n"
++  ));
++  fs_.Create("dd",
++"ninja_dyndep_version = 1\n"
++"build producer | other: dyndep\n"
++"build trigger: dyndep\n"
++  );
++  fs_.Create("producer", "");
++  fs_.Create("other", "");
++  fs_.Create("trigger", "");
++  fs_.Create("copy", "");
++  fs_.Create("copy.d", "copy: other\n");
++  fs_.Tick();
++  fs_.Create("in", "");
++
++  string err;
++  EXPECT_TRUE(builder_.AddTarget("copy", &err));
++  ASSERT_EQ("", err);
++  EXPECT_EQ(builder_.Build(&err), ExitSuccess);
++  EXPECT_EQ("", err);
++  EXPECT_EQ(std::vector<std::string>({"touch producer", "touch copy"}),
++            command_runner_.commands_ran_);
++}
++
+ TEST_F(BuildTest, DyndepBuild) {
+   // Verify that a dyndep file can be built and loaded to discover nothing.
+   ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
+diff --git a/src/graph.cc b/src/graph.cc
+index 8e6ff69..f90bd74 100644
+--- a/src/graph.cc
++++ b/src/graph.cc
+@@ -168,29 +168,47 @@ bool DependencyScan::RecomputeNodeDirty(Node* node, std::vector<Node*>* stack,
+   validation_nodes->insert(validation_nodes->end(),
+       edge->validations_.begin(), edge->validations_.end());
+ 
+-  // Visit all inputs; we're dirty if any of the inputs are dirty.
++  // Visit all inputs.  Loading a dyndep file while visiting a later input may
++  // give an earlier input a producing edge.  If that edge was not otherwise
++  // visited, make another pass so that its dirty state is computed too.
++  bool retry;
++  do {
++    for (Node* input : edge->inputs_) {
++      if (!RecomputeNodeDirty(input, stack, validation_nodes, err))
++        return false;
++    }
++
++    retry = false;
++    for (Node* input : edge->inputs_) {
++      if (input->in_edge() && input->in_edge()->mark_ == Edge::VisitNone) {
++        retry = true;
++        break;
++      }
++    }
++  } while (retry);
++
++  // Inspect the inputs only after they have all been visited.  A dyndep file
++  // loaded by a later input may have changed the dirty state or readiness of
++  // an earlier one by declaring it as an implicit output.
+   Node* most_recent_input = NULL;
+-  for (vector<Node*>::iterator i = edge->inputs_.begin();
+-       i != edge->inputs_.end(); ++i) {
+-    // Visit this input.
+-    if (!RecomputeNodeDirty(*i, stack, validation_nodes, err))
+-      return false;
++  for (size_t i = 0; i < edge->inputs_.size(); ++i) {
++    Node* input = edge->inputs_[i];
+ 
+     // If an input is not ready, neither are our outputs.
+-    if (Edge* in_edge = (*i)->in_edge()) {
++    if (Edge* in_edge = input->in_edge()) {
+       if (!in_edge->outputs_ready_)
+         edge->outputs_ready_ = false;
+     }
+ 
+-    if (!edge->is_order_only(i - edge->inputs_.begin())) {
++    if (!edge->is_order_only(i)) {
+       // If a regular input is dirty (or missing), we're dirty.
+       // Otherwise consider mtime.
+-      if ((*i)->dirty()) {
+-        explanations_.Record(node, "%s is dirty", (*i)->path().c_str());
++      if (input->dirty()) {
++        explanations_.Record(node, "%s is dirty", input->path().c_str());
+         dirty = true;
+       } else {
+-        if (!most_recent_input || (*i)->mtime() > most_recent_input->mtime()) {
+-          most_recent_input = *i;
++        if (!most_recent_input || input->mtime() > most_recent_input->mtime()) {
++          most_recent_input = input;
+         }
+       }
+     }

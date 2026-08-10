@@ -17,6 +17,21 @@ var representativeOrder = []string{
 	"kubernetes__kube-state-metrics-2926",
 	"skim-rs__skim-1044",
 	"include-what-you-use__include-what-you-use-1991",
+	"ninja-build__ninja-2749",
+	"charmbracelet__crush-766",
+	"floci-io__floci-112",
+	"eza-community__eza-1664",
+	"assistant-ui__assistant-ui-3866",
+	"actor-framework__actor-framework-2300",
+	"lima-vm__lima-3923",
+	"springdoc__springdoc-openapi-3051",
+	"napi-rs__napi-rs-2784",
+	"antvis__G2-7076",
+	"apache__kvrocks-3084",
+	"gitlab4j__gitlab4j-api-1266",
+	"biomejs__biome-9995",
+	"mikro-orm__mikro-orm-7464",
+	"opendataloader-project__opendataloader-pdf-383",
 }
 
 type catalogTask struct {
@@ -133,10 +148,12 @@ type Evaluation struct {
 	Language       string        `json:"language"`
 	Agent          string        `json:"agent"`
 	Resolved       bool          `json:"resolved"`
+	Adjudicated    bool          `json:"adjudicated,omitempty"`
 	ElapsedSeconds float64       `json:"elapsed_seconds"`
 	FailToPass     TestPartition `json:"FAIL_TO_PASS"`
 	PassToPass     TestPartition `json:"PASS_TO_PASS"`
 	EvidenceRoot   string        `json:"evidence_root"`
+	EvidenceFile   string        `json:"evidence_file,omitempty"`
 }
 
 type Failure struct {

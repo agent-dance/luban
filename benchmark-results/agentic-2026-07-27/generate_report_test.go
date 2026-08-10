@@ -173,24 +173,27 @@ func TestFrozenPilotSharedPassProjectionMatchesReceipts(t *testing.T) {
 		t.Fatalf("compile frozen pilot: %v", err)
 	}
 	shared := data.SharedPass
-	if !shared.Available || shared.TaskCount != 2 || len(shared.Tasks) != 2 || shared.Tasks[0].ID != localTasks[0] || shared.Tasks[1].ID != localTasks[1] {
+	if !shared.Available || shared.TaskCount != 3 || len(shared.Tasks) != 3 || shared.Tasks[0].ID != localTasks[0] || shared.Tasks[1].ID != localTasks[1] || shared.Tasks[2].ID != localTasks[3] {
 		t.Fatalf("frozen shared-pass set = %#v", shared)
 	}
-	if shared.Codex.LLMCalls != 43 || shared.Luban.LLMCalls != 71 ||
-		math.Abs(shared.Codex.ElapsedSeconds-836.941) > 0.000001 || math.Abs(shared.Luban.ElapsedSeconds-2554.388) > 0.000001 ||
-		math.Abs(shared.Codex.ProviderRequestSeconds-832.021232) > 0.000001 || math.Abs(shared.Luban.ProviderRequestSeconds-2254.201038) > 0.000001 ||
-		shared.Codex.InputTokens != 1_926_668 || shared.Luban.InputTokens != 3_161_911 ||
-		shared.Codex.CachedTokens != 1_784_576 || shared.Luban.CachedTokens != 2_975_744 ||
+	if shared.Codex.LLMCalls != 71 || shared.Luban.LLMCalls != 109 ||
+		math.Abs(shared.Codex.ElapsedSeconds-1350.830) > 0.000001 || math.Abs(shared.Luban.ElapsedSeconds-4354.811) > 0.000001 ||
+		math.Abs(shared.Codex.ProviderRequestSeconds-1339.432568) > 0.000001 || math.Abs(shared.Luban.ProviderRequestSeconds-3801.706405) > 0.000001 ||
+		shared.Codex.InputTokens != 3_433_804 || shared.Luban.InputTokens != 5_076_924 ||
+		shared.Codex.CachedTokens != 3_193_856 || shared.Luban.CachedTokens != 4_783_104 ||
 		shared.Codex.CacheWriteTokens != 0 || shared.Luban.CacheWriteTokens != 0 ||
-		shared.Codex.OutputTokens != 20_811 || shared.Luban.OutputTokens != 69_995 ||
-		math.Abs(shared.Codex.EstimatedCost-2.227078) > 0.000001 || math.Abs(shared.Luban.EstimatedCost-4.518557) > 0.000001 ||
-		shared.Codex.ToolCalls != 37 || shared.Luban.ToolCalls != 60 {
+		shared.Codex.OutputTokens != 32_613 || shared.Luban.OutputTokens != 120_504 ||
+		math.Abs(shared.Codex.EstimatedCost-3.775058) > 0.000001 || math.Abs(shared.Luban.EstimatedCost-7.475772) > 0.000001 ||
+		shared.Codex.ToolCalls != 63 || shared.Luban.ToolCalls != 96 {
 		t.Fatalf("frozen shared-pass aggregates = codex:%#v luban:%#v", shared.Codex, shared.Luban)
 	}
-	if shared.CodexInputPerCall != "44806.2" || shared.LubanInputPerCall != "44534.0" || shared.InputPerCallDelta != "-0.6%" ||
-		shared.CodexProviderPerCall != "19.35s" || shared.LubanProviderPerCall != "31.75s" || shared.ProviderPerCallDelta != "+64.1%" ||
-		shared.CodexOutputPerCall != "484.0" || shared.LubanOutputPerCall != "985.8" || shared.OutputPerCallDelta != "+103.7%" || !shared.LubanLongerSlower {
+	if shared.CodexInputPerCall != "48363.4" || shared.LubanInputPerCall != "46577.3" || shared.InputPerCallDelta != "-3.7%" ||
+		shared.CodexProviderPerCall != "18.87s" || shared.LubanProviderPerCall != "34.88s" || shared.ProviderPerCallDelta != "+84.9%" ||
+		shared.CodexOutputPerCall != "459.3" || shared.LubanOutputPerCall != "1105.5" || shared.OutputPerCallDelta != "+140.7%" || !shared.LubanLongerSlower {
 		t.Fatalf("frozen shared-pass normalization = %#v", shared)
+	}
+	if !data.Headline.Adjudicated || data.Headline.CodexResolved != 3 || data.Headline.LubanResolved != 3 || data.AdjudicationsObserved != 1 {
+		t.Fatalf("frozen adjudicated headline = %#v, adjudications=%d", data.Headline, data.AdjudicationsObserved)
 	}
 }
 

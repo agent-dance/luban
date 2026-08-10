@@ -50,6 +50,9 @@ func (q *QueryLoop) runCompactionAgainst(
 	input := executioncontract.CloneMessages(exactInput)
 	q.compactStatus = "compacting"
 	q.emitCompactProgress(onEvent, turnCount, "compact_start", "compacting", trigger, "")
+	if trigger == "manual" {
+		q.emitCompactProgress(onEvent, turnCount, "compact_preparing", "preparing", trigger, "")
+	}
 	stopKeepalive := q.startCompactKeepalive(ctx, trigger, turnCount, onEvent)
 	restoreProgress := q.installCompactorProgress(trigger, turnCount, onEvent)
 	var telemetryUsage *types.Usage
@@ -75,7 +78,24 @@ func (q *QueryLoop) runCompactionAgainst(
 		q.emitCompactProgress(onEvent, turnCount, stage, status, trigger, "", err)
 	}()
 
+	if trigger == "manual" {
+		q.emitCompactProgress(onEvent, turnCount, "compact_summarizing", "summarizing", trigger, "")
+	}
 	result, err = run()
+	// Cancellation is an authoritative transaction barrier even when a
+	// provider races it with a protocol/parse error or ignores cancellation and
+	// returns a candidate. Never authenticate, install, or persist a result
+	// after the caller has withdrawn the operation.
+	if cancelErr := ctx.Err(); cancelErr != nil {
+		result = nil
+		err = cancelErr
+	}
+	if err == nil && trigger == "manual" {
+		// The compactor has produced its candidate. The caller still has to
+		// authenticate and install that candidate before the engine can persist
+		// the transaction, so this is deliberately a non-terminal phase.
+		q.emitCompactProgress(onEvent, turnCount, "compact_installing", "installing", trigger, "")
+	}
 	var resultUsage *types.Usage
 	if result != nil && result.CompactionUsage != nil {
 		copied := *result.CompactionUsage
