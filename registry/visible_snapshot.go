@@ -21,6 +21,8 @@ const (
 
 var agenticV2VisibleToolOrder = [...]string{"Inspect", "ApplyPatch", "Run"}
 
+const agenticV2OptionalContextUpdateTool = "ContextUpdate"
+
 // VisibleToolSnapshot is an immutable, content-addressed provider catalog.
 // Callers receive defensive definition copies so neither prompt construction
 // nor provider serialization can mutate the snapshot seen by the other.
@@ -148,6 +150,9 @@ func exactAgenticV2Tools(tools []types.Tool) ([]types.Tool, error) {
 		if tool == nil {
 			return nil, fmt.Errorf("agentic v2 visible catalog missing %s", name)
 		}
+		exact = append(exact, tool)
+	}
+	if tool := byName[agenticV2OptionalContextUpdateTool]; tool != nil {
 		exact = append(exact, tool)
 	}
 	return exact, nil

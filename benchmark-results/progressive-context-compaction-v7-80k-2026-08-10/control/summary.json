@@ -1,0 +1,77 @@
+{
+  "instance_id": "ninja-build__ninja-2749",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at": "2026-08-10T11:36:24.943343+00:00",
+  "elapsed_seconds": 1583.041,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 1290781,
+    "cached_input_tokens": 752128,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 71289,
+    "reasoning_output_tokens": 21409
+  },
+  "estimated_cost_usd": 5.207999,
+  "usage_source": "provider_responses",
+  "stream_event_usage": {
+    "input_tokens": 1179603,
+    "cached_input_tokens": 752128,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 35421
+  },
+  "context_metrics": {
+    "compaction_turns": [
+      11,
+      12,
+      13,
+      17,
+      24,
+      27,
+      37
+    ],
+    "first_compaction_turn": 11,
+    "projection_turns": [],
+    "projected_tools": 0,
+    "original_bytes": 0,
+    "projected_bytes": 0,
+    "bytes_saved": 0
+  },
+  "served_models": [
+    "gpt-5.6-sol"
+  ],
+  "experiment": {
+    "max_context_tokens": 80000,
+    "progressive_context_compaction": false,
+    "pinned_model_capability_required": false,
+    "service_tier": "default_implicit"
+  },
+  "tool_events": 39,
+  "tool_events_by_type": {
+    "Inspect": 30,
+    "ApplyPatch": 8,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "src/build_test.cc",
+      "src/graph.cc"
+    ],
+    "additions": 41,
+    "deletions": 5
+  },
+  "llm_calls": 46,
+  "llm_successful_calls": 46,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1580.663275,
+  "binary": {
+    "name": "luban",
+    "sha256": "417bc37e970a922d2055b6354ac878bf0a145c87e7ae6f1b694eb8803c12c80b"
+  },
+  "evidence_root": "raw/runs/ninja-build__ninja-2749/luban"
+}

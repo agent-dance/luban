@@ -93,6 +93,23 @@ func buildCompactPrompt(customInstructions string) string {
 	return prompt
 }
 
+const conciseCompactPrompt = `Create a concise, loss-minimizing coding handoff. Include only these sections:
+
+1. Request and constraints: every still-active ordinary user request and material constraint.
+2. Confirmed facts: root cause, acceptance criteria, exact APIs/symbols, and decisions already supported by evidence.
+3. Current repository state: files actually changed, material edits, tests already run with outcomes, and any unresolved error.
+4. Next action: the smallest concrete step needed to finish.
+
+Do not reproduce long tool output, hidden reasoning, exploration narration, repeated facts, or full source files. Preserve an exact code fragment only when the continuation cannot safely edit or verify without it. Distinguish completed work from plans. Keep the Markdown summary under roughly 1,200 tokens while retaining all facts needed to continue correctly.`
+
+func buildConciseCompactPrompt(customInstructions string) string {
+	prompt := noToolsPreamble + conciseCompactPrompt
+	if trimmed := strings.TrimSpace(customInstructions); trimmed != "" {
+		prompt += "\n\nAdditional Instructions:\n" + customInstructions
+	}
+	return prompt + noToolsTrailer
+}
+
 // multiNewlineRegexp collapses runs of 3+ newlines.
 var multiNewlineRegexp = regexp.MustCompile(`\n\n+`)
 

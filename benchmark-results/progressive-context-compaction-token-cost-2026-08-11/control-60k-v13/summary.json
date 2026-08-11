@@ -1,0 +1,92 @@
+{
+  "instance_id": "ninja-build__ninja-2749",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at": "2026-08-11T07:12:33.765335+00:00",
+  "elapsed_seconds": 1148.156,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 530376,
+    "cached_input_tokens": 196608,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 53930,
+    "reasoning_output_tokens": 14026
+  },
+  "estimated_cost_usd": 3.385044,
+  "usage_source": "provider_responses",
+  "stream_event_usage": {
+    "input_tokens": 462014,
+    "cached_input_tokens": 196608,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 21228
+  },
+  "context_metrics": {
+    "agent_turns": 16,
+    "compaction_turns": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16
+    ],
+    "first_compaction_turn": 11,
+    "projection_turns": [],
+    "projection_batches": [],
+    "projected_tools": 0,
+    "rewritten_tools": 0,
+    "indexed_tools": 0,
+    "candidate_tools": 0,
+    "candidate_tokens_saved": 0,
+    "original_bytes": 0,
+    "projected_bytes": 0,
+    "bytes_saved": 0,
+    "original_tokens": 0,
+    "projected_tokens": 0,
+    "tokens_saved": 0,
+    "estimated_net_savings_usd": 0.0,
+    "context_update_proposals": 0,
+    "context_update_runtime_candidates": 0,
+    "context_update_actions": {},
+    "context_update_reason_codes": {}
+  },
+  "served_models": [
+    "gpt-5.6-sol"
+  ],
+  "experiment": {
+    "max_context_tokens": 60000,
+    "progressive_context_compaction": false,
+    "context_update_shadow": false,
+    "progressive_tools": [],
+    "pinned_model_capability_required": true,
+    "service_tier": "default_implicit"
+  },
+  "tool_events": 16,
+  "tool_events_by_type": {
+    "Inspect": 14,
+    "ApplyPatch": 1,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "src/build_test.cc",
+      "src/graph.cc"
+    ],
+    "additions": 48,
+    "deletions": 5
+  },
+  "llm_calls": 22,
+  "llm_successful_calls": 22,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1146.400924,
+  "binary": {
+    "name": "luban",
+    "sha256": "5073a288438967e8fad49bf908d3477d3923f265ba6a828661285957474ee4bd"
+  },
+  "evidence_root": "raw/runs/ninja-build__ninja-2749/luban"
+}

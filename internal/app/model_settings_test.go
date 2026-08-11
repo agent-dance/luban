@@ -82,6 +82,71 @@ func TestLoadStartupModelSettingsOverlaysCacheRoutingModeWithoutClearingModel(t 
 	}
 }
 
+func TestLoadStartupModelSettingsProgressiveControlPlane(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	userPath := filepath.Join(home, brand.ConfigDirName, "settings.json")
+	if err := os.MkdirAll(filepath.Dir(userPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(userPath, []byte(`{"progressiveContext":{"enabled":true,"shadow":true,"rolloutPercent":25,"providerAllowlist":["openai-responses"],"modelAllowlist":["gpt-5.6-sol"],"minTokenSavings":3000,"cacheRecoveryRequests":3,"maxProjectedTools":8}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := loadStartupModelSettings(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := got.ProgressiveContext
+	if !got.ProgressiveContextSet || !config.Enabled || !config.Shadow || config.RolloutPercent != 25 || config.MinTokenSavings != 3000 || config.CacheRecoveryRequests != 3 || config.MaxProjectedTools != 8 || config.MaxProjectedTokens == 0 {
+		t.Fatalf("progressive settings = %+v", got)
+	}
+}
+
+func TestLoadStartupModelSettingsDefaultsToReviewedProgressiveScope(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+
+	got, err := loadStartupModelSettings(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := got.ProgressiveContext
+	if got.ProgressiveContextSet || !config.Enabled || config.RolloutPercent != 100 ||
+		len(config.ProviderAllowlist) != 2 || config.ProviderAllowlist[0] != "openai" || config.ProviderAllowlist[1] != "deepseek" ||
+		len(config.ModelAllowlist) != 2 || config.ModelAllowlist[0] != "gpt-5.6-sol" || config.ModelAllowlist[1] != "deepseek-v4-flash" ||
+		len(config.ProviderModelAllowlist) != 2 || config.ProviderModelAllowlist[0] != "openai/gpt-5.6-sol" || config.ProviderModelAllowlist[1] != "deepseek/deepseek-v4-flash" ||
+		len(config.ToolAllowlist) != 1 || config.ToolAllowlist[0] != "Inspect" {
+		t.Fatalf("production progressive default = %+v", got)
+	}
+}
+
+func TestLoadStartupModelSettingsPreservesExplicitProgressiveDisable(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	userPath := filepath.Join(home, brand.ConfigDirName, "settings.json")
+	if err := os.MkdirAll(filepath.Dir(userPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(userPath, []byte(`{"progressiveContext":{"enabled":false}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := loadStartupModelSettings(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.ProgressiveContextSet || got.ProgressiveContext.Enabled {
+		t.Fatalf("explicit progressive disable was not preserved: %+v", got)
+	}
+}
+
 func TestApplyStartupModelSettingsKeepsExplicitCacheRoutingEnvironment(t *testing.T) {
 	clearModelSelectionEnv(t)
 	t.Setenv("LUBAN_CODE_CACHE_ROUTING_MODE", "on")

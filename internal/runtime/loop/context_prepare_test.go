@@ -533,6 +533,189 @@ func TestPrepareMessagesForQueryAgenticV2ProofResetsContinuationButKeepsCacheLin
 	}
 }
 
+func TestPrepareMessagesForQueryProgressiveProjectionPreservesRawHistoryAndCacheLineage(t *testing.T) {
+	messages := []types.Message{types.UserMessage("start")}
+	for index := 0; index < 7; index++ {
+		id := fmt.Sprintf("inspect-%d", index)
+		messages = append(messages,
+			types.Message{Role: types.RoleAssistant, Content: []types.ContentBlock{
+				types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: id, Name: "Inspect", Input: map[string]any{}},
+			}},
+			types.ToolResultMessage(types.ToolResultBlock{
+				Type: types.ContentTypeToolResult, ToolUseID: id,
+				Content: fmt.Sprintf(`{"requests":[],"evidence":[{"path":"src/file-%d.cc","chunks":[{"lines":[1,2],"content":%q}]}]}`,
+					index, strings.Repeat(fmt.Sprintf("repository evidence %d ", index), 1_000)), Outcome: types.ToolOutcomeSucceeded,
+				Data: prepareV2CompactProof{proof: compactproof.Proof{Inspect: &compactproof.InspectProof{Items: 1}}},
+			}),
+		)
+	}
+	messages = append(messages,
+		types.Message{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "patch", Name: "ApplyPatch", Input: map[string]any{}},
+		}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "patch", Content: "applied", Outcome: types.ToolOutcomeSucceeded,
+		}),
+		types.Message{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "fresh", Name: "Run", Input: map[string]any{}},
+		}},
+	)
+	ql := &QueryLoop{
+		provider: &aggregateBudgetProvider{},
+		registry: registry.New(),
+		config: Config{CacheLineageID: "stable-progressive-lineage", SessionID: "progressive-session", Model: "gpt-5.6-sol",
+			ProgressiveContext: compact.ProgressiveConfig{Enabled: true}},
+		ctxWindow:               compact.NewContextWindow(200_000),
+		contentReplacementState: compact.NewContentReplacementState(),
+		microcompactCfg:         compact.DefaultMicrocompactConfig(),
+		cachedMicrocompactState: compact.NewCachedMicrocompactState(),
+		continuationEpoch:       4,
+		continuationSentAt:      4,
+		lastResponseID:          "response-before-projection",
+		lastEnvelopeFingerprint: "envelope-before-projection",
+	}
+	ql.ctxWindow.UpdateLocalEstimate(compact.ModelContextTokenEstimate{KnownTotalTokens: 100_000, Complete: true})
+	ql.ctxWindow.UpdateUsage(&types.Usage{InputTokens: 100_000, CacheReadInputTokens: 20_000})
+	state := newQueryState(messages)
+	var events []stream.Event
+	prepared, err := ql.prepareMessagesForQuery(context.Background(), state, 2, 0, false, func(event stream.Event) {
+		events = append(events, event)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if content := findToolResultContent(prepared.Messages, "inspect-0"); !strings.Contains(content, "progressive-inspect-rewrite/v1") || !strings.Contains(content, compactproof.SchemaVersion) || strings.Count(content, "repository evidence") >= 1_000 {
+		t.Fatalf("old source projection = %q", content)
+	}
+	if content := findToolResultContent(prepared.Messages, "inspect-6"); !strings.Contains(content, "repository evidence 6") {
+		t.Fatalf("recent source result was not protected: %q", content)
+	}
+	if content := findToolResultContent(state.Messages, "inspect-0"); !strings.Contains(content, "repository evidence") {
+		t.Fatalf("raw durable history changed: %q", content)
+	}
+	privateRecords := 0
+	for _, message := range state.Messages {
+		for _, block := range message.Content {
+			if _, ok := block.(types.ContentReplacementBlock); ok {
+				privateRecords++
+			}
+		}
+	}
+	if privateRecords != 5 {
+		t.Fatalf("private replacement records = %d, want 5", privateRecords)
+	}
+	if ql.lastResponseID != "" || ql.lastEnvelopeFingerprint != "" || ql.continuationEpoch != 5 || ql.continuationSentAt != 4 {
+		t.Fatalf("continuation fence = id:%q fingerprint:%q epoch:%d sent:%d", ql.lastResponseID, ql.lastEnvelopeFingerprint, ql.continuationEpoch, ql.continuationSentAt)
+	}
+	if ql.config.CacheLineageID != "stable-progressive-lineage" {
+		t.Fatalf("cache lineage changed to %q", ql.config.CacheLineageID)
+	}
+	foundMetric := false
+	for _, event := range events {
+		if event.Type == stream.EventProgress && event.Progress != nil && event.Progress.Stage == "progressive_context_projection" {
+			foundMetric = true
+			if event.Progress.Metadata["projection_count"] != 5 {
+				t.Fatalf("projection metric = %#v", event.Progress.Metadata)
+			}
+		}
+	}
+	if !foundMetric {
+		t.Fatal("progressive projection metric missing")
+	}
+}
+
+func TestPrepareMessagesForQueryProgressiveProjectionSupersedesStaleProviderUsageBeforeAutoCompact(t *testing.T) {
+	messages := []types.Message{types.UserMessage("start")}
+	for index := 0; index < 7; index++ {
+		id := fmt.Sprintf("inspect-%d", index)
+		messages = append(messages,
+			types.Message{Role: types.RoleAssistant, Content: []types.ContentBlock{
+				types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: id, Name: "Inspect", Input: map[string]any{}},
+			}},
+			types.ToolResultMessage(types.ToolResultBlock{
+				Type: types.ContentTypeToolResult, ToolUseID: id,
+				Content: fmt.Sprintf(`{"requests":[],"evidence":[{"path":"src/file-%d.cc","chunks":[{"lines":[1,2],"content":%q}]}]}`,
+					index, strings.Repeat(fmt.Sprintf("repository evidence %d ", index), 1_000)),
+				Outcome: types.ToolOutcomeSucceeded,
+				Data:    prepareV2CompactProof{proof: compactproof.Proof{Inspect: &compactproof.InspectProof{Items: 1}}},
+			}),
+		)
+	}
+	messages = append(messages,
+		types.Message{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "patch", Name: "ApplyPatch", Input: map[string]any{}},
+		}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "patch", Content: "applied", Outcome: types.ToolOutcomeSucceeded,
+		}),
+		types.Message{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "verify", Name: "Run", Input: map[string]any{}},
+		}},
+	)
+
+	compactor := &prepareCountingCompactor{}
+	ql := &QueryLoop{
+		provider: &aggregateBudgetProvider{}, registry: registry.New(), compactor: compactor,
+		config: Config{SessionID: "progressive-stale-usage", Model: "gpt-5.6-sol",
+			ProgressiveContext: compact.ProgressiveConfig{Enabled: true}},
+		ctxWindow:               compact.NewContextWindow(60_000),
+		contentReplacementState: compact.NewContentReplacementState(),
+		microcompactCfg:         compact.DefaultMicrocompactConfig(),
+		cachedMicrocompactState: compact.NewCachedMicrocompactState(),
+	}
+	state := newQueryState(messages)
+	snapshot := newQueryConfigSnapshot(ql.config, nil)
+	previousEstimate := ql.ctxWindow.EstimateProviderRequest(ql.providerParamsBase(state, snapshot, messages[:len(messages)-1]))
+	ql.ctxWindow.UpdateLocalEstimate(previousEstimate)
+	// This is authoritative for the previous, unprojected request and sits
+	// above the 27k auto-compact threshold for a 60k/default-output window.
+	ql.ctxWindow.UpdateUsage(&types.Usage{InputTokens: 34_000, CacheReadInputTokens: 5_000})
+
+	prepared, err := ql.prepareMessagesForQuery(context.Background(), state, 2, 0, false, func(stream.Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compactor.calls != 0 {
+		t.Fatalf("semantic compactor calls = %d, want 0 after progressive projection moved the live request below threshold", compactor.calls)
+	}
+	if content := findToolResultContent(prepared.Messages, "inspect-0"); !strings.Contains(content, "progressive-inspect-rewrite/v1") {
+		t.Fatalf("old source result was not projected: %q", content)
+	}
+}
+
+func TestExperimentalContextConfiguration(t *testing.T) {
+	t.Setenv("LUBAN_EXPERIMENT_MAX_CONTEXT_TOKENS", "64000")
+	t.Setenv("LUBAN_PROGRESSIVE_CONTEXT_COMPACTION", "true")
+	ql := New(nil, registry.New(), Config{MaxContextTokens: 200_000})
+	if ql.config.MaxContextTokens != 64_000 || ql.ctxWindow == nil || ql.ctxWindow.MaxTokens != 64_000 {
+		t.Fatalf("experimental max context = config:%d window:%#v", ql.config.MaxContextTokens, ql.ctxWindow)
+	}
+	if !ql.microcompactCfg.ProgressiveEnabled {
+		t.Fatal("progressive context compaction experiment was not enabled")
+	}
+}
+
+func TestProviderRequestEstimationDoesNotAdvanceContinuationState(t *testing.T) {
+	ql := New(&aggregateBudgetProvider{}, registry.New(), Config{Model: "gpt-5.6-sol", SessionID: "estimate-pure"})
+	ql.continuationEpoch = 7
+	ql.continuationSentAt = 6
+	ql.lastResponseID = "response-before-estimate"
+	ql.currentEnvelopeFingerprint = "fingerprint-before-estimate"
+	state := newQueryState([]types.Message{types.UserMessage("estimate")})
+	snapshot := newQueryConfigSnapshot(ql.config, nil)
+	params := ql.providerParamsBase(state, snapshot, state.Messages)
+	if ql.continuationSentAt != 6 || ql.lastResponseID != "response-before-estimate" || ql.currentEnvelopeFingerprint != "fingerprint-before-estimate" {
+		t.Fatalf("estimation mutated continuation state: sent=%d response=%q fingerprint=%q", ql.continuationSentAt, ql.lastResponseID, ql.currentEnvelopeFingerprint)
+	}
+	if !params.ContinuationReset {
+		t.Fatal("pure estimate lost the pending continuation reset")
+	}
+	_ = ql.providerParams(state, snapshot, state.Messages)
+	if ql.continuationSentAt != 7 || ql.currentEnvelopeFingerprint == "fingerprint-before-estimate" {
+		t.Fatalf("actual request did not commit continuation state: sent=%d fingerprint=%q", ql.continuationSentAt, ql.currentEnvelopeFingerprint)
+	}
+}
+
 func manyUserMessages(n int) []types.Message {
 	msgs := make([]types.Message, n)
 	for i := range msgs {

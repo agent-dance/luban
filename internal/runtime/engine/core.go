@@ -1706,6 +1706,7 @@ func (e *CoreEngine) buildConvWithRuntime(sessionID, model, system string, syste
 		MaxTurns:            maxTurns,
 		MaxContextTokens:    maxCtx,
 		MaxOutputTokens:     e.cfg.MaxTokens, // pass to ContextWindow for output reservation
+		ProgressiveContext:  e.cfg.ProgressiveContext,
 		HookRunner:          runtime.HookRunner,
 		SessionID:           sessionID,
 		CacheLineageID:      e.cacheLineageIDForProject(sessionID, projectDir),

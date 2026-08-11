@@ -108,6 +108,29 @@ func TestAgenticV2VisibleSnapshotFailsClosedWhenCoreIsIncomplete(t *testing.T) {
 	}
 }
 
+func TestAgenticV2VisibleSnapshotIncludesStableOptionalContextUpdate(t *testing.T) {
+	reg := New()
+	reg.SetModelToolProfile(ModelToolProfileAgenticV2)
+	for _, name := range []string{"Run", "ContextUpdate", "ApplyPatch", "Inspect"} {
+		reg.Register(&versionedVisibleTool{name: name, description: "v1"})
+	}
+	snapshot, err := reg.SnapshotVisibleTools(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Inspect", "ApplyPatch", "Run", "ContextUpdate"}
+	if got := snapshot.Names(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("visible names = %v, want %v", got, want)
+	}
+	second, err := reg.SnapshotVisibleTools(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Digest() != second.Digest() {
+		t.Fatalf("optional context catalog digest drifted: %s != %s", snapshot.Digest(), second.Digest())
+	}
+}
+
 func TestAgenticV2VisibleSnapshotIsIndependentFromExecutionAllowList(t *testing.T) {
 	reg := New()
 	reg.SetModelToolProfile(ModelToolProfileAgenticV2)

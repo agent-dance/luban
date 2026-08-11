@@ -1,0 +1,104 @@
+{
+  "instance_id": "charmbracelet__crush-766",
+  "language": "go",
+  "agent": "luban",
+  "model": "deepseek-v4-flash",
+  "reasoning_effort": "high",
+  "started_at": "2026-08-11T11:17:51.210707+00:00",
+  "elapsed_seconds": 600.289,
+  "timeout_seconds": 600,
+  "timed_out": true,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 704702,
+    "cached_input_tokens": 229888,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 104638,
+    "reasoning_output_tokens": 22777
+  },
+  "estimated_cost_usd": 0.096416,
+  "usage_source": "provider_responses",
+  "stream_event_usage": {
+    "input_tokens": 575615,
+    "cached_input_tokens": 188032,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 32739
+  },
+  "context_metrics": {
+    "agent_turns": 29,
+    "compaction_turns": [
+      11,
+      14,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      23,
+      26,
+      27,
+      28,
+      29
+    ],
+    "first_compaction_turn": 11,
+    "projection_turns": [],
+    "projection_batches": [],
+    "projected_tools": 0,
+    "rewritten_tools": 0,
+    "indexed_tools": 0,
+    "candidate_tools": 0,
+    "candidate_tokens_saved": 0,
+    "original_bytes": 0,
+    "projected_bytes": 0,
+    "bytes_saved": 0,
+    "original_tokens": 0,
+    "projected_tokens": 0,
+    "tokens_saved": 0,
+    "estimated_net_savings_usd": 0.0,
+    "context_update_proposals": 0,
+    "context_update_runtime_candidates": 0,
+    "context_update_actions": {},
+    "context_update_reason_codes": {}
+  },
+  "served_models": [
+    "deepseek-v4-flash"
+  ],
+  "experiment": {
+    "max_context_tokens": 50000,
+    "progressive_context_compaction": false,
+    "context_update_shadow": false,
+    "progressive_tools": [],
+    "progressive_imminent_compact_counterfactual": false,
+    "progressive_auto_compact_keep_recent": null,
+    "progressive_auto_compact_max_growth_tokens": null,
+    "progressive_auto_compact_min_threshold_percent": null,
+    "progressive_require_consumed_mutation": false,
+    "progressive_flatten_compact_input": false,
+    "progressive_concise_compact_summary": false,
+    "progressive_compact_max_output_tokens": null,
+    "pinned_model_capability_required": false,
+    "service_tier": "default_implicit"
+  },
+  "tool_events": 27,
+  "tool_events_by_type": {
+    "Inspect": 18,
+    "ApplyPatch": 8,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 0,
+    "files": [],
+    "additions": 0,
+    "deletions": 0
+  },
+  "llm_calls": 49,
+  "llm_successful_calls": 49,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 597.288721,
+  "binary": {
+    "name": "luban",
+    "sha256": "2aba8ddf93e7f548407730ccc87eda7b8316bcb669ae6abc8acfec10f9041185"
+  },
+  "evidence_root": "raw/runs/charmbracelet__crush-766/luban"
+}

@@ -1,0 +1,134 @@
+{
+  "instance_id": "ninja-build__ninja-2749",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at": "2026-08-11T04:49:56.506592+00:00",
+  "elapsed_seconds": 1800.246,
+  "timeout_seconds": 1800,
+  "timed_out": true,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 631421,
+    "cached_input_tokens": 204288,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 89388,
+    "reasoning_output_tokens": 16514
+  },
+  "estimated_cost_usd": 4.919449,
+  "usage_source": "provider_responses",
+  "stream_event_usage": {
+    "input_tokens": 525697,
+    "cached_input_tokens": 204288,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 23356
+  },
+  "context_metrics": {
+    "agent_turns": 22,
+    "compaction_turns": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      22
+    ],
+    "first_compaction_turn": 11,
+    "projection_turns": [
+      9,
+      10,
+      21
+    ],
+    "projection_batches": [
+      {
+        "turn": 9,
+        "trigger": "working_set_pressure",
+        "projected_tools": 3,
+        "original_bytes": 40908,
+        "projected_bytes": 17826,
+        "bytes_saved": 23082,
+        "original_tokens": 15964,
+        "projected_tokens": 6955,
+        "tokens_saved": 9009,
+        "decision": "keep_cost",
+        "estimated_net_savings_usd": -0.0773775
+      },
+      {
+        "turn": 10,
+        "trigger": "working_set_pressure",
+        "projected_tools": 3,
+        "original_bytes": 40908,
+        "projected_bytes": 17826,
+        "bytes_saved": 23082,
+        "original_tokens": 15695,
+        "projected_tokens": 6838,
+        "tokens_saved": 8857,
+        "decision": "keep_cost",
+        "estimated_net_savings_usd": -0.0921895
+      },
+      {
+        "turn": 21,
+        "trigger": "working_set_pressure",
+        "projected_tools": 3,
+        "original_bytes": 33883,
+        "projected_bytes": 6752,
+        "bytes_saved": 27131,
+        "original_tokens": 11915,
+        "projected_tokens": 2373,
+        "tokens_saved": 9542,
+        "decision": "admit_avoid_compact",
+        "estimated_net_savings_usd": 0.196695
+      }
+    ],
+    "projected_tools": 9,
+    "original_bytes": 115699,
+    "projected_bytes": 42404,
+    "bytes_saved": 73295,
+    "original_tokens": 43574,
+    "projected_tokens": 16166,
+    "tokens_saved": 27408,
+    "estimated_net_savings_usd": 0.027128,
+    "context_update_proposals": 0,
+    "context_update_runtime_candidates": 0,
+    "context_update_actions": {}
+  },
+  "served_models": [
+    "gpt-5.6-sol"
+  ],
+  "experiment": {
+    "max_context_tokens": 60000,
+    "progressive_context_compaction": true,
+    "context_update_shadow": false,
+    "progressive_tools": [
+      "Inspect"
+    ],
+    "pinned_model_capability_required": true,
+    "service_tier": "default_implicit"
+  },
+  "tool_events": 23,
+  "tool_events_by_type": {
+    "Inspect": 21,
+    "ApplyPatch": 2
+  },
+  "patch": {
+    "files_changed": 0,
+    "files": [],
+    "additions": 0,
+    "deletions": 0
+  },
+  "llm_calls": 33,
+  "llm_successful_calls": 33,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1805.033605,
+  "binary": {
+    "name": "luban",
+    "sha256": "af24cb6f79ac3f0c5c145857a3feb414c7423e4a9909cb56a6bbad7eb710e65c"
+  },
+  "evidence_root": "raw/runs/ninja-build__ninja-2749/luban"
+}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/agent-dance/luban/hooks"
 	"github.com/agent-dance/luban/internal/contracts/permission"
+	"github.com/agent-dance/luban/internal/runtime/compact"
 	"github.com/agent-dance/luban/prompt"
 	"github.com/agent-dance/luban/provider"
 	"github.com/agent-dance/luban/registry"
@@ -143,6 +144,7 @@ type QueryConfigSnapshot struct {
 	MaxTokens              int
 	MaxContextTokens       int
 	MaxOutputTokens        int
+	ProgressiveContext     compact.ProgressiveConfig
 	TokenBudget            int
 	TaskBudget             int
 	HookRunner             *hooks.Runner
@@ -187,6 +189,12 @@ func newQueryConfigSnapshot(cfg Config, thinking *provider.ThinkingConfig) Query
 	if cacheLineageID == "" {
 		cacheLineageID = strings.TrimSpace(cfg.SessionID)
 	}
+	progressiveContext := compact.NormalizeProgressiveConfig(cfg.ProgressiveContext)
+	progressiveContext.ProviderAllowlist = append([]string(nil), progressiveContext.ProviderAllowlist...)
+	progressiveContext.ModelAllowlist = append([]string(nil), progressiveContext.ModelAllowlist...)
+	progressiveContext.ProviderModelAllowlist = append([]string(nil), progressiveContext.ProviderModelAllowlist...)
+	progressiveContext.ToolAllowlist = append([]string(nil), progressiveContext.ToolAllowlist...)
+	progressiveContext.ImminentCompactProviderAllowlist = append([]string(nil), progressiveContext.ImminentCompactProviderAllowlist...)
 
 	return QueryConfigSnapshot{
 		MaxTurns:               cfg.MaxTurns,
@@ -203,6 +211,7 @@ func newQueryConfigSnapshot(cfg Config, thinking *provider.ThinkingConfig) Query
 		MaxTokens:              cfg.MaxTokens,
 		MaxContextTokens:       cfg.MaxContextTokens,
 		MaxOutputTokens:        cfg.MaxOutputTokens,
+		ProgressiveContext:     progressiveContext,
 		TokenBudget:            cfg.TokenBudget,
 		TaskBudget:             cfg.TaskBudget,
 		HookRunner:             cfg.HookRunner,

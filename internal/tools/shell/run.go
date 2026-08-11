@@ -638,14 +638,18 @@ func compileRunPlan(input map[string]any, scope bashExecutionScope, runtime type
 		}
 		ids[id] = index
 
-		hasArgv, hasShell := raw.Argv != nil, raw.ShellScript != nil
+		// Strict tool projections may materialize the unused mutually exclusive
+		// branch as [] or "". Treat only non-empty command content as selected;
+		// two real commands still fail closed below.
+		hasArgv := raw.Argv != nil && len(*raw.Argv) > 0
+		hasShell := raw.ShellScript != nil && strings.TrimSpace(*raw.ShellScript) != ""
 		if hasArgv == hasShell {
 			return nil, runPlanError(i18n.KeyToolRunCommandChoice, id)
 		}
 		step := compiledRunStep{index: index, id: id}
 		if hasArgv {
 			step.argv = append([]string(nil), (*raw.Argv)...)
-			if len(step.argv) == 0 || strings.TrimSpace(step.argv[0]) == "" {
+			if strings.TrimSpace(step.argv[0]) == "" {
 				return nil, runPlanError(i18n.KeyToolRunArgumentInvalid, id, 0)
 			}
 			total := 0
@@ -659,7 +663,7 @@ func compileRunPlan(input map[string]any, scope bashExecutionScope, runtime type
 		} else {
 			step.useShell = true
 			step.shellScript = *raw.ShellScript
-			if strings.TrimSpace(step.shellScript) == "" || strings.IndexByte(step.shellScript, 0) >= 0 || len(step.shellScript) > maxRunStepInputSize {
+			if strings.IndexByte(step.shellScript, 0) >= 0 || len(step.shellScript) > maxRunStepInputSize {
 				return nil, runPlanError(i18n.KeyToolRunCommandChoice, id)
 			}
 			step.command = step.shellScript

@@ -9,17 +9,20 @@ import (
 	"github.com/agent-dance/luban/brand"
 	"github.com/agent-dance/luban/cli"
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/runtime/compact"
 	"github.com/agent-dance/luban/provider"
 )
 
 type startupModelSettings struct {
-	Provider         string
-	Model            string
-	APIKey           string
-	CacheRoutingMode string
-	ReasoningEffort  string
-	ModelOverrides   provider.ModelOverrides
-	Source           string
+	Provider              string
+	Model                 string
+	APIKey                string
+	CacheRoutingMode      string
+	ReasoningEffort       string
+	ModelOverrides        provider.ModelOverrides
+	ProgressiveContext    compact.ProgressiveConfig
+	ProgressiveContextSet bool
+	Source                string
 }
 
 func loadStartupModelSettings(cwd string) (startupModelSettings, error) {
@@ -73,8 +76,15 @@ func loadStartupModelSettings(cwd string) (startupModelSettings, error) {
 					merged.ModelOverrides[key] = override
 				}
 			}
+			if settings.ProgressiveContextSet {
+				merged.ProgressiveContext = settings.ProgressiveContext
+				merged.ProgressiveContextSet = true
+			}
 			merged.Source = path
 		}
+	}
+	if !merged.ProgressiveContextSet {
+		merged.ProgressiveContext = compact.ProductionProgressiveConfig()
 	}
 	return merged, nil
 }
@@ -123,7 +133,19 @@ func readModelSettingsFile(path string) (startupModelSettings, bool, error) {
 		}
 		settings.ModelOverrides = sanitizedModelOverrides(overrides)
 	}
-	if settings.Provider == "" && settings.Model == "" && settings.APIKey == "" && settings.CacheRoutingMode == "" && settings.ReasoningEffort == "" && len(settings.ModelOverrides) == 0 {
+	if rawProgressive, ok := raw["progressiveContext"]; ok {
+		data, err := json.Marshal(rawProgressive)
+		if err != nil {
+			return startupModelSettings{}, false, rootRuntimeWrap(i18n.KeyRootModelSettingsParse, err, path)
+		}
+		var progressive compact.ProgressiveConfig
+		if err := json.Unmarshal(data, &progressive); err != nil {
+			return startupModelSettings{}, false, rootRuntimeWrap(i18n.KeyRootModelSettingsParse, err, path)
+		}
+		settings.ProgressiveContext = compact.NormalizeProgressiveConfig(progressive)
+		settings.ProgressiveContextSet = true
+	}
+	if settings.Provider == "" && settings.Model == "" && settings.APIKey == "" && settings.CacheRoutingMode == "" && settings.ReasoningEffort == "" && len(settings.ModelOverrides) == 0 && !settings.ProgressiveContextSet {
 		return startupModelSettings{}, false, nil
 	}
 	return settings, true, nil

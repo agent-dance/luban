@@ -1,0 +1,87 @@
+{
+  "instance_id": "charmbracelet__crush-766",
+  "language": "go",
+  "agent": "luban",
+  "model": "deepseek-v4-flash",
+  "reasoning_effort": "high",
+  "started_at": "2026-08-11T10:16:37.270591+00:00",
+  "elapsed_seconds": 216.42,
+  "timeout_seconds": 600,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 500599,
+    "cached_input_tokens": 471040,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 29254,
+    "reasoning_output_tokens": 21187
+  },
+  "estimated_cost_usd": 0.013648,
+  "usage_source": "provider_responses",
+  "stream_event_usage": {
+    "input_tokens": 484835,
+    "cached_input_tokens": 462592,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 27461
+  },
+  "context_metrics": {
+    "agent_turns": 17,
+    "compaction_turns": [],
+    "first_compaction_turn": null,
+    "projection_turns": [],
+    "projection_batches": [],
+    "projected_tools": 0,
+    "rewritten_tools": 0,
+    "indexed_tools": 0,
+    "candidate_tools": 0,
+    "candidate_tokens_saved": 0,
+    "original_bytes": 0,
+    "projected_bytes": 0,
+    "bytes_saved": 0,
+    "original_tokens": 0,
+    "projected_tokens": 0,
+    "tokens_saved": 0,
+    "estimated_net_savings_usd": 0.0,
+    "context_update_proposals": 0,
+    "context_update_runtime_candidates": 0,
+    "context_update_actions": {},
+    "context_update_reason_codes": {}
+  },
+  "served_models": [
+    "deepseek-v4-flash"
+  ],
+  "experiment": {
+    "max_context_tokens": 50000,
+    "progressive_context_compaction": false,
+    "context_update_shadow": false,
+    "progressive_tools": [],
+    "progressive_imminent_compact_counterfactual": false,
+    "progressive_auto_compact_keep_recent": null,
+    "pinned_model_capability_required": false,
+    "service_tier": "default_implicit"
+  },
+  "tool_events": 15,
+  "tool_events_by_type": {
+    "Inspect": 9,
+    "ApplyPatch": 3,
+    "Run": 3
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/fsext/fileutil.go",
+      "internal/fsext/ls.go"
+    ],
+    "additions": 18,
+    "deletions": 2
+  },
+  "llm_calls": 20,
+  "llm_successful_calls": 20,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 214.642033,
+  "binary": {
+    "name": "luban",
+    "sha256": "4a9aa754c93cfeecc0b8bd0e927f82bc9cdb88a1dbb1f1761a49f707272734ba"
+  },
+  "evidence_root": "raw/runs/charmbracelet__crush-766/luban"
+}

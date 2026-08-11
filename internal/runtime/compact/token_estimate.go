@@ -112,7 +112,56 @@ func (cw *ContextWindow) reportedInputTokens() int {
 	}
 	cw.usageMu.RLock()
 	defer cw.usageMu.RUnlock()
-	return cw.UsedInput
+	if !cw.providerUsageKnown && cw.requestEstimateLive {
+		return 0
+	}
+	return max(cw.UsedInput, 0)
+}
+
+// ProviderReportedInputTokens exposes the last complete provider measurement
+// to cache-aware projection admission. It returns zero after compaction or a
+// local estimate invalidates that measurement, preventing stale pre-compact
+// usage from forcing another rewrite.
+func (cw *ContextWindow) ProviderReportedInputTokens() int {
+	return cw.reportedInputTokens()
+}
+
+// ProviderUsageKnown reports whether the cache-cost gate has an authoritative
+// previous-request baseline. A freshly resumed process may have complete local
+// history but no knowledge of whether the provider can reuse its remote cache;
+// treating that state as a cache miss would make the first resumed projection
+// optimistically unsafe.
+func (cw *ContextWindow) ProviderUsageKnown() bool {
+	if cw == nil {
+		return false
+	}
+	cw.usageMu.RLock()
+	defer cw.usageMu.RUnlock()
+	return cw.providerUsageKnown
+}
+
+// ProviderAdjustedInputTokens calibrates the complete local request estimate
+// against the previous request's provider-reported total. Provider adapters
+// may retain continuation state that the generic message estimator must still
+// represent, so its absolute value can carry a stable bias. Applying only the
+// local delta to the authoritative provider baseline preserves growth and
+// projection savings without double-counting that stable representation.
+// When no comparable complete baseline exists, the larger known value is the
+// conservative fallback.
+func (cw *ContextWindow) ProviderAdjustedInputTokens(estimate ModelContextTokenEstimate) int {
+	local := max(estimate.KnownTotalTokens, 0)
+	if cw == nil {
+		return local
+	}
+	cw.usageMu.RLock()
+	defer cw.usageMu.RUnlock()
+	if cw.providerUsageKnown && estimate.Complete && cw.requestEstimate.Complete && cw.requestEstimate.KnownTotalTokens > 0 {
+		return max(cw.UsedInput+local-cw.requestEstimate.KnownTotalTokens, 0)
+	}
+	if cw.providerUsageKnown || !cw.requestEstimateLive {
+		return max(local, cw.UsedInput)
+	}
+	return local
 }
 
 // EstimateMessagesDetailed estimates every request component available at the

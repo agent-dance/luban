@@ -54,6 +54,19 @@ func TestInspectEmptyPathDefaultsToRepositoryRootForAllKinds(t *testing.T) {
 	}
 }
 
+func TestInspectRequestBatchTreatsStrictNullCursorSentinelAsAbsent(t *testing.T) {
+	tool := New(nil, nil)
+	validated, err := tool.validateInput(map[string]any{
+		"cursor": "null",
+		"requests": []any{map[string]any{
+			"id": "source", "kind": KindRead, "path": "main.go",
+		}},
+	})
+	if err != nil || validated.cursor != "" || len(validated.requests) != 1 {
+		t.Fatalf("validated=%+v err=%v", validated, err)
+	}
+}
+
 func TestInspectMixedBatchIsStableAndRecordsSearchEvidence(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "alpha.go")

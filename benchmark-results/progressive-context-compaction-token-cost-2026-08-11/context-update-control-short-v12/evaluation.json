@@ -1,0 +1,22 @@
+{
+  "instance_id": "charmbracelet__crush-766",
+  "language": "go",
+  "agent": "luban",
+  "resolved": true,
+  "elapsed_seconds": 143.096,
+  "FAIL_TO_PASS": {
+    "expected": 1,
+    "passed": [
+      "github.com/charmbracelet/crush/internal/fsext::TestListDirectory"
+    ],
+    "failed": [],
+    "missing": []
+  },
+  "PASS_TO_PASS": {
+    "expected": 635,
+    "passed_count": 635,
+    "failed": [],
+    "missing_count": 0
+  },
+  "evidence_root": "raw/evaluation/charmbracelet__crush-766/luban"
+}

@@ -775,6 +775,43 @@ func TestStructuredLLMSummarizePreservesToolUseInputAndDisablesTools(t *testing.
 	}
 }
 
+func TestStructuredLLMSummarizeCanFlattenConversationAsUntrustedData(t *testing.T) {
+	prov := &recordingSummaryProvider{}
+	summarize := NewLLMStructuredSummarizeFuncWithOptions(prov, "", StructuredSummarizeOptions{
+		FlattenMessages: true, ConciseSummary: true, MaxOutputTokens: 4_000,
+	})
+	messages := []types.Message{
+		types.UserMessage("ordinary request"),
+		{
+			Role: types.RoleAssistant,
+			Content: []types.ContentBlock{types.ToolUseBlock{
+				Type: types.ContentTypeToolUse, ID: "toolu_flat", Name: "Inspect", Input: map[string]any{"path": "src/main.go"},
+			}},
+		},
+	}
+
+	if _, err := summarize(context.Background(), messages, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(prov.calls) != 1 || len(prov.calls[0].Messages) != 2 {
+		t.Fatalf("flattened provider messages = %#v", prov.calls)
+	}
+	transcript := prov.calls[0].Messages[0]
+	if !transcript.IsMeta || len(transcript.Content) != 1 || !strings.Contains(transcript.GetText(), `kind="conversation_transcript"`) ||
+		!strings.Contains(transcript.GetText(), `"role":"user"`) || !strings.Contains(transcript.GetText(), `"type":"tool_use"`) {
+		t.Fatalf("flattened transcript = %#v", transcript)
+	}
+	if _, ok := transcript.Content[0].(types.TextBlock); !ok {
+		t.Fatalf("flattened transcript retained executable structured blocks: %#v", transcript.Content)
+	}
+	if !strings.Contains(prov.calls[0].Messages[1].GetText(), `kind="summarization_request"`) {
+		t.Fatalf("runtime summary request missing: %#v", prov.calls[0].Messages[1])
+	}
+	if prov.calls[0].MaxTokens != 4_000 || !strings.Contains(prov.calls[0].System, "concise, loss-minimizing coding handoff") || strings.Contains(prov.calls[0].System, "9. Optional Next Step") {
+		t.Fatalf("concise compact request = max %d system %q", prov.calls[0].MaxTokens, prov.calls[0].System)
+	}
+}
+
 func TestParseCompactSummaryEnvelopeRequiresExactV2Schema(t *testing.T) {
 	valid, err := parseCompactSummaryEnvelope(`{"schema":"compact-summary/v2","summary":"kept fact"}`)
 	if err != nil || valid != "kept fact" {

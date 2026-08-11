@@ -23,6 +23,11 @@ type AutoCompactOptions struct {
 	// RequestEstimate accounts for the exact provider.Params envelope planned
 	// by the caller. Nil uses the message estimate.
 	RequestEstimate *ModelContextTokenEstimate
+	// Threshold overrides the ordinary auto-compact threshold when positive.
+	// MaxGrowthTokens bounds only the locally estimated growth above an
+	// authoritative provider baseline; zero preserves existing behavior.
+	Threshold       int
+	MaxGrowthTokens int
 	OnTelemetry     func(CompactionTelemetryEvent)
 }
 
@@ -39,11 +44,19 @@ func AutoCompactIfNeeded(ctx context.Context, messages []types.Message, opts Aut
 	if opts.Window.ConsecutiveFailures() >= MaxConsecutiveAutocompactFailures {
 		return nil, false, nil
 	}
-	estimate := opts.Window.EstimateMessages(messages)
-	if opts.RequestEstimate != nil {
-		estimate = opts.RequestEstimate.KnownTotalTokens
+	estimate := ModelContextTokenEstimate{
+		KnownTotalTokens: opts.Window.EstimateMessages(messages),
+		Complete:         true,
 	}
-	if !opts.Window.shouldCompactEstimate(estimate) {
+	if opts.RequestEstimate != nil {
+		estimate = *opts.RequestEstimate
+	}
+	threshold := opts.Threshold
+	if threshold <= 0 {
+		threshold = opts.Window.autoCompactThreshold()
+	}
+	decisionTokens := opts.Window.AutoCompactDecisionTokens(estimate, opts.MaxGrowthTokens)
+	if decisionTokens <= threshold {
 		return nil, false, nil
 	}
 
@@ -51,8 +64,7 @@ func AutoCompactIfNeeded(ctx context.Context, messages []types.Message, opts Aut
 	if trigger == "" {
 		trigger = "auto"
 	}
-	threshold := opts.Window.autoCompactThreshold()
-	preEstimate := estimate
+	preEstimate := decisionTokens
 	emitAutoTelemetry(opts.OnTelemetry, CompactionTelemetryEvent{
 		Kind:                       CompactionTelemetryAutoAttempt,
 		Trigger:                    trigger,
@@ -155,10 +167,63 @@ func (cw *ContextWindow) ShouldSnip(messages []types.Message) bool {
 // ShouldSnipEstimate applies the cheap threshold gate to a complete planned
 // provider request rather than message text alone.
 func (cw *ContextWindow) ShouldSnipEstimate(estimate ModelContextTokenEstimate) bool {
+	return cw.ShouldSnipEstimateWithPolicy(estimate, 0, 0)
+}
+
+// ShouldSnipEstimateWithPolicy applies a provider-scoped threshold and local
+// growth bound. Zero values preserve the established decision exactly.
+func (cw *ContextWindow) ShouldSnipEstimateWithPolicy(estimate ModelContextTokenEstimate, threshold, maxGrowthTokens int) bool {
 	if cw == nil || cw.ConsecutiveFailures() >= MaxConsecutiveAutocompactFailures {
 		return false
 	}
-	return estimate.KnownTotalTokens > cw.autoCompactThreshold()
+	if threshold <= 0 {
+		threshold = cw.autoCompactThreshold()
+	}
+	return cw.AutoCompactDecisionTokens(estimate, maxGrowthTokens) > threshold
+}
+
+// ShouldProgressiveProjection opens the conservative result-projection gate
+// shortly before semantic compaction. The headroom covers roughly two normal
+// coding turns while keeping the feature dormant in a large, lightly used
+// production context window.
+func (cw *ContextWindow) ShouldProgressiveProjection(estimate ModelContextTokenEstimate) bool {
+	return cw.ShouldProgressiveProjectionWithPolicy(estimate, 0, 0)
+}
+
+// ShouldProgressiveProjectionWithPolicy keeps projection pressure aligned with
+// the provider-scoped semantic-compaction decision.
+func (cw *ContextWindow) ShouldProgressiveProjectionWithPolicy(estimate ModelContextTokenEstimate, threshold, maxGrowthTokens int) bool {
+	if cw == nil || cw.ConsecutiveFailures() >= MaxConsecutiveAutocompactFailures {
+		return false
+	}
+	const headroomTokens = 8_000
+	if threshold <= 0 {
+		threshold = cw.autoCompactThreshold()
+	}
+	threshold -= headroomTokens
+	if threshold < 1 {
+		threshold = 1
+	}
+	used := cw.AutoCompactDecisionTokens(estimate, maxGrowthTokens)
+	return used >= threshold
+}
+
+// AutoCompactDecisionTokens bounds only positive local growth above the last
+// authoritative provider measurement. A projection that lowers the request is
+// never raised to the cap, and provider-reported pressure is never hidden.
+func (cw *ContextWindow) AutoCompactDecisionTokens(estimate ModelContextTokenEstimate, maxGrowthTokens int) int {
+	used := cw.ProviderAdjustedInputTokens(estimate)
+	if cw == nil || maxGrowthTokens <= 0 {
+		return used
+	}
+	cw.usageMu.RLock()
+	providerKnown := cw.providerUsageKnown
+	reported := max(cw.UsedInput, 0)
+	cw.usageMu.RUnlock()
+	if !providerKnown {
+		return used
+	}
+	return min(used, reported+maxGrowthTokens)
 }
 
 func (cw *ContextWindow) shouldCompactEstimate(estimate int) bool {
@@ -168,9 +233,6 @@ func (cw *ContextWindow) shouldCompactEstimate(estimate int) bool {
 	if cw.ConsecutiveFailures() >= MaxConsecutiveAutocompactFailures {
 		return false
 	}
-	used := estimate
-	if reported := cw.reportedInputTokens(); reported > used {
-		used = reported
-	}
+	used := cw.ProviderAdjustedInputTokens(ModelContextTokenEstimate{KnownTotalTokens: estimate, Complete: true})
 	return used > cw.autoCompactThreshold()
 }

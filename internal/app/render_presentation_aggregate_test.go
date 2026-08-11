@@ -74,6 +74,42 @@ func TestJSONRendererForwardsAgenticMetricsAdditively(t *testing.T) {
 	}
 }
 
+func TestJSONRendererForwardsContentFreeContextMetrics(t *testing.T) {
+	var output bytes.Buffer
+	handle := makeEventHandler(ui.NewJSONRenderer(&output), false)
+	handle(stream.Event{
+		Type: stream.EventProgress, TurnCount: 7, TurnID: "turn-context",
+		Progress: &stream.ProgressEvent{
+			Stage: "progressive_context_projection",
+			Metadata: map[string]any{
+				"projection_count": 2, "original_bytes": 9000,
+				"projected_bytes": 700, "bytes_saved": 8300,
+				"raw_result": "must-not-leak",
+			},
+		},
+	})
+	handle(stream.Event{
+		Type: stream.EventCompactBoundary, TurnCount: 11, TurnID: "turn-context-compact",
+		Compact: &stream.CompactBoundaryEvent{
+			BoundaryID: "boundary-safe", Trigger: "auto",
+			PreCompactTokenCount: 35000, PostCompactTokenCount: 12000,
+			TruePostCompactTokenCount: 12500, Summary: "must-not-leak",
+		},
+	})
+	got := output.String()
+	for _, want := range []string{
+		`"metric":"context_projection"`, `"turn_count":7`, `"bytes_saved":8300`,
+		`"metric":"context_compaction"`, `"turn_count":11`, `"boundary_id":"boundary-safe"`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("context metric missing %s:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "must-not-leak") {
+		t.Fatalf("context metrics leaked model-visible content:\n%s", got)
+	}
+}
+
 func emitTwoRoutineReads(handle func(stream.Event)) {
 	for _, id := range []string{"read-a", "read-b"} {
 		call := types.ToolUseBlock{ID: id, Name: "Read", Input: map[string]any{"file_path": id + ".go"}}

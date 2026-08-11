@@ -1,0 +1,94 @@
+{
+  "instance_id": "ninja-build__ninja-2749",
+  "language": "cpp",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at": "2026-08-10T08:20:52.952741+00:00",
+  "elapsed_seconds": 1231.888,
+  "timeout_seconds": 1800,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 324904,
+    "cached_input_tokens": 195584,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 47695,
+    "reasoning_output_tokens": 41584
+  },
+  "estimated_cost_usd": 2.175242,
+  "usage_source": "provider_responses",
+  "stream_event_usage": {
+    "input_tokens": 324904,
+    "cached_input_tokens": 195584,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 47695
+  },
+  "context_metrics": {
+    "compaction_turns": [],
+    "first_compaction_turn": null,
+    "projection_turns": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      16,
+      18,
+      19,
+      20,
+      22,
+      23,
+      24,
+      25,
+      27,
+      29,
+      32,
+      33,
+      34
+    ],
+    "projected_tools": 25,
+    "original_bytes": 174542,
+    "projected_bytes": 10335,
+    "bytes_saved": 164207
+  },
+  "served_models": [
+    "gpt-5.6-sol"
+  ],
+  "experiment": {
+    "max_context_tokens": 64000,
+    "progressive_context_compaction": true,
+    "pinned_model_capability_required": false,
+    "service_tier": "default_implicit"
+  },
+  "tool_events": 33,
+  "tool_events_by_type": {
+    "Inspect": 31,
+    "ApplyPatch": 1,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 1,
+    "files": [
+      "src/graph.cc"
+    ],
+    "additions": 11,
+    "deletions": 1
+  },
+  "llm_calls": 34,
+  "llm_successful_calls": 34,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 1230.608589,
+  "binary": {
+    "name": "luban",
+    "sha256": "9f90ea3305f360e6b91678bb585fb48febc908d1c27ea2d03ae3e5a7d25eebc8"
+  },
+  "evidence_root": "raw/runs/ninja-build__ninja-2749/luban"
+}

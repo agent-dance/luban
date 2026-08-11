@@ -175,6 +175,73 @@ func (r *JSONRenderer) RenderToolRoundMetrics(ctx presentation.ToolEventContext,
 	r.writeLine(event)
 }
 
+// RenderProgressiveContextMetrics emits only aggregate projection sizes. Tool
+// IDs and result content remain private to the runtime transcript.
+func (r *JSONRenderer) RenderProgressiveContextMetrics(ctx presentation.ToolEventContext, turnCount int, progress *stream.ProgressEvent) {
+	if progress == nil || progress.Stage != "progressive_context_projection" {
+		return
+	}
+	metric := map[string]any{"stage": progress.Stage}
+	for _, key := range []string{
+		"trigger", "decision", "shadow", "applied", "projection_count", "rewrite_count", "index_count",
+		"original_bytes", "projected_bytes", "bytes_saved",
+		"original_tokens", "projected_tokens", "tokens_saved",
+		"request_tokens_before", "request_tokens_after",
+		"cache_break_cost_usd", "avoided_compact_input_cost_usd",
+		"estimated_net_savings_usd", "avoids_immediate_compaction",
+	} {
+		if value, ok := progress.Metadata[key]; ok {
+			metric[key] = value
+		}
+	}
+	event := r.telemetryIdentity(ctx)
+	event["type"] = "agentic_metrics"
+	event["metric"] = "context_projection"
+	event["turn_count"] = turnCount
+	event["context_projection"] = metric
+	r.writeLine(event)
+}
+
+// RenderContextUpdateMetrics records content-free shadow classifications. The
+// proposed rewrite and reason text are deliberately excluded.
+func (r *JSONRenderer) RenderContextUpdateMetrics(ctx presentation.ToolEventContext, turnCount int, progress *stream.ProgressEvent) {
+	if progress == nil || progress.Stage != "context_update_shadow" {
+		return
+	}
+	metric := map[string]any{"stage": progress.Stage}
+	for _, key := range []string{"schema", "action", "reason_code", "target_index", "target_tool", "target_found", "runtime_candidate", "confidence", "applied"} {
+		if value, ok := progress.Metadata[key]; ok {
+			metric[key] = value
+		}
+	}
+	event := r.telemetryIdentity(ctx)
+	event["type"] = "agentic_metrics"
+	event["metric"] = "context_update"
+	event["turn_count"] = turnCount
+	event["context_update"] = metric
+	r.writeLine(event)
+}
+
+// RenderCompactionMetrics emits a content-free successful compaction receipt.
+// The semantic summary and retained conversation are deliberately omitted.
+func (r *JSONRenderer) RenderCompactionMetrics(ctx presentation.ToolEventContext, turnCount int, compact *stream.CompactBoundaryEvent) {
+	if compact == nil {
+		return
+	}
+	event := r.telemetryIdentity(ctx)
+	event["type"] = "agentic_metrics"
+	event["metric"] = "context_compaction"
+	event["turn_count"] = turnCount
+	event["context_compaction"] = map[string]any{
+		"boundary_id":                   compact.BoundaryID,
+		"trigger":                       compact.Trigger,
+		"pre_compact_token_count":       compact.PreCompactTokenCount,
+		"post_compact_token_count":      compact.PostCompactTokenCount,
+		"true_post_compact_token_count": compact.TruePostCompactTokenCount,
+	}
+	r.writeLine(event)
+}
+
 // --- presentation.Renderer interface implementation ---
 
 func (r *JSONRenderer) Text(s string) {

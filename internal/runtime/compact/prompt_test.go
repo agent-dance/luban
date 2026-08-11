@@ -202,3 +202,13 @@ func TestCompactPromptContainsCustomInstructionsGuidance(t *testing.T) {
 		t.Error("expected Summary instructions example in CompactUserPrompt")
 	}
 }
+
+func TestConciseCompactPromptRetainsContractWithoutNineSectionExpansion(t *testing.T) {
+	prompt := buildConciseCompactPrompt("preserve the failing command")
+	if !strings.Contains(prompt, "concise, loss-minimizing coding handoff") ||
+		!strings.Contains(prompt, "Additional Instructions:\npreserve the failing command") ||
+		!strings.Contains(prompt, `{"schema":"compact-summary/v2","summary":"..."}`) ||
+		strings.Contains(prompt, "9. Optional Next Step") {
+		t.Fatalf("concise prompt contract = %q", prompt)
+	}
+}

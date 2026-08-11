@@ -206,6 +206,26 @@ func makeEventHandler(r presentation.Renderer, verbose bool) func(stream.Event) 
 			}); ok {
 				machine.RenderToolRoundMetrics(toolEventContext(event), event.ToolRound)
 			}
+		case stream.EventProgress:
+			if event.Progress != nil && event.Progress.Stage == "progressive_context_projection" {
+				if machine, ok := r.(interface {
+					RenderProgressiveContextMetrics(presentation.ToolEventContext, int, *stream.ProgressEvent)
+				}); ok {
+					machine.RenderProgressiveContextMetrics(toolEventContext(event), event.TurnCount, event.Progress)
+				}
+			} else if event.Progress != nil && event.Progress.Stage == "context_update_shadow" {
+				if machine, ok := r.(interface {
+					RenderContextUpdateMetrics(presentation.ToolEventContext, int, *stream.ProgressEvent)
+				}); ok {
+					machine.RenderContextUpdateMetrics(toolEventContext(event), event.TurnCount, event.Progress)
+				}
+			}
+		case stream.EventCompactBoundary:
+			if machine, ok := r.(interface {
+				RenderCompactionMetrics(presentation.ToolEventContext, int, *stream.CompactBoundaryEvent)
+			}); ok {
+				machine.RenderCompactionMetrics(toolEventContext(event), event.TurnCount, event.Compact)
+			}
 		}
 	}
 }

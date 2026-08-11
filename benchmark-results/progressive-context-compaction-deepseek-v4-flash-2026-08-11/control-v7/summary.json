@@ -1,0 +1,93 @@
+{
+  "instance_id": "charmbracelet__crush-766",
+  "language": "go",
+  "agent": "luban",
+  "model": "deepseek-v4-flash",
+  "reasoning_effort": "high",
+  "started_at": "2026-08-11T10:41:58.902012+00:00",
+  "elapsed_seconds": 171.983,
+  "timeout_seconds": 600,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 258576,
+    "cached_input_tokens": 175744,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 23834,
+    "reasoning_output_tokens": 13047
+  },
+  "estimated_cost_usd": 0.018762,
+  "usage_source": "provider_responses",
+  "stream_event_usage": {
+    "input_tokens": 241931,
+    "cached_input_tokens": 169344,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 17871
+  },
+  "context_metrics": {
+    "agent_turns": 13,
+    "compaction_turns": [
+      12,
+      13
+    ],
+    "first_compaction_turn": 12,
+    "projection_turns": [],
+    "projection_batches": [],
+    "projected_tools": 0,
+    "rewritten_tools": 0,
+    "indexed_tools": 0,
+    "candidate_tools": 0,
+    "candidate_tokens_saved": 0,
+    "original_bytes": 0,
+    "projected_bytes": 0,
+    "bytes_saved": 0,
+    "original_tokens": 0,
+    "projected_tokens": 0,
+    "tokens_saved": 0,
+    "estimated_net_savings_usd": 0.0,
+    "context_update_proposals": 0,
+    "context_update_runtime_candidates": 0,
+    "context_update_actions": {},
+    "context_update_reason_codes": {}
+  },
+  "served_models": [
+    "deepseek-v4-flash"
+  ],
+  "experiment": {
+    "max_context_tokens": 50000,
+    "progressive_context_compaction": false,
+    "context_update_shadow": false,
+    "progressive_tools": [],
+    "progressive_imminent_compact_counterfactual": false,
+    "progressive_auto_compact_keep_recent": null,
+    "progressive_auto_compact_max_growth_tokens": null,
+    "progressive_auto_compact_min_threshold_percent": null,
+    "pinned_model_capability_required": false,
+    "service_tier": "default_implicit"
+  },
+  "tool_events": 12,
+  "tool_events_by_type": {
+    "Inspect": 9,
+    "ApplyPatch": 1,
+    "Run": 2
+  },
+  "patch": {
+    "files_changed": 3,
+    "files": [
+      "internal/fsext/fileutil.go",
+      "internal/fsext/ignore_test.go",
+      "internal/fsext/ls.go"
+    ],
+    "additions": 60,
+    "deletions": 12
+  },
+  "llm_calls": 16,
+  "llm_successful_calls": 16,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 170.286763,
+  "binary": {
+    "name": "luban",
+    "sha256": "1e2619b0f556ab225e9dd945449a6f6efd55044aa464b307c53c310d9d0f26cd"
+  },
+  "evidence_root": "raw/runs/charmbracelet__crush-766/luban"
+}

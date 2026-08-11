@@ -25,6 +25,7 @@ import (
 	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/internal/runtime/engine"
 	"github.com/agent-dance/luban/internal/store/session"
+	toolcontextupdate "github.com/agent-dance/luban/internal/tools/contextupdate"
 	toolshell "github.com/agent-dance/luban/internal/tools/shell"
 	toolskill "github.com/agent-dance/luban/internal/tools/skill"
 	"github.com/agent-dance/luban/internal/ui/terminal"
@@ -288,7 +289,11 @@ func Run() (exitCode int) {
 		defer restoreDiagnosticLogger()
 	}
 	deps := SetupRegistry(pRef, cwd, allowedDirs, sb, webDomains, interactive)
+	if startupModelSettings.ProgressiveContext.Enabled && startupModelSettings.ProgressiveContext.Shadow || isEnvTruthy(os.Getenv("LUBAN_CONTEXT_UPDATE_SHADOW")) {
+		deps.Registry.Register(toolcontextupdate.New())
+	}
 	deps.AgentTool.ServiceTier = serviceTier
+	deps.AgentTool.ProgressiveContext = startupModelSettings.ProgressiveContext
 	if opts.ForceSandboxTools {
 		if _, ok := sandbox.Snapshot(sb); !ok || deps.BashTool == nil {
 			fmt.Fprint(os.Stderr, i18n.Text(lang, i18n.KeyStartupSandboxUnavailable))
@@ -420,6 +425,7 @@ func Run() (exitCode int) {
 		MaxTurns:              maxTurns,
 		MaxTokens:             16384,
 		MaxContextTokens:      200000,
+		ProgressiveContext:    startupModelSettings.ProgressiveContext,
 		ReasoningEffort:       reasoningEffort,
 		ServiceTier:           serviceTier,
 		PinnedModel:           opts.PinnedModel,

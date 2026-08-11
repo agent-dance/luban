@@ -262,6 +262,53 @@ func (cw *ContextWindow) autoCompactThreshold() int {
 	return t
 }
 
+// AutoCompactThreshold exposes the active input-side threshold to projection
+// admission. It includes the same model-window and experimental overrides as
+// semantic auto-compaction, so the two decisions cannot drift.
+func (cw *ContextWindow) AutoCompactThreshold() int {
+	if cw == nil {
+		return 0
+	}
+	return cw.autoCompactThreshold()
+}
+
+// AutoCompactThresholdWithMinPercent returns the ordinary fixed-buffer
+// threshold or a reviewed percentage floor, whichever compacts later. This
+// keeps the established safety buffer for large windows while avoiding a
+// disproportionate buffer in deliberately small stress-test windows.
+func (cw *ContextWindow) AutoCompactThresholdWithMinPercent(percent int) int {
+	if cw == nil {
+		return 0
+	}
+	threshold := cw.autoCompactThreshold()
+	if percent <= 0 {
+		return threshold
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	percentageFloor := cw.effectiveContextWindowSize() * percent / 100
+	if percentageFloor > threshold {
+		return percentageFloor
+	}
+	return threshold
+}
+
+// PreviousCacheReadTokens returns the last provider-reported cache hit. Local
+// estimates never fabricate cache reuse; before the first usage report it is
+// therefore zero.
+func (cw *ContextWindow) PreviousCacheReadTokens() int {
+	if cw == nil {
+		return 0
+	}
+	cw.usageMu.RLock()
+	defer cw.usageMu.RUnlock()
+	if !cw.providerUsageKnown {
+		return 0
+	}
+	return max(cw.CacheRead, 0)
+}
+
 // ShouldCompact checks if context compression should trigger.
 // The circuit breaker prevents infinite compaction loops: after
 // MaxConsecutiveAutocompactFailures consecutive failures, ShouldCompact

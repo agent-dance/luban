@@ -101,6 +101,26 @@ func TestRunArgvDoesNotInvokeShell(t *testing.T) {
 	}
 }
 
+func TestRunStrictProjectionIgnoresEmptyMutuallyExclusiveSentinel(t *testing.T) {
+	root := t.TempDir()
+	scope := (&BashTool{CWD: root, AllowedDirs: []string{root}}).executionScopeSnapshot()
+	for _, input := range []map[string]any{
+		{"id": "argv", "argv": []any{"printf", "ok"}, "shell_script": ""},
+		{"id": "shell", "argv": []any{}, "shell_script": "printf ok"},
+	} {
+		plan, err := compileRunPlan(map[string]any{"steps": []any{input}}, scope, types.ToolRuntimeContext{}, true)
+		if err != nil || len(plan.steps) != 1 {
+			t.Fatalf("input=%#v plan=%#v err=%v", input, plan, err)
+		}
+	}
+	_, err := compileRunPlan(map[string]any{"steps": []any{map[string]any{
+		"id": "conflict", "argv": []any{"printf", "argv"}, "shell_script": "printf shell",
+	}}}, scope, types.ToolRuntimeContext{}, true)
+	if err == nil {
+		t.Fatal("two non-empty command branches were accepted")
+	}
+}
+
 func TestRunShellScriptEnforcesPipefail(t *testing.T) {
 	requireBashAvailable(t)
 	root := t.TempDir()

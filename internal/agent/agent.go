@@ -76,10 +76,11 @@ var agentColorNames = map[string]struct{}{
 
 // AgentTool spawns a sub-agent with its own conversation
 type AgentTool struct {
-	Provider provider.Provider
-	Registry *registry.Registry
-	System   string
-	Model    string
+	Provider           provider.Provider
+	Registry           *registry.Registry
+	System             string
+	Model              string
+	ProgressiveContext loop.ProgressiveContextConfig
 	// ServiceTier is inherited by every nested model generation so a
 	// contract-bound parent cannot spawn an unpinned scheduling lane.
 	ServiceTier provider.ServiceTier
@@ -1371,23 +1372,24 @@ func (t *AgentTool) buildSubAgentLoopWithOptions(agentID string, in agentcontrac
 		presentationSessionID,
 	)
 	subAgentTool := &AgentTool{
-		Provider:          childProvider,
-		Registry:          subReg,
-		System:            parentRuntime.System,
-		Model:             model,
-		ServiceTier:       t.ServiceTier,
-		Background:        t.Background,
-		Collaboration:     t.Collaboration,
-		SkillManager:      t.SkillManager,
-		HookRunner:        agentHooks,
-		PermissionHandler: permissionHandler,
-		InlineProfiles:    t.InlineProfiles,
-		AllowedAgentTypes: allowedAgentTypesFromRules(profile.AllowedToolRules),
-		TeamMember:        isTeammateSession,
-		TeamMemberID:      teammateAgentID,
-		NonInteractive:    true,
-		Depth:             t.Depth + 1,
-		MaxDepth:          maxDepth,
+		Provider:           childProvider,
+		Registry:           subReg,
+		System:             parentRuntime.System,
+		Model:              model,
+		ProgressiveContext: t.ProgressiveContext,
+		ServiceTier:        t.ServiceTier,
+		Background:         t.Background,
+		Collaboration:      t.Collaboration,
+		SkillManager:       t.SkillManager,
+		HookRunner:         agentHooks,
+		PermissionHandler:  permissionHandler,
+		InlineProfiles:     t.InlineProfiles,
+		AllowedAgentTypes:  allowedAgentTypesFromRules(profile.AllowedToolRules),
+		TeamMember:         isTeammateSession,
+		TeamMemberID:       teammateAgentID,
+		NonInteractive:     true,
+		Depth:              t.Depth + 1,
+		MaxDepth:           maxDepth,
 	}
 	if subReg.Get(subAgentTool.Name()) != nil {
 		subReg.Register(subAgentTool)
@@ -1414,6 +1416,9 @@ func (t *AgentTool) buildSubAgentLoopWithOptions(agentID string, in agentcontrac
 		ReasoningEffort:        profile.ReasoningEffort,
 		ServiceTier:            t.ServiceTier,
 		MaxTokens:              16384,
+		MaxContextTokens:       provider.LookupMaxContext(model),
+		MaxOutputTokens:        16384,
+		ProgressiveContext:     t.ProgressiveContext,
 		SessionID:              agentID,
 		CacheLineageID:         cacheLineageID,
 		AgentID:                agentID,

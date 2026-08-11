@@ -66,6 +66,10 @@ type Config struct {
 	// MaxContextTokens enables context-window compaction when non-zero.
 	MaxContextTokens int
 
+	// ProgressiveContext controls cache-aware, reversible provider-view
+	// projection before semantic compaction. Its zero value is disabled.
+	ProgressiveContext compact.ProgressiveConfig
+
 	// MaxTurns is the default agentic turn limit per query (0 = 100).
 	MaxTurns int
 

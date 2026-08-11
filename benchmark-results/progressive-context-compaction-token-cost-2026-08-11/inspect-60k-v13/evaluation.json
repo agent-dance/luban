@@ -1,0 +1,23 @@
+{
+  "instance_id": "ninja-build__ninja-2749",
+  "language": "cpp",
+  "agent": "luban",
+  "resolved": true,
+  "elapsed_seconds": 235.407,
+  "FAIL_TO_PASS": {
+    "expected": 2,
+    "passed": [
+      "GraphTest.DyndepOutputIsDependentInput",
+      "GraphTest.DyndepOutputIsDependentInputFromDepfile"
+    ],
+    "failed": [],
+    "missing": []
+  },
+  "PASS_TO_PASS": {
+    "expected": 455,
+    "passed_count": 455,
+    "failed": [],
+    "missing_count": 0
+  },
+  "evidence_root": "raw/evaluation/ninja-build__ninja-2749/luban"
+}

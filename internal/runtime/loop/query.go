@@ -11,6 +11,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -101,8 +102,9 @@ type Config struct {
 	GoalEvaluator       GoalEvaluator
 	Model               string
 	MaxTokens           int
-	MaxContextTokens    int           // max context window size for compaction (0 = no compaction)
-	MaxOutputTokens     int           // max output tokens per response; used for output reservation in compaction threshold
+	MaxContextTokens    int // max context window size for compaction (0 = no compaction)
+	MaxOutputTokens     int // max output tokens per response; used for output reservation in compaction threshold
+	ProgressiveContext  compact.ProgressiveConfig
 	TokenBudget         int           // target output tokens for token-budget continuation; 0 disables
 	TaskBudget          int           // API-side task output budget; 0 disables
 	HookRunner          *hooks.Runner // optional hook runner (nil = no hooks)
@@ -155,6 +157,12 @@ type Config struct {
 	QuerySource        QuerySource
 }
 
+// ProgressiveContextConfig is the loop-owned configuration surface exposed
+// to runtime composition and AgentTool. The implementation remains in compact;
+// callers above the loop layer must not reverse the architecture dependency by
+// importing the compact runtime directly.
+type ProgressiveContextConfig = compact.ProgressiveConfig
+
 // QueryLoop implements the agentic tool-use loop
 type QueryLoop struct {
 	provider        provider.Provider
@@ -179,6 +187,8 @@ type QueryLoop struct {
 	calibratedCounter          *compact.CalibratedCounter // nil if compaction disabled
 	thinkingConfig             *provider.ThinkingConfig   // nil = thinking disabled
 	cacheBreakDetector         *CacheBreakDetector        // monitors prompt cache breaks
+	progressiveAnomalies       int
+	progressiveCircuitOpen     bool
 	compactStatus              string
 
 	// skillCatalogMu protects the context-epoch-bound catalog cursor and loaded
@@ -714,6 +724,11 @@ func New(p provider.Provider, reg *registry.Registry, cfg Config) *QueryLoop {
 		calibratedCounter:       compact.NewCalibratedCounter(4.0),
 		cacheBreakDetector:      &CacheBreakDetector{},
 	}
+	ql.config.ProgressiveContext = compact.NormalizeProgressiveConfig(cfg.ProgressiveContext)
+	if experimentalProgressiveContextCompactionEnabled() {
+		ql.config.ProgressiveContext.Enabled = true
+	}
+	ql.microcompactCfg.ProgressiveEnabled = ql.config.ProgressiveContext.Enabled
 	if cfg.AgentID != "" || cfg.QueryScope.IsSubagent {
 		ql.microcompactCfg.QuerySource = compact.MicrocompactSourceNonMain
 	} else {
@@ -728,8 +743,22 @@ func New(p provider.Provider, reg *registry.Registry, cfg Config) *QueryLoop {
 		cw := compact.NewContextWindow(ql.config.MaxContextTokens)
 		cw.MaxOutputTokens = cfg.MaxOutputTokens
 		ql.ctxWindow = cw
+		providerName := ""
+		if p != nil {
+			providerName = p.Name()
+		}
+		providerScopedCompactPolicy := compact.ProgressiveProviderCompactPolicyEnabled(ql.config.ProgressiveContext, providerName, ql.config.Model, ql.config.SessionID)
 		ql.compactor = &compact.SummaryCompactor{
-			SummarizeMessages:      compact.NewLLMStructuredSummarizeFuncWithServiceTier(p, cfg.ServiceTier),
+			SummarizeMessages: compact.NewLLMStructuredSummarizeFuncWithOptions(p, cfg.ServiceTier, compact.StructuredSummarizeOptions{
+				FlattenMessages: providerScopedCompactPolicy && ql.config.ProgressiveContext.FlattenCompactInput,
+				ConciseSummary:  providerScopedCompactPolicy && ql.config.ProgressiveContext.ConciseCompactSummary,
+				MaxOutputTokens: func() int {
+					if providerScopedCompactPolicy {
+						return ql.config.ProgressiveContext.CompactMaxOutputTokens
+					}
+					return 0
+				}(),
+			}),
 			KeepRecent:             20,
 			TranscriptPath:         cfg.TranscriptPath,
 			TranscriptPathResolver: cfg.TranscriptPathResolver,
@@ -1375,6 +1404,17 @@ func (q *QueryLoop) invalidateProviderContinuation() {
 	q.disableResponseChain = false
 }
 
+// invalidateProviderProjectionContinuation fences provider-native Responses
+// chaining after a suffix projection without resetting cache lineage, skill
+// catalog state, or other evidence whose model-visible bytes did not change.
+func (q *QueryLoop) invalidateProviderProjectionContinuation() {
+	q.advanceContinuationEpoch()
+	q.lastResponseID = ""
+	q.lastEnvelopeFingerprint = ""
+	q.currentEnvelopeFingerprint = ""
+	q.disableResponseChain = false
+}
+
 func (q *QueryLoop) advanceContinuationEpoch() {
 	q.continuationEpoch++
 	if q.continuationEpoch == 0 {
@@ -1395,12 +1435,42 @@ func (q *QueryLoop) AdaptContextWindow() {
 // provider switch, so the context budget always matches the active model.
 func (q *QueryLoop) adaptContextWindow() {
 	caps := q.providerCapabilities()
-	if caps.MaxContext <= 0 {
+	maxContext := caps.MaxContext
+	if override := experimentalMaxContextTokens(); override > 0 && (maxContext <= 0 || override < maxContext) {
+		maxContext = override
+	}
+	if maxContext <= 0 {
 		return // provider didn't report a limit; keep config as-is
 	}
-	q.config.MaxContextTokens = caps.MaxContext
+	q.config.MaxContextTokens = maxContext
 	if q.ctxWindow != nil {
-		q.ctxWindow.MaxTokens = caps.MaxContext
+		q.ctxWindow.MaxTokens = maxContext
+	}
+}
+
+func experimentalMaxContextTokens() int {
+	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv("LUBAN_EXPERIMENT_MAX_CONTEXT_TOKENS")))
+	if err != nil || value <= 0 {
+		return 0
+	}
+	return value
+}
+
+func experimentalProgressiveContextCompactionEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LUBAN_PROGRESSIVE_CONTEXT_COMPACTION"))) {
+	case "1", "true", "on", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
+func progressiveContextCompactionKilled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LUBAN_PROGRESSIVE_CONTEXT_COMPACTION_KILL_SWITCH"))) {
+	case "1", "true", "on", "yes":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -1608,6 +1678,7 @@ func (q *QueryLoop) providerParams(state *QueryState, snapshot QueryConfigSnapsh
 	fingerprint := envelopeFingerprint(params)
 	q.currentEnvelopeFingerprint = fingerprint
 	params.PreviousResponseID = q.previousResponseIDForRequest(fingerprint)
+	q.continuationSentAt = q.continuationEpoch
 	return params
 }
 
@@ -1662,7 +1733,6 @@ func (q *QueryLoop) providerParamsBase(state *QueryState, snapshot QueryConfigSn
 		ContinuationEpoch:       q.continuationEpoch,
 		ContinuationReset:       continuationReset,
 	}
-	q.continuationSentAt = q.continuationEpoch
 	params = params.WithInternalControlScope(messagecontrol.Runtime(), q.internalControlScope)
 	if snapshot.TaskBudget > 0 {
 		params.TaskBudget = &provider.TaskBudget{
@@ -3079,6 +3149,7 @@ func (q *QueryLoop) runLoop(ctx context.Context, emitEvent func(streamevent.Even
 		// protocol-mandated matching tool_result.
 		flightErr := flightController.observeToolRound(toolUses, toolResults)
 		investigationTracker.observe(toolUses, toolResults)
+		q.emitContextUpdateShadow(state.Messages, toolUses, toolResults, turnCount, onEvent)
 
 		// Persist oversized tool results to disk, keeping only a preview
 		if q.resultStore != nil {

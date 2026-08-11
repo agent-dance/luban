@@ -484,6 +484,9 @@ func (r *Registry) VisibleTools(loaded map[string]struct{}) []types.Tool {
 				visible = append(visible, tool)
 			}
 		}
+		if tool := byName[agenticV2OptionalContextUpdateTool]; tool != nil {
+			visible = append(visible, tool)
+		}
 		return visible
 	}
 	toolSearchEnabled := r.IsToolEnabled(r.Get("ToolSearch"))

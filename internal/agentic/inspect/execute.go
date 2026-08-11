@@ -129,6 +129,13 @@ func (t *Tool) validateInput(input map[string]any) (validatedInput, error) {
 		return validatedInput{}, i18n.WrapInternalError(i18n.KeyToolInspectMalformedInput, err)
 	}
 	cursor := strings.TrimSpace(decoded.Cursor)
+	// DeepSeek strict tool projection can serialize an omitted optional string
+	// as the literal "null" while still supplying a real request batch. No
+	// cursor issued by Inspect uses this sentinel, so interpret it as absent
+	// only when requests make the intended branch unambiguous.
+	if len(decoded.Requests) > 0 && strings.EqualFold(cursor, "null") {
+		cursor = ""
+	}
 	// Strict provider projections commonly retain every schema property on a
 	// continuation, yielding requests: [] and max_* placeholders beside the
 	// cursor. The cursor's server-side pagination snapshot remains authoritative:

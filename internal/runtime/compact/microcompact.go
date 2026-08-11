@@ -56,6 +56,12 @@ type MicrocompactConfig struct {
 	// original provider-visible result. It is a same-build switch, never an
 	// environment or provider-profile fallback.
 	AgenticV2ProofsEnabled bool
+
+	// ProgressiveEnabled projects conservative batches of older, successful
+	// Inspect results while preserving recent source reads and all Run output.
+	// The raw transcript remains unchanged; callers persist returned replacement
+	// records separately.
+	ProgressiveEnabled bool
 }
 
 type MicrocompactQuerySource string
