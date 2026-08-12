@@ -1,30 +1,123 @@
 # LUBAN Code
 
-## 15 题优化实测：Luban 总耗时低 28.8%，Token 低 61.7%，LLM 调用低 30.8%
+[English](README.md) · [简体中文](README.zh-CN.md) · [日本語](README.ja.md) · [한국어](README.ko.md) · [Deutsch](README.de.md)
 
-以 Codex 为 `0%` 基准；负值表示 Luban 更低。每格按“优化前 → 优化后 / Codex（优化后相对 Codex）”展示。针对原先落后的 7 道题完成优化复测后，Luban 的 15 题合计耗时从高于 Codex `96.3%` 变为低 `28.8%`，超时从 2 次降为 0 次；7 道复测题的耗时与 Token 均已低于 Codex。
+LUBAN Code is a Go-native coding agent for long repository jobs. It keeps the session record intact while shrinking only the model-facing view, and it does not let a proxy URL silently change a provider's native protocol.
 
-20 题目录已经冻结，但按要求在第 15 题后停止，最后 5 题未运行。复测沿用原有本地代理方式，没有下载 Docker 镜像；新增 10 题未做官方判分，因此 resolved 只展示原 5 题结果。
+> Source preview `v0.1.0`. Build it from source; release binaries and package-manager installs are not published yet.
 
-| 任务 | 耗时：优化前 → Luban / Codex（变化） | Token：优化前 → Luban / Codex（变化） | LLM 调用：优化前 → Luban / Codex（变化） | resolved / 状态 |
-| --- | ---: | ---: | ---: | --- |
-| Fabric | 169.3s → 169.3s / 219.5s（−22.9%） | 128,319 → 128,319 / 581,257（−77.9%） | 8 → 8 / 14（−42.9%） | 是 / 是；沿用基线 |
-| agents-js | 265.3s → 265.3s / 521.9s（−49.2%） | 666,894 → 666,894 / 1,429,141（−53.3%） | 22 → 22 / 30（−26.7%） | 是 / 是；沿用基线 |
-| kube | 253.7s → 253.7s / 319.1s（−20.5%） | 402,703 → 402,703 / 644,164（−37.5%） | 16 → 16 / 19（−15.8%） | 否 / 否；沿用基线 |
-| skim | 277.3s → 277.3s / 513.9s（−46.0%） | 582,076 → 582,076 / 1,518,938（−61.7%） | 17 → 17 / 28（−39.3%） | 是 / 是；沿用基线 |
-| IWYU | 277.3s → 277.3s / 616.0s（−55.0%） | 431,561 → 431,561 / 2,238,240（−80.7%） | 20 → 20 / 37（−45.9%） | 否 / 否；沿用基线 |
-| ninja | 547.0s → 547.0s / 611.1s（−10.5%） | 1,435,423 → 1,435,423 / 2,859,848（−49.8%） | 33 → 33 / 39（−15.4%） | 未判分；沿用基线 |
-| crush | 153.7s → 153.7s / 230.0s（−33.2%） | 74,322 → 74,322 / 374,868（−80.2%） | 7 → 7 / 13（−46.2%） | 未判分；沿用基线 |
-| floci | 246.6s → 169.4s / 191.9s（−11.7%） | 372,478 → 168,545 / 410,507（−58.9%） | 15 → 10 / 14（−28.6%） | 未判分；正式复测 |
-| eza | 1,800.2s → 245.3s / 470.8s（−47.9%） | — → 394,477 / 2,234,769（−82.3%） | 4 → 15 / 37（−59.5%） | 未判分；超时 → 完成 |
-| assistant-ui | 632.2s → 123.9s / 194.6s（−36.3%） | 459,912 → 74,139 / 322,474（−77.0%） | 23 → 7 / 12（−41.7%） | 未判分；正式复测 |
-| actor-framework | 1,439.4s → 282.8s / 312.6s（−9.5%） | 1,070,509 → 349,663 / 977,723（−64.2%） | 31 → 16 / 22（−27.3%） | 未判分；正式复测 |
-| lima | 372.6s → 372.6s / 392.6s（−5.1%） | 548,817 → 548,817 / 1,313,747（−58.2%） | 18 → 18 / 23（−21.7%） | 未判分；沿用基线 |
-| springdoc | 1,800.2s → 218.3s / 274.0s（−20.3%） | — → 612,031 / 911,769（−32.9%） | 2 → 20 / 18（+11.1%） | 未判分；超时 → 完成 |
-| napi-rs | 1,354.1s → 292.8s / 340.2s（−13.9%） | 1,287,671 → 372,716 / 660,232（−43.5%） | 37 → 14 / 18（−22.2%） | 未判分；正式复测 |
-| G2 | 1,490.6s → 371.8s / 436.2s（−14.8%） | 2,651,755 → 615,804 / 1,411,342（−56.4%） | 45 → 22 / 30（−26.7%） | 未判分；正式复测 |
-| **合计** | **11,079.5s → 4,020.6s / 5,644.5s（−28.8%）** | **10,112,440* → 6,857,490 / 17,889,019（−61.7%）** | **298 → 245 / 354（−30.8%）** | **超时 2 → 0 / 0；patch 15/15 / 15/15** |
+![LUBAN Code TUI running with the OpenAI gpt-5-6 model](docs/assets/screenshots/luban-tui.png)
 
-\* 优化前 `eza`、`springdoc` 超时且无可解析 Token，因此优化前 Token 合计只有 13 题；优化后与 Codex 的百分比按完整 15 题计算。新增任务未判分，不能用于比较解决率。每项工程优化、原因、关联任务和实际效果均沉淀在完整报告中。
+_The actual TUI, captured from the current Windows source build on 2026-08-12. No API key or endpoint address is shown._
 
-[查看完整 HTML 报告](benchmark-results/agentic-2026-07-27/representative15-report.html) · [查看机器可读结果](benchmark-results/agentic-2026-07-27/raw/candidates/selected-15task-20260731.json) · [查看测评协议](benchmark/agentic/README.md)
+## What is different here
+
+### Compact the provider view, not the evidence
+
+Long sessions usually force a bad choice: keep every old tool result in the prompt, or replace history with a summary that is hard to audit. LUBAN keeps the original transcript. Under a narrow, reviewed production policy, it can replace older `Inspect` results only in the provider view with a deterministic projection that retains paths, line ranges, pagination, digests and proof.
+
+The projection is admitted only when a whole-request estimate says the token saving still pays after cold-cache and recovery costs. Unknown price, incomplete usage data, failed evidence or insufficient savings means no projection. A bad projection rolls back; three consecutive anomalies trip a session circuit breaker.
+
+The current production scope is deliberately small: `openai/gpt-5.6-sol*` and `deepseek/deepseek-v4-flash*`, for `Inspect` only. The [design note](docs/design/progressive-context-compaction.md) and [80k paired-run evidence](benchmark-results/progressive-context-compaction-v7-80k-2026-08-10/README.md) spell out both the mechanism and its limits.
+
+### A proxy changes the route, not the provider
+
+`BaseURL` is transport configuration. It does not turn native OpenAI, DeepSeek, Anthropic, Vertex or Bedrock traffic into a generic OpenAI-compatible dialect. Authentication, cache controls, Responses versus Chat semantics and provider-specific request fields remain tied to the selected provider.
+
+Automatic Responses-to-Chat negotiation exists only for an explicitly compatible provider. The current implementation treats `404`, `405` and `501` as endpoint-unavailable signals; authentication, rate-limit and schema failures return as errors and do not trigger a protocol fallback.
+
+### A small coding kernel with operational depth
+
+In the default production configuration, the model-facing coding kernel is `Inspect`, `ApplyPatch` and `Run`; enabling the `ContextUpdate` shadow path adds that internal tool. Around the kernel, the runtime adds resumable sessions, parallel subagents, optional Git worktrees, permission challenges, lifecycle hooks, MCP connections and an NDJSON/Go SDK boundary. Subagents receive an immutable permission snapshot at launch, so a later parent-session permission change cannot widen a running child's authority.
+
+The terminal UI reports context, cache, cost, compaction and subagent activity. An append-only `--screen-reader` mode avoids cursor control, mouse capture and animation. Runtime copy is catalogued in English, Simplified Chinese, German, Japanese, Korean and Russian; switch it with `Ctrl+L` or `/language`.
+
+## Measured, with the receipts attached
+
+In the frozen 15-task local comparison, the selected LUBAN runs used less elapsed time, fewer tokens and fewer model calls than the selected Codex runs:
+
+| Observed total | LUBAN | Codex | Difference |
+| --- | ---: | ---: | ---: |
+| Elapsed time | 4,020.6 s | 5,644.5 s | -28.8% |
+| Tokens | 6,857,490 | 17,889,019 | -61.7% |
+| LLM calls | 245 | 354 | -30.8% |
+| Produced a patch | 15/15 | 15/15 | equal |
+
+This is a frozen local sample, not a general win claim. Only the original five tasks had official grader results, and both agents resolved 3/5; the other ten tasks were not graded. Run selection happened after optimization and the model runs had no fixed seed. Read the [full HTML report](benchmark-results/agentic-2026-07-27/representative15-report.html), [selected machine data](benchmark-results/agentic-2026-07-27/raw/candidates/selected-15task-20260731.json) and [protocol](benchmark/agentic/README.md) before drawing a broader conclusion.
+
+The progressive-compaction experiment is similarly scoped. One 80k paired run kept the frozen evaluator equal at `2/2 + 455/455` while total tokens fell from `1,362,070` to `444,419` and estimated cost from `$5.207999` to `$1.004185`. The two traces diverged before the first projection because sampling was not fixed. These are measurements from two real traces and fixed-rate cost estimates, not a causal average of the projection's effect.
+
+## Build from source
+
+You need Git and the Go version declared by [`go.mod`](go.mod), currently `1.26.1`. Shell-form `Run` steps invoke Bash; on Windows, put Git Bash, WSL Bash or another `bash` executable on `PATH`.
+
+macOS or Linux:
+
+```sh
+git clone https://github.com/agent-dance/luban.git
+cd luban
+go build -o luban-code ./cmd/luban-code
+./luban-code --version
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/agent-dance/luban.git
+Set-Location luban
+go build -o .\luban-code.exe .\cmd\luban-code
+.\luban-code.exe --version
+```
+
+The module currently contains a local `replace`, so `go install github.com/agent-dance/luban/cmd/luban-code@latest` is not a supported installation path.
+
+## Connect a provider and run
+
+You can configure credentials with environment variables. Select the provider explicitly when several credentials are present:
+
+```sh
+export PROVIDER=openai
+export OPENAI_API_KEY="..."
+./luban-code
+```
+
+```powershell
+$env:PROVIDER = "openai"
+$env:OPENAI_API_KEY = "..."
+.\luban-code.exe
+```
+
+DeepSeek works with `PROVIDER=deepseek` and `DEEPSEEK_API_KEY`; it is also the default provider. Ollama defaults to `http://localhost:11434/v1` and model `llama3.1`. You can instead start the TUI and press `Alt+P` to choose a provider, model and supported authentication method.
+
+Run one prompt without opening the TUI:
+
+```sh
+./luban-code -p "Review this repository and report the highest-risk issue"
+```
+
+![A verified LUBAN Code v0.1.0 one-shot run returning LUBAN READY](docs/assets/screenshots/luban-live-run.png)
+
+_The second command made a real request through the locally configured OpenAI endpoint and exited with code 0. The local prompt path is redacted. This is a runtime check, not a provider-compatibility or performance benchmark._
+
+Inside the TUI, `/init` can add `LUBAN.md` and project settings without overwriting existing files. It does not configure credentials.
+
+## Know the boundaries before using it
+
+- Linux OS sandboxing requires Bubblewrap. macOS uses `sandbox-exec`. Windows has no OS sandbox backend today; `--force-sandbox-tools` fails closed when a verified backend is unavailable.
+- Agent Teams are experimental and opt-in. Parallel subagents and worktree isolation should not be read as a remote distributed swarm.
+- Provider registration and protocol tests are not certification for every model or third-party gateway.
+- Local credentials are plaintext JSON. Unix-like systems write them with mode `0600`; Windows currently has no equivalent ACL guarantee. They are not an encrypted vault or operating-system keychain.
+- Node.js is needed only for Node-based MCP servers, not for the core CLI.
+- There is no root license yet. Standard copyright applies until the owner publishes one.
+
+## Repository evidence
+
+- [Progressive context design](docs/design/progressive-context-compaction.md)
+- [Progressive rollout report](docs/reports/progressive-context-compaction-rollout-2026-08-11.md)
+- [15-task benchmark report](benchmark-results/agentic-2026-07-27/representative15-report.html)
+- [Agentic benchmark protocol](benchmark/agentic/README.md)
+
+Contributions should follow [CONTRIBUTING.md](CONTRIBUTING.md). Security reports should follow [SECURITY.md](SECURITY.md).
+The five-language editorial and runtime checks are recorded in the [README release review](docs/release/readme-review-2026-08-12.md).
+
+Send security-sensitive findings through GitHub's [private vulnerability report](https://github.com/agent-dance/luban/security/advisories/new), not a public issue. See [SECURITY.md](SECURITY.md) for the requested details.

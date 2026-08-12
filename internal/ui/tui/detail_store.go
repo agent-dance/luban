@@ -257,7 +257,7 @@ func (s *FileDetailStore) LoadObservationEvidence() ([]Observation, error) {
 		if err != nil {
 			return nil, i18n.WrapError(i18n.KeyTUIDetailStoreInspectJournalEntry, err, entry.Name(), path)
 		}
-		if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		if !info.Mode().IsRegular() || !privateFilePermissionsValid(info) {
 			return nil, i18n.WrapInternalError(i18n.KeyTUIDetailStoreJournalEntryInvalid, ErrInvalidDetailRef, entry.Name(), path)
 		}
 		data, err := os.ReadFile(path)
@@ -330,7 +330,7 @@ func (s *FileDetailStore) readLocked(ref DetailRef) ([]byte, error) {
 	if !before.Mode().IsRegular() {
 		return nil, i18n.WrapInternalError(i18n.KeyTUIDetailStoreDetailNotRegular, ErrInvalidDetailRef, path)
 	}
-	if before.Mode().Perm()&0o077 != 0 {
+	if !privateFilePermissionsValid(before) {
 		return nil, i18n.WrapInternalError(i18n.KeyTUIDetailStoreDetailPermissions, ErrInvalidDetailRef, path, fmt.Sprintf("%04o", before.Mode().Perm()))
 	}
 
@@ -429,15 +429,6 @@ func ensurePrivateDirectory(path string) error {
 		}
 	}
 	return nil
-}
-
-func syncDirectory(path string) error {
-	dir, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
 }
 
 var (
