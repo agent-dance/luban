@@ -11,6 +11,8 @@ import (
 
 	"github.com/agent-dance/luban/prompt"
 	"github.com/agent-dance/luban/types"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 )
 
 func TestAnthropicCacheControlUsesAtMostFourDocumentedBreakpoints(t *testing.T) {
@@ -64,9 +66,13 @@ func TestAnthropicCacheControlUsesAtMostFourDocumentedBreakpoints(t *testing.T) 
 	assertNoJSONKey(t, request, "scope")
 }
 
-func TestVertexCustomEndpointUsesAnthropicCacheControl(t *testing.T) {
-	var request map[string]any
+func TestVertexTransportOverrideUsesNativeCacheControl(t *testing.T) {
+	var (
+		request     map[string]any
+		requestPath string
+	)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.EscapedPath()
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			t.Errorf("read request: %v", err)
@@ -83,7 +89,9 @@ func TestVertexCustomEndpointUsesAnthropicCacheControl(t *testing.T) {
 	defer server.Close()
 
 	baseURL := strings.Replace(server.URL, "127.0.0.1", "localhost", 1)
-	client, err := NewVertexCustomEndpoint(Config{APIKey: "test-key", BaseURL: baseURL, Model: "claude-sonnet-4-6"})
+	client, err := newVertexWithCredentials(context.Background(), VertexConfig{
+		ProjectID: "test-project", Region: "us-east5", Model: "claude-sonnet-4-6", BaseURL: baseURL,
+	}, &google.Credentials{TokenSource: oauth2.StaticTokenSource(&oauth2.Token{AccessToken: "test-token"})})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,6 +100,9 @@ func TestVertexCustomEndpointUsesAnthropicCacheControl(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range stream {
+	}
+	if want := "/v1/projects/test-project/locations/us-east5/publishers/anthropic/models/claude-sonnet-4-6:streamRawPredict"; requestPath != want {
+		t.Fatalf("request path = %q, want native Vertex path %q", requestPath, want)
 	}
 	assertNativeAnthropicCacheRequest(t, request)
 }

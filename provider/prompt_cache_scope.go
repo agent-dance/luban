@@ -238,14 +238,11 @@ func applyOpenAIChatSystemCacheBreakpoint(body map[string]json.RawMessage, block
 	return nil
 }
 
-func anthropicPromptCacheTTL(providerName, model, baseURL string) string {
+func anthropicPromptCacheTTL(providerName, model string) string {
 	providerName = CanonicalProviderName(providerName)
 	model = strings.ToLower(strings.TrimSpace(model))
 	switch providerName {
 	case "anthropic":
-		if baseURL != "" && cacheEndpointHostname(baseURL) != "api.anthropic.com" {
-			return ""
-		}
 		if knownAnthropicOneHourModel(model, true) {
 			return "1h"
 		}

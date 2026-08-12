@@ -9,6 +9,7 @@ import (
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 	"github.com/anthropics/anthropic-sdk-go/vertex"
+	"golang.org/x/oauth2/google"
 
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/types"
@@ -32,6 +33,10 @@ type VertexConfig struct {
 
 	// Timeout in seconds for requests.
 	Timeout int
+
+	// BaseURL overrides only the Vertex transport endpoint. Authentication and
+	// request semantics remain Vertex-native.
+	BaseURL string
 }
 
 // VertexConfigFromEnv reads Vertex AI configuration from environment variables.
@@ -40,6 +45,7 @@ type VertexConfig struct {
 //   - GOOGLE_CLOUD_PROJECT / ANTHROPIC_VERTEX_PROJECT_ID — GCP project ID
 //   - GOOGLE_CLOUD_REGION / CLOUD_ML_REGION / ANTHROPIC_VERTEX_REGION — GCP region
 //   - VERTEX_MODEL — model ID override
+//   - ANTHROPIC_VERTEX_BASE_URL — Vertex transport endpoint override
 //   - GOOGLE_APPLICATION_CREDENTIALS — path to service account JSON (used by ADC automatically)
 func VertexConfigFromEnv() VertexConfig {
 	projectID := os.Getenv("GOOGLE_CLOUD_PROJECT")
@@ -67,6 +73,7 @@ func VertexConfigFromEnv() VertexConfig {
 		ProjectID: projectID,
 		Region:    region,
 		Model:     model,
+		BaseURL:   os.Getenv("ANTHROPIC_VERTEX_BASE_URL"),
 	}
 }
 
@@ -84,11 +91,18 @@ type VertexProvider struct {
 //  3. Workload Identity (GKE / Cloud Run)
 //
 // ctx is forwarded to vertex.WithGoogleAuth for credential initialization.
-//
-// Note: ADC errors are deferred — auth failures surface on the first API call,
-// not at construction time. Use a health-check or test call to validate credentials
-// eagerly if needed.
 func NewVertex(ctx context.Context, cfg VertexConfig) (*VertexProvider, error) {
+	if cfg.ProjectID == "" {
+		return nil, fmt.Errorf("%s", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderVertexProjectRequired))
+	}
+	creds, err := google.FindDefaultCredentials(ctx)
+	if err != nil {
+		return nil, i18n.WrapInternalError(i18n.KeyProviderVertexADCCredentialsFailed, err)
+	}
+	return newVertexWithCredentials(ctx, cfg, creds)
+}
+
+func newVertexWithCredentials(ctx context.Context, cfg VertexConfig, creds *google.Credentials) (*VertexProvider, error) {
 	if cfg.ProjectID == "" {
 		return nil, fmt.Errorf("%s", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderVertexProjectRequired))
 	}
@@ -102,7 +116,13 @@ func NewVertex(ctx context.Context, cfg VertexConfig) (*VertexProvider, error) {
 	// Vertex AI uses OAuth2 Application Default Credentials — not an Anthropic API key.
 	// Pass an empty string to satisfy the SDK's key requirement without a sentinel value.
 	opts = append(opts, option.WithAPIKey(""))
-	opts = append(opts, vertex.WithGoogleAuth(ctx, cfg.Region, cfg.ProjectID))
+	opts = append(opts, vertex.WithCredentials(ctx, cfg.Region, cfg.ProjectID, creds))
+	if cfg.BaseURL != "" {
+		if err := validateBaseURL(cfg.BaseURL); err != nil {
+			return nil, i18n.WrapInternalError(i18n.KeyProviderVertexEndpointInvalid, err)
+		}
+		opts = append(opts, option.WithBaseURL(cfg.BaseURL))
+	}
 
 	model := cfg.Model
 	if model == "" {
@@ -113,23 +133,6 @@ func NewVertex(ctx context.Context, cfg VertexConfig) (*VertexProvider, error) {
 		client: anthropic.NewClient(opts...),
 		model:  model,
 	}, nil
-}
-
-// NewVertexCustomEndpoint creates a Vertex-named provider backed by an
-// Anthropic Messages-compatible endpoint using an API key. The normal Vertex
-// path continues to use Google ADC.
-func NewVertexCustomEndpoint(cfg Config) (*VertexProvider, error) {
-	if cfg.APIKey == "" {
-		return nil, fmt.Errorf("%s", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderVertexAPIKeyRequired))
-	}
-	if cfg.BaseURL == "" {
-		return nil, fmt.Errorf("%s", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderVertexBaseURLRequired))
-	}
-	if err := validateBaseURL(cfg.BaseURL); err != nil {
-		return nil, fmt.Errorf("%s: %w", i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderVertexEndpointInvalid), err)
-	}
-	direct := NewAnthropic(cfg)
-	return &VertexProvider{client: direct.client, model: direct.model}, nil
 }
 
 func (p *VertexProvider) Name() string    { return "vertex" }
@@ -156,7 +159,7 @@ func (p *VertexProvider) CreateStream(ctx context.Context, params Params) (<-cha
 		params.Model = p.model
 	}
 	if params.PromptCacheTTL == "" {
-		params.PromptCacheTTL = anthropicPromptCacheTTL("vertex", params.Model, "")
+		params.PromptCacheTTL = anthropicPromptCacheTTL("vertex", params.Model)
 	}
 	return createAnthropicStream(ctx, &p.client, params)
 }

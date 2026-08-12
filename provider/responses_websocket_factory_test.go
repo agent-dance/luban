@@ -167,28 +167,10 @@ func TestResponsesWebSocketFactoryRejectsNonPublicProfilesBeforeWire(t *testing.
 			register:     registerOpenAI,
 		},
 		{
-			name:         "ChatGPT Codex URL with API key",
-			providerName: "openai",
-			config: Config{
-				APIKey: "fake-key", BaseURL: openAIChatGPTCodexBaseURL, APIFormat: "responses",
-				ResponsesWebSocket: CapabilitySupported,
-			},
-			register: registerOpenAI,
-		},
-		{
 			name:         "explicit compatible semantics",
 			providerName: "openai",
 			config:       Config{APIKey: "fake-key", APIFormat: "responses", ResponsesSemantics: ResponsesSemanticsCompatible, ResponsesWebSocket: CapabilitySupported},
 			register:     registerOpenAI,
-		},
-		{
-			name:         "negotiating custom gateway",
-			providerName: "openai",
-			config: Config{
-				APIKey: "fake-key", BaseURL: "https://gateway.example/v1",
-				ResponsesWebSocket: CapabilitySupported,
-			},
-			register: registerOpenAI,
 		},
 		{
 			name:         "compatible provider",

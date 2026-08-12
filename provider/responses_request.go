@@ -38,7 +38,6 @@ type responsesRequestProfile struct {
 	chatGPTCodexBackend       bool
 	firstPartyEndpoint        bool
 	publicAPIEndpoint         bool
-	customEndpointLocation    bool
 	disableStrictTools        bool
 	disablePromptCacheOptions bool
 	cacheRouting              CacheRoutingMode
@@ -63,7 +62,6 @@ func (p *ResponsesProvider) snapshotRequestProfile() responsesRequestProfile {
 		chatGPTCodexBackend:       p.chatGPTCodexBackend,
 		firstPartyEndpoint:        p.firstPartyEndpoint,
 		publicAPIEndpoint:         p.publicAPIEndpoint,
-		customEndpointLocation:    !isFirstPartyOpenAIResponsesBaseURL(p.baseURL),
 		disableStrictTools:        p.disableStrictTools,
 		disablePromptCacheOptions: p.disablePromptCacheOptions,
 		cacheRouting:              p.cacheRouting,

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -38,18 +37,18 @@ const (
 // OpenAIProvider implements Provider for OpenAI-compatible APIs
 // Works with: OpenAI, DeepSeek, Ollama, vLLM, LiteLLM, Azure OpenAI, etc.
 type OpenAIProvider struct {
-	client                     *openai.Client
-	name                       string
-	baseURL                    string
-	model                      string
-	maxTokens                  int
-	dialect                    OpenAIDialect
-	disableStrictTools         bool
-	officialOpenAIChatEndpoint bool
-	cacheRouting               CacheRoutingMode
-	cacheUserNamespace         string
-	cacheRoutingShards         int
-	cacheRoutingRejections     *cacheRoutingRejectionMemory
+	client                   *openai.Client
+	name                     string
+	baseURL                  string
+	model                    string
+	maxTokens                int
+	dialect                  OpenAIDialect
+	disableStrictTools       bool
+	nativeOpenAIChatContract bool
+	cacheRouting             CacheRoutingMode
+	cacheUserNamespace       string
+	cacheRoutingShards       int
+	cacheRoutingRejections   *cacheRoutingRejectionMemory
 }
 
 type openAIChatDeveloperProjection uint8
@@ -450,7 +449,7 @@ func NewOpenAI(cfg Config) *OpenAIProvider {
 
 	dialect := detectDialect(cfg)
 	providerName := CanonicalProviderName(cfg.ProviderName)
-	officialOpenAIChatEndpoint := providerName == "openai" && !isCustomOpenAIBaseURL(baseURL)
+	nativeOpenAIChatContract := providerName == "" || providerName == "openai"
 	// OpenAI, Mistral, and Kimi document prompt_cache_key. Other compatible
 	// providers still receive it as a best-effort fallback per the shared cache
 	// lineage policy, with a single guarded retry when the field is rejected.
@@ -481,34 +480,31 @@ func NewOpenAI(cfg Config) *OpenAIProvider {
 	}
 
 	return &OpenAIProvider{
-		client:                     openai.NewClientWithConfig(oaiCfg),
-		name:                       providerName,
-		baseURL:                    baseURL,
-		model:                      model,
-		maxTokens:                  maxTokens,
-		dialect:                    dialect,
-		disableStrictTools:         cfg.DisableStrictTools,
-		officialOpenAIChatEndpoint: officialOpenAIChatEndpoint,
-		cacheRouting:               cacheRouting,
-		cacheUserNamespace:         cacheUserNamespace,
-		cacheRoutingShards:         promptCacheRoutingShardCount(providerName),
-		cacheRoutingRejections:     cacheRoutingRejections,
+		client:                   openai.NewClientWithConfig(oaiCfg),
+		name:                     providerName,
+		baseURL:                  baseURL,
+		model:                    model,
+		maxTokens:                maxTokens,
+		dialect:                  dialect,
+		disableStrictTools:       cfg.DisableStrictTools,
+		nativeOpenAIChatContract: nativeOpenAIChatContract,
+		cacheRouting:             cacheRouting,
+		cacheUserNamespace:       cacheUserNamespace,
+		cacheRoutingShards:       promptCacheRoutingShardCount(providerName),
+		cacheRoutingRejections:   cacheRoutingRejections,
 	}
 }
 
-func resolveOpenAIChatCacheRouting(cfg Config, dialect OpenAIDialect, resolvedBaseURL string) CacheRoutingMode {
+func resolveOpenAIChatCacheRouting(cfg Config, dialect OpenAIDialect, _ string) CacheRoutingMode {
 	if cfg.CacheRoutingPreference == CacheRoutingOff {
 		return CacheRoutingNone
 	}
 	providerName := CanonicalProviderName(cfg.ProviderName)
-	hostname := cacheEndpointHostname(resolvedBaseURL)
 	var mode CacheRoutingMode
 	switch {
-	case dialect == DialectDeepSeek || hostname == "api.deepseek.com":
+	case dialect == DialectDeepSeek:
 		mode = CacheRoutingDeepSeekUserID
-	case ((providerName == "" || providerName == "openai") && !isCustomOpenAIBaseURL(resolvedBaseURL)) ||
-		dialect == DialectMistral || providerName == "kimi" ||
-		hostname == "api.mistral.ai" || hostname == "api.moonshot.cn":
+	case providerName == "" || providerName == "openai" || dialect == DialectMistral || providerName == "kimi":
 		mode = CacheRoutingPromptCacheKey
 	default:
 		mode = CacheRoutingPromptCacheKeyBestEffort
@@ -517,14 +513,6 @@ func resolveOpenAIChatCacheRouting(cfg Config, dialect OpenAIDialect, resolvedBa
 		return CacheRoutingPromptCacheKey
 	}
 	return mode
-}
-
-func cacheEndpointHostname(rawURL string) string {
-	parsed, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil {
-		return ""
-	}
-	return strings.ToLower(parsed.Hostname())
 }
 
 // detectDialect infers the OpenAI dialect from the provider config.
@@ -545,22 +533,10 @@ func detectDialect(cfg Config) OpenAIDialect {
 	if providerName != "" {
 		return DialectStandard
 	}
-	base := strings.ToLower(cfg.BaseURL)
-	switch {
-	case strings.Contains(base, "generativelanguage.googleapis.com") ||
-		strings.Contains(base, "googleapis.com"):
-		return DialectGemini
-	case strings.Contains(base, "api.mistral.ai"):
-		return DialectMistral
-	case strings.Contains(base, "api.groq.com"):
-		return DialectGroq
-	case strings.Contains(base, "api.deepseek.com"):
-		return DialectDeepSeek
-	case strings.Contains(base, "localhost") || strings.Contains(base, "11434"):
-		return DialectOllama
-	default:
-		return DialectStandard
-	}
+	// Direct construction defaults to the native OpenAI contract. Callers of a
+	// compatible dialect must name that provider explicitly; BaseURL is never a
+	// protocol or capability signal.
+	return DialectStandard
 }
 
 func (p *OpenAIProvider) Name() string {
@@ -587,7 +563,7 @@ func (p *OpenAIProvider) ModelID() string { return p.model }
 // Capabilities implements CapabilityProvider for OpenAIProvider.
 func (p *OpenAIProvider) Capabilities() ProviderCapabilities {
 	serviceTier := CapabilityUnsupported
-	if p.officialOpenAIChatEndpoint {
+	if p.nativeOpenAIChatContract {
 		serviceTier = CapabilitySupported
 	}
 	return ProviderCapabilities{
@@ -612,7 +588,7 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 	if model == "" {
 		model = p.model
 	}
-	developerProjection := openAIChatDeveloperProjectionFor(p.officialOpenAIChatEndpoint, p.dialect, model)
+	developerProjection := openAIChatDeveloperProjectionFor(p.nativeOpenAIChatContract, p.dialect, model)
 	msgs := convertMessagesToOpenAIForDialect(params, params.JoinedSystemPrompt(), developerProjection, p.dialect)
 
 	maxTokens := params.MaxTokens
@@ -655,10 +631,9 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 		}
 	}
 	extensions := openAIChatRequestExtensions{}
-	// Most OpenAI-compatible Chat endpoints implement the long-standing
-	// max_tokens field. Keep max_completion_tokens for the first-party API and
-	// translate it at the transport boundary everywhere else.
-	if !p.officialOpenAIChatEndpoint {
+	// Compatible Chat endpoints commonly implement the long-standing max_tokens
+	// field. Native OpenAI keeps max_completion_tokens even through a proxy.
+	if !p.nativeOpenAIChatContract {
 		extensions.UseMaxTokens = true
 	}
 	if params.UsePromptCache && params.PromptCacheKey != "" && p.cacheRouting != CacheRoutingNone {
@@ -682,7 +657,7 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 			}
 		}
 	}
-	if p.officialOpenAIChatEndpoint && extensions.CacheRoutingKey != "" {
+	if p.nativeOpenAIChatContract && extensions.CacheRoutingKey != "" {
 		extensions.PromptCachePolicy = promptCachePolicyForOpenAIModel(model)
 		if extensions.PromptCachePolicy.Options {
 			extensions.SystemBlocks = params.SystemTextBlocks()
@@ -1208,8 +1183,8 @@ func convertMessagesToOpenAIForDialect(
 // backends deliberately use a user reminder instead of a late system message:
 // that keeps the stable serialized history prefix intact when the catalog
 // revision changes.
-func openAIChatDeveloperProjectionFor(officialOpenAIEndpoint bool, dialect OpenAIDialect, model string) openAIChatDeveloperProjection {
-	if officialOpenAIEndpoint && dialect == DialectStandard &&
+func openAIChatDeveloperProjectionFor(nativeOpenAIContract bool, dialect OpenAIDialect, model string) openAIChatDeveloperProjection {
+	if nativeOpenAIContract && dialect == DialectStandard &&
 		openAIChatModelSupportsDeveloperRole(model) {
 		return openAIChatDeveloperNative
 	}

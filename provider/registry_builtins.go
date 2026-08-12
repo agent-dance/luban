@@ -161,19 +161,18 @@ func registerOpenAI(r *ProviderRegistry) {
 		// explicit DisableStrictTools setting.
 		providerCfg.DisableStrictTools = cfg.DisableStrictTools
 
-		// Keep API selection inside the OpenAI provider: explicit flags win,
-		// first-party models use their cataloged format, and cataloged Responses
-		// models negotiate that protocol on custom gateways with a chat fallback.
+		// Keep API selection inside the OpenAI provider: explicit flags win and
+		// models otherwise use their native cataloged format. BaseURL changes only
+		// the transport location and never enables compatibility negotiation.
 		apiFormat := normalizeOpenAIAPIFormat(firstNonEmpty(cfg.APIFormat, os.Getenv("OPENAI_API")))
 		useResponses := resolveOpenAIResponsesMode(
 			authToken,
 			apiFormat,
-			providerCfg.BaseURL,
 			model,
 		)
 		if providerCfg.ResponsesWebSocket == CapabilitySupported {
 			if (cfg.ResponsesSemantics != ResponsesSemanticsAuto && cfg.ResponsesSemantics != ResponsesSemanticsOpenAIPublic) ||
-				authToken != "" || isOpenAIChatGPTCodexBaseURL(providerCfg.BaseURL) || !useResponses {
+				authToken != "" || !useResponses {
 				return nil, responsesWebSocketProfileUnsupportedError()
 			}
 		}
@@ -187,9 +186,6 @@ func registerOpenAI(r *ProviderRegistry) {
 				retryCfg.OnAuthError = openAIOAuthRefreshHandler(r, raw)
 			}
 			return NewRetryProvider(raw, retryCfg), nil
-		}
-		if shouldNegotiateOpenAIResponses(authToken, apiFormat, providerCfg.BaseURL, model) {
-			return NewRetryProvider(newNegotiatingOpenAIProvider(providerCfg), DefaultRetryConfig()), nil
 		}
 		providerCfg.BaseURL = normalizeOpenAIChatBaseURL(providerCfg.BaseURL)
 		raw := NewOpenAI(providerCfg)
@@ -233,7 +229,7 @@ func registerVertex(r *ProviderRegistry) {
 		Name:            "vertex",
 		DisplayName:     "Google Vertex AI",
 		EnvKey:          "", // Vertex uses GCP ADC
-		AuthMethods:     []string{"api_key", "gcp_adc"},
+		AuthMethods:     []string{"gcp_adc"},
 		Popularity:      65,
 		RequiresContext: true,
 	}, func(cfg Config, modelOverride string) (Provider, error) {
@@ -243,17 +239,8 @@ func registerVertex(r *ProviderRegistry) {
 		} else if cfg.Model != "" {
 			vcfg.Model = cfg.Model
 		}
-		if cfg.APIKey != "" {
-			raw, err := NewVertexCustomEndpoint(Config{
-				APIKey:  cfg.APIKey,
-				BaseURL: cfg.BaseURL,
-				Model:   vcfg.Model,
-				Headers: cloneHeaders(cfg.Headers),
-			})
-			if err != nil {
-				return nil, err
-			}
-			return NewRetryProvider(raw, DefaultRetryConfig()), nil
+		if cfg.BaseURL != "" {
+			vcfg.BaseURL = cfg.BaseURL
 		}
 		// TODO: thread a real context through factory callers.
 		raw, err := NewVertex(context.Background(), vcfg)
@@ -322,10 +309,10 @@ func registerDeepSeek(r *ProviderRegistry) {
 		}
 		baseURL := firstNonEmpty(cfg.BaseURL, envOrDefault("DEEPSEEK_BASE_URL", brand.DeepSeekBaseURL))
 		apiFormat := normalizeOpenAIAPIFormat(firstNonEmpty(cfg.APIFormat, os.Getenv("DEEPSEEK_API")))
-		if apiFormat == "" && isFirstPartyDeepSeekBaseURL(baseURL) {
+		if apiFormat == "" {
 			apiFormat = modelCatalogOpenAIAPIFormat(r.catalog, brand.DeepSeekProvider, model)
 		}
-		if apiFormat == "" && isFirstPartyDeepSeekBaseURL(baseURL) {
+		if apiFormat == "" {
 			apiFormat = modelCatalogOpenAIAPIFormat(DefaultCatalog(), brand.DeepSeekProvider, model)
 		}
 		providerCfg := Config{

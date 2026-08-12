@@ -216,7 +216,7 @@ func (p *BedrockProvider) CreateStream(ctx context.Context, params Params) (<-ch
 		params.Model = p.model
 	}
 	if params.PromptCacheTTL == "" {
-		params.PromptCacheTTL = anthropicPromptCacheTTL("bedrock", params.Model, "")
+		params.PromptCacheTTL = anthropicPromptCacheTTL("bedrock", params.Model)
 	}
 	return createAnthropicStream(ctx, &p.client, params)
 }

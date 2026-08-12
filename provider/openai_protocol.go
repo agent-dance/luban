@@ -9,9 +9,9 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
-// openAIProtocolProvider prefers the cataloged Responses protocol for a known
-// OpenAI model on a custom gateway. Chat-only gateways are detected from an
-// endpoint-level failure and remembered for the lifetime of the provider.
+// openAIProtocolProvider is a compatibility-only adapter. It prefers the
+// cataloged Responses protocol for a compatible gateway, then remembers a
+// definitive endpoint-level failure for the lifetime of the provider.
 type openAIProtocolProvider struct {
 	mu                sync.RWMutex
 	responses         *ResponsesProvider
@@ -179,14 +179,6 @@ func responsesEndpointUnavailable(err error) bool {
 	}
 	switch apiErr.Status {
 	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
-		return true
-	case http.StatusBadRequest, http.StatusUnprocessableEntity:
-		// This provider exists only for an implicit protocol probe against an
-		// OpenAI-compatible custom endpoint. Gateways commonly collapse an
-		// unknown /responses route to a generic 400 (for example, "Upstream
-		// request failed"), so diagnostic prose cannot be used as capability
-		// evidence. The explicit --api responses path never constructs this
-		// negotiating provider and therefore remains authoritative.
 		return true
 	default:
 		return false

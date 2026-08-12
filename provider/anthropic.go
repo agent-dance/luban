@@ -40,10 +40,9 @@ const (
 
 // AnthropicProvider wraps the official Anthropic SDK as a Provider
 type AnthropicProvider struct {
-	client  anthropic.Client
-	name    string
-	model   string
-	baseURL string
+	client anthropic.Client
+	name   string
+	model  string
 }
 
 // NewAnthropic creates a Provider backed by the Anthropic API
@@ -83,10 +82,9 @@ func NewAnthropic(cfg Config) *AnthropicProvider {
 	}
 
 	return &AnthropicProvider{
-		client:  anthropic.NewClient(opts...),
-		name:    firstNonEmpty(CanonicalProviderName(cfg.ProviderName), "anthropic"),
-		model:   model,
-		baseURL: cfg.BaseURL,
+		client: anthropic.NewClient(opts...),
+		name:   firstNonEmpty(CanonicalProviderName(cfg.ProviderName), "anthropic"),
+		model:  model,
 	}
 }
 
@@ -475,7 +473,7 @@ func (p *AnthropicProvider) CreateStream(ctx context.Context, params Params) (<-
 		params.Model = p.model
 	}
 	if params.PromptCacheTTL == "" {
-		params.PromptCacheTTL = anthropicPromptCacheTTL("anthropic", params.Model, p.baseURL)
+		params.PromptCacheTTL = anthropicPromptCacheTTL(p.name, params.Model)
 	}
 	return createAnthropicStream(ctx, &p.client, params)
 }

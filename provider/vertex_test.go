@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 )
 
@@ -14,6 +15,7 @@ func TestVertexConfigFromEnv_Defaults(t *testing.T) {
 	t.Setenv("CLOUD_ML_REGION", "")
 	t.Setenv("ANTHROPIC_VERTEX_REGION", "")
 	t.Setenv("VERTEX_MODEL", "")
+	t.Setenv("ANTHROPIC_VERTEX_BASE_URL", "")
 
 	cfg := VertexConfigFromEnv()
 
@@ -113,6 +115,15 @@ func TestVertexConfigFromEnv_ModelFromVertexModel(t *testing.T) {
 	}
 }
 
+func TestVertexConfigFromEnv_BaseURL(t *testing.T) {
+	t.Setenv("ANTHROPIC_VERTEX_BASE_URL", "https://vertex.example.test")
+
+	cfg := VertexConfigFromEnv()
+	if cfg.BaseURL != "https://vertex.example.test" {
+		t.Errorf("expected BaseURL from ANTHROPIC_VERTEX_BASE_URL, got %q", cfg.BaseURL)
+	}
+}
+
 // --- NewVertex error cases ---
 
 // TestNewVertex_MissingProject verifies that NewVertex returns an error when
@@ -127,6 +138,16 @@ func TestNewVertex_MissingProject(t *testing.T) {
 	_, err := NewVertex(context.Background(), cfg)
 	if err == nil {
 		t.Error("expected error for missing ProjectID, got nil")
+	}
+}
+
+func TestNewVertex_MissingADCReturnsError(t *testing.T) {
+	t.Setenv("GOOGLE_APPLICATION_CREDENTIALS", filepath.Join(t.TempDir(), "missing-adc.json"))
+	_, err := NewVertex(context.Background(), VertexConfig{
+		Region: "us-east5", ProjectID: "test-project", Model: "claude-sonnet-4-6",
+	})
+	if err == nil {
+		t.Fatal("expected ADC loading error")
 	}
 }
 

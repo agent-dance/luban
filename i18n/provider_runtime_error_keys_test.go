@@ -13,7 +13,7 @@ func TestProviderRuntimeErrorKeysCoverEveryLanguage(t *testing.T) {
 		KeyProviderCustomToolsUnsupported, KeyProviderCustomToolDefinitionInvalid,
 		KeyProviderRetryExceededWithoutCause, KeyProviderRetryExceededWithCause,
 		KeyProviderUnknown, KeyProviderBedrockInvalidBaseURL,
-		KeyProviderVertexProjectRequired, KeyProviderVertexAPIKeyRequired, KeyProviderVertexBaseURLRequired,
+		KeyProviderVertexProjectRequired, KeyProviderVertexADCCredentialsFailed,
 		KeyProviderVertexEndpointInvalid, KeyCredentialHomeFailed, KeyCredentialReadFailed,
 		KeyCredentialDecodeFailed, KeyCredentialDirectoryFailed, KeyCredentialEncodeFailed,
 		KeyCredentialTempCreateFailed, KeyCredentialTempWriteFailed, KeyCredentialPermissionsFailed,

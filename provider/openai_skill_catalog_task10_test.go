@@ -116,13 +116,23 @@ func TestOpenAIChatDialectDeveloperLowering(t *testing.T) {
 			})
 
 			messages := openAIChatRequestMessagesTask10(t, request)
-			assertOpenAIChatRolesTask10(t, messages, "system", "user")
+			wantRoles := []string{"system", "user"}
+			if CanonicalProviderName(test.config.ProviderName) == "openai" && openAIChatModelSupportsDeveloperRole(test.config.Model) {
+				wantRoles = []string{"system", "developer", "user"}
+			}
+			assertOpenAIChatRolesTask10(t, messages, wantRoles...)
 			if got := messages[0]["content"]; got != "stable system" {
 				t.Fatalf("stable system was rewritten: %#v", got)
 			}
-			want := "<system-reminder>\ncatalog delta\n</system-reminder>\n\ncurrent user"
-			if got := messages[1]["content"]; got != want {
-				t.Fatalf("fallback user reminder = %#v, want %q", got, want)
+			if CanonicalProviderName(test.config.ProviderName) == "openai" && openAIChatModelSupportsDeveloperRole(test.config.Model) {
+				if messages[1]["content"] != "catalog delta" || messages[2]["content"] != "current user" {
+					t.Fatalf("native OpenAI developer projection = %#v", messages)
+				}
+			} else {
+				want := "<system-reminder>\ncatalog delta\n</system-reminder>\n\ncurrent user"
+				if got := messages[1]["content"]; got != want {
+					t.Fatalf("fallback user reminder = %#v, want %q", got, want)
+				}
 			}
 		})
 	}
@@ -326,7 +336,6 @@ func TestOpenAIChatDeveloperOrdinaryTurnUnchanged(t *testing.T) {
 func captureOpenAIChatRequestTask10(t *testing.T, config Config, params Params) map[string]any {
 	t.Helper()
 	params = params.WithInternalControlScope(messagecontrol.Runtime(), providerTestControlScope)
-	simulateOfficialOpenAI := CanonicalProviderName(config.ProviderName) == "openai" && !isCustomOpenAIBaseURL(config.BaseURL)
 	var captured map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -347,7 +356,6 @@ func captureOpenAIChatRequestTask10(t *testing.T, config Config, params Params) 
 	config.APIKey = "test-key"
 	config.BaseURL = server.URL
 	provider := NewOpenAI(config)
-	provider.officialOpenAIChatEndpoint = simulateOfficialOpenAI
 	stream, err := provider.CreateStream(context.Background(), params)
 	if err != nil {
 		t.Fatalf("CreateStream: %v", err)

@@ -13,8 +13,7 @@ const (
 	KeyProviderUnknown                     Key = "provider.runtime.unknown"
 	KeyProviderBedrockInvalidBaseURL       Key = "provider.runtime.bedrock.invalid_base_url"
 	KeyProviderVertexProjectRequired       Key = "provider.runtime.vertex.project_required"
-	KeyProviderVertexAPIKeyRequired        Key = "provider.runtime.vertex.api_key_required"
-	KeyProviderVertexBaseURLRequired       Key = "provider.runtime.vertex.base_url_required"
+	KeyProviderVertexADCCredentialsFailed  Key = "provider.runtime.vertex.adc_credentials_failed"
 	KeyProviderVertexEndpointInvalid       Key = "provider.runtime.vertex.endpoint_invalid"
 	KeyCredentialHomeFailed                Key = "provider.credential.home_failed"
 	KeyCredentialReadFailed                Key = "provider.credential.read_failed"
@@ -89,10 +88,8 @@ func init() {
 		"Base URL must use https:// (or http://localhost for testing): %q", "Base URL 必须使用 https://（测试时可使用 http://localhost）：%q", "Die Base URL muss https:// verwenden (oder http://localhost für Tests): %q", "Base URL には https:// を使用してください（テストでは http://localhost も可）: %q", "Base URL은 https://를 사용해야 합니다(테스트 시 http://localhost 허용): %q", "Base URL должен использовать https:// (либо http://localhost для тестов): %q")
 	add(KeyProviderVertexProjectRequired,
 		"GOOGLE_CLOUD_PROJECT (or ANTHROPIC_VERTEX_PROJECT_ID) must be set", "必须设置 GOOGLE_CLOUD_PROJECT（或 ANTHROPIC_VERTEX_PROJECT_ID）", "GOOGLE_CLOUD_PROJECT (oder ANTHROPIC_VERTEX_PROJECT_ID) muss gesetzt sein", "GOOGLE_CLOUD_PROJECT（または ANTHROPIC_VERTEX_PROJECT_ID）を設定してください", "GOOGLE_CLOUD_PROJECT(또는 ANTHROPIC_VERTEX_PROJECT_ID)를 설정해야 합니다", "Необходимо задать GOOGLE_CLOUD_PROJECT (или ANTHROPIC_VERTEX_PROJECT_ID)")
-	add(KeyProviderVertexAPIKeyRequired,
-		"The Vertex custom endpoint requires an API key", "Vertex 自定义 endpoint 需要 API key", "Der benutzerdefinierte Vertex-Endpunkt benötigt einen API-Schlüssel", "Vertex カスタム endpoint には API キーが必要です", "Vertex 사용자 지정 endpoint에는 API 키가 필요합니다", "Для пользовательского endpoint Vertex требуется API-ключ")
-	add(KeyProviderVertexBaseURLRequired,
-		"The Vertex custom endpoint requires a Base URL", "Vertex 自定义 endpoint 需要 Base URL", "Der benutzerdefinierte Vertex-Endpunkt benötigt eine Base URL", "Vertex カスタム endpoint には Base URL が必要です", "Vertex 사용자 지정 endpoint에는 Base URL이 필요합니다", "Для пользовательского endpoint Vertex требуется Base URL")
+	add(KeyProviderVertexADCCredentialsFailed,
+		"Could not load Google Application Default Credentials for Vertex", "无法为 Vertex 加载 Google 应用默认凭据", "Google Application Default Credentials für Vertex konnten nicht geladen werden", "Vertex の Google Application Default Credentials を読み込めませんでした", "Vertex용 Google 애플리케이션 기본 자격 증명을 불러오지 못했습니다", "Не удалось загрузить Google Application Default Credentials для Vertex")
 	add(KeyProviderVertexEndpointInvalid,
 		"Invalid Vertex custom endpoint", "Vertex 自定义 endpoint 无效", "Ungültiger benutzerdefinierter Vertex-Endpunkt", "Vertex カスタム endpoint が無効です", "Vertex 사용자 지정 endpoint가 올바르지 않습니다", "Недопустимый пользовательский endpoint Vertex")
 	add(KeyCredentialHomeFailed,

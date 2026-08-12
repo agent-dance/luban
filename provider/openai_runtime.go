@@ -10,19 +10,6 @@ const (
 	openAIChatGPTCodexBaseURL = "https://chatgpt.com/backend-api/codex"
 )
 
-func isOpenAIChatGPTCodexBaseURL(baseURL string) bool {
-	return strings.TrimRight(strings.TrimSpace(baseURL), "/") == openAIChatGPTCodexBaseURL
-}
-
-func isFirstPartyDeepSeekBaseURL(raw string) bool {
-	u, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || !strings.EqualFold(u.Hostname(), "api.deepseek.com") {
-		return false
-	}
-	path := strings.TrimRight(u.EscapedPath(), "/")
-	return path == "" || path == "/v1"
-}
-
 func openAICodexHeaders() map[string]string {
 	return map[string]string{
 		"originator": openAICodexOriginator,
@@ -106,7 +93,7 @@ func compatibleOpenAIAPIFormat(catalog *ModelCatalog, providerName, model string
 	return builtinFormat
 }
 
-func resolveOpenAIResponsesMode(authToken, requestedFormat, baseURL, model string) bool {
+func resolveOpenAIResponsesMode(authToken, requestedFormat, model string) bool {
 	if strings.TrimSpace(authToken) != "" {
 		return true
 	}
@@ -116,15 +103,9 @@ func resolveOpenAIResponsesMode(authToken, requestedFormat, baseURL, model strin
 	case "chat-completions":
 		return false
 	}
-	// A model ID describes model capabilities, not the protocol implemented by
-	// an arbitrary OpenAI-compatible gateway. Keep custom endpoints on the broad
-	// Chat Completions default unless the user explicitly selected Responses.
-	if isCustomOpenAIBaseURL(baseURL) {
-		return false
-	}
 	// This model-aware routing is deliberately confined to the OpenAI factory.
-	// It only applies to the first-party API; other providers may share the
-	// OpenAI-compatible client, but own their endpoint selection themselves.
+	// A BaseURL changes only the transport location; it cannot change the native
+	// OpenAI wire contract selected by the model catalog.
 	switch catalogOpenAIAPIFormat(model) {
 	case "responses":
 		return true
@@ -134,25 +115,9 @@ func resolveOpenAIResponsesMode(authToken, requestedFormat, baseURL, model strin
 	return shouldUseOpenAIResponsesAPI(model)
 }
 
-// shouldNegotiateOpenAIResponses lets cataloged Responses models use their
-// native protocol on compatible gateways without breaking chat-only servers.
-// Explicit protocol choices remain authoritative; the protocol provider
-// remembers a 404/405/501 Responses endpoint failure and falls back to Chat.
-func shouldNegotiateOpenAIResponses(authToken, requestedFormat, baseURL, model string) bool {
-	if strings.TrimSpace(authToken) != "" || !isCustomOpenAIBaseURL(baseURL) {
-		return false
-	}
-	switch strings.ToLower(strings.TrimSpace(requestedFormat)) {
-	case "responses", "chat-completions":
-		return false
-	}
-	return catalogOpenAIAPIFormat(model) == "responses"
-}
-
-// newNegotiatingOpenAIProvider keeps the Responses probe and Chat fallback
-// construction identical for the first-party factory and compatible gateways.
-// Callers must use this only for catalog-inferred Responses support; an
-// explicitly selected wire protocol must remain a single concrete provider.
+// newNegotiatingOpenAIProvider is restricted to explicitly compatible
+// providers. Native providers select one authoritative wire contract before
+// construction and never infer protocol support from endpoint behavior.
 func newNegotiatingOpenAIProvider(cfg Config) *openAIProtocolProvider {
 	responses := NewResponses(cfg)
 	chatCfg := cfg
@@ -165,19 +130,6 @@ func newNegotiatingOpenAIProvider(cfg Config) *openAIProtocolProvider {
 	// explicit compatible-provider factory).
 	chatCfg.DisableStrictTools = true
 	return newOpenAIProtocolProvider(responses, NewOpenAI(chatCfg))
-}
-
-func isOpenAIPublicAPIBaseURL(raw string) bool {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return true
-	}
-	parsed, err := url.Parse(raw)
-	return err == nil && strings.EqualFold(parsed.Hostname(), "api.openai.com")
-}
-
-func isFirstPartyOpenAIResponsesBaseURL(raw string) bool {
-	return isOpenAIPublicAPIBaseURL(raw) || isOpenAIChatGPTCodexBaseURL(raw)
 }
 
 func isOpenAIResponsesLiteModel(model string) bool {
@@ -198,18 +150,6 @@ func supportsOpenAIResponsesCustomTools(semantics ResponsesSemantics, model stri
 		return false
 	}
 	return lower == "gpt-5.6" || strings.HasPrefix(lower, "gpt-5.6-")
-}
-
-func isCustomOpenAIBaseURL(raw string) bool {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return false
-	}
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return true
-	}
-	return !strings.EqualFold(parsed.Hostname(), "api.openai.com")
 }
 
 func normalizeOpenAIChatBaseURL(raw string) string {

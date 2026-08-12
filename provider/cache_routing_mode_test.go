@@ -23,7 +23,7 @@ func TestOpenAIChatCacheRoutingModeMatrix(t *testing.T) {
 		{name: "Mistral", cfg: Config{ProviderName: "mistral"}, want: CacheRoutingPromptCacheKey},
 		{name: "Kimi", cfg: Config{ProviderName: "kimi"}, want: CacheRoutingPromptCacheKey},
 		{name: "DeepSeek", cfg: Config{ProviderName: "deepseek"}, want: CacheRoutingDeepSeekUserID},
-		{name: "DeepSeek official host", cfg: Config{ProviderName: "custom", BaseURL: "https://api.deepseek.com/v1"}, want: CacheRoutingDeepSeekUserID},
+		{name: "compatible identity ignores DeepSeek hostname", cfg: Config{ProviderName: "custom", BaseURL: "https://api.deepseek.com/v1"}, want: CacheRoutingPromptCacheKeyBestEffort},
 		{name: "Gemini", cfg: Config{ProviderName: "gemini"}, want: CacheRoutingPromptCacheKeyBestEffort},
 		{name: "Groq", cfg: Config{ProviderName: "groq"}, want: CacheRoutingPromptCacheKeyBestEffort},
 		{name: "custom gateway", cfg: Config{ProviderName: "custom", BaseURL: "https://gateway.example/v1"}, want: CacheRoutingPromptCacheKeyBestEffort},

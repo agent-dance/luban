@@ -60,22 +60,20 @@ func TestResolveOpenAIAPIFormat(t *testing.T) {
 		name          string
 		authToken     string
 		requested     string
-		baseURL       string
 		model         string
 		wantResponses bool
 	}{
-		{name: "official GPT 5 defaults to responses", baseURL: "https://api.openai.com/v1", model: "gpt-5.5", wantResponses: true},
-		{name: "official endpoint honors catalog responses format", baseURL: "https://api.openai.com/v1", model: "gpt-5.4-mini", wantResponses: true},
-		{name: "custom endpoint keeps chat default for cataloged model", baseURL: "https://gateway.example.com", model: "gpt-5.4-mini"},
-		{name: "custom endpoint keeps chat default for unknown model", baseURL: "https://gateway.example.com", model: "vendor-unknown"},
-		{name: "custom endpoint can force responses", requested: "responses", baseURL: "https://gateway.example.com", model: "gpt-5.5", wantResponses: true},
-		{name: "explicit chat overrides catalog format", requested: "chat-completions", baseURL: "https://gateway.example.com", model: "gpt-5.4-mini"},
-		{name: "oauth always uses responses", authToken: "oauth-token", requested: "chat-completions", baseURL: openAIChatGPTCodexBaseURL, model: "gpt-5.5", wantResponses: true},
+		{name: "GPT 5 defaults to responses", model: "gpt-5.5", wantResponses: true},
+		{name: "catalog responses format is authoritative", model: "gpt-5.4-mini", wantResponses: true},
+		{name: "unknown model retains legacy chat default", model: "vendor-unknown"},
+		{name: "explicit responses wins", requested: "responses", model: "gpt-5.5", wantResponses: true},
+		{name: "explicit chat overrides catalog format", requested: "chat-completions", model: "gpt-5.4-mini"},
+		{name: "oauth always uses responses", authToken: "oauth-token", requested: "chat-completions", model: "gpt-5.5", wantResponses: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := resolveOpenAIResponsesMode(tt.authToken, tt.requested, tt.baseURL, tt.model)
+			got := resolveOpenAIResponsesMode(tt.authToken, tt.requested, tt.model)
 			if got != tt.wantResponses {
 				t.Fatalf("resolveOpenAIResponsesMode() = %v, want %v", got, tt.wantResponses)
 			}
@@ -83,23 +81,7 @@ func TestResolveOpenAIAPIFormat(t *testing.T) {
 	}
 }
 
-func TestIsFirstPartyDeepSeekBaseURL(t *testing.T) {
-	for _, test := range []struct {
-		baseURL string
-		want    bool
-	}{
-		{baseURL: "https://api.deepseek.com", want: true},
-		{baseURL: "https://api.deepseek.com/v1/", want: true},
-		{baseURL: "https://gateway.example.com/v1", want: false},
-		{baseURL: "https://api.deepseek.com.proxy.example/v1", want: false},
-	} {
-		if got := isFirstPartyDeepSeekBaseURL(test.baseURL); got != test.want {
-			t.Fatalf("isFirstPartyDeepSeekBaseURL(%q) = %v, want %v", test.baseURL, got, test.want)
-		}
-	}
-}
-
-func TestOpenAIModelRoutingNegotiatesCompatibleGatewayProtocol(t *testing.T) {
+func TestNativeProviderRoutingIgnoresTransportLocation(t *testing.T) {
 	r := NewProviderRegistry()
 	registerOpenAI(r)
 	registerDeepSeek(r)
@@ -116,8 +98,8 @@ func TestOpenAIModelRoutingNegotiatesCompatibleGatewayProtocol(t *testing.T) {
 	if !ok {
 		t.Fatalf("OpenAI provider = %T, want *RetryProvider", openAIProvider)
 	}
-	if _, ok := openAIRetry.inner.(*openAIProtocolProvider); !ok {
-		t.Fatalf("OpenAI inner provider = %T, want *openAIProtocolProvider", openAIRetry.inner)
+	if _, ok := openAIRetry.inner.(*ResponsesProvider); !ok {
+		t.Fatalf("OpenAI inner provider = %T, want *ResponsesProvider", openAIRetry.inner)
 	}
 
 	compatibleProvider, err := r.Create("deepseek", Config{
@@ -132,8 +114,8 @@ func TestOpenAIModelRoutingNegotiatesCompatibleGatewayProtocol(t *testing.T) {
 	if !ok {
 		t.Fatalf("compatible provider = %T, want *RetryProvider", compatibleProvider)
 	}
-	if _, ok := compatibleRetry.inner.(*OpenAIProvider); !ok {
-		t.Fatalf("compatible inner provider = %T, want *OpenAIProvider", compatibleRetry.inner)
+	if _, ok := compatibleRetry.inner.(*ResponsesProvider); !ok {
+		t.Fatalf("DeepSeek inner provider = %T, want *ResponsesProvider", compatibleRetry.inner)
 	}
 }
 
@@ -184,7 +166,7 @@ func TestOpenAIProtocolProviderPrefersResponsesForCatalogedModel(t *testing.T) {
 	}
 }
 
-func TestOpenAIProtocolProviderFallsBackOnceWhenResponsesUnavailable(t *testing.T) {
+func TestOpenAINativeResponsesDoesNotFallbackWhenEndpointUnavailable(t *testing.T) {
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.Path)
@@ -206,15 +188,11 @@ func TestOpenAIProtocolProviderFallsBackOnceWhenResponsesUnavailable(t *testing.
 	if err != nil {
 		t.Fatalf("create provider: %v", err)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
-		ch, streamErr := p.CreateStream(context.Background(), Params{Messages: []types.Message{types.UserMessage("hello")}})
-		if streamErr != nil {
-			t.Fatalf("CreateStream attempt %d: %v", attempt+1, streamErr)
-		}
-		for range ch {
-		}
+	_, streamErr := p.CreateStream(context.Background(), Params{Messages: []types.Message{types.UserMessage("hello")}})
+	if streamErr == nil {
+		t.Fatal("native Responses request unexpectedly fell back")
 	}
-	want := []string{"/responses", "/v1/chat/completions", "/v1/chat/completions"}
+	want := []string{"/responses"}
 	if len(paths) != len(want) {
 		t.Fatalf("request paths = %v, want %v", paths, want)
 	}
@@ -225,7 +203,7 @@ func TestOpenAIProtocolProviderFallsBackOnceWhenResponsesUnavailable(t *testing.
 	}
 }
 
-func TestOpenAICompatibleChatUsesMaxTokensAndOverride(t *testing.T) {
+func TestOpenAINativeChatProxyUsesMaxCompletionTokensAndOverride(t *testing.T) {
 	var captured map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -255,11 +233,11 @@ func TestOpenAICompatibleChatUsesMaxTokensAndOverride(t *testing.T) {
 	}
 	for range ch {
 	}
-	if got := captured["max_tokens"]; got != float64(64000) {
-		t.Fatalf("max_tokens = %#v, want 64000", got)
+	if got := captured["max_completion_tokens"]; got != float64(64000) {
+		t.Fatalf("max_completion_tokens = %#v, want 64000", got)
 	}
-	if _, ok := captured["max_completion_tokens"]; ok {
-		t.Fatalf("custom endpoint retained max_completion_tokens: %#v", captured["max_completion_tokens"])
+	if _, ok := captured["max_tokens"]; ok {
+		t.Fatalf("native OpenAI proxy used compatibility max_tokens: %#v", captured["max_tokens"])
 	}
 	if got := captured["reasoning_effort"]; got != "max" {
 		t.Fatalf("reasoning_effort = %#v, want max", got)
@@ -331,24 +309,6 @@ func TestNormalizeOpenAIChatBaseURL(t *testing.T) {
 	for _, tt := range tests {
 		if got := normalizeOpenAIChatBaseURL(tt.input); got != tt.want {
 			t.Errorf("normalizeOpenAIChatBaseURL(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
-func TestIsOpenAIChatGPTCodexBaseURL(t *testing.T) {
-	tests := []struct {
-		baseURL string
-		want    bool
-	}{
-		{baseURL: "https://chatgpt.com/backend-api/codex", want: true},
-		{baseURL: "https://chatgpt.com/backend-api/codex/", want: true},
-		{baseURL: " https://chatgpt.com/backend-api/codex/ ", want: true},
-		{baseURL: "https://api.openai.com/v1", want: false},
-		{baseURL: "https://chatgpt.com/backend-api", want: false},
-	}
-	for _, tt := range tests {
-		if got := isOpenAIChatGPTCodexBaseURL(tt.baseURL); got != tt.want {
-			t.Fatalf("isOpenAIChatGPTCodexBaseURL(%q) = %v, want %v", tt.baseURL, got, tt.want)
 		}
 	}
 }

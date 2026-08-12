@@ -167,9 +167,9 @@ type Config struct {
 	ProviderName string
 	APIStyle     APIStyle
 
-	// APIFormat is an explicit OpenAI-family wire override. Empty selects
-	// catalog-driven negotiation; supported values are responses and
-	// chat-completions.
+	// APIFormat is an explicit OpenAI-family wire override. Empty selects the
+	// native provider's cataloged format; compatible providers may negotiate a
+	// catalog-inferred format. Supported values are responses and chat-completions.
 	APIFormat string
 	// ResponsesSemantics declares the upstream wire contract independently of
 	// the transport URL. This is required when the official OpenAI API is

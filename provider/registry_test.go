@@ -639,19 +639,43 @@ func TestDefaultRegistry_OllamaFactory_NoKeyRequired(t *testing.T) {
 	}
 }
 
-func TestVisibleProvidersOfferAPIKeyCustomEndpointMode(t *testing.T) {
+func TestVisibleProvidersDeclareSupportedAuthentication(t *testing.T) {
 	r := DefaultRegistry()
 	for _, info := range r.Visible() {
-		if !providerSupportsMethod(info.AuthMethods, "api_key") {
-			t.Errorf("provider %q does not offer api_key auth: %v", info.Name, info.AuthMethods)
+		if len(info.AuthMethods) == 0 {
+			t.Errorf("provider %q does not declare an authentication method", info.Name)
 		}
 	}
 }
 
 func TestCustomEndpointFactoriesPreserveSpecialProviderIdentity(t *testing.T) {
 	r := DefaultRegistry()
+	expected := map[string]string{
+		"alibaba-cloud": "compatible-chat",
+		"anthropic":     "anthropic",
+		"bedrock":       "bedrock",
+		"deepseek":      "deepseek-chat",
+		"gemini":        "gemini-chat",
+		"groq":          "groq-chat",
+		"kimi":          "standard-chat",
+		"minimax":       "standard-chat",
+		"mistral":       "mistral-chat",
+		"ollama":        "ollama-chat",
+		"openai":        "openai-chat",
+		"tencent-cloud": "compatible-chat",
+		"volcengine":    "compatible-chat",
+		"xai":           "compatible-responses",
+		"zhipu":         "standard-chat",
+	}
 	for _, info := range r.Visible() {
+		if !providerSupportsMethod(info.AuthMethods, "api_key") {
+			continue
+		}
 		t.Run(info.Name, func(t *testing.T) {
+			wantContract, reviewed := expected[info.Name]
+			if !reviewed {
+				t.Fatalf("provider %q has no custom-endpoint contract review", info.Name)
+			}
 			p, err := r.Create(info.Name, Config{
 				APIKey:  "test-key",
 				BaseURL: "http://localhost:11434/v1",
@@ -661,6 +685,43 @@ func TestCustomEndpointFactoriesPreserveSpecialProviderIdentity(t *testing.T) {
 			}
 			if p.Name() != info.Name {
 				t.Fatalf("Name = %q, want %q", p.Name(), info.Name)
+			}
+			retry, ok := p.(*RetryProvider)
+			if !ok {
+				t.Fatalf("provider = %T, want RetryProvider", p)
+			}
+			switch inner := retry.inner.(type) {
+			case *AnthropicProvider:
+				if wantContract != "anthropic" || inner.name != info.Name {
+					t.Fatalf("contract = Anthropic/%q, want %s", inner.name, wantContract)
+				}
+			case *BedrockProvider:
+				if wantContract != "bedrock" {
+					t.Fatalf("contract = Bedrock, want %s", wantContract)
+				}
+			case *ResponsesProvider:
+				if wantContract != "compatible-responses" || inner.semantics != ResponsesSemanticsCompatible {
+					t.Fatalf("contract = Responses/%s, want %s", inner.semantics, wantContract)
+				}
+			case *OpenAIProvider:
+				wantDialect := map[string]OpenAIDialect{
+					"compatible-chat": DialectStandard,
+					"deepseek-chat":   DialectDeepSeek,
+					"gemini-chat":     DialectGemini,
+					"groq-chat":       DialectGroq,
+					"mistral-chat":    DialectMistral,
+					"ollama-chat":     DialectOllama,
+					"openai-chat":     DialectStandard,
+					"standard-chat":   DialectStandard,
+				}[wantContract]
+				if inner.dialect != wantDialect {
+					t.Fatalf("dialect = %q, want %q for %s", inner.dialect, wantDialect, wantContract)
+				}
+				if inner.nativeOpenAIChatContract != (wantContract == "openai-chat") {
+					t.Fatalf("native OpenAI contract = %v, want %v", inner.nativeOpenAIChatContract, wantContract == "openai-chat")
+				}
+			default:
+				t.Fatalf("provider contract = %T, want %s", retry.inner, wantContract)
 			}
 		})
 	}

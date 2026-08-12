@@ -61,11 +61,10 @@ func TestSkillCacheProviderRequestShape(t *testing.T) {
 		task27AssertSerializedPrefix(t, firstMessages, changedMessages)
 		task27AssertStableFields(t, first, unchanged, "model", "tools", "max_tokens", "stream")
 		task27AssertStableFields(t, first, changed, "model", "tools", "max_tokens", "stream")
-		deltaUser := "<system-reminder>\n" + plans.deltaText + "\n</system-reminder>\n\nchanged user"
-		if task27CountRoleContent(unchangedMessages, "user", deltaUser) != 0 {
+		if task27CountRoleContent(unchangedMessages, "developer", plans.deltaText) != 0 {
 			t.Fatal("unchanged OpenAI Chat request appended a catalog delta")
 		}
-		if task27CountRoleContent(changedMessages, "user", deltaUser) != 1 {
+		if task27CountRoleContent(changedMessages, "developer", plans.deltaText) != 1 {
 			t.Fatalf("changed OpenAI Chat request did not append exactly one delta: %#v", changedMessages)
 		}
 	})

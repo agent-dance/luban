@@ -45,7 +45,7 @@ func TestResponsesRequestDiagnosticsClassifyFormatSuggestionByStatus(t *testing.
 		status         int
 		wantSuggestion bool
 	}{
-		{status: http.StatusBadRequest, wantSuggestion: true},
+		{status: http.StatusBadRequest, wantSuggestion: false},
 		{status: http.StatusUnauthorized, wantSuggestion: false},
 		{status: http.StatusNotFound, wantSuggestion: true},
 		{status: http.StatusTooManyRequests, wantSuggestion: false},
@@ -61,7 +61,7 @@ func TestResponsesRequestDiagnosticsClassifyFormatSuggestionByStatus(t *testing.
 
 			responses := NewResponses(Config{
 				ProviderName: "custom-gateway", APIKey: "key",
-				BaseURL: server.URL + "/private-token/v1", ResponsesSemantics: ResponsesSemanticsOpenAIPublic,
+				BaseURL: server.URL + "/private-token/v1", ResponsesSemantics: ResponsesSemanticsCompatible,
 			})
 			_, err := responses.CreateStream(context.Background(), Params{Messages: []types.Message{types.UserMessage("hello")}})
 			apiErr, ok := AsAPIError(err)

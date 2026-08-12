@@ -160,17 +160,15 @@ func TestAnthropicPromptCacheTTLIsProviderAndModelGated(t *testing.T) {
 	tests := []struct {
 		provider string
 		model    string
-		baseURL  string
 		want     string
 	}{
-		{"anthropic", "claude-sonnet-5", "", "1h"},
-		{"anthropic", "claude-sonnet-5", "https://proxy.example/v1", ""},
-		{"vertex", "claude-sonnet-4-6", "", "1h"},
-		{"bedrock", "anthropic.claude-haiku-4-5-20251001-v1:0", "", "1h"},
-		{"bedrock", "anthropic.claude-sonnet-4-6", "", ""},
+		{"anthropic", "claude-sonnet-5", "1h"},
+		{"vertex", "claude-sonnet-4-6", "1h"},
+		{"bedrock", "anthropic.claude-haiku-4-5-20251001-v1:0", "1h"},
+		{"bedrock", "anthropic.claude-sonnet-4-6", ""},
 	}
 	for _, test := range tests {
-		if got := anthropicPromptCacheTTL(test.provider, test.model, test.baseURL); got != test.want {
+		if got := anthropicPromptCacheTTL(test.provider, test.model); got != test.want {
 			t.Errorf("%s/%s TTL = %q, want %q", test.provider, test.model, got, test.want)
 		}
 	}

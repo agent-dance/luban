@@ -177,7 +177,7 @@ func TestUserCompatibleResponsesFallbackIsRemembered(t *testing.T) {
 	}
 }
 
-func TestOpenAICustomEndpointGenericResponses400FallsBackToChatAndRemembers(t *testing.T) {
+func TestCompatibleGenericResponses400DoesNotFallback(t *testing.T) {
 	var mu sync.Mutex
 	var paths []string
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -189,36 +189,28 @@ func TestOpenAICustomEndpointGenericResponses400FallsBackToChatAndRemembers(t *t
 			writer.Header().Set("Content-Type", "application/json")
 			writer.WriteHeader(http.StatusBadRequest)
 			_, _ = io.WriteString(writer, `{"error":{"message":"Upstream request failed","type":"api_error"}}`)
-		case "/v1/chat/completions":
-			writer.Header().Set("Content-Type", "text/event-stream")
-			_, _ = io.WriteString(writer, "data: {\"id\":\"chatcmpl_fallback\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"gpt-5.6-sol\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
 		default:
 			http.Error(writer, "unexpected path", http.StatusBadRequest)
 		}
 	}))
 	defer server.Close()
 
-	registry := NewProviderRegistry()
-	registry.catalog = DefaultCatalog()
-	registerOpenAI(registry)
-	client, err := registry.Create("openai", Config{
-		APIKey: "test-key", BaseURL: server.URL + "/v1",
+	baseURL := server.URL + "/v1"
+	registry := newUserCompatibleProtocolTestRegistry(baseURL, "chat-completions")
+	client, err := registry.Create("custom-gateway", Config{
+		APIKey: "test-key", APIStyle: APIStyleOpenAI, BaseURL: baseURL,
 	}, "gpt-5.6-sol")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
-		stream, streamErr := client.CreateStream(context.Background(), compatibleProtocolTestParams())
-		if streamErr != nil {
-			t.Fatalf("CreateStream attempt %d: %v", attempt+1, streamErr)
-		}
-		for range stream {
-		}
+	_, streamErr := client.CreateStream(context.Background(), compatibleProtocolTestParams())
+	if streamErr == nil {
+		t.Fatal("generic request validation error unexpectedly triggered Chat fallback")
 	}
 
 	mu.Lock()
 	defer mu.Unlock()
-	want := []string{"/v1/responses", "/v1/chat/completions", "/v1/chat/completions"}
+	want := []string{"/v1/responses"}
 	if len(paths) != len(want) {
 		t.Fatalf("request paths = %v, want %v", paths, want)
 	}
@@ -246,7 +238,7 @@ func TestConfirmedToollessResponsesFallsBackWhenLaterToolRequestIsRejected(t *te
 				return
 			}
 			writer.Header().Set("Content-Type", "application/json")
-			writer.WriteHeader(http.StatusBadRequest)
+			writer.WriteHeader(http.StatusNotFound)
 			_, _ = io.WriteString(writer, `{"error":{"message":"Upstream request failed","type":"api_error"}}`)
 		case "/v1/chat/completions":
 			writer.Header().Set("Content-Type", "text/event-stream")
@@ -257,10 +249,9 @@ func TestConfirmedToollessResponsesFallsBackWhenLaterToolRequestIsRejected(t *te
 	}))
 	defer server.Close()
 
-	registry := NewProviderRegistry()
-	registry.catalog = DefaultCatalog()
-	registerOpenAI(registry)
-	client, err := registry.Create("openai", Config{APIKey: "test-key", BaseURL: server.URL + "/v1"}, "gpt-5.6-sol")
+	baseURL := server.URL + "/v1"
+	registry := newUserCompatibleProtocolTestRegistry(baseURL, "chat-completions")
+	client, err := registry.Create("custom-gateway", Config{APIKey: "test-key", APIStyle: APIStyleOpenAI, BaseURL: baseURL}, "gpt-5.6-sol")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +306,7 @@ func TestCompactedSessionConfirmedResponsesFallsBackToRememberedChatWithFullCata
 				return
 			}
 			writer.Header().Set("Content-Type", "application/json")
-			writer.WriteHeader(http.StatusBadRequest)
+			writer.WriteHeader(http.StatusNotFound)
 			_, _ = io.WriteString(writer, `{"error":{"message":"Upstream request failed","type":"api_error"}}`)
 		case "/v1/chat/completions":
 			var body map[string]any
@@ -333,10 +324,9 @@ func TestCompactedSessionConfirmedResponsesFallsBackToRememberedChatWithFullCata
 	}))
 	defer server.Close()
 
-	registry := NewProviderRegistry()
-	registry.catalog = DefaultCatalog()
-	registerOpenAI(registry)
-	client, err := registry.Create("openai", Config{APIKey: "test-key", BaseURL: server.URL + "/v1"}, "gpt-5.6-sol")
+	baseURL := server.URL + "/v1"
+	registry := newUserCompatibleProtocolTestRegistry(baseURL, "chat-completions")
+	client, err := registry.Create("custom-gateway", Config{APIKey: "test-key", APIStyle: APIStyleOpenAI, BaseURL: baseURL}, "gpt-5.6-sol")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -367,7 +357,8 @@ func TestCompactedSessionConfirmedResponsesFallsBackToRememberedChatWithFullCata
 	defer mu.Unlock()
 	wantPaths := []string{
 		"/v1/responses",
-		"/v1/responses", "/v1/chat/completions",
+		"/v1/responses",
+		"/v1/chat/completions",
 		"/v1/chat/completions",
 	}
 	if !reflect.DeepEqual(paths, wantPaths) {
@@ -500,7 +491,7 @@ func assertCompactedFullCatalogChatBody(t *testing.T, attempt int, body map[stri
 	}
 }
 
-func TestOpenAICustomEndpointGeneric400ProjectsCustomApplyPatchAndContinuesToolResult(t *testing.T) {
+func TestCompatibleProviderProjectsCustomApplyPatchAndContinuesToolResult(t *testing.T) {
 	var mu sync.Mutex
 	var paths []string
 	var chatBodies []map[string]any
@@ -548,10 +539,9 @@ func TestOpenAICustomEndpointGeneric400ProjectsCustomApplyPatchAndContinuesToolR
 	}))
 	defer server.Close()
 
-	registry := NewProviderRegistry()
-	registry.catalog = DefaultCatalog()
-	registerOpenAI(registry)
-	client, err := registry.Create("openai", Config{APIKey: "test-key", BaseURL: server.URL + "/v1"}, "gpt-5.6-sol")
+	baseURL := server.URL + "/v1"
+	registry := newUserCompatibleProtocolTestRegistry(baseURL, "chat-completions")
+	client, err := registry.Create("custom-gateway", Config{APIKey: "test-key", APIStyle: APIStyleOpenAI, BaseURL: baseURL}, "gpt-5.6-sol")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -621,7 +611,7 @@ func TestOpenAICustomEndpointGeneric400ProjectsCustomApplyPatchAndContinuesToolR
 
 	mu.Lock()
 	defer mu.Unlock()
-	wantPaths := []string{"/v1/responses", "/v1/chat/completions", "/v1/chat/completions"}
+	wantPaths := []string{"/v1/chat/completions", "/v1/chat/completions"}
 	if len(paths) != len(wantPaths) {
 		t.Fatalf("request paths = %v, want %v", paths, wantPaths)
 	}
@@ -660,7 +650,7 @@ func TestOpenAICustomEndpointGeneric400ProjectsCustomApplyPatchAndContinuesToolR
 }
 
 func TestNegotiatedResponsesDoesNotFallbackOnAuthOrThrottle(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusTooManyRequests} {
+	for _, status := range []int{http.StatusBadRequest, http.StatusUnprocessableEntity, http.StatusUnauthorized, http.StatusTooManyRequests} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			apiErr := &types.APIError{Status: status, Type: "api_error", Message: "gateway failure"}
 			if responsesEndpointUnavailable(apiErr) {
@@ -676,7 +666,7 @@ func TestRememberedChatFailureRetainsAttemptedFormats(t *testing.T) {
 		switch request.URL.Path {
 		case "/v1/responses":
 			writer.Header().Set("Content-Type", "application/json")
-			writer.WriteHeader(http.StatusBadRequest)
+			writer.WriteHeader(http.StatusNotFound)
 			_, _ = io.WriteString(writer, `{"error":{"message":"Upstream request failed","type":"api_error"}}`)
 		case "/v1/chat/completions":
 			chatCalls++
@@ -693,10 +683,9 @@ func TestRememberedChatFailureRetainsAttemptedFormats(t *testing.T) {
 	}))
 	defer server.Close()
 
-	registry := NewProviderRegistry()
-	registry.catalog = DefaultCatalog()
-	registerOpenAI(registry)
-	client, err := registry.Create("openai", Config{APIKey: "test-key", BaseURL: server.URL + "/v1"}, "gpt-5.6-sol")
+	baseURL := server.URL + "/v1"
+	registry := newUserCompatibleProtocolTestRegistry(baseURL, "chat-completions")
+	client, err := registry.Create("custom-gateway", Config{APIKey: "test-key", APIStyle: APIStyleOpenAI, BaseURL: baseURL}, "gpt-5.6-sol")
 	if err != nil {
 		t.Fatal(err)
 	}

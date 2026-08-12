@@ -93,7 +93,7 @@ func NewResponses(cfg Config) *ResponsesProvider {
 	if providerName == "" {
 		providerName = "openai"
 	}
-	semantics := resolveResponsesSemantics(cfg, baseURL)
+	semantics := resolveResponsesSemantics(cfg)
 
 	return &ResponsesProvider{
 		name:                      providerName,
@@ -121,7 +121,7 @@ func NewResponses(cfg Config) *ResponsesProvider {
 	}
 }
 
-func resolveResponsesSemantics(cfg Config, baseURL string) ResponsesSemantics {
+func resolveResponsesSemantics(cfg Config) ResponsesSemantics {
 	switch cfg.ResponsesSemantics {
 	case ResponsesSemanticsOpenAIPublic, ResponsesSemanticsOpenAICodex, ResponsesSemanticsDeepSeek, ResponsesSemanticsCompatible:
 		return cfg.ResponsesSemantics
@@ -138,15 +138,9 @@ func resolveResponsesSemantics(cfg Config, baseURL string) ResponsesSemantics {
 		}
 		return ResponsesSemanticsCompatible
 	}
-	// Backward-compatible direct-library default only. Production factories
-	// always set a profile, so a benchmark proxy hostname cannot alter this
-	// decision.
-	if isOpenAIChatGPTCodexBaseURL(baseURL) {
-		return ResponsesSemanticsOpenAICodex
-	}
-	if isOpenAIPublicAPIBaseURL(baseURL) {
-		return ResponsesSemanticsOpenAIPublic
-	}
+	// An unidentified direct constructor gets the conservative, generic
+	// Responses contract. Built-in providers always set their identity; endpoint
+	// location never strengthens or weakens the selected wire contract.
 	return ResponsesSemanticsCompatible
 }
 
@@ -184,7 +178,7 @@ func (p *ResponsesProvider) ApplyCredentialConfig(cfg Config) {
 	p.baseURL = baseURL
 	p.apiKey = bearerToken
 	p.headers = cloneHeaders(cfg.Headers)
-	p.semantics = resolveResponsesSemantics(cfg, baseURL)
+	p.semantics = resolveResponsesSemantics(cfg)
 	p.chatGPTCodexBackend = p.semantics == ResponsesSemanticsOpenAICodex
 	p.firstPartyEndpoint = p.semantics == ResponsesSemanticsOpenAIPublic || p.semantics == ResponsesSemanticsOpenAICodex
 	p.publicAPIEndpoint = p.semantics == ResponsesSemanticsOpenAIPublic
@@ -350,7 +344,7 @@ func (p *ResponsesProvider) createResponsesHTTPStream(ctx context.Context, param
 			parseResponsesHTTPError(resp.StatusCode, bodyBytes, resp.Header.Get("Retry-After")),
 			profile.providerName, "responses", endpoint, resp.Header,
 		)
-		if profile.customEndpointLocation && responsesEndpointUnavailable(apiErr) {
+		if profile.semantics == ResponsesSemanticsCompatible && responsesEndpointUnavailable(apiErr) {
 			apiErr.SuggestedAPIFormat = "chat-completions"
 		}
 		return nil, apiErr

@@ -89,23 +89,25 @@ func TestSkillCatalogIntegrationProviderRequestShapeParity(t *testing.T) {
 		changedParams.Messages = plans.changed
 		changed := task26CaptureOpenAIChat(t, changedParams)
 
-		snapshotReminder := "<system-reminder>\n" + plans.snapshotText + "\n</system-reminder>"
-		deltaReminder := "<system-reminder>\n" + plans.deltaText + "\n</system-reminder>"
 		task26AssertProviderItems(t, task26RoleContentItems(t, first, "messages"), []task26ProviderItem{
 			{role: "system", content: "stable task26 system"},
-			{role: "user", content: snapshotReminder + "\n\nfirst user"},
+			{role: "developer", content: plans.snapshotText},
+			{role: "user", content: "first user"},
 		})
 		task26AssertProviderItems(t, task26RoleContentItems(t, noChange, "messages"), []task26ProviderItem{
 			{role: "system", content: "stable task26 system"},
-			{role: "user", content: snapshotReminder + "\n\nfirst user"},
+			{role: "developer", content: plans.snapshotText},
+			{role: "user", content: "first user"},
 			{role: "assistant", content: "first assistant"},
 			{role: "user", content: "no-change user"},
 		})
 		task26AssertProviderItems(t, task26RoleContentItems(t, changed, "messages"), []task26ProviderItem{
 			{role: "system", content: "stable task26 system"},
-			{role: "user", content: snapshotReminder + "\n\nfirst user"},
+			{role: "developer", content: plans.snapshotText},
+			{role: "user", content: "first user"},
 			{role: "assistant", content: "first assistant"},
-			{role: "user", content: deltaReminder + "\n\nchanged user"},
+			{role: "developer", content: plans.deltaText},
+			{role: "user", content: "changed user"},
 		})
 		if !reflect.DeepEqual(first["tools"], changed["tools"]) || first["model"] != changed["model"] {
 			t.Fatalf("catalog revision changed OpenAI Chat stable envelope\nfirst=%#v\nchanged=%#v", first, changed)
