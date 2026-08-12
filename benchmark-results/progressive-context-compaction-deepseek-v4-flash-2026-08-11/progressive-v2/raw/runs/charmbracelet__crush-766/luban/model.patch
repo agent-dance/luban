@@ -1,0 +1,51 @@
+diff --git a/internal/fsext/ignore_test.go b/internal/fsext/ignore_test.go
+index c2490a0..6102e3a 100644
+--- a/internal/fsext/ignore_test.go
++++ b/internal/fsext/ignore_test.go
+@@ -2,6 +2,7 @@ package fsext
+ 
+ import (
+ 	"os"
++	"path/filepath"
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/require"
+@@ -30,3 +31,38 @@ func TestCrushIgnore(t *testing.T) {
+ 	require.False(t, dl.shouldIgnore("test1.txt", nil), ".txt files should not be ignored")
+ 	require.True(t, dl.shouldIgnore("test3.tmp", nil), ".tmp files should be ignored by common patterns")
+ }
++
++func TestDotStarGitignoreDoesNotSkipRoot(t *testing.T) {
++	tempDir := t.TempDir()
++
++	// .* should ignore hidden entries but must never skip the walk root itself.
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "example.txt"), []byte("test"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "another.go"), []byte("test"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".hidden"), []byte("test"), 0o644))
++
++	t.Run("ListDirectory", func(t *testing.T) {
++		files, _, err := ListDirectory(tempDir, nil, 0)
++		require.NoError(t, err)
++
++		got := make(map[string]bool, len(files))
++		for _, f := range files {
++			got[filepath.Base(f)] = true
++		}
++		require.Contains(t, got, "example.txt", "regular files must be listed despite .* gitignore")
++		require.Contains(t, got, "another.go", "regular files must be listed despite .* gitignore")
++		require.NotContains(t, got, ".hidden", "hidden files must still be ignored")
++	})
++
++	t.Run("GlobWithDoubleStar", func(t *testing.T) {
++		matches, _, err := GlobWithDoubleStar("*", tempDir, 0)
++		require.NoError(t, err)
++
++		got := make(map[string]bool, len(matches))
++		for _, m := range matches {
++			got[filepath.Base(m)] = true
++		}
++		require.Contains(t, got, "example.txt", "regular files must be found despite .* gitignore")
++		require.Contains(t, got, "another.go", "regular files must be found despite .* gitignore")
++	})
++}

@@ -282,6 +282,8 @@ func sessionUsageMetaFromTUIView(view tui.DurableSessionView) *session.SessionUs
 		CacheReadTokens: usage.CacheReadTokens, CacheCreateTokens: usage.CacheCreateTokens,
 		HasCompacted: usage.HasCompacted, CompactionBaselineKnown: usage.CompactionBaselineKnown,
 		RoundUsageKnown: usage.RoundUsageKnown, CompactionCount: usage.CompactionCount,
+		ProgressiveProjectionCount: usage.ProgressiveProjectionCount, ProgressiveProjectedTools: usage.ProgressiveProjectedTools,
+		ProgressiveTokensSaved: usage.ProgressiveTokensSaved, ProgressiveSavingsUSD: usage.ProgressiveSavingsUSD,
 		CompletedRoundInputTokens: usage.CompletedRoundInputTokens, CompletedRoundOutputTokens: usage.CompletedRoundOutputTokens,
 		InputTokensAtCompact: usage.InputTokensAtCompact, CacheReadAtCompact: usage.CacheReadAtCompact,
 		LastInputTokens: usage.LastInputTokens, LastOutputTokens: usage.LastOutputTokens,
@@ -410,6 +412,10 @@ type tuiActivityEpochRenderer interface {
 
 type tuiCompactionProgressEpochRenderer interface {
 	CompactionProgressAtEpoch(uint64, presentation.ToolEventContext, stream.ProgressEvent)
+}
+
+type tuiProgressiveContextMetricsEpochRenderer interface {
+	ProgressiveContextMetricsAtEpoch(uint64, presentation.ToolEventContext, stream.ProgressEvent)
 }
 
 type tuiCompactionBoundaryEpochRenderer interface {
@@ -4187,6 +4193,7 @@ func makeTUIEventHandler(r presentation.Renderer, tracker *ui.CostTracker, getCo
 	sessionUsageRenderer, hasSessionUsageRenderer := r.(tuiSessionUsageRenderer)
 	activityRenderer, hasActivityRenderer := r.(tuiActivityEpochRenderer)
 	compactionProgressRenderer, hasCompactionProgressRenderer := r.(tuiCompactionProgressEpochRenderer)
+	progressiveMetricsRenderer, hasProgressiveMetricsRenderer := r.(tuiProgressiveContextMetricsEpochRenderer)
 	compactionBoundaryRenderer, hasCompactionBoundaryRenderer := r.(tuiCompactionBoundaryEpochRenderer)
 	goalStatusRenderer, hasGoalStatusRenderer := r.(tuiGoalStatusEpochRenderer)
 	llmRequestRenderer, hasLLMRequestRenderer := r.(tuiLLMRequestEpochRenderer)
@@ -4410,6 +4417,12 @@ func makeTUIEventHandler(r presentation.Renderer, tracker *ui.CostTracker, getCo
 					llmActivityContextRenderer.LLMActivityAtContext(eventContext, stage, toolName, toolInputBytes)
 				} else if hasLLMActivityEpochRenderer {
 					llmActivityEpochRenderer.LLMActivityAtEpoch(baseContext.SessionEpoch, stage, toolName, toolInputBytes)
+				}
+				break
+			}
+			if event.Progress != nil && event.Progress.Stage == "progressive_context_projection" {
+				if hasProgressiveMetricsRenderer {
+					progressiveMetricsRenderer.ProgressiveContextMetricsAtEpoch(baseContext.SessionEpoch, eventContext, *event.Progress)
 				}
 				break
 			}

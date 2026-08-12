@@ -1,0 +1,38 @@
+diff --git a/internal/fsext/fileutil.go b/internal/fsext/fileutil.go
+index e688884..2f10b05 100644
+--- a/internal/fsext/fileutil.go
++++ b/internal/fsext/fileutil.go
+@@ -98,6 +98,13 @@ func (w *FastGlobWalker) ShouldSkip(path string) bool {
+ 		return false
+ 	}
+ 
++	// Never skip the scan root itself: a gitignore pattern such as ".*"
++	// matches the relative path "." of the root, and returning SkipDir for
++	// it would abort the entire traversal, returning zero results.
++	if relPath == "." {
++		return false
++	}
++
+ 	if w.gitignore != nil {
+ 		if w.gitignore.MatchesPath(relPath) {
+ 			return true
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..77f16d3 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -130,6 +130,15 @@ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bo
+ 		relPath = path
+ 	}
+ 
++	// The scan root itself is never ignored: skipping it would make the
++	// walker return filepath.SkipDir for the whole traversal and hide every
++	// file. A gitignore pattern like ".*" matches the relative path "." of
++	// the root directory, which git, ripgrep, and fd all treat as the anchor
++	// that is never ignored.
++	if relPath == "." {
++		return false
++	}
++
+ 	if commonIgnorePatterns().MatchesPath(relPath) {
+ 		slog.Debug("ingoring common pattern", "path", relPath)
+ 		return true

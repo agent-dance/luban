@@ -183,7 +183,8 @@ func (r *JSONRenderer) RenderProgressiveContextMetrics(ctx presentation.ToolEven
 	}
 	metric := map[string]any{"stage": progress.Stage}
 	for _, key := range []string{
-		"trigger", "decision", "shadow", "applied", "projection_count", "rewrite_count", "index_count",
+		"projection_sequence", "trigger", "decision", "shadow", "applied", "projection_count", "rewrite_count", "index_count",
+		"pending_only", "pending_tools", "pending_tokens",
 		"original_bytes", "projected_bytes", "bytes_saved",
 		"original_tokens", "projected_tokens", "tokens_saved",
 		"request_tokens_before", "request_tokens_after",

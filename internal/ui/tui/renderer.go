@@ -818,6 +818,13 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 			// token can prove recovery and clear the problem state.
 			updated := *current
 			updated.RequestID = event.RequestID
+			updated.Attempt = event.Attempt
+			if event.MaxRetries > 0 {
+				updated.MaxRetries = event.MaxRetries
+			}
+			if event.RetryCount > 0 {
+				updated.RetryCount = event.RetryCount
+			}
 			updated.RequestDuration = time.Duration(event.RequestMilliseconds) * time.Millisecond
 			updated.HasRequestDuration = true
 			updated.TotalDuration = time.Duration(event.TotalMilliseconds) * time.Millisecond
@@ -836,13 +843,20 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 		}
 		r.state.SetLLMCall(&LLMCallStatus{
 			RequestID: event.RequestID, Phase: LLMCallWorking, Stage: stage, StageStartedAt: stageStartedAt,
-			Attempt: event.Attempt, MaxRetries: event.MaxRetries,
+			Attempt: event.Attempt, MaxRetries: event.MaxRetries, RetryCount: event.RetryCount,
 			RequestDuration: time.Duration(event.RequestMilliseconds) * time.Millisecond, HasRequestDuration: true,
 			TotalDuration: time.Duration(event.TotalMilliseconds) * time.Millisecond, UpdatedAt: now, WorkStartedAt: workStartedAt,
 		})
 	case stream.EventRequestRetry:
+		retryCount := event.RetryCount
+		if retryCount <= 0 && event.Attempt > 0 {
+			// RequestRetry.Attempt historically represented the failed request
+			// that caused this retry. Keep older event producers unambiguous while
+			// RetryCount remains the canonical counter for current producers.
+			retryCount = event.Attempt
+		}
 		r.state.SetLLMCall(&LLMCallStatus{
-			RequestID: event.RequestID, Phase: LLMCallRetrying, Attempt: event.Attempt, MaxRetries: event.MaxRetries,
+			RequestID: event.RequestID, Phase: LLMCallRetrying, Attempt: event.Attempt, MaxRetries: event.MaxRetries, RetryCount: retryCount,
 			RetryDelay: time.Duration(event.RetryDelayMilliseconds) * time.Millisecond, TotalDuration: time.Duration(event.TotalMilliseconds) * time.Millisecond,
 			UpdatedAt: now, WorkStartedAt: workStartedAt, Error: event.Error, RetryKind: event.RetryKind,
 		})
@@ -974,6 +988,21 @@ func (r *TuiRenderer) CompactionProgressAtEpoch(epoch uint64, ctx presentation.T
 			Name: i18n.Text(r.state.Language.Get(), i18n.KeyRuntimeContextCompaction), Phase: ActivityPhaseExecuting, Lifecycle: lifecycle, Outcome: outcome,
 			Progress: ActivityProgress{Current: progress.Current, Total: progress.Total, Message: message}, Control: control,
 		})
+	})
+}
+
+// ProgressiveContextMetricsAtEpoch publishes the current eligible pending
+// snapshot and accumulates only applied, non-shadow replacement receipts.
+// Rejected projections never appear as realized user-visible savings.
+func (r *TuiRenderer) ProgressiveContextMetricsAtEpoch(epoch uint64, ctx presentation.ToolEventContext, progress stream.ProgressEvent) {
+	r.queueEpochUpdate(epoch, func() {
+		if !r.AdmitContextGeneration(ctx) {
+			observability.RecordGenerationDrop(observability.GenerationSurfaceTUITool)
+			return
+		}
+		sequence := compactionMetadataInt(progress.Metadata, "projection_sequence")
+		identity := fmt.Sprintf("%s:%s:%d", ctx.SessionID, ctx.TurnID, sequence)
+		r.state.ApplyProgressiveContextMetrics(ctx.SessionID, epoch, identity, progress)
 	})
 }
 

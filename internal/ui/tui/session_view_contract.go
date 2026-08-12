@@ -31,13 +31,14 @@ var rootSessionViewAccessContract = func() map[string]SessionViewOwnership {
 		"LastAssistantText", "MaxTokens", "Messages", "Mode", "Model", "PendingImageSelected", "PendingImages",
 		"PinnedObservationSnapshot", "Provider", "ReadDetail", "SessionCacheCreateTokens", "SessionCacheReadAtCompact",
 		"SessionCacheReadTokens", "SessionCompactionBaselineKnown", "SessionCompactionCount", "SessionCompletedRoundInputTokens", "SessionCompletedRoundOutputTokens",
+		"SessionProgressiveProjectionCount", "SessionProgressiveProjectedTools", "SessionProgressiveTokensSaved", "SessionProgressiveSavingsUSD",
 		"SessionCostKnown", "SessionHasCompacted", "SessionInputTokens", "SessionInputTokensAtCompact", "SessionOutputTokens",
 		"SessionRoundUsageKnown", "SessionTotalCacheCreateTokens", "SessionTotalCacheReadTokens", "SessionTotalInputTokens",
 		"SessionTotalOutputTokens", "SessionUsageKnown", "SessionWebSearchRequests", "TaskViewItems", "ToolSegmentExpansion",
 		"TranscriptShowAll", "UsedTokens", "toolSegmentExpansionOverride",
 	)
 	register(SessionViewRenderContext,
-		"ContextMeasurement", "ContextWindowK", "Language", "ModelCanSeeImages", "ModelCostCurrency", "ModelCostIn", "ModelCostOut", "ProvStatus", "ReasoningEffort", "TermWidth", "Tools",
+		"ContextMeasurement", "ContextWindowK", "Language", "ModelCanSeeImages", "ModelCostCurrency", "ModelCostIn", "ModelCostOut", "ProgressivePendingTools", "ProgressivePendingTokens", "ProvStatus", "ReasoningEffort", "TermWidth", "Tools",
 	)
 	register(SessionViewTransient,
 		"AskUserDraft", "CompactionProgress", "DecisionReq", "DecisionResp", "DecisionSelected", "ForkPicker", "HasActiveQuery", "LLMCall", "ModelPicker", "QueuedInputTexts", "SessionPicker", "SkillsMenu", "TryCancelQuery",

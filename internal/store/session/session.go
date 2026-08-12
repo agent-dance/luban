@@ -125,6 +125,10 @@ type SessionUsageMeta struct {
 	CompactionBaselineKnown    bool    `json:"compaction_baseline_known,omitempty"`
 	RoundUsageKnown            bool    `json:"round_usage_known,omitempty"`
 	CompactionCount            int     `json:"compaction_count,omitempty"`
+	ProgressiveProjectionCount int     `json:"progressive_projection_count,omitempty"`
+	ProgressiveProjectedTools  int     `json:"progressive_projected_tools,omitempty"`
+	ProgressiveTokensSaved     int     `json:"progressive_tokens_saved,omitempty"`
+	ProgressiveSavingsUSD      float64 `json:"progressive_estimated_savings_usd,omitempty"`
 	CompletedRoundInputTokens  int     `json:"completed_round_input_tokens,omitempty"`
 	CompletedRoundOutputTokens int     `json:"completed_round_output_tokens,omitempty"`
 	InputTokensAtCompact       int     `json:"input_tokens_at_compact,omitempty"`

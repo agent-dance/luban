@@ -1,0 +1,75 @@
+diff --git a/src/build_test.cc b/src/build_test.cc
+index 5ba87fa..e60f97d 100644
+--- a/src/build_test.cc
++++ b/src/build_test.cc
+@@ -3793,6 +3793,42 @@ TEST_F(BuildTest, DyndepBuildDiscoverOutputAndDepfileInput) {
+   EXPECT_TRUE(builder_.AlreadyUpToDate());
+ }
+ 
++TEST_F(BuildTest, DyndepBuildDiscoverOutputAfterDepfileInput) {
++  // Verify that an output discovered by dyndep is recognized as the producer
++  // of a depfile input even when the depfile input was visited first.
++  ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
++"rule touch\n"
++"  command = touch $out other\n"
++"rule cp\n"
++"  command = cp $in $out\n"
++"rule true\n"
++"  command = true\n"
++"build dd: cp dd-in\n"
++"build stamp: touch || dd\n"
++"  dyndep = dd\n"
++"build copy: true || stamp\n"
++"  depfile = copy.d\n"
++  ));
++  const char* ddf =
++"ninja_dyndep_version = 1\n"
++"build stamp | other: dyndep\n";
++  fs_.Create("dd-in", ddf);
++  fs_.Tick();
++  fs_.Create("dd", ddf);
++  fs_.Create("other", "");
++  fs_.Create("copy", "");
++  fs_.Create("copy.d", "copy: other\n");
++
++  string err;
++  EXPECT_TRUE(builder_.AddTarget("copy", &err));
++  ASSERT_EQ("", err);
++  EXPECT_EQ(builder_.Build(&err), ExitSuccess);
++  EXPECT_EQ("", err);
++  ASSERT_EQ(2u, command_runner_.commands_ran_.size());
++  EXPECT_EQ("touch stamp other", command_runner_.commands_ran_[0]);
++  EXPECT_EQ("true", command_runner_.commands_ran_[1]);
++}
++
+ TEST_F(BuildTest, DyndepBuildDiscoverNowWantEdge) {
+   // Verify that a dyndep file can be built and loaded to discover
+   // that an edge is actually wanted due to a missing implicit output.
+diff --git a/src/graph.cc b/src/graph.cc
+index 8e6ff69..3e082bc 100644
+--- a/src/graph.cc
++++ b/src/graph.cc
+@@ -196,6 +196,23 @@ bool DependencyScan::RecomputeNodeDirty(Node* node, std::vector<Node*>* stack,
+     }
+   }
+ 
++  // Loading a dyndep file while visiting one input may add an in-edge to an
++  // input visited earlier.  Re-check all inputs so that the newly-discovered
++  // producer's dirty and ready states are reflected in this edge.
++  for (vector<Node*>::iterator i = edge->inputs_.begin();
++       i != edge->inputs_.end(); ++i) {
++    if (Edge* in_edge = (*i)->in_edge()) {
++      if (!in_edge->outputs_ready_)
++        edge->outputs_ready_ = false;
++    }
++
++    if (!edge->is_order_only(i - edge->inputs_.begin()) && (*i)->dirty()) {
++      if (!dirty)
++        explanations_.Record(node, "%s is dirty", (*i)->path().c_str());
++      dirty = true;
++    }
++  }
++
+   // We may also be dirty due to output state: missing outputs, out of
+   // date outputs, etc.  Visit all outputs and determine whether they're dirty.
+   if (!dirty)

@@ -173,6 +173,66 @@ func TestRenderStatusBar_DefaultStartupUsesAutoWithoutUnknownUsage(t *testing.T)
 	}
 }
 
+func TestRenderStatusBarShowsCompactCompactionAndProgressiveBenefits(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangZH)
+	state.SessionCompactionCount.Set(2)
+	state.SessionProgressiveProjectionCount.Set(3)
+	state.SessionProgressiveProjectedTools.Set(6)
+	state.SessionProgressiveTokensSaved.Set(18_068)
+	state.SessionProgressiveSavingsUSD.Set(0.055234)
+	root := NewRootComponent(state, nil, nil)
+
+	text := collectElementText(root.renderStatusBar(180))
+	for _, want := range []string{"压缩×2", "渐进压缩", "✓已省18.1K"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("status bar omitted %q: %q", want, text)
+		}
+	}
+}
+
+func TestRenderStatusBarShowsProgressivePendingBeforeFirstProjection(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangZH)
+	state.ProgressivePendingTools.Set(2)
+	state.ProgressivePendingTokens.Set(4_234)
+	root := NewRootComponent(state, nil, nil)
+
+	text := collectElementText(root.renderStatusBar(180))
+	if !strings.Contains(text, "渐进压缩  …2项预计省4.2K") || strings.Contains(text, "✓已省") {
+		t.Fatalf("pending-only progressive status = %q", text)
+	}
+}
+
+func TestRenderStatusBarCombinesProgressiveSavingsAndPending(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangZH)
+	state.SessionProgressiveProjectionCount.Set(3)
+	state.SessionProgressiveTokensSaved.Set(18_068)
+	state.SessionProgressiveSavingsUSD.Set(0.055234)
+	state.ProgressivePendingTools.Set(2)
+	state.ProgressivePendingTokens.Set(4_234)
+	root := NewRootComponent(state, nil, nil)
+
+	text := collectElementText(root.renderStatusBar(180))
+	for _, want := range []string{"渐进压缩", "✓已省18.1K", "│", "…2项预计省4.2K"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("combined progressive status omitted %q: %q", want, text)
+		}
+	}
+}
+
+func TestRenderStatusBarOmitsEmptyCompactionIndicators(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangZH)
+	root := NewRootComponent(state, nil, nil)
+
+	text := collectElementText(root.renderStatusBar(180))
+	if strings.Contains(text, "压缩") || strings.Contains(text, "渐进") {
+		t.Fatalf("empty compaction indicators occupied status bar space: %q", text)
+	}
+}
+
 func TestRenderStatusBar_OmitsReasoningEffortMovedToBanner(t *testing.T) {
 	state := NewAppState()
 	state.Language.Set(i18n.LangEN)

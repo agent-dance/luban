@@ -1240,6 +1240,12 @@ type progressActivityRecorder struct {
 	llmStages      []tuiapp.LLMCallStage
 	llmDetails     []string
 	llmInputBytes  []int
+	progressive    []stream.ProgressEvent
+}
+
+func (r *progressActivityRecorder) ProgressiveContextMetricsAtEpoch(epoch uint64, _ presentation.ToolEventContext, progress stream.ProgressEvent) {
+	r.epochs = append(r.epochs, epoch)
+	r.progressive = append(r.progressive, progress)
 }
 
 func (r *progressActivityRecorder) ActivityAtEpoch(epoch uint64, event tuiapp.ActivityEvent) {
@@ -1385,6 +1391,22 @@ func TestTUIEventHandlerProjectsToolInputAndPostToolActivityWithoutInputContent(
 	}
 	if len(renderer.events) != 0 {
 		t.Fatalf("tool-input activity leaked into generic activity feed: %+v", renderer.events)
+	}
+}
+
+func TestTUIEventHandlerForwardsProgressiveBenefitMetricsOutsideActivityFeed(t *testing.T) {
+	renderer := &progressActivityRecorder{}
+	base := presentation.ToolEventContext{SessionID: "session-progress", SessionEpoch: 9}
+	handle, cleanup := makeTUIEventHandler(renderer, nil, nil, base)
+	t.Cleanup(cleanup)
+
+	handle(stream.Event{Type: stream.EventProgress, TurnCount: 4, Progress: &stream.ProgressEvent{
+		Stage: "progressive_context_projection", Metadata: map[string]any{
+			"projection_sequence": 1, "applied": true, "projection_count": 2, "tokens_saved": 12_345,
+		},
+	}})
+	if len(renderer.progressive) != 1 || len(renderer.events) != 0 || renderer.epochs[0] != 9 {
+		t.Fatalf("progressive metric dispatch = metrics:%+v activities:%+v epochs:%v", renderer.progressive, renderer.events, renderer.epochs)
 	}
 }
 

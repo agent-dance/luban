@@ -95,8 +95,25 @@ func compactionMetadataInt(metadata map[string]any, key string) int {
 		return value
 	case int64:
 		return int(value)
+	case uint64:
+		return int(value)
 	case float64:
 		return int(value)
+	default:
+		return 0
+	}
+}
+
+func compactionMetadataFloat(metadata map[string]any, key string) float64 {
+	switch value := metadata[key].(type) {
+	case float64:
+		return value
+	case float32:
+		return float64(value)
+	case int:
+		return float64(value)
+	case int64:
+		return float64(value)
 	default:
 		return 0
 	}
@@ -222,7 +239,8 @@ func compactIndeterminateBar(frame uint64, width int) string {
 }
 
 func (c *RootComponent) renderCompactionProgress(status *CompactionProgressStatus, queued int) *gtui.Element {
-	if status == nil {
+	rows := compactionProgressRows(status)
+	if rows == 0 {
 		return gtui.New(gtui.WithHeight(0), gtui.WithWidthPercent(100))
 	}
 	lang := c.state.Language.Get()
@@ -235,7 +253,7 @@ func (c *RootComponent) renderCompactionProgress(status *CompactionProgressStatu
 		elapsed = status.UpdatedAt.Sub(status.StartedAt)
 	}
 	duration := formatCompactProgressElapsed(elapsed)
-	container := gtui.New(gtui.WithDirection(gtui.Column), gtui.WithWidthPercent(100), gtui.WithHeight(2))
+	container := gtui.New(gtui.WithDirection(gtui.Column), gtui.WithWidthPercent(100), gtui.WithHeight(rows))
 	if status.Running() {
 		line := i18n.Text(lang, i18n.KeyTUICompactProgressTitle) + "  " + compactIndeterminateBar(c.compactProgressFrame.Get(), 12) +
 			"  " + compactProgressStageText(lang, status.Stage) + " · " + i18n.Format(lang, i18n.KeyTUICompactProgressElapsedCancel, duration)
@@ -248,13 +266,8 @@ func (c *RootComponent) renderCompactionProgress(status *CompactionProgressStatu
 		return container
 	}
 	style := gtui.NewStyle().Foreground(gtui.Green)
-	line := i18n.Format(lang, i18n.KeyTUICompactProgressCompletedNoCounts, duration)
+	line := ""
 	switch status.Stage {
-	case CompactionProgressCompleted:
-		if status.BeforeTokens > 0 && status.AfterTokens > 0 && status.BeforeMessages > 0 && status.AfterMessages > 0 {
-			line = i18n.Format(lang, i18n.KeyTUICompactProgressCompleted,
-				status.BeforeTokens, status.AfterTokens, status.BeforeMessages, status.AfterMessages, duration)
-		}
 	case CompactionProgressFailed:
 		style = gtui.NewStyle().Foreground(gtui.Red)
 		line = i18n.Format(lang, i18n.KeyTUICompactProgressFailed, duration)
@@ -263,14 +276,24 @@ func (c *RootComponent) renderCompactionProgress(status *CompactionProgressStatu
 		line = i18n.Format(lang, i18n.KeyTUICompactProgressCancelled, duration)
 	}
 	container.AddChild(gtui.New(gtui.WithText(line), gtui.WithTextStyle(style.Bold()), gtui.WithHeight(1), gtui.WithTruncate(true)))
-	detail := ""
-	if status.Stage == CompactionProgressCompleted && status.LocalEstimate {
-		detail = i18n.Text(lang, i18n.KeyTUICompactProgressProviderCalibration)
-	} else if status.Stage == CompactionProgressFailed && status.Error != "" {
-		detail = i18n.Format(lang, i18n.KeyTUICompactProgressCause, sanitizePresentationTerminalText(status.Error))
+	if rows > 1 {
+		detail := i18n.Format(lang, i18n.KeyTUICompactProgressCause, sanitizePresentationTerminalText(status.Error))
+		container.AddChild(gtui.New(gtui.WithText(detail), gtui.WithTextStyle(gtui.NewStyle().Dim()), gtui.WithHeight(1), gtui.WithTruncate(true)))
 	}
-	container.AddChild(gtui.New(gtui.WithText(detail), gtui.WithTextStyle(gtui.NewStyle().Dim()), gtui.WithHeight(1), gtui.WithTruncate(true)))
 	return container
+}
+
+func compactionProgressRows(status *CompactionProgressStatus) int {
+	if status == nil || status.Stage == CompactionProgressCompleted {
+		return 0
+	}
+	if status.Running() {
+		return 2
+	}
+	if status.Stage == CompactionProgressFailed && status.Error != "" {
+		return 2
+	}
+	return 1
 }
 
 func (c *RootComponent) tickCompactProgress() {

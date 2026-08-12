@@ -47,7 +47,7 @@ func TestTranscriptSelectionHintsAreLocalizedForEveryLanguage(t *testing.T) {
 }
 
 func TestLLMRequestStatusKeysAreLocalizedAndComplete(t *testing.T) {
-	keys := []Key{KeyLLMRequestProblem, KeyLLMRequestRetrying, KeyLLMRequestRequestRetrying, KeyLLMRequestReconnecting, KeyLLMRequestProblemDetail, KeyLLMRequestAttempt, KeyLLMRequestError, KeyLLMRequestMetrics, KeyLLMRequestInterruptStatus, KeyAssistantWorkedFor}
+	keys := []Key{KeyLLMRequestProblem, KeyLLMRequestRetrying, KeyLLMRequestRequestRetrying, KeyLLMRequestReconnecting, KeyLLMRequestProblemDetail, KeyLLMRequestRetryCount, KeyLLMRequestError, KeyLLMRequestMetrics, KeyLLMRequestInterruptStatus, KeyAssistantWorkedFor}
 	for _, lang := range AllLanguages() {
 		for _, key := range keys {
 			if got := Text(lang, key); got == "" || got == "["+string(key)+"]" {
@@ -60,6 +60,9 @@ func TestLLMRequestStatusKeysAreLocalizedAndComplete(t *testing.T) {
 	}
 	if got := Format(LangZH, KeyLLMRequestRetrying, 2, 10, "2.0s"); got != "第 2/10 次重试 · 2.0s 后继续" {
 		t.Fatalf("Chinese retry status = %q", got)
+	}
+	if got := Format(LangZH, KeyLLMRequestRetryCount, 2, 5); got != "重试 2/5" {
+		t.Fatalf("Chinese retry count = %q", got)
 	}
 	if got := Format(LangZH, KeyLLMRequestProblemDetail, "连接已重置"); got != "问题：连接已重置" {
 		t.Fatalf("Chinese retry problem = %q", got)

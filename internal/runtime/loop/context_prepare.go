@@ -71,11 +71,13 @@ func (q *QueryLoop) prepareMessagesForQuery(ctx context.Context, state *QuerySta
 			q.invalidateProviderProjectionContinuation()
 		}
 		if progressive.ProjectedTools > 0 {
+			q.progressiveProjectionSeq++
 			onEvent(stream.Event{
 				Type: stream.EventProgress, TurnCount: turnCount,
 				Progress: &stream.ProgressEvent{
 					Stage: "progressive_context_projection",
 					Metadata: map[string]any{
+						"projection_sequence":            q.progressiveProjectionSeq,
 						"trigger":                        progressive.Trigger,
 						"decision":                       progressive.Decision,
 						"shadow":                         progressive.Shadow,
@@ -100,6 +102,13 @@ func (q *QueryLoop) prepareMessagesForQuery(ctx context.Context, state *QuerySta
 				},
 			})
 		}
+		pending := compact.ProgressiveProjectionPending{}
+		if !q.progressiveCircuitOpen {
+			pending = compact.PendingProgressiveToolResultProjection(messagesForQuery, q.contentReplacementState, admission)
+		}
+		q.emitProgressivePending(turnCount, pending, onEvent)
+	} else {
+		q.emitProgressivePending(turnCount, compact.ProgressiveProjectionPending{}, onEvent)
 	}
 	if q.toolBudget != nil {
 		messagesForQuery = q.toolBudget.Apply(messagesForQuery)
@@ -267,6 +276,35 @@ func (q *QueryLoop) prepareMessagesForQuery(ctx context.Context, state *QuerySta
 	}
 
 	return preparedMessagesForQuery{Messages: compact.StripProviderPrivateBlocks(messagesForQuery)}, nil
+}
+
+func (q *QueryLoop) emitProgressivePending(turnCount int, pending compact.ProgressiveProjectionPending, onEvent func(stream.Event)) {
+	if q == nil || onEvent == nil {
+		return
+	}
+	pending.Tools = max(pending.Tools, 0)
+	pending.TokensSaved = max(pending.TokensSaved, 0)
+	positive := pending.Tools > 0 && pending.TokensSaved > 0
+	changed := pending.Tools != q.progressivePendingTools || pending.TokensSaved != q.progressivePendingTokens
+	if !q.progressivePendingKnown && !positive || q.progressivePendingKnown && !changed {
+		return
+	}
+	q.progressiveProjectionSeq++
+	q.progressivePendingKnown = true
+	q.progressivePendingTools = pending.Tools
+	q.progressivePendingTokens = pending.TokensSaved
+	onEvent(stream.Event{
+		Type: stream.EventProgress, TurnCount: turnCount,
+		Progress: &stream.ProgressEvent{
+			Stage: "progressive_context_projection",
+			Metadata: map[string]any{
+				"projection_sequence": q.progressiveProjectionSeq,
+				"pending_only":        true,
+				"pending_tools":       pending.Tools,
+				"pending_tokens":      pending.TokensSaved,
+			},
+		},
+	})
 }
 
 func cloneContentReplacementMaps(state *compact.ContentReplacementState) (map[string]struct{}, map[string]string) {

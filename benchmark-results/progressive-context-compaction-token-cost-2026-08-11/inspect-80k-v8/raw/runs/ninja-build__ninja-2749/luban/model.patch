@@ -1,0 +1,78 @@
+diff --git a/src/build_test.cc b/src/build_test.cc
+index 5ba87fa..1cb5f84 100644
+--- a/src/build_test.cc
++++ b/src/build_test.cc
+@@ -3856,6 +3856,45 @@ TEST_F(BuildTest, DyndepBuildDiscoverNowWantEdgeAndDependent) {
+   EXPECT_EQ("touch out out.imp", command_runner_.commands_ran_[2]);
+ }
+ 
++TEST_F(BuildTest, DyndepBuildMakesEarlierDepfileInputDirty) {
++  // The depfile adds "other" before the order-only "stamp" input.  Loading
++  // stamp's dyndep file while visiting stamp then reveals that other is an
++  // output of the dirty stamp edge.  Verify that copy observes this change
++  // even though other was visited first.
++  ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
++"rule touch\n"
++"  command = touch $out\n"
++"rule generate-depfile\n"
++"  command = generate-depfile $out\n"
++"  depfile = $out.d\n"
++"build stamp: touch trigger || dd\n"
++"  dyndep = dd\n"
++"build copy: generate-depfile || stamp\n"
++"  test_dependency = other\n"
++  ));
++
++  fs_.Create("stamp", "");
++  fs_.Create("other", "");
++  fs_.Create("dd",
++"ninja_dyndep_version = 1\n"
++"build stamp | other: dyndep\n"
++  );
++  fs_.Tick();
++  fs_.Create("copy", "");
++  fs_.Create("copy.d", "copy: other\n");
++  fs_.Tick();
++  fs_.Create("trigger", "");
++
++  string err;
++  EXPECT_TRUE(builder_.AddTarget("copy", &err));
++  ASSERT_EQ("", err);
++  EXPECT_EQ(builder_.Build(&err), ExitSuccess);
++  EXPECT_EQ("", err);
++  EXPECT_EQ(std::vector<std::string>(
++                { "touch stamp other", "generate-depfile copy" }),
++            command_runner_.commands_ran_);
++}
++
+ TEST_F(BuildTest, DyndepBuildDiscoverCircular) {
+   // Verify that a dyndep file can be built and loaded to discover
+   // and reject a circular dependency.
+diff --git a/src/graph.cc b/src/graph.cc
+index 8e6ff69..a0199dd 100644
+--- a/src/graph.cc
++++ b/src/graph.cc
+@@ -168,14 +168,21 @@ bool DependencyScan::RecomputeNodeDirty(Node* node, std::vector<Node*>* stack,
+   validation_nodes->insert(validation_nodes->end(),
+       edge->validations_.begin(), edge->validations_.end());
+ 
+-  // Visit all inputs; we're dirty if any of the inputs are dirty.
+-  Node* most_recent_input = NULL;
++  // Visit all inputs before checking their state.  Visiting a later input may
++  // load dyndep information that turns an earlier input into an output of
++  // another edge.
+   for (vector<Node*>::iterator i = edge->inputs_.begin();
+        i != edge->inputs_.end(); ++i) {
+     // Visit this input.
+     if (!RecomputeNodeDirty(*i, stack, validation_nodes, err))
+       return false;
++  }
+ 
++  // Now that visiting inputs can no longer change their state, check their
++  // readiness and find the most recent regular input.
++  Node* most_recent_input = NULL;
++  for (vector<Node*>::iterator i = edge->inputs_.begin();
++       i != edge->inputs_.end(); ++i) {
+     // If an input is not ready, neither are our outputs.
+     if (Edge* in_edge = (*i)->in_edge()) {
+       if (!in_edge->outputs_ready_)

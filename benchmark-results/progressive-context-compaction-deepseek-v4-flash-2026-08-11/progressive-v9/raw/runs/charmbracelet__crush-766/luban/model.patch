@@ -1,0 +1,112 @@
+diff --git a/internal/fsext/fileutil.go b/internal/fsext/fileutil.go
+index e688884..a822bc1 100644
+--- a/internal/fsext/fileutil.go
++++ b/internal/fsext/fileutil.go
+@@ -98,6 +98,13 @@ func (w *FastGlobWalker) ShouldSkip(path string) bool {
+ 		return false
+ 	}
+ 
++	// The root directory itself is never ignored. Its relative path is ".",
++	// which gitignore patterns like ".*" would otherwise match and cause the
++	// whole directory scan to be skipped.
++	if relPath == "." {
++		return false
++	}
++
+ 	if w.gitignore != nil {
+ 		if w.gitignore.MatchesPath(relPath) {
+ 			return true
+diff --git a/internal/fsext/ignore_test.go b/internal/fsext/ignore_test.go
+index c2490a0..e700fe4 100644
+--- a/internal/fsext/ignore_test.go
++++ b/internal/fsext/ignore_test.go
+@@ -2,6 +2,7 @@ package fsext
+ 
+ import (
+ 	"os"
++	"path/filepath"
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/require"
+@@ -30,3 +31,46 @@ func TestCrushIgnore(t *testing.T) {
+ 	require.False(t, dl.shouldIgnore("test1.txt", nil), ".txt files should not be ignored")
+ 	require.True(t, dl.shouldIgnore("test3.tmp", nil), ".tmp files should be ignored by common patterns")
+ }
++
++func TestListDirectoryWithDotStarGitignore(t *testing.T) {
++	// Regression test: a ".*" gitignore pattern must not cause the directory
++	// scan to skip the root directory itself (which would return zero files).
++	tempDir := t.TempDir()
++
++	oldWd, _ := os.Getwd()
++	require.NoError(t, os.Chdir(tempDir))
++	defer os.Chdir(oldWd)
++
++	require.NoError(t, os.WriteFile(".gitignore", []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile("example.txt", []byte("test"), 0o644))
++	require.NoError(t, os.WriteFile("another.go", []byte("test"), 0o644))
++	require.NoError(t, os.WriteFile(".hidden", []byte("test"), 0o644))
++
++	files, _, err := ListDirectory(".", nil, 0)
++	require.NoError(t, err)
++	require.NotEmpty(t, files, "files should be listed despite .* gitignore pattern")
++	for _, f := range files {
++		require.NotEqual(t, ".hidden", filepath.Base(f), "hidden files should still be ignored")
++	}
++}
++
++func TestGlobWithDotStarGitignore(t *testing.T) {
++	// Regression test: a ".*" gitignore pattern must not cause the glob walk
++	// to skip the root directory itself.
++	tempDir := t.TempDir()
++
++	oldWd, _ := os.Getwd()
++	require.NoError(t, os.Chdir(tempDir))
++	defer os.Chdir(oldWd)
++
++	require.NoError(t, os.WriteFile(".gitignore", []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile("example.txt", []byte("test"), 0o644))
++	require.NoError(t, os.WriteFile(".hidden", []byte("test"), 0o644))
++
++	files, _, err := GlobWithDoubleStar("**/*", ".", 0)
++	require.NoError(t, err)
++	require.NotEmpty(t, files, "glob should find files despite .* gitignore pattern")
++	for _, f := range files {
++		require.NotEqual(t, ".hidden", filepath.Base(f), "hidden files should still be ignored")
++	}
++}
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..9206577 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -116,6 +116,18 @@ func NewDirectoryLister(rootPath string) *directoryLister {
+ // ~/.gitignore
+ // ~/.config/crush/ignore
+ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bool {
++	relPath, err := filepath.Rel(dl.rootPath, path)
++	if err != nil {
++		relPath = path
++	}
++
++	// The root directory itself is never ignored. Its relative path is ".",
++	// which gitignore patterns like ".*" would otherwise match and cause the
++	// whole directory scan to be skipped.
++	if relPath == "." {
++		return false
++	}
++
+ 	if len(ignorePatterns) > 0 {
+ 		base := filepath.Base(path)
+ 		for _, pattern := range ignorePatterns {
+@@ -125,11 +137,6 @@ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bo
+ 		}
+ 	}
+ 
+-	relPath, err := filepath.Rel(dl.rootPath, path)
+-	if err != nil {
+-		relPath = path
+-	}
+-
+ 	if commonIgnorePatterns().MatchesPath(relPath) {
+ 		slog.Debug("ingoring common pattern", "path", relPath)
+ 		return true

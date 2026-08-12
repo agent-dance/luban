@@ -34,7 +34,7 @@ const (
 	KeyLLMRequestRequestRetrying        Key = "tui.llm_request.request_retrying"
 	KeyLLMRequestReconnecting           Key = "tui.llm_request.reconnecting"
 	KeyLLMRequestProblemDetail          Key = "tui.llm_request.problem_detail"
-	KeyLLMRequestAttempt                Key = "tui.llm_request.attempt"
+	KeyLLMRequestRetryCount             Key = "tui.llm_request.retry_count"
 	KeyLLMRequestError                  Key = "tui.llm_request.error"
 	KeyLLMRequestMetrics                Key = "tui.llm_request.metrics"
 	KeyLLMRequestInterruptStatus        Key = "tui.llm_request.interrupt_status"
@@ -96,7 +96,7 @@ func init() {
 		KeyLLMRequestRequestRetrying: rootSurface("Request retry %d/%d in %s", "请求重试 %d/%d · %s 后继续", "Anfragewiederholung %d/%d in %s", "リクエスト再試行 %d/%d · %s 後", "요청 재시도 %d/%d · %s 후", "Повтор запроса %d/%d через %s"),
 		KeyLLMRequestReconnecting:    rootSurface("Reconnecting %d/%d in %s", "正在重连 %d/%d · %s 后继续", "Neu verbinden %d/%d in %s", "再接続 %d/%d · %s 後", "재연결 %d/%d · %s 후", "Переподключение %d/%d через %s"),
 		KeyLLMRequestProblemDetail:   rootSurface("Problem: %s", "问题：%s", "Problem: %s", "問題: %s", "문제: %s", "Проблема: %s"),
-		KeyLLMRequestAttempt:         rootSurface("Attempt %d/%d", "尝试 %d/%d", "Versuch %d/%d", "試行 %d/%d", "시도 %d/%d", "Попытка %d/%d"),
+		KeyLLMRequestRetryCount:      rootSurface("Retry %d/%d", "重试 %d/%d", "Wiederholung %d/%d", "再試行 %d/%d", "재시도 %d/%d", "Повтор %d/%d"),
 		KeyLLMRequestError:           rootSurface("Error: %s", "错误：%s", "Fehler: %s", "エラー: %s", "오류: %s", "Ошибка: %s"),
 		KeyLLMRequestMetrics:         rootSurface("Connection %s · First token %s", "建立连接 %s · 首 token %s", "Verbindung %s · Erstes Token %s", "接続 %s · 最初の token %s", "연결 %s · 첫 token %s", "Соединение %s · Первый token %s"),
 		KeyLLMRequestInterruptStatus: rootSurface("(%s • Ctrl+C to interrupt)", "(%s • Ctrl+C 中断)", "(%s • Ctrl+C zum Unterbrechen)", "(%s • Ctrl+C で中断)", "(%s • Ctrl+C로 중단)", "(%s • Ctrl+C — прервать)"),

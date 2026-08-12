@@ -1,0 +1,66 @@
+diff --git a/internal/fsext/fileutil.go b/internal/fsext/fileutil.go
+index e688884..2823935 100644
+--- a/internal/fsext/fileutil.go
++++ b/internal/fsext/fileutil.go
+@@ -89,15 +89,22 @@ func NewFastGlobWalker(searchPath string) *FastGlobWalker {
+ 
+ // ShouldSkip checks if a path should be skipped based on gitignore, crushignore, and hidden file rules
+ func (w *FastGlobWalker) ShouldSkip(path string) bool {
+-	if SkipHidden(path) {
+-		return true
+-	}
+-
+ 	relPath, err := filepath.Rel(w.rootPath, path)
+ 	if err != nil {
+ 		return false
+ 	}
+ 
++	// Never skip the scan root itself: a gitignore pattern like ".*" would
++	// otherwise match the root's relative path "." and abort the whole scan
++	// via filepath.SkipDir.
++	if relPath == "." {
++		return false
++	}
++
++	if SkipHidden(path) {
++		return true
++	}
++
+ 	if w.gitignore != nil {
+ 		if w.gitignore.MatchesPath(relPath) {
+ 			return true
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..05cec3c 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -116,6 +116,18 @@ func NewDirectoryLister(rootPath string) *directoryLister {
+ // ~/.gitignore
+ // ~/.config/crush/ignore
+ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bool {
++	relPath, err := filepath.Rel(dl.rootPath, path)
++	if err != nil {
++		relPath = path
++	}
++
++	// Never ignore the scan root itself: a gitignore pattern like ".*" would
++	// otherwise match the root's relative path "." and skip the entire scan
++	// via filepath.SkipDir.
++	if relPath == "." {
++		return false
++	}
++
+ 	if len(ignorePatterns) > 0 {
+ 		base := filepath.Base(path)
+ 		for _, pattern := range ignorePatterns {
+@@ -125,11 +137,6 @@ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bo
+ 		}
+ 	}
+ 
+-	relPath, err := filepath.Rel(dl.rootPath, path)
+-	if err != nil {
+-		relPath = path
+-	}
+-
+ 	if commonIgnorePatterns().MatchesPath(relPath) {
+ 		slog.Debug("ingoring common pattern", "path", relPath)
+ 		return true

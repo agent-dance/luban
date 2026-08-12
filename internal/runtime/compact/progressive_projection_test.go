@@ -99,6 +99,39 @@ func TestProgressiveProjectionAtConsumedMutationKeepsRecentSourceReads(t *testin
 	}
 }
 
+func TestPendingProgressiveProjectionMeasuresEligibleUncommittedResults(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(7)
+	state := NewContentReplacementState()
+	admission := progressiveAdmission(false)
+	pending := PendingProgressiveToolResultProjection(messages, state, admission)
+	if pending.Tools != 5 || pending.TokensSaved < 2_000 {
+		t.Fatalf("pending projection = %+v", pending)
+	}
+	if len(state.Replacements) != 0 || len(state.SeenIDs) != 0 {
+		t.Fatalf("pending measurement mutated replacement state: %#v", state)
+	}
+	applied := ApplyProgressiveToolResultProjection(messages, state, admission)
+	if !applied.Changed {
+		t.Fatal("fixture projection was not applied")
+	}
+	if after := PendingProgressiveToolResultProjection(applied.Messages, state, admission); after != (ProgressiveProjectionPending{}) {
+		t.Fatalf("applied results remained pending: %+v", after)
+	}
+}
+
+func TestPendingProgressiveProjectionAnticipatesTriggerButOmitsShadowMode(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(7)
+	beforeMutation := messages[:len(messages)-3]
+	admission := progressiveAdmission(true)
+	if pending := PendingProgressiveToolResultProjection(beforeMutation, NewContentReplacementState(), admission); pending.Tools <= 0 || pending.TokensSaved <= 0 {
+		t.Fatalf("future trigger did not advertise waiting reads: %+v", pending)
+	}
+	admission.Shadow = true
+	if pending := PendingProgressiveToolResultProjection(messages, NewContentReplacementState(), admission); pending != (ProgressiveProjectionPending{}) {
+		t.Fatalf("shadow projection was advertised as pending: %+v", pending)
+	}
+}
+
 func TestProgressiveProjectionAllowsCostPositivePressureBatchesBeforeMutation(t *testing.T) {
 	messages := progressiveInvestigationWithConsumedPatch(7)
 	messages = messages[:len(messages)-3]

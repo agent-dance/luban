@@ -47,7 +47,7 @@ func TestLLMRequestStatusShimmersWorkingAndDimsInterruptHintAndCallMetrics(t *te
 
 	buffer := gtui.NewBuffer(120, 1)
 	element.Render(buffer, 120, 1)
-	if rendered := buffer.String(); !strings.Contains(rendered, "• Working (1h1m1s • Ctrl+C to interrupt)  Connection 1m10s · First token 2m10s") {
+	if rendered := buffer.String(); !strings.Contains(rendered, "• Working (1h1m1s • Ctrl+C to interrupt) Connection 1m10s · First token 2m10s") {
 		t.Fatalf("LLM request status layout = %q", rendered)
 	}
 	hintColumn := strings.Index(buffer.String(), "Ctrl+C to interrupt")
@@ -385,19 +385,88 @@ func TestLLMRequestRetryRendersProblemOnDedicatedNarrowTerminalRow(t *testing.T)
 	}
 }
 
-func TestLLMWorkingStatusRetainsCurrentStreamAttempt(t *testing.T) {
+func TestLLMWorkingStatusHidesNormalAttemptAndShowsOnlyRetries(t *testing.T) {
 	state := NewAppState()
 	state.SessionID.Set("session")
 	state.SessionEpoch.Set(1)
 	state.Language.Set(i18n.LangEN)
 	renderer := &TuiRenderer{state: state, enqueue: func(fn func()) bool { fn(); return true }}
 	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestStart, stream.RequestStatusEvent{
-		RequestID: "request-3", Attempt: 3, MaxRetries: 5, RequestMilliseconds: 25,
+		RequestID: "request-1", Attempt: 1, MaxRetries: 5, RequestMilliseconds: 25,
 	})
-	status := state.LLMCall.Get()
-	text := collectElementText(NewRootComponent(state, nil, nil).renderLLMStatus(status))
-	if !strings.Contains(text, "Attempt 3/6") {
-		t.Fatalf("working status hid current stream attempt: %q", text)
+	root := NewRootComponent(state, nil, nil)
+	text := collectElementText(root.renderLLMStatus(state.LLMCall.Get()))
+	if strings.Contains(text, "Attempt") || strings.Contains(text, "Retry") {
+		t.Fatalf("normal request displayed an attempt or retry counter: %q", text)
+	}
+
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestStart, stream.RequestStatusEvent{
+		RequestID: "request-2", Attempt: 2, MaxRetries: 5, RetryCount: 1, RequestMilliseconds: 30,
+	})
+	text = collectElementText(root.renderLLMStatus(state.LLMCall.Get()))
+	if !strings.Contains(text, "Retry 1/5") || strings.Contains(text, "Attempt") {
+		t.Fatalf("first retry counter is incorrect: %q", text)
+	}
+
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestStart, stream.RequestStatusEvent{
+		RequestID: "request-4", Attempt: 4, MaxRetries: 5, RetryCount: 3, RequestMilliseconds: 40,
+	})
+	text = collectElementText(root.renderLLMStatus(state.LLMCall.Get()))
+	if !strings.Contains(text, "Retry 3/5") {
+		t.Fatalf("later retry counter is incorrect: %q", text)
+	}
+}
+
+func TestLLMWorkingStatusWrapsInsteadOfTruncatingOnNarrowTerminal(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangZH)
+	started := time.Unix(100, 0)
+	status := &LLMCallStatus{
+		Phase: LLMCallWorking, Stage: LLMStageToolInput, StageDetail: "Inspect", ToolInputBytes: 1,
+		StageStartedAt: started, WorkStartedAt: started.Add(-2 * time.Second),
+		Attempt: 2, MaxRetries: 5, RetryCount: 1,
+		RequestDuration: 706 * time.Millisecond, HasRequestDuration: true,
+		FirstTokenDuration: 1200 * time.Millisecond, HasFirstToken: true,
+	}
+	root := NewRootComponent(state, nil, nil)
+	root.now = func() time.Time { return started.Add(381 * time.Millisecond) }
+	element := root.renderLLMStatus(status)
+	height := element.HeightForWidth(48)
+	if height < 2 {
+		t.Fatalf("narrow working status height = %d, want wrapped rows", height)
+	}
+	rendered := renderElementText(element, 48, height)
+	withoutCellPadding := strings.ReplaceAll(rendered, " ", "")
+	for _, want := range []string{"Inspect", "重试1/5", "建立连接706ms", "首token1.2s"} {
+		if !strings.Contains(withoutCellPadding, want) {
+			t.Fatalf("wrapped working status omitted %q:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, "…") {
+		t.Fatalf("wrapped working status was truncated:\n%s", rendered)
+	}
+}
+
+func TestRootReservesRowsForWrappedLLMWorkingStatus(t *testing.T) {
+	state := NewAppState()
+	state.Language.Set(i18n.LangZH)
+	state.SetLLMCall(&LLMCallStatus{
+		Phase: LLMCallWorking, Stage: LLMStageToolInput, StageDetail: "Inspect", ToolInputBytes: 1,
+		StageStartedAt: time.Unix(99, 0), WorkStartedAt: time.Unix(98, 0),
+		MaxRetries: 5, RetryCount: 1, RequestDuration: 706 * time.Millisecond, HasRequestDuration: true,
+		FirstTokenDuration: 1200 * time.Millisecond, HasFirstToken: true,
+	})
+	root := NewRootComponent(state, nil, nil)
+	root.now = func() time.Time { return time.Unix(100, 0) }
+	rendered := renderElementText(root.renderAtSize(nil, 48, 24), 48, 24)
+	withoutCellPadding := strings.ReplaceAll(rendered, " ", "")
+	for _, want := range []string{"Inspect", "重试1/5", "建立连接706ms", "首token1.2s", "自动模式"} {
+		if !strings.Contains(withoutCellPadding, want) {
+			t.Fatalf("root layout omitted %q after wrapping LLM status:\n%s", want, rendered)
+		}
+	}
+	if strings.Contains(rendered, "…") {
+		t.Fatalf("root layout truncated wrapped LLM status:\n%s", rendered)
 	}
 }
 
@@ -509,9 +578,24 @@ func TestAssistantReplyUsesBulletHangingIndentAndDuration(t *testing.T) {
 		t.Fatalf("assistant completion duration missing: %q", rendered)
 	}
 	durationRow := strings.Index(rendered, "Worked for 8m 02s") / (buffer.Width() + 1)
+	if durationRow < 1 || strings.TrimSpace(renderedRow(buffer, durationRow-1)) != "" {
+		t.Fatalf("assistant completion duration has no breathing room above it: %q", rendered)
+	}
 	if durationRow < 0 || buffer.Cell(buffer.Width()-1, durationRow).Rune != '─' {
 		t.Fatalf("assistant completion rule did not extend to the right edge: %q", rendered)
 	}
+}
+
+func renderedRow(buffer *gtui.Buffer, row int) string {
+	var line strings.Builder
+	for column := 0; column < buffer.Width(); column++ {
+		r := buffer.Cell(column, row).Rune
+		if r == 0 {
+			r = ' '
+		}
+		line.WriteRune(r)
+	}
+	return line.String()
 }
 
 func TestClearLLMCallAttachesDurationOnlyToLatestReplyFromCurrentWork(t *testing.T) {

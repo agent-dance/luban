@@ -189,6 +189,10 @@ type QueryLoop struct {
 	cacheBreakDetector         *CacheBreakDetector        // monitors prompt cache breaks
 	progressiveAnomalies       int
 	progressiveCircuitOpen     bool
+	progressiveProjectionSeq   uint64
+	progressivePendingKnown    bool
+	progressivePendingTools    int
+	progressivePendingTokens   int
 	compactStatus              string
 
 	// skillCatalogMu protects the context-epoch-bound catalog cursor and loaded

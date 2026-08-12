@@ -94,6 +94,15 @@ type ProgressiveProjectionResult struct {
 	Shadow                     bool
 }
 
+// ProgressiveProjectionPending reports the current safe, not-yet-installed
+// provider-view opportunity. It deliberately ignores pressure and the
+// token/cost admission decision: callers use it to make eligible source
+// results visible before the gate fires, never to claim realized savings.
+type ProgressiveProjectionPending struct {
+	Tools       int
+	TokensSaved int
+}
+
 type progressiveInspectCandidate struct {
 	toolUseID       string
 	toolName        string
@@ -266,6 +275,50 @@ func ApplyProgressiveToolResultProjection(messages []types.Message, state *Conte
 	result.Messages = replaceToolResultContents(messages, replacements)
 	result.Changed = true
 	return result
+}
+
+// PendingProgressiveToolResultProjection measures candidates that have crossed
+// the same phase and safety boundaries as production projection but remain in
+// their original form. Session-budget limits are applied so the status cannot
+// promise work the runtime is no longer allowed to install.
+func PendingProgressiveToolResultProjection(messages []types.Message, state *ContentReplacementState, admission ProgressiveProjectionAdmission) ProgressiveProjectionPending {
+	if state == nil || len(messages) == 0 || !admission.Enabled || admission.Shadow || admission.Counter == nil {
+		return ProgressiveProjectionPending{}
+	}
+	probeAdmission := admission
+	probeAdmission.Shadow = true
+	// Simulate the future trigger without weakening the real admission path.
+	// Pending means tool-level-safe and old enough to project once the configured
+	// phase/cost gate opens; it is explicitly not a claim that admission has
+	// already succeeded.
+	probeAdmission.Pressure = true
+	probeAdmission.RawRequestEstimateKnown = false
+	probeAdmission.PreviousUsageKnown = false
+	probeAdmission.RequireConsumedMutation = false
+	seenBefore, replacementsBefore := cloneProgressiveReplacementMaps(state)
+	result := ApplyProgressiveToolResultProjection(messages, state, probeAdmission)
+	restoreProgressiveReplacementMaps(state, seenBefore, replacementsBefore)
+	if result.ProjectedTools <= 0 || result.TokensSaved <= 0 {
+		return ProgressiveProjectionPending{}
+	}
+	return ProgressiveProjectionPending{Tools: result.ProjectedTools, TokensSaved: result.TokensSaved}
+}
+
+func cloneProgressiveReplacementMaps(state *ContentReplacementState) (map[string]struct{}, map[string]string) {
+	seen := make(map[string]struct{}, len(state.SeenIDs))
+	for id := range state.SeenIDs {
+		seen[id] = struct{}{}
+	}
+	replacements := make(map[string]string, len(state.Replacements))
+	for id, replacement := range state.Replacements {
+		replacements[id] = replacement
+	}
+	return seen, replacements
+}
+
+func restoreProgressiveReplacementMaps(state *ContentReplacementState, seen map[string]struct{}, replacements map[string]string) {
+	state.SeenIDs = seen
+	state.Replacements = replacements
 }
 
 // selectProgressivePressureBatch chooses the smallest deterministic prefix

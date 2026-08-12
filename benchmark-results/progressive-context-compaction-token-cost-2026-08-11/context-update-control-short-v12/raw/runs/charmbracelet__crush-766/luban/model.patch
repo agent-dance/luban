@@ -1,0 +1,49 @@
+diff --git a/internal/fsext/ignore_test.go b/internal/fsext/ignore_test.go
+index c2490a0..12063d9 100644
+--- a/internal/fsext/ignore_test.go
++++ b/internal/fsext/ignore_test.go
+@@ -2,6 +2,7 @@ package fsext
+ 
+ import (
+ 	"os"
++	"path/filepath"
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/require"
+@@ -30,3 +31,20 @@ func TestCrushIgnore(t *testing.T) {
+ 	require.False(t, dl.shouldIgnore("test1.txt", nil), ".txt files should not be ignored")
+ 	require.True(t, dl.shouldIgnore("test3.tmp", nil), ".tmp files should be ignored by common patterns")
+ }
++
++func TestListDirectoryDotStarIgnoreDoesNotSkipRoot(t *testing.T) {
++	tempDir := t.TempDir()
++
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".hidden"), []byte("hidden"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "example.txt"), []byte("test content"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "another.go"), []byte("more content"), 0o644))
++
++	files, truncated, err := ListDirectory(tempDir, nil, 0)
++	require.NoError(t, err)
++	require.False(t, truncated)
++	require.ElementsMatch(t, []string{
++		filepath.Join(tempDir, "example.txt"),
++		filepath.Join(tempDir, "another.go"),
++	}, files)
++}
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..883e95e 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -199,7 +199,10 @@ func ListDirectory(initialPath string, ignorePatterns []string, limit int) ([]st
+ 			return nil // Skip files we don't have permission to access
+ 		}
+ 
+-		if dl.shouldIgnore(path, ignorePatterns) {
++		// Ignore patterns apply to entries below the walk root. In particular,
++		// patterns such as ".*" match the root's relative path ("."), but must
++		// not prevent traversal of the root itself.
++		if path != initialPath && dl.shouldIgnore(path, ignorePatterns) {
+ 			if d.IsDir() {
+ 				return filepath.SkipDir
+ 			}

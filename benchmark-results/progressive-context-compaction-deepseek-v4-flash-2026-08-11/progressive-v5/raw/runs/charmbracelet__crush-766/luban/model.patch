@@ -1,0 +1,34 @@
+diff --git a/internal/fsext/fileutil.go b/internal/fsext/fileutil.go
+index e688884..2740dfe 100644
+--- a/internal/fsext/fileutil.go
++++ b/internal/fsext/fileutil.go
+@@ -98,6 +98,12 @@ func (w *FastGlobWalker) ShouldSkip(path string) bool {
+ 		return false
+ 	}
+ 
++	// Never skip the root path itself. Ignore patterns like ".*" match ".",
++	// and skipping the root would abort the entire traversal with SkipDir.
++	if relPath == "." {
++		return false
++	}
++
+ 	if w.gitignore != nil {
+ 		if w.gitignore.MatchesPath(relPath) {
+ 			return true
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..30ffe48 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -130,6 +130,12 @@ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bo
+ 		relPath = path
+ 	}
+ 
++	// Never ignore the root path itself. Patterns like ".*" match ".", and
++	// ignoring the root would abort the entire scan with filepath.SkipDir.
++	if relPath == "." {
++		return false
++	}
++
+ 	if commonIgnorePatterns().MatchesPath(relPath) {
+ 		slog.Debug("ingoring common pattern", "path", relPath)
+ 		return true

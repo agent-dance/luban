@@ -1,0 +1,62 @@
+diff --git a/src/build_test.cc b/src/build_test.cc
+index 5ba87fa..13a9a31 100644
+--- a/src/build_test.cc
++++ b/src/build_test.cc
+@@ -3793,6 +3793,39 @@ TEST_F(BuildTest, DyndepBuildDiscoverOutputAndDepfileInput) {
+   EXPECT_TRUE(builder_.AlreadyUpToDate());
+ }
+ 
++TEST_F(BuildTest, DyndepLoadUpdatesEarlierDepfileInput) {
++  // Verify that loading a dyndep through a later order-only input updates the
++  // dirty state already computed for an earlier depfile input.
++  ASSERT_NO_FATAL_FAILURE(AssertParse(&state_,
++"rule touch\n"
++"  command = touch $out\n"
++"build stamp: touch trigger || dd\n"
++"  dyndep = dd\n"
++"build copy: touch || stamp\n"
++"  depfile = copy.d\n"
++));
++  fs_.Create("dd",
++"ninja_dyndep_version = 1\n"
++"build stamp | other: dyndep\n"
++);
++  fs_.Create("trigger", "");
++  fs_.Create("stamp", "");
++  fs_.Create("other", "");
++  fs_.Create("copy", "");
++  fs_.Create("copy.d", "copy: other\n");
++  fs_.Tick();
++  fs_.Create("trigger", "");
++
++  string err;
++  EXPECT_TRUE(builder_.AddTarget("copy", &err));
++  ASSERT_EQ("", err);
++  EXPECT_EQ(builder_.Build(&err), ExitSuccess);
++  EXPECT_EQ("", err);
++  EXPECT_EQ(std::vector<std::string>({"touch stamp", "touch copy"}),
++            command_runner_.commands_ran_);
++  EXPECT_TRUE(builder_.AlreadyUpToDate());
++}
++
+ TEST_F(BuildTest, DyndepBuildDiscoverNowWantEdge) {
+   // Verify that a dyndep file can be built and loaded to discover
+   // that an edge is actually wanted due to a missing implicit output.
+diff --git a/src/graph.cc b/src/graph.cc
+index 8e6ff69..8b4d879 100644
+--- a/src/graph.cc
++++ b/src/graph.cc
+@@ -175,7 +175,13 @@ bool DependencyScan::RecomputeNodeDirty(Node* node, std::vector<Node*>* stack,
+     // Visit this input.
+     if (!RecomputeNodeDirty(*i, stack, validation_nodes, err))
+       return false;
++  }
+ 
++  // Check input state only after visiting all inputs.  Visiting a later input
++  // may load a dyndep file that makes an earlier input an output of a dirty
++  // edge.
++  for (vector<Node*>::iterator i = edge->inputs_.begin();
++       i != edge->inputs_.end(); ++i) {
+     // If an input is not ready, neither are our outputs.
+     if (Edge* in_edge = (*i)->in_edge()) {
+       if (!in_edge->outputs_ready_)

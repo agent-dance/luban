@@ -932,6 +932,12 @@ func persistScreenReaderLifecycle(cfg TUIREPLConfig, tracker *ui.CostTracker) er
 		HasCompacted: snapshot.HasCompacted, CompactionBaselineKnown: snapshot.CompactionBaselineKnown,
 		InputTokensAtCompact: snapshot.InputAtCompact, CacheReadAtCompact: snapshot.CacheReadAtCompact,
 	}
+	if currentMetaErr == nil && currentMeta.Usage != nil {
+		usage.ProgressiveProjectionCount = currentMeta.Usage.ProgressiveProjectionCount
+		usage.ProgressiveProjectedTools = currentMeta.Usage.ProgressiveProjectedTools
+		usage.ProgressiveTokensSaved = currentMeta.Usage.ProgressiveTokensSaved
+		usage.ProgressiveSavingsUSD = currentMeta.Usage.ProgressiveSavingsUSD
+	}
 	conversation := snapshot.Conversation
 	if !conversation.Known && currentMetaErr == nil && currentMeta.Usage != nil {
 		restored := currentMeta.Usage

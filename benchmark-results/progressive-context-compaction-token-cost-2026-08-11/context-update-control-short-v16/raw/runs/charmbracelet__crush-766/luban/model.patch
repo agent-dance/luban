@@ -1,0 +1,81 @@
+diff --git a/internal/fsext/fileutil.go b/internal/fsext/fileutil.go
+index e688884..4a516bc 100644
+--- a/internal/fsext/fileutil.go
++++ b/internal/fsext/fileutil.go
+@@ -89,6 +89,12 @@ func NewFastGlobWalker(searchPath string) *FastGlobWalker {
+ 
+ // ShouldSkip checks if a path should be skipped based on gitignore, crushignore, and hidden file rules
+ func (w *FastGlobWalker) ShouldSkip(path string) bool {
++	// Ignore patterns apply to entries below the traversal root, not the root
++	// itself. In particular, ".*" matches the root's relative path (".").
++	if filepath.Clean(path) == filepath.Clean(w.rootPath) {
++		return false
++	}
++
+ 	if SkipHidden(path) {
+ 		return true
+ 	}
+diff --git a/internal/fsext/ignore_test.go b/internal/fsext/ignore_test.go
+index c2490a0..c72d3df 100644
+--- a/internal/fsext/ignore_test.go
++++ b/internal/fsext/ignore_test.go
+@@ -2,6 +2,7 @@ package fsext
+ 
+ import (
+ 	"os"
++	"path/filepath"
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/require"
+@@ -30,3 +31,34 @@ func TestCrushIgnore(t *testing.T) {
+ 	require.False(t, dl.shouldIgnore("test1.txt", nil), ".txt files should not be ignored")
+ 	require.True(t, dl.shouldIgnore("test3.tmp", nil), ".tmp files should be ignored by common patterns")
+ }
++
++func TestListDirectoryDotPatternDoesNotSkipRoot(t *testing.T) {
++	root := t.TempDir()
++	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden"), []byte("hidden"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(root, "example.txt"), []byte("test"), 0o644))
++	require.NoError(t, os.Mkdir(filepath.Join(root, "src"), 0o755))
++	require.NoError(t, os.WriteFile(filepath.Join(root, "src", "main.go"), []byte("package main"), 0o644))
++
++	files, truncated, err := ListDirectory(root, nil, 0)
++	require.NoError(t, err)
++	require.False(t, truncated)
++	require.Contains(t, files, filepath.Join(root, "example.txt"))
++	require.Contains(t, files, filepath.Join(root, "src", "main.go"))
++	require.NotContains(t, files, filepath.Join(root, ".gitignore"))
++	require.NotContains(t, files, filepath.Join(root, ".hidden"))
++}
++
++func TestGlobDotPatternDoesNotSkipRoot(t *testing.T) {
++	root := t.TempDir()
++	require.NoError(t, os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(root, ".hidden"), []byte("hidden"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(root, "example.txt"), []byte("test"), 0o644))
++
++	matches, truncated, err := GlobWithDoubleStar("**", root, 0)
++	require.NoError(t, err)
++	require.False(t, truncated)
++	require.Contains(t, matches, filepath.Join(root, "example.txt"))
++	require.NotContains(t, matches, filepath.Join(root, ".gitignore"))
++	require.NotContains(t, matches, filepath.Join(root, ".hidden"))
++}
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..f41d466 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -116,6 +116,12 @@ func NewDirectoryLister(rootPath string) *directoryLister {
+ // ~/.gitignore
+ // ~/.config/crush/ignore
+ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bool {
++	// Never prune the traversal root. Patterns such as ".*" match its relative
++	// path ("."), but are intended to ignore hidden entries below it.
++	if filepath.Clean(path) == filepath.Clean(dl.rootPath) {
++		return false
++	}
++
+ 	if len(ignorePatterns) > 0 {
+ 		base := filepath.Base(path)
+ 		for _, pattern := range ignorePatterns {

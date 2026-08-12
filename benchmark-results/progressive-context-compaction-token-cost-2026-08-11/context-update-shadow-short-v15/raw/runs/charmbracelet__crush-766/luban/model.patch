@@ -1,0 +1,84 @@
+diff --git a/internal/fsext/ignore_test.go b/internal/fsext/ignore_test.go
+index c2490a0..9574b7d 100644
+--- a/internal/fsext/ignore_test.go
++++ b/internal/fsext/ignore_test.go
+@@ -2,6 +2,7 @@ package fsext
+ 
+ import (
+ 	"os"
++	"path/filepath"
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/require"
+@@ -30,3 +31,58 @@ func TestCrushIgnore(t *testing.T) {
+ 	require.False(t, dl.shouldIgnore("test1.txt", nil), ".txt files should not be ignored")
+ 	require.True(t, dl.shouldIgnore("test3.tmp", nil), ".tmp files should be ignored by common patterns")
+ }
++
++func TestListDirectoryDoesNotIgnoreRoot(t *testing.T) {
++	tempDir := t.TempDir()
++	oldWd, err := os.Getwd()
++	require.NoError(t, err)
++	require.NoError(t, os.Chdir(tempDir))
++	t.Cleanup(func() {
++		require.NoError(t, os.Chdir(oldWd))
++	})
++
++	require.NoError(t, os.WriteFile(".gitignore", []byte(".*\nignored/\n"), 0o644))
++	require.NoError(t, os.WriteFile(".hidden", []byte("hidden"), 0o644))
++	require.NoError(t, os.WriteFile("example.txt", []byte("example"), 0o644))
++	require.NoError(t, os.WriteFile("another.go", []byte("another"), 0o644))
++	require.NoError(t, os.Mkdir("visible", 0o755))
++	require.NoError(t, os.WriteFile(filepath.Join("visible", "nested.txt"), []byte("nested"), 0o644))
++	require.NoError(t, os.Mkdir("ignored", 0o755))
++	require.NoError(t, os.WriteFile(filepath.Join("ignored", "ignored.txt"), []byte("ignored"), 0o644))
++
++	tests := []struct {
++		name string
++		root string
++		want []string
++	}{
++		{
++			name: "relative root",
++			root: ".",
++			want: []string{
++				"example.txt",
++				"another.go",
++				"visible" + string(filepath.Separator),
++				filepath.Join("visible", "nested.txt"),
++			},
++		},
++		{
++			name: "absolute root",
++			root: tempDir,
++			want: []string{
++				filepath.Join(tempDir, "example.txt"),
++				filepath.Join(tempDir, "another.go"),
++				filepath.Join(tempDir, "visible") + string(filepath.Separator),
++				filepath.Join(tempDir, "visible", "nested.txt"),
++			},
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			files, truncated, err := ListDirectory(tt.root, nil, 0)
++			require.NoError(t, err)
++			require.False(t, truncated)
++			require.ElementsMatch(t, tt.want, files)
++		})
++	}
++}
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..14316fc 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -199,7 +199,7 @@ func ListDirectory(initialPath string, ignorePatterns []string, limit int) ([]st
+ 			return nil // Skip files we don't have permission to access
+ 		}
+ 
+-		if dl.shouldIgnore(path, ignorePatterns) {
++		if path != initialPath && dl.shouldIgnore(path, ignorePatterns) {
+ 			if d.IsDir() {
+ 				return filepath.SkipDir
+ 			}

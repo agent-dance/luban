@@ -621,6 +621,12 @@ func (c *RootComponent) BindApp(app *tui.App) {
 	c.state.SessionHasCompacted.BindApp(app)
 	c.state.SessionCompactionBaselineKnown.BindApp(app)
 	c.state.SessionCompactionCount.BindApp(app)
+	c.state.SessionProgressiveProjectionCount.BindApp(app)
+	c.state.SessionProgressiveProjectedTools.BindApp(app)
+	c.state.SessionProgressiveTokensSaved.BindApp(app)
+	c.state.SessionProgressiveSavingsUSD.BindApp(app)
+	c.state.ProgressivePendingTools.BindApp(app)
+	c.state.ProgressivePendingTokens.BindApp(app)
 	c.state.SessionCompletedRoundInputTokens.BindApp(app)
 	c.state.SessionCompletedRoundOutputTokens.BindApp(app)
 	c.state.SessionInputTokensAtCompact.BindApp(app)
@@ -708,21 +714,17 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 
 	// Reserve rows for chrome: banner (3) + spacer (1) + status bar (dynamic) +
 	// queued input previews + optional centered LLM status band (top spacer +
-	// one working row or two problem rows) + optional slash suggestions + input (dynamic). The existing
+	// wrapped working rows or two problem rows) + optional slash suggestions + input (dynamic). The existing
 	// status-bar spacer is the matching bottom half of the LLM status band.
 	llmStatusRows := 0
 	llmStatus := c.state.LLMCall.Get()
+	var llmStatusView *tui.Element
 	if llmStatus != nil {
-		llmStatusRows = 2
-		if llmStatus.Phase != LLMCallWorking {
-			llmStatusRows = 3
-		}
+		llmStatusView = c.renderLLMStatus(llmStatus)
+		llmStatusRows = 1 + llmStatusView.HeightForWidth(termWidth)
 	}
 	compactProgress := c.state.CompactionProgress.Get()
-	compactProgressRows := 0
-	if compactProgress != nil {
-		compactProgressRows = 2
-	}
+	compactProgressRows := compactionProgressRows(compactProgress)
 	slashRows := 0
 	if suggestions := c.slash.Get(); suggestions != nil && len(suggestions.Items) > 0 {
 		slashRows = len(visibleSlashSuggestions(suggestions)) + 2
@@ -839,7 +841,7 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 	// --- Vertically centered LLM status band (if active) ---
 	if !compactDecision && llmStatus != nil {
 		root.AddChild(tui.New(tui.WithHeight(1), tui.WithWidthPercent(100)))
-		root.AddChild(c.renderLLMStatus(llmStatus))
+		root.AddChild(llmStatusView)
 	}
 	if !compactDecision && compactProgressRows > 0 {
 		root.AddChild(c.renderCompactionProgress(compactProgress, len(queuedInputs)))
@@ -2013,6 +2015,7 @@ func (c *RootComponent) renderMessage(msg Message) *tui.Element {
 		reply.AddChild(body)
 		container.AddChild(reply)
 		if msg.WorkDuration > 0 {
+			container.AddChild(tui.New(tui.WithHeight(1), tui.WithWidthPercent(100)))
 			label := "─ " + i18n.Format(c.state.Language.Get(), i18n.KeyAssistantWorkedFor, formatAssistantWorkDuration(msg.WorkDuration)) + " "
 			completion := tui.New(
 				tui.WithDisplay(tui.DisplayFlex),
@@ -2909,17 +2912,15 @@ func llmWorkingShimmerSpansAtPositionWithPalette(
 }
 
 func (c *RootComponent) renderLLMStatus(status *LLMCallStatus) *tui.Element {
-	statusHeight := 1
-	if status.Phase != LLMCallWorking {
-		statusHeight = 2
-	}
-	statusView := tui.New(
+	statusOptions := []tui.Option{
 		tui.WithDisplay(tui.DisplayFlex),
 		tui.WithDirection(tui.Column),
-		tui.WithHeight(statusHeight),
 		tui.WithWidthPercent(100),
-		tui.WithTruncate(true),
-	)
+	}
+	if status.Phase != LLMCallWorking {
+		statusOptions = append(statusOptions, tui.WithHeight(2))
+	}
+	statusView := tui.New(statusOptions...)
 	lang := c.state.Language.Get()
 	if status.Phase == LLMCallWorking {
 		requestDuration := "—"
@@ -2969,15 +2970,16 @@ func (c *RootComponent) renderLLMStatus(status *LLMCallStatus) *tui.Element {
 			tui.StyledSpan{Text: " " + i18n.Format(lang, i18n.KeyLLMRequestInterruptStatus,
 				formatLLMStatusDuration(total)), Style: dimStyle},
 		)
-		if status.Attempt > 0 && status.MaxRetries > 0 {
-			spans = append(spans, tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMRequestAttempt, status.Attempt, status.MaxRetries+1), Style: dimStyle})
+		if status.RetryCount > 0 {
+			maxRetries := max(status.MaxRetries, status.RetryCount)
+			spans = append(spans, tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMRequestRetryCount, status.RetryCount, maxRetries), Style: dimStyle})
 		}
 		spans = append(spans, tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMRequestMetrics,
 			requestDuration, firstToken), Style: dimStyle})
 		statusView.AddChild(tui.New(
 			tui.WithStyledSpans(spans),
-			tui.WithWrap(false),
-			tui.WithTruncate(true),
+			tui.WithWidthPercent(100),
+			tui.WithWrap(true),
 		))
 		return statusView
 	}
@@ -2991,7 +2993,11 @@ func (c *RootComponent) renderLLMStatus(status *LLMCallStatus) *tui.Element {
 		case "stream":
 			key = i18n.KeyLLMRequestReconnecting
 		}
-		header = i18n.Format(lang, key, status.Attempt, status.MaxRetries, formatPresentationDuration(status.RetryDelay.Milliseconds()))
+		retryCount := status.RetryCount
+		if retryCount <= 0 {
+			retryCount = status.Attempt
+		}
+		header = i18n.Format(lang, key, retryCount, max(status.MaxRetries, retryCount), formatPresentationDuration(status.RetryDelay.Milliseconds()))
 	}
 	statusView.AddChild(tui.New(
 		tui.WithText(header),
@@ -4467,6 +4473,22 @@ func (c *RootComponent) renderStatusBar(termWidth int) *tui.Element {
 			priority:   1,
 		})
 	}
+	if usage.CompactionCount > 0 {
+		segments = append(segments, statusSegment{
+			text:       i18n.Format(c.state.Language.Get(), i18n.KeyTUIStatusCompactionCount, usage.CompactionCount),
+			style:      tui.NewStyle().Foreground(tui.Cyan).Dim(),
+			marginLeft: statusSegmentGap,
+			priority:   1,
+		})
+	}
+	if progressive := formatProgressiveSavingsStatus(usage, c.state.ProgressivePendingTools.Get(), c.state.ProgressivePendingTokens.Get(), c.state.Language.Get()); progressive != "" {
+		segments = append(segments, statusSegment{
+			text:       progressive,
+			style:      tui.NewStyle().Foreground(tui.Green).Dim(),
+			marginLeft: statusSegmentGap,
+			priority:   1,
+		})
+	}
 	var midParts []string
 
 	usageKnown := c.state.SessionUsageKnown.Get() || inTok > 0 || outTok > 0 || cacheReadTok > 0 || cumCost > 0 || usedTok > 0 || maxTok > 0
@@ -4547,6 +4569,23 @@ func (c *RootComponent) renderStatusBar(termWidth int) *tui.Element {
 	bar.AddChild(children...)
 
 	return bar
+}
+
+func formatProgressiveSavingsStatus(usage SessionUsage, pendingTools, pendingTokens int, lang i18n.Language) string {
+	pendingTools = max(pendingTools, 0)
+	pendingTokens = max(pendingTokens, 0)
+	if usage.ProgressiveProjectionCount <= 0 || usage.ProgressiveTokensSaved <= 0 {
+		if pendingTools > 0 && pendingTokens > 0 {
+			return i18n.Format(lang, i18n.KeyTUIStatusProgressivePending, pendingTools, fmtK(pendingTokens))
+		}
+		return ""
+	}
+	if pendingTools > 0 && pendingTokens > 0 {
+		return i18n.Format(lang, i18n.KeyTUIStatusProgressiveSavingsAndPending,
+			fmtK(usage.ProgressiveTokensSaved), pendingTools, fmtK(pendingTokens))
+	}
+	return i18n.Format(lang, i18n.KeyTUIStatusProgressiveSavings,
+		fmtK(usage.ProgressiveTokensSaved))
 }
 
 const goalStatusMaxCells = 40

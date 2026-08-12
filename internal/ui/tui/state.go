@@ -13,6 +13,7 @@ import (
 
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/internal/contracts/interaction"
+	"github.com/agent-dance/luban/internal/contracts/stream"
 	"github.com/agent-dance/luban/internal/presentation"
 	"github.com/agent-dance/luban/internal/runtime/goal"
 	"github.com/agent-dance/luban/permissions"
@@ -266,6 +267,12 @@ type AppState struct {
 	SessionHasCompacted               *tui.State[bool]
 	SessionCompactionBaselineKnown    *tui.State[bool]
 	SessionCompactionCount            *tui.State[int]
+	SessionProgressiveProjectionCount *tui.State[int]
+	SessionProgressiveProjectedTools  *tui.State[int]
+	SessionProgressiveTokensSaved     *tui.State[int]
+	SessionProgressiveSavingsUSD      *tui.State[float64]
+	ProgressivePendingTools           *tui.State[int]
+	ProgressivePendingTokens          *tui.State[int]
 	SessionCompletedRoundInputTokens  *tui.State[int]
 	SessionCompletedRoundOutputTokens *tui.State[int]
 	SessionInputTokensAtCompact       *tui.State[int]
@@ -345,6 +352,7 @@ type AppState struct {
 	batch                   func(func())
 	disclosureReturn        map[string]SessionInteraction
 	compactionBoundaries    sync.Map
+	progressiveProjections  sync.Map
 	usageProjectionMu       sync.Mutex
 	usageProjectionRevision uint64
 }
@@ -369,6 +377,10 @@ type SessionUsage struct {
 	HasCompacted               bool
 	CompactionBaselineKnown    bool
 	CompactionCount            int
+	ProgressiveProjectionCount int
+	ProgressiveProjectedTools  int
+	ProgressiveTokensSaved     int
+	ProgressiveSavingsUSD      float64
 	CompletedRoundInputTokens  int
 	CompletedRoundOutputTokens int
 	InputTokensAtCompact       int
@@ -452,6 +464,7 @@ type LLMCallStatus struct {
 	StageStartedAt     time.Time
 	Attempt            int
 	MaxRetries         int
+	RetryCount         int
 	RetryDelay         time.Duration
 	RetryKind          string
 	RequestDuration    time.Duration
@@ -520,6 +533,12 @@ func NewAppState() *AppState {
 		SessionHasCompacted:               tui.NewState(false),
 		SessionCompactionBaselineKnown:    tui.NewState(false),
 		SessionCompactionCount:            tui.NewState(0),
+		SessionProgressiveProjectionCount: tui.NewState(0),
+		SessionProgressiveProjectedTools:  tui.NewState(0),
+		SessionProgressiveTokensSaved:     tui.NewState(0),
+		SessionProgressiveSavingsUSD:      tui.NewState(0.0),
+		ProgressivePendingTools:           tui.NewState(0),
+		ProgressivePendingTokens:          tui.NewState(0),
 		SessionCompletedRoundInputTokens:  tui.NewState(0),
 		SessionCompletedRoundOutputTokens: tui.NewState(0),
 		SessionInputTokensAtCompact:       tui.NewState(0),
@@ -749,6 +768,7 @@ func (s *AppState) applySessionSnapshot(snapshot SessionSnapshot) error {
 		s.disclosureReturn[id] = restore
 	}
 	s.compactionBoundaries.Clear()
+	s.progressiveProjections.Clear()
 	s.usageProjectionMu.Lock()
 	s.usageProjectionRevision = 0
 	s.SessionUsageKnown.Set(snapshot.Usage.Known)
@@ -765,6 +785,12 @@ func (s *AppState) applySessionSnapshot(snapshot SessionSnapshot) error {
 	s.SessionHasCompacted.Set(snapshot.Usage.HasCompacted)
 	s.SessionCompactionBaselineKnown.Set(snapshot.Usage.CompactionBaselineKnown)
 	s.SessionCompactionCount.Set(snapshot.Usage.CompactionCount)
+	s.SessionProgressiveProjectionCount.Set(snapshot.Usage.ProgressiveProjectionCount)
+	s.SessionProgressiveProjectedTools.Set(snapshot.Usage.ProgressiveProjectedTools)
+	s.SessionProgressiveTokensSaved.Set(snapshot.Usage.ProgressiveTokensSaved)
+	s.SessionProgressiveSavingsUSD.Set(snapshot.Usage.ProgressiveSavingsUSD)
+	s.ProgressivePendingTools.Set(0)
+	s.ProgressivePendingTokens.Set(0)
 	s.SessionCompletedRoundInputTokens.Set(snapshot.Usage.CompletedRoundInputTokens)
 	s.SessionCompletedRoundOutputTokens.Set(snapshot.Usage.CompletedRoundOutputTokens)
 	s.SessionInputTokensAtCompact.Set(snapshot.Usage.InputTokensAtCompact)
@@ -1069,6 +1095,8 @@ func (s *AppState) ActiveSessionUsage() SessionUsage {
 		InputTokens: s.SessionTotalInputTokens.Get(), OutputTokens: s.SessionTotalOutputTokens.Get(),
 		CacheReadTokens: s.SessionTotalCacheReadTokens.Get(), CacheCreateTokens: s.SessionTotalCacheCreateTokens.Get(),
 		HasCompacted: s.SessionHasCompacted.Get(), CompactionCount: s.SessionCompactionCount.Get(),
+		ProgressiveProjectionCount: s.SessionProgressiveProjectionCount.Get(), ProgressiveProjectedTools: s.SessionProgressiveProjectedTools.Get(),
+		ProgressiveTokensSaved: s.SessionProgressiveTokensSaved.Get(), ProgressiveSavingsUSD: s.SessionProgressiveSavingsUSD.Get(),
 		CompactionBaselineKnown:   s.SessionCompactionBaselineKnown.Get(),
 		CompletedRoundInputTokens: s.SessionCompletedRoundInputTokens.Get(), CompletedRoundOutputTokens: s.SessionCompletedRoundOutputTokens.Get(),
 		InputTokensAtCompact: s.SessionInputTokensAtCompact.Get(), CacheReadAtCompact: s.SessionCacheReadAtCompact.Get(),
@@ -2188,6 +2216,7 @@ func taskViewItemsEqual(left, right []TaskViewItem) bool {
 // status bar. Callers should use this when switching to a different session.
 func (s *AppState) ResetSessionUsage() {
 	s.compactionBoundaries.Clear()
+	s.progressiveProjections.Clear()
 	s.usageProjectionMu.Lock()
 	defer s.usageProjectionMu.Unlock()
 	s.usageProjectionRevision = 0
@@ -2207,10 +2236,63 @@ func (s *AppState) ResetSessionUsage() {
 	s.SessionHasCompacted.Set(false)
 	s.SessionCompactionBaselineKnown.Set(false)
 	s.SessionCompactionCount.Set(0)
+	s.SessionProgressiveProjectionCount.Set(0)
+	s.SessionProgressiveProjectedTools.Set(0)
+	s.SessionProgressiveTokensSaved.Set(0)
+	s.SessionProgressiveSavingsUSD.Set(0)
+	s.ProgressivePendingTools.Set(0)
+	s.ProgressivePendingTokens.Set(0)
 	s.SessionCompletedRoundInputTokens.Set(0)
 	s.SessionCompletedRoundOutputTokens.Set(0)
 	s.SessionInputTokensAtCompact.Set(0)
 	s.SessionCacheReadAtCompact.Set(0)
+}
+
+// ApplyProgressiveContextMetrics updates the transient pending snapshot or adds
+// one successfully installed provider-view projection to the session benefit
+// ledger. The receipt identity makes event redelivery idempotent; rejected and
+// shadow candidates never affect realized savings.
+func (s *AppState) ApplyProgressiveContextMetrics(sessionID string, epoch uint64, identity string, progress stream.ProgressEvent) bool {
+	if s == nil || sessionID == "" || s.SessionID.Get() != sessionID || s.SessionEpoch.Get() != epoch ||
+		progress.Stage != "progressive_context_projection" || strings.TrimSpace(identity) == "" {
+		return false
+	}
+	if pendingOnly, _ := progress.Metadata["pending_only"].(bool); pendingOnly {
+		pendingTools := max(compactionMetadataInt(progress.Metadata, "pending_tools"), 0)
+		pendingTokens := max(compactionMetadataInt(progress.Metadata, "pending_tokens"), 0)
+		if pendingTools == 0 || pendingTokens == 0 {
+			pendingTools, pendingTokens = 0, 0
+		}
+		if _, loaded := s.progressiveProjections.LoadOrStore(identity, struct{}{}); loaded {
+			return false
+		}
+		s.usageProjectionMu.Lock()
+		defer s.usageProjectionMu.Unlock()
+		s.ProgressivePendingTools.Set(pendingTools)
+		s.ProgressivePendingTokens.Set(pendingTokens)
+		return true
+	}
+	applied, _ := progress.Metadata["applied"].(bool)
+	shadow, _ := progress.Metadata["shadow"].(bool)
+	projectedTools := compactionMetadataInt(progress.Metadata, "projection_count")
+	tokensSaved := compactionMetadataInt(progress.Metadata, "tokens_saved")
+	if !applied || shadow || projectedTools <= 0 || tokensSaved <= 0 {
+		return false
+	}
+	if _, loaded := s.progressiveProjections.LoadOrStore(identity, struct{}{}); loaded {
+		return false
+	}
+	estimatedSavings := compactionMetadataFloat(progress.Metadata, "estimated_net_savings_usd")
+	if estimatedSavings < 0 {
+		estimatedSavings = 0
+	}
+	s.usageProjectionMu.Lock()
+	defer s.usageProjectionMu.Unlock()
+	s.SessionProgressiveProjectionCount.Set(s.SessionProgressiveProjectionCount.Get() + 1)
+	s.SessionProgressiveProjectedTools.Set(s.SessionProgressiveProjectedTools.Get() + projectedTools)
+	s.SessionProgressiveTokensSaved.Set(s.SessionProgressiveTokensSaved.Get() + tokensSaved)
+	s.SessionProgressiveSavingsUSD.Set(s.SessionProgressiveSavingsUSD.Get() + estimatedSavings)
+	return true
 }
 
 // MarkSessionCompacted closes the current conversation segment by committing
@@ -2230,6 +2312,8 @@ func (s *AppState) MarkSessionCompacted() {
 	s.SessionOutputTokens.Set(0)
 	s.SessionCacheReadTokens.Set(0)
 	s.SessionCacheCreateTokens.Set(0)
+	s.ProgressivePendingTools.Set(0)
+	s.ProgressivePendingTokens.Set(0)
 }
 
 // MarkSessionCompactedBoundary applies a stable boundary identity once. The

@@ -21,6 +21,10 @@ func setCompleteTUISessionUsage(state *tuiapp.AppState) session.SessionUsageMeta
 	state.SessionHasCompacted.Set(true)
 	state.SessionCompactionBaselineKnown.Set(true)
 	state.SessionCompactionCount.Set(2)
+	state.SessionProgressiveProjectionCount.Set(3)
+	state.SessionProgressiveProjectedTools.Set(6)
+	state.SessionProgressiveTokensSaved.Set(18_068)
+	state.SessionProgressiveSavingsUSD.Set(0.055234)
 	state.SessionCompletedRoundInputTokens.Set(200)
 	state.SessionCompletedRoundOutputTokens.Set(30)
 	state.SessionInputTokensAtCompact.Set(250)
@@ -37,6 +41,7 @@ func setCompleteTUISessionUsage(state *tuiapp.AppState) session.SessionUsageMeta
 	return session.SessionUsageMeta{
 		InputTokens: 321, OutputTokens: 45, CacheReadTokens: 210, CacheCreateTokens: 19,
 		HasCompacted: true, CompactionBaselineKnown: true, RoundUsageKnown: true, CompactionCount: 2,
+		ProgressiveProjectionCount: 3, ProgressiveProjectedTools: 6, ProgressiveTokensSaved: 18_068, ProgressiveSavingsUSD: 0.055234,
 		CompletedRoundInputTokens: 200, CompletedRoundOutputTokens: 30,
 		InputTokensAtCompact: 250, CacheReadAtCompact: 175,
 		LastInputTokens: 121, LastOutputTokens: 15, LastCacheReadTokens: 35, LastCacheCreateTokens: 7,

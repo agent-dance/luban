@@ -613,6 +613,9 @@ func TestPrepareMessagesForQueryProgressiveProjectionPreservesRawHistoryAndCache
 	foundMetric := false
 	for _, event := range events {
 		if event.Type == stream.EventProgress && event.Progress != nil && event.Progress.Stage == "progressive_context_projection" {
+			if pendingOnly, _ := event.Progress.Metadata["pending_only"].(bool); pendingOnly {
+				continue
+			}
 			foundMetric = true
 			if event.Progress.Metadata["projection_count"] != 5 {
 				t.Fatalf("projection metric = %#v", event.Progress.Metadata)
@@ -621,6 +624,25 @@ func TestPrepareMessagesForQueryProgressiveProjectionPreservesRawHistoryAndCache
 	}
 	if !foundMetric {
 		t.Fatal("progressive projection metric missing")
+	}
+}
+
+func TestProgressivePendingTelemetryReportsAndClearsEligibleSnapshot(t *testing.T) {
+	ql := &QueryLoop{}
+	var events []stream.Event
+	emit := func(event stream.Event) { events = append(events, event) }
+	ql.emitProgressivePending(3, compact.ProgressiveProjectionPending{Tools: 2, TokensSaved: 4_321}, emit)
+	ql.emitProgressivePending(4, compact.ProgressiveProjectionPending{Tools: 2, TokensSaved: 4_321}, emit)
+	ql.emitProgressivePending(5, compact.ProgressiveProjectionPending{}, emit)
+	if len(events) != 2 {
+		t.Fatalf("pending telemetry events = %d, want report plus clear: %+v", len(events), events)
+	}
+	first, cleared := events[0].Progress.Metadata, events[1].Progress.Metadata
+	if first["pending_only"] != true || first["pending_tools"] != 2 || first["pending_tokens"] != 4_321 {
+		t.Fatalf("pending telemetry = %#v", first)
+	}
+	if cleared["pending_only"] != true || cleared["pending_tools"] != 0 || cleared["pending_tokens"] != 0 {
+		t.Fatalf("pending clear telemetry = %#v", cleared)
 	}
 }
 

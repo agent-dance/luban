@@ -1,0 +1,99 @@
+diff --git a/internal/fsext/fileutil.go b/internal/fsext/fileutil.go
+index e688884..79b90b2 100644
+--- a/internal/fsext/fileutil.go
++++ b/internal/fsext/fileutil.go
+@@ -98,6 +98,14 @@ func (w *FastGlobWalker) ShouldSkip(path string) bool {
+ 		return false
+ 	}
+ 
++	// The root directory itself is never ignored: matching it (for example a
++	// `.*` gitignore pattern matching the `.` relative path) would make the
++	// walker return filepath.SkipDir for the root and skip the entire scan,
++	// yielding zero results.
++	if relPath == "." {
++		return false
++	}
++
+ 	if w.gitignore != nil {
+ 		if w.gitignore.MatchesPath(relPath) {
+ 			return true
+diff --git a/internal/fsext/ignore_test.go b/internal/fsext/ignore_test.go
+index c2490a0..077f837 100644
+--- a/internal/fsext/ignore_test.go
++++ b/internal/fsext/ignore_test.go
+@@ -2,6 +2,7 @@ package fsext
+ 
+ import (
+ 	"os"
++	"path/filepath"
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/require"
+@@ -30,3 +31,48 @@ func TestCrushIgnore(t *testing.T) {
+ 	require.False(t, dl.shouldIgnore("test1.txt", nil), ".txt files should not be ignored")
+ 	require.True(t, dl.shouldIgnore("test3.tmp", nil), ".tmp files should be ignored by common patterns")
+ }
++
++// TestListDirectoryWithDotStarGitignore verifies that a `.*` gitignore pattern
++// only hides dotfiles and dot-directories, and does not cause the walk to skip
++// the root directory itself (which previously returned zero results).
++func TestListDirectoryWithDotStarGitignore(t *testing.T) {
++	tempDir := t.TempDir()
++
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "example.txt"), []byte("test"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "another.go"), []byte("test"), 0o644))
++	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, "subdir"), 0o755))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "subdir", "nested.txt"), []byte("test"), 0o644))
++	require.NoError(t, os.MkdirAll(filepath.Join(tempDir, ".hidden"), 0o755))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".hidden", "secret.txt"), []byte("test"), 0o644))
++
++	files, truncated, err := ListDirectory(tempDir, nil, 0)
++	require.NoError(t, err)
++	require.False(t, truncated)
++
++	require.Contains(t, files, filepath.Join(tempDir, "example.txt"))
++	require.Contains(t, files, filepath.Join(tempDir, "another.go"))
++	require.Contains(t, files, filepath.Join(tempDir, "subdir"))
++	require.Contains(t, files, filepath.Join(tempDir, "subdir", "nested.txt"))
++	require.NotContains(t, files, filepath.Join(tempDir, ".gitignore"))
++	require.NotContains(t, files, filepath.Join(tempDir, ".hidden"))
++	require.NotContains(t, files, filepath.Join(tempDir, ".hidden", "secret.txt"))
++}
++
++// TestGlobWithDoubleStarDotStarGitignore verifies the same behavior for the
++// gitignore-aware glob walker.
++func TestGlobWithDoubleStarDotStarGitignore(t *testing.T) {
++	tempDir := t.TempDir()
++
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, ".gitignore"), []byte(".*\n"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "example.txt"), []byte("test"), 0o644))
++	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "another.go"), []byte("test"), 0o644))
++
++	matches, truncated, err := GlobWithDoubleStar("**/*", tempDir, 0)
++	require.NoError(t, err)
++	require.False(t, truncated)
++
++	require.Contains(t, matches, filepath.Join(tempDir, "example.txt"))
++	require.Contains(t, matches, filepath.Join(tempDir, "another.go"))
++	require.NotContains(t, matches, filepath.Join(tempDir, ".gitignore"))
++}
+diff --git a/internal/fsext/ls.go b/internal/fsext/ls.go
+index e691c14..2358dca 100644
+--- a/internal/fsext/ls.go
++++ b/internal/fsext/ls.go
+@@ -130,6 +130,14 @@ func (dl *directoryLister) shouldIgnore(path string, ignorePatterns []string) bo
+ 		relPath = path
+ 	}
+ 
++	// The root directory itself is never ignored: matching it (for example a
++	// `.*` gitignore pattern matching the `.` relative path) would make the
++	// walker return filepath.SkipDir for the root and skip the entire scan,
++	// yielding zero results.
++	if relPath == "." {
++		return false
++	}
++
+ 	if commonIgnorePatterns().MatchesPath(relPath) {
+ 		slog.Debug("ingoring common pattern", "path", relPath)
+ 		return true

@@ -82,7 +82,7 @@ func TestJSONRendererForwardsContentFreeContextMetrics(t *testing.T) {
 		Progress: &stream.ProgressEvent{
 			Stage: "progressive_context_projection",
 			Metadata: map[string]any{
-				"projection_count": 2, "original_bytes": 9000,
+				"projection_sequence": 3, "projection_count": 2, "original_bytes": 9000,
 				"projected_bytes": 700, "bytes_saved": 8300,
 				"raw_result": "must-not-leak",
 			},
@@ -98,7 +98,7 @@ func TestJSONRendererForwardsContentFreeContextMetrics(t *testing.T) {
 	})
 	got := output.String()
 	for _, want := range []string{
-		`"metric":"context_projection"`, `"turn_count":7`, `"bytes_saved":8300`,
+		`"metric":"context_projection"`, `"turn_count":7`, `"projection_sequence":3`, `"bytes_saved":8300`,
 		`"metric":"context_compaction"`, `"turn_count":11`, `"boundary_id":"boundary-safe"`,
 	} {
 		if !strings.Contains(got, want) {
