@@ -150,8 +150,10 @@ func TestProgressiveProjectionAllowsCostPositivePressureBatchesBeforeMutation(t 
 	// More inspection may make a two-result top-up profitable after two older
 	// results age out of the protected working set.
 	more := append(messages,
-		progressiveToolUse("inspect-later", "Inspect"),
-		progressiveToolResult("inspect-later", progressiveInspectFixtureContent(8, 2_000)),
+		progressiveToolUse("inspect-later-1", "Inspect"),
+		progressiveToolResult("inspect-later-1", progressiveInspectFixtureContent(8, 2_000)),
+		progressiveToolUse("inspect-later-2", "Inspect"),
+		progressiveToolResult("inspect-later-2", progressiveInspectFixtureContent(9, 2_000)),
 		progressiveToolUse("next", "Inspect"),
 	)
 	second := ApplyProgressiveToolResultProjection(more, state, progressiveAdmission(true))
@@ -161,6 +163,164 @@ func TestProgressiveProjectionAllowsCostPositivePressureBatchesBeforeMutation(t 
 	third := ApplyProgressiveToolResultProjection(more, state, progressiveAdmission(true))
 	if third.Changed {
 		t.Fatalf("pressure projection changed the protected working set: %#v", third)
+	}
+}
+
+func TestProgressiveProjectionBenefitTriggerRewritesOnlyConsumedInvestigationResult(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(7)
+	messages = messages[:len(messages)-3]
+	admission := progressiveAdmission(false)
+	admission.BenefitTrigger = true
+	admission.RawRequestTokens = 100_000
+	admission.AutoCompactThreshold = 300_000
+	admission.PreviousCacheReadTokens = 0
+
+	got := ApplyProgressiveToolResultProjection(messages, NewContentReplacementState(), admission)
+	if !got.Changed || got.ProjectedTools != 1 || got.Trigger != "benefit_threshold" {
+		t.Fatalf("consumed investigation result was not rewritten: %#v", got)
+	}
+	if len(got.Records) != 1 || got.Records[0].ToolUseID != "inspect-5" {
+		t.Fatalf("benefit trigger did not select newest consumed result: %#v", got.Records)
+	}
+}
+
+func TestProgressiveProjectionBenefitTriggerStartsAfterConsumedMutation(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(7)
+	admission := progressiveAdmission(false)
+	admission.BenefitTrigger = true
+	admission.RawRequestTokens = 100_000
+	admission.AutoCompactThreshold = 300_000
+	admission.PreviousCacheReadTokens = 0
+
+	got := ApplyProgressiveToolResultProjection(messages, NewContentReplacementState(), admission)
+	if !got.Changed || got.Trigger != "benefit_threshold" || got.IndexedTools != 0 || got.RewrittenTools == 0 {
+		t.Fatalf("post-mutation benefit frontier = %#v", got)
+	}
+}
+
+func TestProgressiveProjectionBenefitTriggerIncludesResultsConsumedAfterMutation(t *testing.T) {
+	messages := append(progressiveInvestigationWithConsumedPatch(3),
+		progressiveToolResult("verify", "ok"),
+		progressiveToolUse("inspect-after-patch", "Inspect"),
+		progressiveToolResult("inspect-after-patch", progressiveInspectFixtureContent(9, 2_000)),
+		progressiveToolUse("next", "Inspect"),
+	)
+	admission := progressiveAdmission(false)
+	admission.BenefitTrigger = true
+	admission.RawRequestTokens = 100_000
+	admission.AutoCompactThreshold = 300_000
+	admission.PreviousCacheReadTokens = 0
+
+	got := ApplyProgressiveToolResultProjection(messages, NewContentReplacementState(), admission)
+	if !got.Changed || got.Trigger != "benefit_threshold" || len(got.Records) != 1 || got.Records[0].ToolUseID != "inspect-after-patch" {
+		t.Fatalf("latest consumed post-mutation result was not selected: %#v", got)
+	}
+}
+
+func TestProgressiveProjectionBenefitTriggerAllowsOnlyOneEarlyReset(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(7)
+	state := NewContentReplacementState()
+	benefit := progressiveAdmission(false)
+	benefit.BenefitTrigger = true
+	benefit.RawRequestTokens = 100_000
+	benefit.AutoCompactThreshold = 300_000
+	benefit.PreviousCacheReadTokens = 0
+	first := ApplyProgressiveToolResultProjection(messages, state, benefit)
+	if !first.Changed {
+		t.Fatalf("post-mutation frontier = %#v", first)
+	}
+
+	more := append(messages,
+		progressiveToolResult("verify", "ok"),
+		progressiveToolUse("inspect-later-1", "Inspect"),
+		progressiveToolResult("inspect-later-1", progressiveInspectFixtureContent(8, 2_000)),
+		progressiveToolUse("inspect-later-2", "Inspect"),
+		progressiveToolResult("inspect-later-2", progressiveInspectFixtureContent(9, 2_000)),
+		progressiveToolUse("next", "Inspect"),
+	)
+	got := ApplyProgressiveToolResultProjection(more, state, benefit)
+	if got.Changed || got.ProjectedTools != 0 || len(got.Records) != 0 {
+		t.Fatalf("second benefit reset was admitted: %#v", got)
+	}
+}
+
+func TestProgressiveProjectionBenefitTriggerDoesNotUseIndexFallback(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(7)
+	state := NewContentReplacementState()
+	firstAdmission := progressiveAdmission(false)
+	firstAdmission.BenefitTrigger = true
+	firstAdmission.RawRequestTokens = 100_000
+	firstAdmission.AutoCompactThreshold = 300_000
+	firstAdmission.PreviousCacheReadTokens = 0
+	if first := ApplyProgressiveToolResultProjection(messages, state, firstAdmission); !first.Changed {
+		t.Fatalf("post-mutation frontier = %#v", first)
+	}
+	messages = append(messages,
+		progressiveToolResult("verify", "ok"),
+		progressiveToolUse("inspect-later-1", "Inspect"),
+		progressiveToolResult("inspect-later-1", progressiveInspectFixtureContent(8, 2_000)),
+		progressiveToolUse("inspect-later-2", "Inspect"),
+		progressiveToolResult("inspect-later-2", progressiveInspectFixtureContent(9, 2_000)),
+		progressiveToolUse("next", "Inspect"),
+	)
+	admission := progressiveAdmission(false)
+	admission.BenefitTrigger = true
+	admission.RawRequestTokens = 200_000
+	admission.AutoCompactThreshold = 300_000
+	admission.PreviousCacheReadTokens = 190_000
+	admission.ReuseHorizon = 1
+
+	got := ApplyProgressiveToolResultProjection(messages, state, admission)
+	if got.Changed || got.IndexedTools != 0 || got.ProjectedTools != 0 {
+		t.Fatalf("ordinary benefit trigger used lossy fallback: %#v", got)
+	}
+}
+
+func TestProgressiveProjectionBenefitThresholdDoesNotRaisePressureThreshold(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(7)
+	admission := progressiveAdmission(true)
+	admission.BenefitTrigger = true
+	admission.MinTokenSavings = 2_000
+	admission.BenefitMinTokenSavings = 100_000
+	admission.RawRequestTokens = 100_000
+	admission.AutoCompactThreshold = 300_000
+	admission.PreviousCacheReadTokens = 0
+
+	got := ApplyProgressiveToolResultProjection(messages, NewContentReplacementState(), admission)
+	if !got.Changed || got.Trigger != "consumed_mutation" {
+		t.Fatalf("pressure fallback inherited benefit threshold: %#v", got)
+	}
+}
+
+func TestProgressiveProjectionBenefitTriggerAdvancesCacheFrontier(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(8)
+	state := NewContentReplacementState()
+	admission := progressiveAdmission(false)
+	admission.BenefitTrigger = true
+	admission.RawRequestTokens = 100_000
+	admission.AutoCompactThreshold = 300_000
+	admission.PreviousCacheReadTokens = 0
+
+	first := ApplyProgressiveToolResultProjection(messages, state, admission)
+	if !first.Changed || len(first.Records) != 1 {
+		t.Fatalf("first benefit projection = %#v", first)
+	}
+	firstID := first.Records[0].ToolUseID
+	more := append(messages,
+		progressiveToolResult("verify", "ok"),
+		progressiveToolUse("inspect-later-1", "Inspect"),
+		progressiveToolResult("inspect-later-1", progressiveInspectFixtureContent(9, 2_000)),
+		progressiveToolUse("inspect-later-2", "Inspect"),
+		progressiveToolResult("inspect-later-2", progressiveInspectFixtureContent(10, 2_000)),
+		progressiveToolUse("next", "Inspect"),
+	)
+	second := ApplyProgressiveToolResultProjection(more, state, admission)
+	if second.Changed {
+		for _, record := range second.Records {
+			if record.ToolUseID <= firstID {
+				t.Fatalf("cache frontier moved backward from %q to %q", firstID, record.ToolUseID)
+			}
+		}
 	}
 }
 
@@ -281,6 +441,48 @@ func TestProgressiveProjectionTokenCostGateAccountsForCacheBreak(t *testing.T) {
 	})
 }
 
+func TestProgressiveProjectionCostGatePreservesStableCachedPrefix(t *testing.T) {
+	admission := progressiveAdmission(false)
+	admission.BenefitTrigger = true
+	admission.RawRequestTokens = 100_000
+	admission.AutoCompactThreshold = 300_000
+	admission.PreviousCacheReadTokens = 80_000
+	result := ProgressiveProjectionResult{TokensSaved: 10_000, StablePrefixTokens: 75_000}
+
+	if decision := evaluateProgressiveProjectionAdmission(&result, admission); decision != ProgressiveDecisionKeepCost {
+		t.Fatalf("stable-prefix decision = %q, result = %#v", decision, result)
+	}
+	wantBreakCost := tokenCostUSD(5_000, admission.Pricing.InputPerMtok-admission.Pricing.CacheReadPerMtok) * float64(admission.CacheRecoveryRequests)
+	if result.InvalidatedCachedTokens != 5_000 || result.CacheBreakCostUSD != wantBreakCost || result.EstimatedNetSavingsUSD >= 0 {
+		t.Fatalf("stable-prefix accounting = %#v", result)
+	}
+
+	fullyStable := ProgressiveProjectionResult{TokensSaved: 10_000, StablePrefixTokens: 80_000}
+	if decision := evaluateProgressiveProjectionAdmission(&fullyStable, admission); decision != ProgressiveDecisionAdmittedNetSavings || fullyStable.InvalidatedCachedTokens != 0 {
+		t.Fatalf("fully stable prefix = decision %q result %#v", decision, fullyStable)
+	}
+
+	cold := ProgressiveProjectionResult{TokensSaved: 10_000}
+	if decision := evaluateProgressiveProjectionAdmission(&cold, admission); decision != ProgressiveDecisionKeepCost || cold.InvalidatedCachedTokens != 80_000 {
+		t.Fatalf("cold-prefix accounting = decision %q result %#v", decision, cold)
+	}
+}
+
+func TestProgressiveProjectionPressureDoesNotUseBenefitPrefixAccounting(t *testing.T) {
+	messages := progressiveInvestigationWithConsumedPatch(7)
+	admission := progressiveAdmission(true)
+	admission.RawRequestTokens = 200_000
+	admission.AutoCompactThreshold = 300_000
+	admission.PreviousCacheReadTokens = 190_000
+	admission.ReuseHorizon = 1
+	admission.StablePrefixTokens = func(int, string) int { return 180_000 }
+
+	got := ApplyProgressiveToolResultProjection(messages, NewContentReplacementState(), admission)
+	if got.Changed || got.StablePrefixTokens != 0 || got.Decision != ProgressiveDecisionKeepCost {
+		t.Fatalf("pressure path inherited benefit prefix accounting: %#v", got)
+	}
+}
+
 func TestProgressiveProjectionDeepSeekCounterfactualDoesNotChangeDefaultGate(t *testing.T) {
 	base := ProgressiveProjectionAdmission{
 		Enabled: true, Counter: progressiveTokenCounter{},
@@ -322,12 +524,12 @@ func TestProgressivePressureBatchSelectsMinimumCostPositivePrefix(t *testing.T) 
 	admission.RawRequestTokens = 100_000
 	admission.AutoCompactThreshold = 88_000
 	admission.PreviousCacheReadTokens = 10_000
-	got := selectProgressivePressureBatch(candidates, admission)
+	got := selectProgressiveMinimumBatch(candidates, admission, true)
 	if len(got) != 4 {
 		t.Fatalf("selected %d candidates, want smallest four-result cost-positive threshold crossing", len(got))
 	}
 	admission.AutoCompactThreshold = 70_000
-	got = selectProgressivePressureBatch(candidates, admission)
+	got = selectProgressiveMinimumBatch(candidates, admission, true)
 	if len(got) != len(candidates) {
 		t.Fatalf("selected %d candidates, want all %d for rejection telemetry", len(got), len(candidates))
 	}
@@ -345,7 +547,7 @@ func TestProgressivePressureBatchFallsBackToOldestIndexes(t *testing.T) {
 	admission.RawRequestTokens = 100_000
 	admission.AutoCompactThreshold = 88_000
 	admission.PreviousCacheReadTokens = 10_000
-	got := selectProgressivePressureBatch(candidates, admission)
+	got := selectProgressiveMinimumBatch(candidates, admission, true)
 	if len(got) != 4 {
 		t.Fatalf("selected %d candidates, want full rich prefix before indexing", len(got))
 	}

@@ -48,7 +48,9 @@ type ProgressiveProjectionAdmission struct {
 	Enabled                    bool
 	Shadow                     bool
 	Pressure                   bool
+	BenefitTrigger             bool
 	Counter                    TokenCounter
+	StablePrefixTokens         func(messageIndex int, toolUseID string) int
 	RawRequestTokens           int
 	RawRequestEstimateKnown    bool
 	AutoCompactThreshold       int
@@ -56,6 +58,7 @@ type ProgressiveProjectionAdmission struct {
 	PreviousUsageKnown         bool
 	Pricing                    ProgressiveTokenPricing
 	MinTokenSavings            int
+	BenefitMinTokenSavings     int
 	ReuseHorizon               int
 	CacheRecoveryRequests      int
 	ImminentCompactResetsCache bool
@@ -84,6 +87,8 @@ type ProgressiveProjectionResult struct {
 	ProjectedTokens            int
 	TokensSaved                int
 	ProjectedRequestTokens     int
+	StablePrefixTokens         int
+	InvalidatedCachedTokens    int
 	RawRequestTokens           int
 	CacheBreakCostUSD          float64
 	GrossCacheBreakCostUSD     float64
@@ -112,13 +117,14 @@ type progressiveInspectCandidate struct {
 	originalTokens  int
 	projectedTokens int
 	indexedTokens   int
+	messageIndex    int
 }
 
 // ApplyProgressiveToolResultProjection performs a conservative phase-boundary
-// projection. Investigation results remain lossless while the model is still
-// deciding what to change. Once a successful ApplyPatch result has itself been
-// consumed by a later assistant decision, older Inspect results may be frozen
-// as deterministic proofs, while the most recent source reads remain intact.
+// projection. Every result remains lossless until a later assistant decision
+// has consumed it. The benefit path may then freeze a cache-safe newest suffix
+// as deterministic proofs; context pressure and a consumed mutation remain the
+// fallback boundaries, while the current unconsumed result stays intact.
 //
 // The production default admits only Inspect. Reviewed Run and ApplyPatch
 // rewrites remain available behind the per-tool allowlist for measurement;
@@ -135,6 +141,25 @@ func ApplyProgressiveToolResultProjection(messages []types.Message, state *Conte
 	if state.Replacements == nil {
 		state.Replacements = make(map[string]string)
 	}
+	if admission.BenefitTrigger && admission.Pressure {
+		// Evaluate the quality-preserving rich-rewrite path first. Actual context
+		// pressure is only a fallback for a batch that cannot yet pass the ordinary
+		// benefit gate; it must not eagerly reduce the protected working set or
+		// select indexes when a profitable rich rewrite already exists.
+		benefitAdmission := admission
+		benefitAdmission.Pressure = false
+		benefitAdmission.MinTokenSavings = progressiveBenefitMinTokenSavings(admission)
+		benefit := ApplyProgressiveToolResultProjection(messages, state, benefitAdmission)
+		if benefit.Changed || benefit.Shadow {
+			return benefit
+		}
+		pressureAdmission := admission
+		pressureAdmission.BenefitTrigger = false
+		return ApplyProgressiveToolResultProjection(messages, state, pressureAdmission)
+	}
+	if admission.BenefitTrigger {
+		admission.MinTokenSavings = progressiveBenefitMinTokenSavings(admission)
+	}
 
 	latestAssistant := latestAssistantMessageIndex(messages)
 	if latestAssistant <= 0 {
@@ -146,28 +171,54 @@ func ApplyProgressiveToolResultProjection(messages []types.Message, state *Conte
 	if mutationFound && !mutationSucceeded {
 		return result
 	}
+	if admission.BenefitTrigger && !admission.Pressure && countFrozenProgressiveInspects(messages, state, toolNames, latestAssistant) > 0 {
+		// One early reset is the session's benefit-trigger budget. Real GPT traces
+		// showed that repeated profitable-looking top-ups can still amplify turns
+		// because each replacement resets Responses continuation state. After the
+		// first benefit projection, preserve cache recovery and let only the
+		// established context-pressure path perform another projection.
+		return result
+	}
 	if !mutationFound {
 		if admission.RequireConsumedMutation {
 			return result
 		}
-		if !admission.Pressure {
+		frozen := countFrozenProgressiveInspects(messages, state, toolNames, latestAssistant)
+		if !admission.Pressure && !admission.BenefitTrigger {
 			return result
 		}
-		// A long investigation can hit semantic compaction before its first
-		// mutation. Permit a pressure projection whenever enough source reads
-		// have aged out of the protected set. The token/cost and session gates,
-		// rather than an arbitrary result-count cap, bound each cache break.
-		frozen := countFrozenProgressiveInspects(messages, state, toolNames, latestAssistant)
 		projectionBoundary = latestAssistant
-		if frozen == 0 {
-			trigger = "working_set_pressure"
-		} else {
-			trigger = "working_set_pressure_top_up"
+		if admission.Pressure {
+			// A long investigation can hit semantic compaction before its first
+			// mutation. Permit a pressure projection whenever enough source reads
+			// have aged out of the protected set. The token/cost and session gates,
+			// rather than an arbitrary result-count cap, bound each cache break.
+			if frozen == 0 {
+				trigger = "working_set_pressure"
+			} else {
+				trigger = "working_set_pressure_top_up"
+			}
+		} else if frozen == 0 {
+			trigger = "benefit_threshold"
 		}
+	} else if admission.BenefitTrigger && !admission.Pressure {
+		// A successful mutation is a quality boundary, not a reason to stop
+		// measuring newer results that the latest assistant has also consumed.
+		// Use the same latest-consumed frontier as the pre-mutation benefit path;
+		// the newest-suffix selector and cache gate decide what can be changed.
+		projectionBoundary = latestAssistant
+		trigger = "benefit_threshold"
 	}
 
 	var candidates []progressiveInspectCandidate
+	benefitFrontier := -1
+	if admission.BenefitTrigger && !admission.Pressure {
+		benefitFrontier = latestFrozenProgressiveMessageIndex(messages, state, projectionBoundary)
+	}
 	for messageIndex := 0; messageIndex < projectionBoundary; messageIndex++ {
+		if messageIndex <= benefitFrontier {
+			continue
+		}
 		if effectiveCompactionRole(messages[messageIndex]) != types.RoleUser {
 			continue
 		}
@@ -192,11 +243,12 @@ func ApplyProgressiveToolResultProjection(messages []types.Message, state *Conte
 				continue
 			}
 			candidate := progressiveInspectCandidate{
-				toolUseID: toolResult.ToolUseID,
-				toolName:  toolName,
-				original:  original,
-				projected: projection,
-				indexed:   index,
+				toolUseID:    toolResult.ToolUseID,
+				toolName:     toolName,
+				original:     original,
+				projected:    projection,
+				indexed:      index,
+				messageIndex: messageIndex,
 			}
 			if admission.Counter != nil {
 				candidate.originalTokens = admission.Counter.Count(original)
@@ -209,11 +261,18 @@ func ApplyProgressiveToolResultProjection(messages []types.Message, state *Conte
 		}
 	}
 	protectedInspectResults := progressiveProtectedInspectResults
-	if strings.HasPrefix(trigger, "working_set_pressure") {
+	if strings.HasPrefix(trigger, "benefit_threshold") {
+		// The current unconsumed result is already outside projectionBoundary.
+		// A benefit trigger may rewrite the most recent result the model has
+		// actually consumed. Selecting that newest suffix moves the first changed
+		// byte as far right as possible while preserving one full live result for
+		// the next decision.
+		protectedInspectResults = 0
+	} else if strings.HasPrefix(trigger, "working_set_pressure") {
 		// Under actual context pressure, retain the newest source result in full
-		// and allow older results to fall back to recoverable indexes. Keeping two
-		// full reads made the only batch capable of avoiding immediate semantic
-		// compaction remain cache-negative in the measured 60k trace.
+		// and allow older pressure results to fall back to recoverable indexes. A
+		// top-up also has the current unconsumed result outside the boundary, so one
+		// additional lossless result keeps a two-result live working set.
 		protectedInspectResults = 1
 	}
 	candidates = filterProtectedProgressiveResults(candidates, protectedInspectResults)
@@ -223,8 +282,8 @@ func ApplyProgressiveToolResultProjection(messages []types.Message, state *Conte
 	if admission.RemainingTools > 0 && len(candidates) > admission.RemainingTools {
 		candidates = candidates[:admission.RemainingTools]
 	}
-	if admission.Pressure {
-		candidates = selectProgressivePressureBatch(candidates, admission)
+	if admission.Pressure || admission.BenefitTrigger {
+		candidates = selectProgressiveMinimumBatch(candidates, admission, admission.Pressure)
 	}
 	if len(candidates) == 0 {
 		result.Decision = ProgressiveDecisionKeepSessionBudget
@@ -232,6 +291,9 @@ func ApplyProgressiveToolResultProjection(messages []types.Message, state *Conte
 	}
 	result.Trigger = trigger
 	result.ProjectedTools = len(candidates)
+	if admission.BenefitTrigger && !admission.Pressure && admission.StablePrefixTokens != nil {
+		result.StablePrefixTokens = max(admission.StablePrefixTokens(candidates[0].messageIndex, candidates[0].toolUseID), 0)
+	}
 
 	for _, candidate := range candidates {
 		if candidate.indexed != "" && candidate.projected == candidate.indexed {
@@ -275,6 +337,13 @@ func ApplyProgressiveToolResultProjection(messages []types.Message, state *Conte
 	result.Messages = replaceToolResultContents(messages, replacements)
 	result.Changed = true
 	return result
+}
+
+func progressiveBenefitMinTokenSavings(admission ProgressiveProjectionAdmission) int {
+	if admission.BenefitMinTokenSavings > 0 {
+		return admission.BenefitMinTokenSavings
+	}
+	return admission.MinTokenSavings
 }
 
 // PendingProgressiveToolResultProjection measures candidates that have crossed
@@ -321,19 +390,42 @@ func restoreProgressiveReplacementMaps(state *ContentReplacementState, seen map[
 	state.Replacements = replacements
 }
 
-// selectProgressivePressureBatch chooses the smallest deterministic prefix
-// that the complete token/cost gate would admit. Crossing the semantic-
-// compaction threshold is necessary but not sufficient: when a smaller prefix
-// would still lose money after invalidating the cache, selection continues
-// until the cache-break cost is repaid. If no prefix is admissible, returning
-// the largest budgeted prefix preserves useful rejection telemetry.
-func selectProgressivePressureBatch(candidates []progressiveInspectCandidate, admission ProgressiveProjectionAdmission) []progressiveInspectCandidate {
+// selectProgressiveMinimumBatch chooses the smallest deterministic rich-
+// rewrite batch admitted by the complete token/cost gate. Index fallback is
+// deliberately available only under actual context pressure: an ordinary
+// benefit trigger changes timing, not retained evidence quality. If no prefix
+// is admissible, the largest budgeted prefix preserves rejection telemetry.
+func selectProgressiveMinimumBatch(candidates []progressiveInspectCandidate, admission ProgressiveProjectionAdmission, allowIndexFallback bool) []progressiveInspectCandidate {
 	limit := len(candidates)
 	if admission.RemainingTools > 0 {
 		limit = min(limit, admission.RemainingTools)
 	}
 	if limit == 0 {
 		return nil
+	}
+	if !allowIndexFallback {
+		// Prefer the newest result outside the protected working set. It is still
+		// old enough to be safe, but moves the first changed byte furthest right,
+		// maximizing the provider-cache prefix preserved by an early rewrite.
+		for start := limit - 1; start >= 0; start-- {
+			probe := ProgressiveProjectionResult{}
+			if admission.StablePrefixTokens != nil {
+				probe.StablePrefixTokens = max(admission.StablePrefixTokens(candidates[start].messageIndex, candidates[start].toolUseID), 0)
+			}
+			for index := start; index < limit; index++ {
+				probe.OriginalTokens += candidates[index].originalTokens
+				probe.ProjectedTokens += candidates[index].projectedTokens
+			}
+			probe.TokensSaved = probe.OriginalTokens - probe.ProjectedTokens
+			if admission.RemainingProjectedTokens > 0 && probe.ProjectedTokens > admission.RemainingProjectedTokens {
+				continue
+			}
+			decision := evaluateProgressiveProjectionAdmission(&probe, admission)
+			if decision == ProgressiveDecisionAdmittedAvoidCompact || decision == ProgressiveDecisionAdmittedNetSavings {
+				return candidates[start:limit]
+			}
+		}
+		return candidates[:limit]
 	}
 	probe := ProgressiveProjectionResult{}
 	for index := 0; index < limit; index++ {
@@ -489,13 +581,36 @@ func evaluateProgressiveProjectionAdmission(result *ProgressiveProjectionResult,
 	baselineCost := tokenCostUSD(cacheRead, admission.Pricing.CacheReadPerMtok) +
 		tokenCostUSD(uncachedRaw, admission.Pricing.InputPerMtok)
 	// Rewriting an old result invalidates continuation and every cache block
-	// after the first changed byte. Treat the whole projected request as cold;
-	// this intentionally overstates the cache-break penalty.
-	projectedColdCost := tokenCostUSD(result.ProjectedRequestTokens, admission.Pricing.InputPerMtok)
+	// after the first changed byte, but the exact prefix before that result is
+	// unchanged. Charge only the provider-reported cached suffix after that
+	// boundary; a missing prefix estimate deliberately falls back to fully cold.
+	stableCacheRead := min(cacheRead, max(result.StablePrefixTokens, 0))
+	result.InvalidatedCachedTokens = max(cacheRead-stableCacheRead, 0)
 	cacheRecoveryRequests := max(admission.CacheRecoveryRequests, 1)
-	result.GrossCacheBreakCostUSD = max(projectedColdCost-baselineCost, 0) * float64(cacheRecoveryRequests)
+	currentSavings := 0.0
+	if admission.BenefitTrigger {
+		// Recomputing the cached suffix is a real cache-break charge even when the
+		// rewritten request is smaller enough to make this one request cheaper in
+		// total. Charging only max(projected-baseline, 0) hid that disruption and
+		// admitted repeated continuation resets. Account for the invalidated suffix
+		// directly, then credit current/future token removal separately below.
+		cacheReadPremium := max(admission.Pricing.InputPerMtok-admission.Pricing.CacheReadPerMtok, 0)
+		result.GrossCacheBreakCostUSD = tokenCostUSD(result.InvalidatedCachedTokens, cacheReadPremium) * float64(cacheRecoveryRequests)
+		if result.InvalidatedCachedTokens > 0 {
+			result.CacheBreakCostUSD = result.GrossCacheBreakCostUSD
+			result.EstimatedNetSavingsUSD = -result.CacheBreakCostUSD
+			return ProgressiveDecisionKeepCost
+		}
+		currentTokenSavings := tokenCostUSD(min(result.TokensSaved, uncachedRaw), admission.Pricing.InputPerMtok) +
+			tokenCostUSD(max(result.TokensSaved-uncachedRaw, 0), admission.Pricing.CacheReadPerMtok)
+		currentSavings = min(currentTokenSavings, max(baselineCost, 0))
+	} else {
+		projectedCost := tokenCostUSD(stableCacheRead, admission.Pricing.CacheReadPerMtok) +
+			tokenCostUSD(max(result.ProjectedRequestTokens-stableCacheRead, 0), admission.Pricing.InputPerMtok)
+		result.GrossCacheBreakCostUSD = max(projectedCost-baselineCost, 0) * float64(cacheRecoveryRequests)
+		currentSavings = max(baselineCost-projectedCost, 0)
+	}
 	result.CacheBreakCostUSD = result.GrossCacheBreakCostUSD
-	currentSavings := max(baselineCost-projectedColdCost, 0)
 	futureSavings := tokenCostUSD(result.TokensSaved*max(admission.ReuseHorizon, 0), admission.Pricing.CacheReadPerMtok)
 	directNetSavings := currentSavings + futureSavings - result.CacheBreakCostUSD
 
@@ -582,6 +697,27 @@ func countFrozenProgressiveInspects(messages []types.Message, state *ContentRepl
 		}
 	}
 	return count
+}
+
+func latestFrozenProgressiveMessageIndex(messages []types.Message, state *ContentReplacementState, before int) int {
+	if state == nil {
+		return -1
+	}
+	for messageIndex := min(before, len(messages)) - 1; messageIndex >= 0; messageIndex-- {
+		if effectiveCompactionRole(messages[messageIndex]) != types.RoleUser {
+			continue
+		}
+		for _, block := range messages[messageIndex].Content {
+			result, ok := block.(types.ToolResultBlock)
+			if !ok {
+				continue
+			}
+			if replacement, frozen := state.Replacements[result.ToolUseID]; frozen && strings.Contains(replacement, compactproof.SchemaVersion) {
+				return messageIndex
+			}
+		}
+	}
+	return -1
 }
 
 // ProgressiveProjectionBudgetUsage reconstructs the session budget from the

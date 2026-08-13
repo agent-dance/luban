@@ -1,0 +1,150 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "luban",
+  "model": "gpt-5.6-sol",
+  "reasoning_effort": "xhigh",
+  "started_at": "2026-08-13T10:12:48.245034+00:00",
+  "elapsed_seconds": 234.372,
+  "timeout_seconds": 900,
+  "timed_out": false,
+  "exit_code": 0,
+  "usage": {
+    "input_tokens": 427178,
+    "cached_input_tokens": 374784,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 10828,
+    "reasoning_output_tokens": 3577
+  },
+  "estimated_cost_usd": 0.774202,
+  "usage_source": "provider_responses",
+  "stream_event_usage": {
+    "input_tokens": 427178,
+    "cached_input_tokens": 374784,
+    "cache_creation_input_tokens": 0,
+    "output_tokens": 10828
+  },
+  "context_metrics": {
+    "agent_turns": 14,
+    "compaction_turns": [],
+    "first_compaction_turn": null,
+    "projection_turns": [
+      13,
+      14
+    ],
+    "projection_batches": [
+      {
+        "turn": 13,
+        "trigger": "consumed_mutation",
+        "applied": false,
+        "projected_tools": 7,
+        "rewritten_tools": 7,
+        "indexed_tools": 0,
+        "original_bytes": 88709,
+        "projected_bytes": 29023,
+        "bytes_saved": 59686,
+        "original_tokens": 32938,
+        "projected_tokens": 10774,
+        "tokens_saved": 22164,
+        "decision": "keep_cost",
+        "request_tokens_before": 45103,
+        "request_tokens_after": 22939,
+        "stable_prefix_tokens": 0,
+        "invalidated_cached_tokens": 43520,
+        "cache_break_cost_usd": 0.17004000000000002,
+        "gross_cache_break_cost_usd": 0.17004000000000002,
+        "avoided_compact_input_cost_usd": 0.0,
+        "estimated_net_savings_usd": -0.13679400000000003,
+        "avoids_immediate_compaction": false
+      },
+      {
+        "turn": 14,
+        "trigger": "consumed_mutation",
+        "applied": false,
+        "projected_tools": 7,
+        "rewritten_tools": 7,
+        "indexed_tools": 0,
+        "original_bytes": 88709,
+        "projected_bytes": 29023,
+        "bytes_saved": 59686,
+        "original_tokens": 32794,
+        "projected_tokens": 10727,
+        "tokens_saved": 22067,
+        "decision": "keep_cost",
+        "request_tokens_before": 48138,
+        "request_tokens_after": 26071,
+        "stable_prefix_tokens": 0,
+        "invalidated_cached_tokens": 44544,
+        "cache_break_cost_usd": 0.180226,
+        "gross_cache_break_cost_usd": 0.180226,
+        "avoided_compact_input_cost_usd": 0.0,
+        "estimated_net_savings_usd": -0.1471255,
+        "avoids_immediate_compaction": false
+      }
+    ],
+    "projected_tools": 0,
+    "rewritten_tools": 0,
+    "indexed_tools": 0,
+    "candidate_tools": 14,
+    "candidate_tokens_saved": 44231,
+    "original_bytes": 0,
+    "projected_bytes": 0,
+    "bytes_saved": 0,
+    "original_tokens": 0,
+    "projected_tokens": 0,
+    "tokens_saved": 0,
+    "estimated_net_savings_usd": 0.0,
+    "context_update_proposals": 0,
+    "context_update_runtime_candidates": 0,
+    "context_update_actions": {},
+    "context_update_reason_codes": {}
+  },
+  "served_models": [
+    "gpt-5.6-sol"
+  ],
+  "experiment": {
+    "max_context_tokens": 100000,
+    "progressive_context_compaction": true,
+    "context_update_shadow": false,
+    "progressive_tools": [
+      "Inspect"
+    ],
+    "progressive_imminent_compact_counterfactual": false,
+    "progressive_auto_compact_keep_recent": null,
+    "progressive_auto_compact_max_growth_tokens": null,
+    "progressive_auto_compact_min_threshold_percent": null,
+    "progressive_require_consumed_mutation": false,
+    "progressive_benefit_trigger": false,
+    "progressive_benefit_min_token_savings": null,
+    "progressive_min_token_savings": 2000,
+    "progressive_flatten_compact_input": false,
+    "progressive_concise_compact_summary": false,
+    "progressive_compact_max_output_tokens": null,
+    "pinned_model_capability_required": true,
+    "service_tier": "default_implicit"
+  },
+  "tool_events": 13,
+  "tool_events_by_type": {
+    "Inspect": 11,
+    "ApplyPatch": 1,
+    "Run": 1
+  },
+  "patch": {
+    "files_changed": 2,
+    "files": [
+      "internal/plugins/ai/codex/codex.go",
+      "internal/plugins/ai/codex/codex_test.go"
+    ],
+    "additions": 79,
+    "deletions": 4
+  },
+  "llm_calls": 14,
+  "llm_successful_calls": 14,
+  "llm_failed_calls": 0,
+  "provider_request_seconds": 233.570607,
+  "binary": {
+    "name": "luban",
+    "sha256": "4e1636a62beae78e27de2eadbb3845c07520576ed714a9418a3e61b814dc130b"
+  },
+  "evidence_root": "raw/runs/danielmiessler__Fabric-2098/luban"
+}

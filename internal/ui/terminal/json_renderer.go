@@ -188,7 +188,8 @@ func (r *JSONRenderer) RenderProgressiveContextMetrics(ctx presentation.ToolEven
 		"original_bytes", "projected_bytes", "bytes_saved",
 		"original_tokens", "projected_tokens", "tokens_saved",
 		"request_tokens_before", "request_tokens_after",
-		"cache_break_cost_usd", "avoided_compact_input_cost_usd",
+		"stable_prefix_tokens", "invalidated_cached_tokens",
+		"cache_break_cost_usd", "gross_cache_break_cost_usd", "avoided_compact_input_cost_usd",
 		"estimated_net_savings_usd", "avoids_immediate_compaction",
 	} {
 		if value, ok := progress.Metadata[key]; ok {

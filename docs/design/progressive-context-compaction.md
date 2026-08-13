@@ -1,7 +1,7 @@
 # 渐进式上下文压缩
 
 状态：生产可用；`openai/gpt-5.6-sol*` 与 `deepseek/deepseek-v4-flash*` 经真实评测后按 provider/model 成对默认 100% 开启，工具策略仅开放 `Inspect`
-更新：2026-08-11
+更新：2026-08-13
 
 ## 1. 目标与非目标
 
@@ -18,16 +18,17 @@
 
 ## 2. 核心不变量
 
-1. 结果至少被一次后续 assistant 决策完整消费后才有资格投影。
+1. 结果至少被一次后续 assistant 决策完整消费后才有资格投影；当前尚未消费的结果永远保留全文。
 2. 持久化会话保留原始结果；投影只改变 provider-bound view。
 3. `tool_use_id` 的 replacement 一旦提交便字节稳定，不在后续轮次重复改写缓存前缀。
 4. 未知工具、非法结构、媒体、persisted output、失败/取消/超时、缺 proof 和 mutation 失败全部 `KEEP`。
-5. 普通 mutation 边界保留最近 2 个 `Inspect` 全文；真实 context pressure 下保留最近 1 个全文并把更早结果降为可恢复 `INDEX`。最近 2 个 `Run`、1 个 `ApplyPatch` 始终保留全文。
+5. OpenAI 的普通收益触发只选最新的安全后缀并使用丰富 `REWRITE`；真实 context pressure 下保留最近 1 个已消费结果全文并可把更早结果降为可恢复 `INDEX`。最近 2 个 `Run`、1 个 `ApplyPatch` 始终保留全文。
 6. replacement 保留原文 SHA-256、原始大小、typed `agentic-proof/v2` 以及该工具恢复所需的事实。
 7. 只有 token/cost gate 判断净值为正的原子批次才能提交；byte 只作为观测指标。
-8. 投影提交后使 Responses continuation 失效，但保持稳定的 cache lineage；同一冻结 replacement 后续不再变化。
-9. semantic compact 仍是压力兜底。渐进投影异常会回滚，连续 3 次异常后本 session 自动熔断。
-10. resume、fork 和进程重启从私有 replacement records 重建完全相同的 provider view 与 session 预算。
+8. 普通收益触发不得改写上一请求已命中的缓存后缀，并且每个 session 最多触发一次；压力兜底不受这个次数限制。
+9. 投影提交后使 Responses continuation 失效，但保持稳定的 cache lineage；同一冻结 replacement 后续不再变化。
+10. semantic compact 仍是压力兜底。渐进投影异常会回滚，连续 3 次异常后本 session 自动熔断。
+11. resume、fork 和进程重启从私有 replacement records 重建完全相同的 provider view 与 session 预算。
 
 ## 3. 数据与恢复模型
 
@@ -68,6 +69,7 @@ P_next_est = max(0, P_prev + L_next - L_prev)
 
 ```text
 min_token_savings        = 2,000
+benefit_min_token_savings = 6,000（OpenAI 生产收益触发）
 reuse_horizon            = 3 requests
 cache_recovery_requests  = 2
 min_net_savings_usd      = 0
@@ -77,7 +79,22 @@ max_consecutive_anomaly  = 3
 protected_working_set    = Inspect 2（pressure 时 1）, Run 2, ApplyPatch 1
 ```
 
-若原始请求已经超过 semantic compact threshold，批次必须把预计请求降回阈值以内；否则拒绝，不能先破坏缓存再立刻做整段 compact。此时使用保守收益：
+普通收益触发先定位候选中最靠后的第一处改写，并估算该位置之前的稳定请求前缀。若上一请求的 `cache_read` 已越过改写位置，则说明提交会让已命中的缓存后缀失效，直接拒绝：
+
+```text
+stable_cached            = min(previous_cache_read, stable_prefix)
+invalidated_cached       = previous_cache_read - stable_cached
+gross_cache_break_cost   = invalidated_cached
+                         * (input_price - cached_input_price)
+                         * cache_recovery_requests
+admit_benefit            = invalidated_cached == 0
+                         && saved_tokens >= 6,000
+                         && current_savings + future_savings >= min_net_savings
+```
+
+因此普通收益触发不是用估计美元收益交换一个已知缓存断点；只有改写位置尚未进入缓存命中前缀时才可能提交。收益门槛使用 Luban 现有模型价格和 provider usage 校准，不依赖 byte。
+
+若原始请求已经超过 semantic compact threshold，压力批次必须把预计请求降回阈值以内；否则拒绝，不能先破坏缓存再立刻做整段 compact。压力路径沿用保守收益：
 
 ```text
 cache_break_cost = 2 * max(projected_cold_input_cost - current_mixed_cache_cost, 0)
@@ -88,17 +105,18 @@ direct_net       = current_request_savings
 
 仅推迟 semantic compact 不计美元收益，因为任务可能在数轮后再次跨过阈值。无论是否降回阈值，replacement 自身在 `reuse_horizon` 内的直接 token 收益都必须偿还两个冷请求的缓存恢复成本并达到 `min_net_savings_usd`。
 
-选择器先寻找能够通过同一 gate 的最小确定性 `REWRITE` 前缀；如果完整可用前缀仍不足以避免 compact，才从最老结果开始逐个降级到 `INDEX`。最近工作集不会进入候选集。
+普通收益选择器从最新候选向前扩展，寻找通过 gate 的最小安全后缀，使第一处变化尽量靠后；它只使用确定性 `REWRITE`。压力选择器仍先寻找最小确定性 `REWRITE` 前缀；如果完整可用前缀仍不足以避免 compact，才从最老结果开始逐个降级到 `INDEX`。
 
 ## 5. 缓存策略
 
 每次工具调用都做价值评估，但不意味着每次都提交压缩。逐结果提交会反复改变历史中部、清空 continuation，并让短结果的 token 节省无法偿还缓存断点。生产路径采用：
 
 1. 结果完整消费一次；
-2. 在 mutation boundary 或接近 compact 的压力水位批量评估；
-3. 只提交最小成本为正的原子批次；
-4. replacement 冻结，后续请求保持稳定前缀；
-5. session 预算阻止频繁 top-up。
+2. OpenAI 一旦安全候选累计节省达到 6,000 token，立即尝试最新安全后缀，不等待 mutation 或压力水位；
+3. 若改写位置会破坏任何已命中 cached suffix，则继续等待，不提交；
+4. 普通收益路径每 session 最多一次 continuation reset，replacement 冻结后不再 top-up；
+5. mutation boundary 与接近 compact 的压力路径继续作为兜底；
+6. session 工具/token 预算阻止压力路径无限累积。
 
 压力 gate 在 semantic threshold 前 8,000 token 打开，提供约两个普通 coding turns 的处理余量。只有真正提交时才推进 continuation epoch；KEEP/shadow 不改 provider lineage。
 
@@ -165,6 +183,9 @@ Agentic V2 catalog 可稳定增加第四个 `ContextUpdate` schema。v1 使用 o
     ],
     "toolAllowlist": ["Inspect"],
     "imminentCompactProviderAllowlist": ["deepseek"],
+    "benefitTrigger": true,
+    "benefitTriggerProviderAllowlist": ["openai"],
+    "benefitMinTokenSavings": 6000,
     "autoCompactKeepRecent": 1,
     "autoCompactMaxGrowthTokens": 4000,
     "autoCompactMinThresholdPercent": 100,
@@ -185,7 +206,7 @@ Agentic V2 catalog 可稳定增加第四个 `ContextUpdate` schema。v1 使用 o
 
 rollout assignment 使用稳定 session FNV hash，resume/fork/restart 不漂移。provider 精确匹配，model 采用显式前缀匹配以覆盖已审阅 family 的 dated revision；生产策略再用 `providerModelAllowlist` 对已审阅组合成对约束，避免独立 allowlist 形成未验证的交叉组合。动态环境变量 `LUBAN_PROGRESSIVE_CONTEXT_COMPACTION_KILL_SWITCH=1` 可在不重启配置系统的情况下立即阻止新投影；已冻结 replacement 仍可确定性重放。
 
-新工具/模型/provider 的阶段建议：shadow → 1% → 5% → 25% → 100%。`openai/gpt-5.6-sol*` 的 Inspect 投影，以及 `deepseek/deepseek-v4-flash*` 的 token 校准、质量 guard 与 semantic compact 策略均已通过冻结质量 gate 和真实 A/B，进入生产默认 100%；显式设置仍可关闭。DeepSeek 的专属 compact 参数只有在 enabled、kill switch、stable rollout、成对 scope 和 provider allowlist 全部通过时才生效，关闭 progressive 会完整恢复 legacy compactor。任一 scope 出现质量失败率上升、provider failures、新增 semantic compact、实际费用/输入系统性回归或 anomaly 熔断异常，立即 kill switch 并保留原始历史恢复。
+新工具/模型/provider 的阶段建议：shadow → 1% → 5% → 25% → 100%。`openai/gpt-5.6-sol*` 的 Inspect 投影和 6K 提前收益触发，以及 `deepseek/deepseek-v4-flash*` 的 token 校准、质量 guard 与 semantic compact 策略均已通过冻结质量 gate 和真实 A/B，进入生产默认 100%；显式设置仍可关闭。提前收益触发只在 OpenAI provider scope 生效，不改变 DeepSeek 的已验证路径。DeepSeek 的专属 compact 参数只有在 enabled、kill switch、stable rollout、成对 scope 和 provider allowlist 全部通过时才生效，关闭 progressive 会完整恢复 legacy compactor。任一 scope 出现质量失败率上升、provider failures、新增 semantic compact、实际费用/输入系统性回归或 anomaly 熔断异常，立即 kill switch 并保留原始历史恢复。
 
 ## 9. 验证矩阵
 
@@ -215,9 +236,9 @@ rollout assignment 使用稳定 session FNV hash，resume/fork/restart 不漂移
 - 候选批次数/候选 token 节省；
 - 真正 `applied=true` 的工具数、REWRITE/INDEX 数、token/byte 节省；
 - 每批 gate 前后 token、cache-break cost、avoided-compact 下界和估计净收益；
-- 按官方固定价重算的实际 USD。
+- 按 Luban 现有价格表重算的实际 USD。
 
-固定 `gpt-5.6-sol` 标准价格为 input `$5/M`、cached input `$0.5/M`、output `$30/M`，cache write 为 uncached input 的 1.25 倍。来源：[OpenAI GPT-5.6 Sol model page](https://developers.openai.com/api/docs/models/gpt-5.6-sol)。
+本轮直接固定 Luban benchmark/cost catalog 已有的 `gpt-5.6-sol` 价格：input `$5/M`、cached input `$0.5/M`、output `$30/M`，cache write `$6.25/M`。
 
 实际总费用：
 
@@ -246,3 +267,4 @@ cost = uncached * $5/M
 - [逐工具真实评测](../reports/progressive-context-compaction-tools-2026-08-11.md)
 - [全面应用与发布报告](../reports/progressive-context-compaction-rollout-2026-08-11.md)
 - [DeepSeek V4 Flash 真实 A/B 与优化报告](../reports/progressive-context-compaction-deepseek-v4-flash-2026-08-11.md)
+- [6K 提前收益触发真实 A/B 与方案收敛报告](../reports/progressive-context-compaction-benefit-trigger-2026-08-13.md)

@@ -69,6 +69,9 @@
   ],
   "toolAllowlist": ["Inspect"],
   "imminentCompactProviderAllowlist": ["deepseek"],
+  "benefitTrigger": true,
+  "benefitTriggerProviderAllowlist": ["openai"],
+  "benefitMinTokenSavings": 6000,
   "autoCompactKeepRecent": 1,
   "autoCompactMaxGrowthTokens": 4000,
   "autoCompactMinThresholdPercent": 100,
@@ -87,6 +90,8 @@
 ```
 
 用户显式配置 `{"progressiveContext":{"enabled":false}}` 会完整保留关闭意图，不会被 production default 覆盖。
+
+2026-08-13 起，OpenAI 的 Inspect 路径不再一律等待 mutation/pressure：已消费结果的确定性丰富转写累计达到 6K token 且不会破坏上一请求已命中的缓存前缀时，每 session 最多提前提交一次。DeepSeek 路径不变。完整阈值扫描和三次真实重复见 [6K 提前收益触发报告](progressive-context-compaction-benefit-trigger-2026-08-13.md)。
 
 `providerModelAllowlist` 是最终 admission 条件，不会把两个独立 allowlist 展开成四个交叉组合。DeepSeek 专属 compact 参数也只有在 enabled、kill switch、stable rollout、成对 scope 与 `imminentCompactProviderAllowlist` 全部通过时生效；GPT 继续使用既有 structured history、九段式摘要、20k compact 上限与原阈值估算。
 

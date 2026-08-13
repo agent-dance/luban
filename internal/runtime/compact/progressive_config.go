@@ -56,6 +56,14 @@ type ProgressiveConfig struct {
 	// provider-scoped quality guard for models that do not reliably recover
 	// indexed evidence. False preserves the established GPT strategy.
 	RequireConsumedMutation bool `json:"requireConsumedMutation,omitempty"`
+	// BenefitTrigger admits the smallest cost-positive batch as soon as its
+	// results have been consumed by a later assistant decision. The ordinary
+	// path keeps the recent working set and rich rewrites; recoverable indexes
+	// remain reserved for actual context pressure. Runtime admission also
+	// requires the first changed byte to be beyond the last provider-reported
+	// cache frontier and permits at most one early reset per session.
+	BenefitTrigger                  bool     `json:"benefitTrigger,omitempty"`
+	BenefitTriggerProviderAllowlist []string `json:"benefitTriggerProviderAllowlist,omitempty"`
 	// FlattenCompactInput serializes the history as one explicitly untrusted
 	// transcript for the semantic summarizer. This prevents reviewed providers
 	// from continuing an in-progress tool loop instead of obeying the compact
@@ -67,6 +75,7 @@ type ProgressiveConfig struct {
 	ConciseCompactSummary   bool    `json:"conciseCompactSummary,omitempty"`
 	CompactMaxOutputTokens  int     `json:"compactMaxOutputTokens,omitempty"`
 	MinTokenSavings         int     `json:"minTokenSavings,omitempty"`
+	BenefitMinTokenSavings  int     `json:"benefitMinTokenSavings,omitempty"`
 	ReuseHorizon            int     `json:"reuseHorizon,omitempty"`
 	CacheRecoveryRequests   int     `json:"cacheRecoveryRequests,omitempty"`
 	MinNetSavingsUSD        float64 `json:"minNetSavingsUsd,omitempty"`
@@ -108,6 +117,12 @@ func ProductionProgressiveConfig() ProgressiveConfig {
 	config.FlattenCompactInput = true
 	config.ConciseCompactSummary = true
 	config.CompactMaxOutputTokens = 4_000
+	config.BenefitTrigger = true
+	config.BenefitTriggerProviderAllowlist = []string{"openai"}
+	// A 6k threshold was the smallest tested OpenAI setting whose repeated real
+	// traces were jointly positive on input, output, cost, turns, and median
+	// provider time without invalidating an already-hit cached suffix.
+	config.BenefitMinTokenSavings = 6_000
 	return config
 }
 
@@ -123,6 +138,9 @@ func NormalizeProgressiveConfig(config ProgressiveConfig) ProgressiveConfig {
 	}
 	if config.MinTokenSavings <= 0 {
 		config.MinTokenSavings = defaults.MinTokenSavings
+	}
+	if config.BenefitMinTokenSavings <= 0 {
+		config.BenefitMinTokenSavings = config.MinTokenSavings
 	}
 	if config.AutoCompactKeepRecent < 0 {
 		config.AutoCompactKeepRecent = 0
@@ -168,6 +186,7 @@ func NormalizeProgressiveConfig(config ProgressiveConfig) ProgressiveConfig {
 	config.ProviderModelAllowlist = normalizedProgressiveValues(config.ProviderModelAllowlist)
 	config.ToolAllowlist = normalizedProgressiveValues(config.ToolAllowlist)
 	config.ImminentCompactProviderAllowlist = normalizedProgressiveValues(config.ImminentCompactProviderAllowlist)
+	config.BenefitTriggerProviderAllowlist = normalizedProgressiveValues(config.BenefitTriggerProviderAllowlist)
 	return config
 }
 
@@ -209,6 +228,14 @@ func progressiveProviderModelAllowed(allowlist []string, providerName, model str
 func ProgressiveToolEnabled(config ProgressiveConfig, toolName string) bool {
 	config = NormalizeProgressiveConfig(config)
 	return progressiveAllowed(config.ToolAllowlist, toolName, false)
+}
+
+// ProgressiveBenefitTriggerEnabled reports whether the early cost-positive
+// trigger is enabled for this provider. An empty allowlist preserves explicit
+// experiment configurations; production supplies a reviewed provider scope.
+func ProgressiveBenefitTriggerEnabled(config ProgressiveConfig, providerName string) bool {
+	config = NormalizeProgressiveConfig(config)
+	return config.BenefitTrigger && progressiveAllowed(config.BenefitTriggerProviderAllowlist, providerName, false)
 }
 
 // ProgressiveImminentCompactCounterfactualEnabled reports whether a reviewed

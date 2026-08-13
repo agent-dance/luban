@@ -503,6 +503,8 @@ def context_metrics(events: list[dict]) -> dict:
                 compaction_turns.append(turn)
         elif metric == "context_projection":
             projection = event.get("context_projection") or {}
+            if projection.get("pending_only") is True:
+                continue
             if turn > 0:
                 projection_turns.append(turn)
             decision = str(projection.get("decision") or "")
@@ -538,6 +540,8 @@ def context_metrics(events: list[dict]) -> dict:
                 "decision": decision,
                 "request_tokens_before": int(projection.get("request_tokens_before") or 0),
                 "request_tokens_after": int(projection.get("request_tokens_after") or 0),
+                "stable_prefix_tokens": int(projection.get("stable_prefix_tokens") or 0),
+                "invalidated_cached_tokens": int(projection.get("invalidated_cached_tokens") or 0),
                 "cache_break_cost_usd": float(projection.get("cache_break_cost_usd") or 0),
                 "gross_cache_break_cost_usd": float(projection.get("gross_cache_break_cost_usd") or 0),
                 "avoided_compact_input_cost_usd": float(projection.get("avoided_compact_input_cost_usd") or 0),
@@ -639,6 +643,12 @@ def run_agent(args, instance: dict, upstream: str, key: str) -> dict:
             progressive_context["autoCompactMinThresholdPercent"] = args.progressive_auto_compact_min_threshold_percent
         if args.progressive_require_consumed_mutation:
             progressive_context["requireConsumedMutation"] = True
+        if args.progressive_benefit_trigger:
+            progressive_context["benefitTrigger"] = True
+        if args.progressive_benefit_min_token_savings is not None:
+            progressive_context["benefitMinTokenSavings"] = args.progressive_benefit_min_token_savings
+        if args.progressive_min_token_savings is not None:
+            progressive_context["minTokenSavings"] = args.progressive_min_token_savings
         if args.progressive_flatten_compact_input:
             progressive_context["flattenCompactInput"] = True
         if args.progressive_concise_compact_summary:
@@ -720,6 +730,9 @@ def run_agent(args, instance: dict, upstream: str, key: str) -> dict:
             "progressive_auto_compact_max_growth_tokens": args.progressive_auto_compact_max_growth_tokens,
             "progressive_auto_compact_min_threshold_percent": args.progressive_auto_compact_min_threshold_percent,
             "progressive_require_consumed_mutation": bool(args.progressive_require_consumed_mutation),
+            "progressive_benefit_trigger": bool(args.progressive_benefit_trigger),
+            "progressive_benefit_min_token_savings": args.progressive_benefit_min_token_savings,
+            "progressive_min_token_savings": args.progressive_min_token_savings,
             "progressive_flatten_compact_input": bool(args.progressive_flatten_compact_input),
             "progressive_concise_compact_summary": bool(args.progressive_concise_compact_summary),
             "progressive_compact_max_output_tokens": args.progressive_compact_max_output_tokens,
@@ -756,6 +769,9 @@ def main() -> int:
     parser.add_argument("--progressive-auto-compact-max-growth-tokens", type=int)
     parser.add_argument("--progressive-auto-compact-min-threshold-percent", type=int)
     parser.add_argument("--progressive-require-consumed-mutation", action="store_true")
+    parser.add_argument("--progressive-benefit-trigger", action="store_true")
+    parser.add_argument("--progressive-benefit-min-token-savings", type=int)
+    parser.add_argument("--progressive-min-token-savings", type=int)
     parser.add_argument("--progressive-flatten-compact-input", action="store_true")
     parser.add_argument("--progressive-concise-compact-summary", action="store_true")
     parser.add_argument("--progressive-compact-max-output-tokens", type=int)

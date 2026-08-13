@@ -34,8 +34,12 @@ func TestProgressiveRolloutAssignmentIsStable(t *testing.T) {
 
 func TestProgressiveConfigDefaultsTwoRequestCacheRecovery(t *testing.T) {
 	config := NormalizeProgressiveConfig(ProgressiveConfig{})
-	if config.CacheRecoveryRequests != 2 || config.ReuseHorizon != 3 || config.MinTokenSavings != 2_000 {
+	if config.CacheRecoveryRequests != 2 || config.ReuseHorizon != 3 || config.MinTokenSavings != 2_000 || config.BenefitMinTokenSavings != 2_000 {
 		t.Fatalf("cost gate defaults = %+v", config)
+	}
+	config = NormalizeProgressiveConfig(ProgressiveConfig{MinTokenSavings: 2_000, BenefitMinTokenSavings: 6_000})
+	if config.MinTokenSavings != 2_000 || config.BenefitMinTokenSavings != 6_000 {
+		t.Fatalf("independent pressure/benefit gates = %+v", config)
 	}
 }
 
@@ -56,8 +60,25 @@ func TestProductionProgressiveConfigAdmitsOnlyReviewedScope(t *testing.T) {
 	}
 	if !ProgressiveImminentCompactCounterfactualEnabled(config, "deepseek") || config.AutoCompactKeepRecent != 1 ||
 		config.AutoCompactMaxGrowthTokens != 4_000 || config.AutoCompactMinThresholdPercent != 100 ||
-		!config.RequireConsumedMutation || !config.FlattenCompactInput || !config.ConciseCompactSummary || config.CompactMaxOutputTokens != 4_000 {
+		!config.RequireConsumedMutation || !ProgressiveBenefitTriggerEnabled(config, "openai") ||
+		ProgressiveBenefitTriggerEnabled(config, "deepseek") || config.BenefitMinTokenSavings != 6_000 ||
+		!config.FlattenCompactInput || !config.ConciseCompactSummary || config.CompactMaxOutputTokens != 4_000 {
 		t.Fatalf("DeepSeek production policy is incomplete: %+v", config)
+	}
+}
+
+func TestProgressiveBenefitTriggerScope(t *testing.T) {
+	config := DefaultProgressiveConfig()
+	config.BenefitTrigger = true
+	if !ProgressiveBenefitTriggerEnabled(config, "benchmark-meter") {
+		t.Fatal("explicit experiment with an empty benefit allowlist was disabled")
+	}
+	config.BenefitTriggerProviderAllowlist = []string{" OpenAI ", "openai"}
+	config = NormalizeProgressiveConfig(config)
+	if len(config.BenefitTriggerProviderAllowlist) != 1 ||
+		!ProgressiveBenefitTriggerEnabled(config, "openai") ||
+		ProgressiveBenefitTriggerEnabled(config, "deepseek") {
+		t.Fatalf("benefit trigger scope = %+v", config.BenefitTriggerProviderAllowlist)
 	}
 }
 

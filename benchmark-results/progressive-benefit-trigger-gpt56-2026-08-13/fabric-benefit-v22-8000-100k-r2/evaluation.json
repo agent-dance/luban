@@ -1,0 +1,22 @@
+{
+  "instance_id": "danielmiessler__Fabric-2098",
+  "language": "go",
+  "agent": "luban",
+  "resolved": true,
+  "elapsed_seconds": 535.266,
+  "FAIL_TO_PASS": {
+    "expected": 1,
+    "passed": [
+      "github.com/danielmiessler/fabric/internal/plugins/ai/codex.TestSendFallsBackToDeltaWhenCompletedResponseHasNoText"
+    ],
+    "failed": [],
+    "missing": []
+  },
+  "PASS_TO_PASS": {
+    "expected": 841,
+    "passed_count": 841,
+    "failed": [],
+    "missing_count": 0
+  },
+  "evidence_root": "raw/evaluation/danielmiessler__Fabric-2098/luban"
+}

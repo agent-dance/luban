@@ -93,6 +93,8 @@ func (q *QueryLoop) prepareMessagesForQuery(ctx context.Context, state *QuerySta
 						"tokens_saved":                   progressive.TokensSaved,
 						"request_tokens_before":          progressive.RawRequestTokens,
 						"request_tokens_after":           progressive.ProjectedRequestTokens,
+						"stable_prefix_tokens":           progressive.StablePrefixTokens,
+						"invalidated_cached_tokens":      progressive.InvalidatedCachedTokens,
 						"cache_break_cost_usd":           progressive.CacheBreakCostUSD,
 						"gross_cache_break_cost_usd":     progressive.GrossCacheBreakCostUSD,
 						"avoided_compact_input_cost_usd": progressive.AvoidedCompactInputCostUSD,
@@ -335,7 +337,8 @@ func (q *QueryLoop) progressiveProjectionAdmission(state *QueryState, snapshot Q
 	if !compact.ProgressiveEnabledForSession(config, providerName, model, snapshot.SessionID) {
 		return compact.ProgressiveProjectionAdmission{}, false
 	}
-	rawEstimate := q.ctxWindow.EstimateProviderRequest(q.providerParamsBase(state, snapshot, messages))
+	rawParams := q.providerParamsBase(state, snapshot, messages)
+	rawEstimate := q.ctxWindow.EstimateProviderRequest(rawParams)
 	maxGrowthTokens := 0
 	minThresholdPercent := 0
 	providerScopedPolicy := compact.ProgressiveProviderCompactPolicyEnabled(config, providerName, model, snapshot.SessionID)
@@ -344,6 +347,40 @@ func (q *QueryLoop) progressiveProjectionAdmission(state *QueryState, snapshot Q
 		minThresholdPercent = config.AutoCompactMinThresholdPercent
 	}
 	rawRequestTokens := q.ctxWindow.AutoCompactDecisionTokens(rawEstimate, maxGrowthTokens)
+	stablePrefixTokens := func(messageIndex int, _ string) int {
+		if messageIndex < 0 || messageIndex > len(messages) || !rawEstimate.Complete {
+			return 0
+		}
+		// Measure a conservative unchanged prefix without rebuilding dynamic user
+		// context. Static provider overhead (system prompt and tool schemas) is the
+		// difference between the complete request estimate and the same provider
+		// messages with zero supplied overhead. Local messages before the result are
+		// then added directly. Any provider-prepended user context is deliberately
+		// omitted, so this can only understate cache reuse.
+		zero := 0
+		rawMessageEstimate := q.ctxWindow.EstimateMessagesDetailed(rawParams.Messages, compact.ModelContextOverhead{
+			SystemPromptTokens: &zero, ToolSchemaTokens: &zero, MediaTokens: &zero,
+		})
+		prefixMessageEstimate := q.ctxWindow.EstimateMessagesDetailed(messages[:messageIndex], compact.ModelContextOverhead{
+			SystemPromptTokens: &zero, ToolSchemaTokens: &zero, MediaTokens: &zero,
+		})
+		staticOverheadTokens := max(rawEstimate.KnownTotalTokens-rawMessageEstimate.KnownTotalTokens, 0)
+		prefixKnownTokens := staticOverheadTokens + prefixMessageEstimate.KnownTotalTokens
+		// The prefix can end immediately after a custom tool call, before its
+		// result. That partial slice may not retain the call's raw payload, so use
+		// the known-token lower bound even when the local prefix is incomplete. It
+		// can only understate stable cache reuse and therefore fails closed.
+		if prefixKnownTokens <= 0 || prefixKnownTokens > rawEstimate.KnownTotalTokens || rawEstimate.KnownTotalTokens <= 0 || rawRequestTokens <= 0 {
+			return 0
+		}
+		// The generic counter and the provider can use different token scales.
+		// rawRequestTokens is calibrated to the previous provider-reported input,
+		// while prefixEstimate remains a local estimate. Preserve the locally measured
+		// position ratio when mapping the stable prefix onto the authoritative scale;
+		// mixing those scales directly can otherwise charge the benefit gate for a
+		// fully cold request.
+		return min(max(prefixKnownTokens*rawRequestTokens/rawEstimate.KnownTotalTokens, 0), rawRequestTokens)
+	}
 	pricing, pricingKnown := cost.LookupPricing(model)
 	usedTools, usedProjectedTokens := compact.ProgressiveProjectionBudgetUsage(q.contentReplacementState, q.ctxWindow.Counter)
 	allowedTools := make(map[string]struct{}, len(config.ToolAllowlist))
@@ -365,7 +402,9 @@ func (q *QueryLoop) progressiveProjectionAdmission(state *QueryState, snapshot Q
 		Enabled:                 true,
 		Shadow:                  config.Shadow,
 		Pressure:                q.ctxWindow.ShouldProgressiveProjectionWithPolicy(rawEstimate, autoCompactThreshold, maxGrowthTokens),
+		BenefitTrigger:          compact.ProgressiveBenefitTriggerEnabled(config, providerName),
 		Counter:                 q.ctxWindow.Counter,
+		StablePrefixTokens:      stablePrefixTokens,
 		RawRequestTokens:        rawRequestTokens,
 		RawRequestEstimateKnown: rawEstimate.Complete,
 		AutoCompactThreshold:    autoCompactThreshold,
@@ -375,6 +414,7 @@ func (q *QueryLoop) progressiveProjectionAdmission(state *QueryState, snapshot Q
 			InputPerMtok: pricing.InputPerMtok, CacheReadPerMtok: pricing.CacheReadPerMtok, Known: pricingKnown,
 		},
 		MinTokenSavings:            config.MinTokenSavings,
+		BenefitMinTokenSavings:     config.BenefitMinTokenSavings,
 		ReuseHorizon:               config.ReuseHorizon,
 		CacheRecoveryRequests:      config.CacheRecoveryRequests,
 		ImminentCompactResetsCache: providerScopedPolicy,

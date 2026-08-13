@@ -80,6 +80,8 @@ class ResponseUsageCollectorTest(unittest.TestCase):
             "decision": "admit_net_savings",
             "request_tokens_before": 0,
             "request_tokens_after": 0,
+            "stable_prefix_tokens": 0,
+            "invalidated_cached_tokens": 0,
             "cache_break_cost_usd": 0.0,
             "gross_cache_break_cost_usd": 0.0,
             "avoided_compact_input_cost_usd": 0.0,
@@ -99,6 +101,15 @@ class ResponseUsageCollectorTest(unittest.TestCase):
         self.assertEqual(got["tokens_saved"], 0)
         self.assertEqual(got["bytes_saved"], 0)
         self.assertFalse(got["projection_batches"][0]["applied"])
+
+    def test_context_metrics_do_not_count_pending_status_as_projection_attempt(self):
+        got = run_worker.context_metrics([
+            {"type": "agentic_metrics", "metric": "context_projection", "turn_count": 5,
+             "context_projection": {"pending_only": True, "pending_tools": 2, "pending_tokens": 7000}},
+        ])
+        self.assertEqual(got["projection_turns"], [])
+        self.assertEqual(got["projection_batches"], [])
+        self.assertEqual(got["candidate_tools"], 0)
 
     def test_context_metrics_capture_context_update_shadow(self):
         got = run_worker.context_metrics([

@@ -11,6 +11,7 @@ import (
 	"github.com/agent-dance/luban/internal/contracts/compactproof"
 	"github.com/agent-dance/luban/internal/contracts/stream"
 	"github.com/agent-dance/luban/internal/runtime/compact"
+	"github.com/agent-dance/luban/prompt"
 	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/types"
 )
@@ -702,6 +703,192 @@ func TestPrepareMessagesForQueryProgressiveProjectionSupersedesStaleProviderUsag
 	}
 	if content := findToolResultContent(prepared.Messages, "inspect-0"); !strings.Contains(content, "progressive-inspect-rewrite/v1") {
 		t.Fatalf("old source result was not projected: %q", content)
+	}
+}
+
+func TestProgressiveProjectionAdmissionMeasuresPrefixBeforeToolResult(t *testing.T) {
+	messages := []types.Message{
+		types.UserMessage("start"),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "inspect", Name: "Inspect", Input: map[string]any{"path": "src/graph.cc"}},
+		}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "inspect", Content: `{"evidence":[{"path":"src/graph.cc"}]}`,
+			Outcome: types.ToolOutcomeSucceeded,
+		}),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "next", Name: "Inspect", Input: map[string]any{"path": "src/build.cc"}},
+		}},
+	}
+	ql := &QueryLoop{
+		provider: &aggregateBudgetProvider{}, registry: registry.New(),
+		config:    Config{SessionID: "stable-prefix", Model: "gpt-5.6-sol", ProgressiveContext: compact.ProgressiveConfig{Enabled: true}},
+		ctxWindow: compact.NewContextWindow(60_000), contentReplacementState: compact.NewContentReplacementState(),
+	}
+	state := newQueryState(messages)
+	snapshot := newQueryConfigSnapshot(ql.config, nil)
+	estimate := ql.ctxWindow.EstimateProviderRequest(ql.providerParamsBase(state, snapshot, messages))
+	ql.ctxWindow.UpdateLocalEstimate(estimate)
+	ql.ctxWindow.UpdateUsage(&types.Usage{InputTokens: estimate.KnownTotalTokens, CacheReadInputTokens: estimate.KnownTotalTokens})
+	admission, ok := ql.progressiveProjectionAdmission(state, snapshot, messages)
+	if !ok || admission.StablePrefixTokens == nil {
+		t.Fatalf("progressive admission = %#v, %t", admission, ok)
+	}
+	prefix := admission.StablePrefixTokens(2, "inspect")
+	if prefix <= 0 || prefix >= admission.RawRequestTokens {
+		t.Fatalf("stable prefix = %d, raw request = %d", prefix, admission.RawRequestTokens)
+	}
+}
+
+func TestProgressiveProjectionAdmissionCalibratesPrefixToProviderScale(t *testing.T) {
+	messages := []types.Message{
+		types.UserMessage(strings.Repeat("prefix ", 800)),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "inspect", Name: "Inspect", Input: map[string]any{"path": "src/graph.cc"}},
+		}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "inspect", Content: strings.Repeat("suffix ", 4_000),
+			Outcome: types.ToolOutcomeSucceeded,
+		}),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "next", Name: "Inspect", Input: map[string]any{"path": "src/build.cc"}},
+		}},
+	}
+	ql := &QueryLoop{
+		provider: &aggregateBudgetProvider{}, registry: registry.New(),
+		config:    Config{SessionID: "stable-prefix-calibration", Model: "gpt-5.6-sol", ProgressiveContext: compact.ProgressiveConfig{Enabled: true}},
+		ctxWindow: compact.NewContextWindow(60_000), contentReplacementState: compact.NewContentReplacementState(),
+	}
+	state := newQueryState(messages)
+	snapshot := newQueryConfigSnapshot(ql.config, nil)
+	local := ql.ctxWindow.EstimateProviderRequest(ql.providerParamsBase(state, snapshot, messages))
+	ql.ctxWindow.UpdateLocalEstimate(local)
+	// Simulate an authoritative provider tokenizer whose request total is much
+	// smaller than the generic local estimate. The stable prefix must retain its
+	// relative position instead of disappearing because the units differ.
+	providerInput := max(local.KnownTotalTokens/3, 1)
+	ql.ctxWindow.UpdateUsage(&types.Usage{InputTokens: providerInput, CacheReadInputTokens: providerInput})
+	admission, ok := ql.progressiveProjectionAdmission(state, snapshot, messages)
+	if !ok || admission.StablePrefixTokens == nil {
+		t.Fatalf("progressive admission = %#v, %t", admission, ok)
+	}
+	prefix := admission.StablePrefixTokens(2, "inspect")
+	if prefix <= 0 || prefix >= admission.RawRequestTokens {
+		t.Fatalf("calibrated stable prefix = %d, raw request = %d, local request = %d", prefix, admission.RawRequestTokens, local.KnownTotalTokens)
+	}
+}
+
+func TestProgressiveProjectionAdmissionMeasuresPrefixWithPrependedUserContext(t *testing.T) {
+	messages := []types.Message{
+		types.UserMessage("start"),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "inspect", Name: "Inspect", Input: map[string]any{"path": "src/graph.cc"}},
+		}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "inspect", Content: strings.Repeat("source ", 2_000),
+			Outcome: types.ToolOutcomeSucceeded,
+		}),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "next", Name: "Inspect", Input: map[string]any{"path": "src/build.cc"}},
+		}},
+	}
+	ql := &QueryLoop{
+		provider: &aggregateBudgetProvider{}, registry: registry.New(),
+		config: Config{
+			SessionID: "stable-prefix-user-context", Model: "gpt-5.6-sol",
+			UserContext:        prompt.UserContext{Instructions: "Work only in /workspace/repo."},
+			ProgressiveContext: compact.ProgressiveConfig{Enabled: true},
+		},
+		ctxWindow: compact.NewContextWindow(60_000), contentReplacementState: compact.NewContentReplacementState(),
+	}
+	state := newQueryState(messages)
+	snapshot := newQueryConfigSnapshot(ql.config, nil)
+	estimate := ql.ctxWindow.EstimateProviderRequest(ql.providerParamsBase(state, snapshot, messages))
+	ql.ctxWindow.UpdateLocalEstimate(estimate)
+	ql.ctxWindow.UpdateUsage(&types.Usage{InputTokens: estimate.KnownTotalTokens, CacheReadInputTokens: estimate.KnownTotalTokens})
+	admission, ok := ql.progressiveProjectionAdmission(state, snapshot, messages)
+	if !ok || admission.StablePrefixTokens == nil {
+		t.Fatalf("progressive admission = %#v, %t", admission, ok)
+	}
+	prefix := admission.StablePrefixTokens(2, "inspect")
+	if prefix <= 0 || prefix >= admission.RawRequestTokens {
+		t.Fatalf("user-context stable prefix = %d, raw request = %d", prefix, admission.RawRequestTokens)
+	}
+}
+
+func TestProgressiveProjectionAdmissionUsesKnownPrefixBeforeCustomToolResult(t *testing.T) {
+	messages := []types.Message{
+		types.UserMessage(strings.Repeat("stable ", 1_000)),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "inspect", Name: "Inspect", ToolType: types.ToolDefinitionTypeCustom, RawInput: `{"path":"src/graph.cc"}`},
+		}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "inspect", Content: strings.Repeat("source ", 2_000),
+			Outcome: types.ToolOutcomeSucceeded,
+		}),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "next", Name: "Inspect", Input: map[string]any{"path": "src/build.cc"}},
+		}},
+	}
+	ql := &QueryLoop{
+		provider: &aggregateBudgetProvider{}, registry: registry.New(),
+		config: Config{
+			SessionID: "stable-prefix-custom-tool", Model: "gpt-5.6-sol",
+			ProgressiveContext: compact.ProgressiveConfig{Enabled: true},
+		},
+		ctxWindow: compact.NewContextWindow(60_000), contentReplacementState: compact.NewContentReplacementState(),
+	}
+	state := newQueryState(messages)
+	snapshot := newQueryConfigSnapshot(ql.config, nil)
+	estimate := ql.ctxWindow.EstimateProviderRequest(ql.providerParamsBase(state, snapshot, messages))
+	ql.ctxWindow.UpdateLocalEstimate(estimate)
+	ql.ctxWindow.UpdateUsage(&types.Usage{InputTokens: estimate.KnownTotalTokens, CacheReadInputTokens: estimate.KnownTotalTokens})
+	admission, ok := ql.progressiveProjectionAdmission(state, snapshot, messages)
+	if !ok || admission.StablePrefixTokens == nil {
+		t.Fatalf("progressive admission = %#v, %t", admission, ok)
+	}
+	prefix := admission.StablePrefixTokens(2, "inspect")
+	if prefix <= 0 || prefix >= admission.RawRequestTokens {
+		t.Fatalf("custom-tool stable prefix = %d, raw request = %d", prefix, admission.RawRequestTokens)
+	}
+}
+
+func TestProgressiveProjectionAdmissionDoesNotDoublePrependDynamicGoalContext(t *testing.T) {
+	messages := []types.Message{
+		types.UserMessage(strings.Repeat("stable ", 1_000)),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "inspect", Name: "Inspect", Input: map[string]any{"path": "src/graph.cc"}},
+		}},
+		types.ToolResultMessage(types.ToolResultBlock{
+			Type: types.ContentTypeToolResult, ToolUseID: "inspect", Content: strings.Repeat("source ", 2_000),
+			Outcome: types.ToolOutcomeSucceeded,
+		}),
+		{Role: types.RoleAssistant, Content: []types.ContentBlock{
+			types.ToolUseBlock{Type: types.ContentTypeToolUse, ID: "next", Name: "Inspect", Input: map[string]any{"path": "src/build.cc"}},
+		}},
+	}
+	ql := &QueryLoop{
+		provider: &aggregateBudgetProvider{}, registry: registry.New(),
+		config: Config{
+			SessionID: "stable-prefix-existing-user-context", Model: "gpt-5.6-sol",
+			UserContext:        prompt.UserContext{Instructions: strings.Repeat("dynamic goal ", 5_000)},
+			ProgressiveContext: compact.ProgressiveConfig{Enabled: true},
+		},
+		ctxWindow: compact.NewContextWindow(60_000), contentReplacementState: compact.NewContentReplacementState(),
+	}
+	state := newQueryState(messages)
+	snapshot := newQueryConfigSnapshot(ql.config, nil)
+	providerMessages := ql.providerParamsBase(state, snapshot, messages).Messages
+	estimate := ql.ctxWindow.EstimateProviderRequest(ql.providerParamsBase(state, snapshot, providerMessages))
+	ql.ctxWindow.UpdateLocalEstimate(estimate)
+	ql.ctxWindow.UpdateUsage(&types.Usage{InputTokens: estimate.KnownTotalTokens, CacheReadInputTokens: estimate.KnownTotalTokens})
+	admission, ok := ql.progressiveProjectionAdmission(state, snapshot, providerMessages)
+	if !ok || admission.StablePrefixTokens == nil {
+		t.Fatalf("progressive admission = %#v, %t", admission, ok)
+	}
+	prefix := admission.StablePrefixTokens(3, "inspect")
+	if prefix <= 0 || prefix >= admission.RawRequestTokens {
+		t.Fatalf("existing-user-context stable prefix = %d, raw request = %d", prefix, admission.RawRequestTokens)
 	}
 }
 

@@ -84,7 +84,9 @@ func TestJSONRendererForwardsContentFreeContextMetrics(t *testing.T) {
 			Metadata: map[string]any{
 				"projection_sequence": 3, "projection_count": 2, "original_bytes": 9000,
 				"projected_bytes": 700, "bytes_saved": 8300,
-				"raw_result": "must-not-leak",
+				"stable_prefix_tokens": 4200, "invalidated_cached_tokens": 800,
+				"gross_cache_break_cost_usd": 0.003,
+				"raw_result":                 "must-not-leak",
 			},
 		},
 	})
@@ -99,6 +101,7 @@ func TestJSONRendererForwardsContentFreeContextMetrics(t *testing.T) {
 	got := output.String()
 	for _, want := range []string{
 		`"metric":"context_projection"`, `"turn_count":7`, `"projection_sequence":3`, `"bytes_saved":8300`,
+		`"stable_prefix_tokens":4200`, `"invalidated_cached_tokens":800`, `"gross_cache_break_cost_usd":0.003`,
 		`"metric":"context_compaction"`, `"turn_count":11`, `"boundary_id":"boundary-safe"`,
 	} {
 		if !strings.Contains(got, want) {
