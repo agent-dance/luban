@@ -90,6 +90,21 @@ func TestAnthropicDoesNotFallbackAfterMessageStart(t *testing.T) {
 	assertAnthropicProtocolFailure(t, events, types.ProviderFailureAnthropicUnsafeFallback)
 }
 
+func TestAnthropicDoesNotFallbackAfterClosedTextWithoutMessageStop(t *testing.T) {
+	stream := strings.Join([]string{
+		anthropicSSE("message_start", `{"type":"message_start","message":{"id":"msg_text_cut","type":"message","role":"assistant","model":"claude-sonnet-4-6","content":[],"usage":{"input_tokens":1,"output_tokens":0}}}`),
+		anthropicSSE("content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`),
+		anthropicSSE("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}`),
+		anthropicSSE("content_block_stop", `{"type":"content_block_stop","index":0}`),
+	}, "")
+	var requests atomic.Int32
+	events, gotRequests := collectAnthropicProtocolEvents(t, stream, &requests)
+	if gotRequests != 1 {
+		t.Fatalf("requests = %d, want one stream attempt and no non-streaming fallback", gotRequests)
+	}
+	assertAnthropicProtocolFailure(t, events, types.ProviderFailureAnthropicUnsafeFallback)
+}
+
 func TestAnthropicToolInputLimitFailsBeforeCommit(t *testing.T) {
 	partial := strings.Repeat("x", maxResponsesInspectToolInputBytes+1)
 	delta, err := json.Marshal(map[string]any{

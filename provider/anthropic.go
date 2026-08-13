@@ -636,11 +636,12 @@ func sendEvent(ctx context.Context, ch chan<- types.StreamEvent, evt types.Strea
 }
 
 type anthropicStreamSummary struct {
-	messageStarted bool
-	messageStopped bool
-	startedBlocks  int
-	closedBlocks   int
-	openBlocks     int
+	messageStarted   bool
+	messageStopped   bool
+	startedBlocks    int
+	closedBlocks     int
+	openBlocks       int
+	clientToolBlocks int
 }
 
 type anthropicStreamPolicy struct {
@@ -704,6 +705,7 @@ func processAnthropicStream(
 			cb := anthropicStreamContentBlock(e.ContentBlock)
 			state := &anthropicBlockState{blockType: cb.Type}
 			if cb.Type == types.ContentTypeToolUse {
+				summary.clientToolBlocks++
 				state.toolID = cb.ID
 				state.toolName = cb.Name
 				if state.toolID == "" || state.toolName == "" {
@@ -830,7 +832,7 @@ func processAnthropicStream(
 	}
 	if summary.messageStarted && !summary.messageStopped {
 		point := types.ProviderFailureAnthropicUnsafeFallback
-		if summary.openBlocks != 0 {
+		if summary.openBlocks != 0 && summary.clientToolBlocks > 0 {
 			point = types.ProviderFailureAnthropicOpenBlock
 		}
 		return summary, protocolError(point, 0, false)
