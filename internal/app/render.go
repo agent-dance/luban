@@ -186,6 +186,11 @@ func makeEventHandler(r presentation.Renderer, verbose bool) func(stream.Event) 
 		case stream.EventTurnEnd:
 			brief.finishTurn()
 			r.Usage(event.Usage)
+			if machine, ok := r.(interface {
+				RenderTurnEnd(presentation.ToolEventContext, int, string)
+			}); ok {
+				machine.RenderTurnEnd(toolEventContext(event), event.TurnCount, event.TerminalReason)
+			}
 		case stream.EventError:
 			brief.flushSemanticGroups()
 			brief.flushText()

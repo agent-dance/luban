@@ -237,7 +237,7 @@ func validResponsesContinuationItem(item map[string]any) bool {
 		name, _ := item["name"].(string)
 		arguments, argumentsPresent := item["arguments"].(string)
 		status, _ := item["status"].(string)
-		if id == "" || callID == "" || name == "" || !argumentsPresent || arguments == "" || status == "" {
+		if id == "" || callID == "" || name == "" || !argumentsPresent || arguments == "" || status != "completed" {
 			return false
 		}
 	case "custom_tool_call":

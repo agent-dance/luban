@@ -19,6 +19,7 @@ type startupModelSettings struct {
 	APIKey                string
 	CacheRoutingMode      string
 	ReasoningEffort       string
+	MaxTokens             int
 	ModelOverrides        provider.ModelOverrides
 	ProgressiveContext    compact.ProgressiveConfig
 	ProgressiveContextSet bool
@@ -67,6 +68,9 @@ func loadStartupModelSettings(cwd string) (startupModelSettings, error) {
 			}
 			if settings.ReasoningEffort != "" {
 				merged.ReasoningEffort = settings.ReasoningEffort
+			}
+			if settings.MaxTokens > 0 {
+				merged.MaxTokens = settings.MaxTokens
 			}
 			if len(settings.ModelOverrides) > 0 {
 				if merged.ModelOverrides == nil {
@@ -122,6 +126,9 @@ func readModelSettingsFile(path string) (startupModelSettings, bool, error) {
 	if reasoningEffort, ok := raw["reasoningEffort"].(string); ok {
 		settings.ReasoningEffort = strings.TrimSpace(reasoningEffort)
 	}
+	if maxTokens, ok := raw["maxTokens"].(float64); ok && maxTokens > 0 && maxTokens == float64(int(maxTokens)) {
+		settings.MaxTokens = int(maxTokens)
+	}
 	if rawOverrides, ok := raw["modelOverrides"]; ok {
 		data, err := json.Marshal(rawOverrides)
 		if err != nil {
@@ -145,7 +152,7 @@ func readModelSettingsFile(path string) (startupModelSettings, bool, error) {
 		settings.ProgressiveContext = compact.NormalizeProgressiveConfig(progressive)
 		settings.ProgressiveContextSet = true
 	}
-	if settings.Provider == "" && settings.Model == "" && settings.APIKey == "" && settings.CacheRoutingMode == "" && settings.ReasoningEffort == "" && len(settings.ModelOverrides) == 0 && !settings.ProgressiveContextSet {
+	if settings.Provider == "" && settings.Model == "" && settings.APIKey == "" && settings.CacheRoutingMode == "" && settings.ReasoningEffort == "" && settings.MaxTokens == 0 && len(settings.ModelOverrides) == 0 && !settings.ProgressiveContextSet {
 		return startupModelSettings{}, false, nil
 	}
 	return settings, true, nil

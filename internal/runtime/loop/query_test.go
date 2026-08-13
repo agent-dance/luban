@@ -218,6 +218,52 @@ func TestProcessStreamInvalidToolJSON(t *testing.T) {
 	}
 }
 
+func TestProcessStreamPersistsSyntaxDiagnosticWithoutRegisteredSchemaField(t *testing.T) {
+	ql := &QueryLoop{}
+	events := makeStreamChan(
+		types.StreamEvent{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
+			Type: types.ContentTypeToolUse, ID: "tool_bad", Name: "Inspect",
+		}},
+		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{
+			Type: "input_json_delta", PartialJSON: `{"cursor": , "requests":[]}`,
+		}},
+		types.StreamEvent{Type: types.EventContentBlockStop, Index: 0},
+		types.StreamEvent{Type: types.EventMessageStop},
+	)
+	msg, _, _, err := ql.processStream(context.Background(), events, 1, func(_ stream.Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := msg.GetInvalidToolUses()
+	if len(invalid) != 1 || invalid[0].DiagnosticKind != types.ToolInputDiagnosticMissingValue || invalid[0].DiagnosticOffset != 12 {
+		t.Fatalf("diagnostic = %#v", invalid)
+	}
+	if invalid[0].DiagnosticField != "" {
+		t.Fatalf("unregistered tool field was trusted: %#v", invalid[0])
+	}
+}
+
+func TestProcessStreamFlushPersistsSyntaxDiagnostic(t *testing.T) {
+	ql := &QueryLoop{}
+	events := makeStreamChan(
+		types.StreamEvent{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
+			Type: types.ContentTypeToolUse, ID: "tool_bad", Name: "Inspect",
+		}},
+		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{
+			Type: "input_json_delta", PartialJSON: `{"cursor": , "requests":[]}`,
+		}},
+		types.StreamEvent{Type: types.EventMessageStop},
+	)
+	msg, _, _, err := ql.processStream(context.Background(), events, 1, func(stream.Event) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := msg.GetInvalidToolUses()
+	if len(invalid) != 1 || invalid[0].DiagnosticKind != types.ToolInputDiagnosticMissingValue || invalid[0].DiagnosticOffset != 12 || invalid[0].DiagnosticField != "" {
+		t.Fatalf("flush diagnostic = %#v", invalid)
+	}
+}
+
 func TestProcessStreamEmptyToolJSON(t *testing.T) {
 	ql := &QueryLoop{}
 	onEvent := func(e stream.Event) {}

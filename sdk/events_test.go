@@ -104,6 +104,33 @@ func TestEventAdapterStructuredRuntimeEvents(t *testing.T) {
 	}
 }
 
+func TestEventAdapterPreservesTurnEndTerminalReason(t *testing.T) {
+	a := newEventAdapter("session-max-tokens", i18n.LangEN)
+
+	results := a.process(Event{
+		Type: EventTurnEnd, TurnCount: 2, TerminalReason: "max_tokens",
+	})
+	if len(results) != 1 {
+		t.Fatalf("results len = %d, want 1", len(results))
+	}
+	message, ok := results[0].(StreamEventMsg)
+	if !ok {
+		t.Fatalf("result = %T, want StreamEventMsg", results[0])
+	}
+	payload, ok := message.Event.(RuntimeEventPayload)
+	if !ok {
+		t.Fatalf("Event = %T, want RuntimeEventPayload", message.Event)
+	}
+	if payload.Type != "turn_end" || payload.TerminalReason != "max_tokens" {
+		t.Fatalf("turn end payload = %+v", payload)
+	}
+
+	result := a.resultMessage(i18n.LangEN, "session-max-tokens", "uuid", nil)
+	if result.NumTurns != 2 || result.TerminalReason != "max_tokens" {
+		t.Fatalf("result terminus = turns:%d reason:%q", result.NumTurns, result.TerminalReason)
+	}
+}
+
 func TestEventAdapter_ToolUseSummaryEvent(t *testing.T) {
 	a := newEventAdapter("session-tool-summary", i18n.LangEN)
 

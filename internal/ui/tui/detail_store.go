@@ -10,11 +10,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 
 	"github.com/agent-dance/luban/i18n"
+	"github.com/agent-dance/luban/internal/store/secureio"
 )
 
 const (
@@ -257,7 +259,7 @@ func (s *FileDetailStore) LoadObservationEvidence() ([]Observation, error) {
 		if err != nil {
 			return nil, i18n.WrapError(i18n.KeyTUIDetailStoreInspectJournalEntry, err, entry.Name(), path)
 		}
-		if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		if !info.Mode().IsRegular() || !privateRuntimeFileModeAcceptable(info.Mode()) {
 			return nil, i18n.WrapInternalError(i18n.KeyTUIDetailStoreJournalEntryInvalid, ErrInvalidDetailRef, entry.Name(), path)
 		}
 		data, err := os.ReadFile(path)
@@ -330,7 +332,7 @@ func (s *FileDetailStore) readLocked(ref DetailRef) ([]byte, error) {
 	if !before.Mode().IsRegular() {
 		return nil, i18n.WrapInternalError(i18n.KeyTUIDetailStoreDetailNotRegular, ErrInvalidDetailRef, path)
 	}
-	if before.Mode().Perm()&0o077 != 0 {
+	if !privateRuntimeFileModeAcceptable(before.Mode()) {
 		return nil, i18n.WrapInternalError(i18n.KeyTUIDetailStoreDetailPermissions, ErrInvalidDetailRef, path, fmt.Sprintf("%04o", before.Mode().Perm()))
 	}
 
@@ -423,7 +425,7 @@ func ensurePrivateDirectory(path string) error {
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return i18n.NewError(i18n.KeyTUIDetailStorePathNotRealDirectory, path)
 	}
-	if info.Mode().Perm() != 0o700 {
+	if !privateRuntimeDirectoryModeAcceptable(info.Mode()) {
 		if err := os.Chmod(path, 0o700); err != nil {
 			return err
 		}
@@ -431,13 +433,20 @@ func ensurePrivateDirectory(path string) error {
 	return nil
 }
 
+// Windows reports synthesized POSIX modes (typically 0666 for files and 0777
+// for directories); Chmod cannot express or validate its ACL security model.
+// Path identity and regular-file checks still apply on every platform, while
+// permission-bit enforcement remains meaningful only on POSIX systems.
+func privateRuntimeFileModeAcceptable(mode os.FileMode) bool {
+	return runtime.GOOS == "windows" || mode.Perm()&0o077 == 0
+}
+
+func privateRuntimeDirectoryModeAcceptable(mode os.FileMode) bool {
+	return runtime.GOOS == "windows" || mode.Perm() == 0o700
+}
+
 func syncDirectory(path string) error {
-	dir, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return secureio.SyncRuntimeDirectory(path)
 }
 
 var (

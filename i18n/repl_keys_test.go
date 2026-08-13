@@ -55,10 +55,14 @@ func TestREPLTUIFormattingPreservesTechnicalRuntimeValues(t *testing.T) {
 	}{
 		{lang: LangZH, key: KeyREPLTUIModelSwitchedReasoning, args: []any{"openai", "gpt-x", "high"}, want: []string{"openai", "gpt-x", "high"}},
 		{lang: LangJA, key: KeyREPLTUIOAuthFailed, args: []any{"anthropic", "raw oauth error"}, want: []string{"anthropic", "raw oauth error"}},
+		{lang: LangEN, key: KeyREPLTUILifecycleSaveFailed, args: []any{"raw save error"}, want: []string{"raw save error"}},
 		{lang: LangDE, key: KeyREPLTUIAgentPath, args: []any{"/tmp/agent-1"}, want: []string{"/tmp/agent-1"}},
 	}
 	for _, tt := range tests {
 		got := Format(tt.lang, tt.key, tt.args...)
+		if strings.Contains(got, "%!") {
+			t.Errorf("Format(%s, %s) contains a formatting diagnostic: %q", tt.lang, tt.key, got)
+		}
 		for _, want := range tt.want {
 			if !strings.Contains(got, want) {
 				t.Errorf("Format(%s, %s) = %q, missing %q", tt.lang, tt.key, got, want)

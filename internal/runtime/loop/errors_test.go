@@ -482,6 +482,40 @@ func TestStopReasonMaxTokensWarning(t *testing.T) {
 	}
 }
 
+func TestStopReasonMaxTokensWithTruncatedToolInputStopsWithoutToolRecovery(t *testing.T) {
+	maxTokensReason := types.StopReasonMaxTokens
+	p := &mockProvider{responses: [][]types.StreamEvent{
+		{
+			{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
+				Type: types.ContentTypeToolUse, ID: "call-cutoff", Name: "MissingTool",
+			}},
+			{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{
+				Type: "input_json_delta", PartialJSON: `{"patch":"truncated`,
+			}},
+			{Type: types.EventContentBlockStop, Index: 0},
+			{Type: types.EventMessageDelta, StopReason: &maxTokensReason},
+			{Type: types.EventMessageStop},
+		},
+		textEvents("recovered after output budget escalation"),
+	}}
+	ql := New(p, registry.New(), Config{MaxTurns: 5, MaxTokens: 1024})
+	var maxTokenWarning, toolRecoveryWarning bool
+	err := ql.Run(context.Background(), "hi", func(event stream.Event) {
+		if event.Type != stream.EventSystemWarning {
+			return
+		}
+		text := projectedSystemWarningText(event)
+		maxTokenWarning = maxTokenWarning || strings.Contains(text, "64") || strings.Contains(text, "max_tokens")
+		toolRecoveryWarning = toolRecoveryWarning || strings.Contains(strings.ToLower(text), "corrected tool")
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !maxTokenWarning || toolRecoveryWarning || p.turnIndex != 1 {
+		t.Fatalf("maxTokenWarning=%v toolRecoveryWarning=%v calls=%d", maxTokenWarning, toolRecoveryWarning, p.turnIndex)
+	}
+}
+
 // ---- Recovery path 3: empty response retry ----------------------------------
 
 func TestEmptyResponseRetrySucceeds(t *testing.T) {

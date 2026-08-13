@@ -79,6 +79,49 @@ func TestDetailStoresContentAddressRepeatedLogicalKeys(t *testing.T) {
 	}
 }
 
+func TestSyncDirectoryUsesRuntimePlatformSemantics(t *testing.T) {
+	if err := syncDirectory(t.TempDir()); err != nil {
+		t.Fatalf("syncDirectory() error = %v", err)
+	}
+}
+
+func TestFileDetailStoreRoundTripsOnCurrentPlatform(t *testing.T) {
+	store, err := NewFileDetailStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := store.Put("windows-mode-regression", []byte("detail payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.Get(ref)
+	if err != nil || string(got) != "detail payload" {
+		t.Fatalf("Get() = %q, %v", got, err)
+	}
+}
+
+func TestFileDetailStoreObservationJournalRoundTripsOnCurrentPlatform(t *testing.T) {
+	store, err := NewFileDetailStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, err := store.Put("journal-mode-regression", []byte("journal evidence"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Observation{ID: "observation-1", ResultRefs: []DetailRef{ref}}
+	if err := store.SaveObservationEvidence(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := store.LoadObservationEvidence()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ID != want.ID || len(got[0].ResultRefs) != 1 || got[0].ResultRefs[0] != ref {
+		t.Fatalf("LoadObservationEvidence() = %+v", got)
+	}
+}
+
 func TestStructuredToolResultRetainsCompleteEnvelope(t *testing.T) {
 	details := NewMemoryDetailStore()
 	observations := NewObservationStore(details)

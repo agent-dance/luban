@@ -1573,6 +1573,88 @@ func TestSetModel_ChangesModel(t *testing.T) {
 	}
 }
 
+type deepSeekDefaultBudgetProvider struct {
+	mockProvider
+}
+
+func (p *deepSeekDefaultBudgetProvider) Name() string { return "deepseek" }
+
+func TestNewUsesDeepSeekDefaultRequestOutputBudgetOnlyWhenUnset(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		provider   provider.Provider
+		configured int
+		want       int
+	}{
+		{
+			name: "DeepSeek V4 unset",
+			provider: &deepSeekDefaultBudgetProvider{mockProvider: mockProvider{
+				modelID: "deepseek-v4-flash",
+			}},
+			want: 256000,
+		},
+		{
+			name: "DeepSeek explicit configuration",
+			provider: &deepSeekDefaultBudgetProvider{mockProvider: mockProvider{
+				modelID: "deepseek-v4-flash",
+			}},
+			configured: 32000,
+			want:       32000,
+		},
+		{
+			name:     "other provider unset",
+			provider: &mockProvider{name: "openai", modelID: "gpt-5.6-sol"},
+			want:     16384,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			e, err := New(Config{
+				Provider: test.provider, Sessions: newMemorySessionManager(),
+				MaxTokens: test.configured,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if e.cfg.MaxTokens != test.want {
+				t.Fatalf("engine MaxTokens = %d, want %d", e.cfg.MaxTokens, test.want)
+			}
+		})
+	}
+}
+
+func TestUnpinnedEngineRetargetsDefaultBudgetWithProviderAndModel(t *testing.T) {
+	deepSeek := &deepSeekDefaultBudgetProvider{mockProvider: mockProvider{modelID: "deepseek-v4-flash"}}
+	e, err := New(Config{Provider: deepSeek, Sessions: newMemorySessionManager()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.cfg.MaxTokens != 256000 {
+		t.Fatalf("initial MaxTokens = %d, want 256000", e.cfg.MaxTokens)
+	}
+	if err := e.SetModel("new-session", "deepseek-v4-pro"); err != nil {
+		t.Fatal(err)
+	}
+	if e.cfg.MaxTokens != 256000 {
+		t.Fatalf("DeepSeek model switch MaxTokens = %d, want 256000", e.cfg.MaxTokens)
+	}
+	e.SetProvider(&mockProvider{name: "openai", modelID: "gpt-5.6-sol"})
+	if e.cfg.MaxTokens != 16384 {
+		t.Fatalf("OpenAI provider switch MaxTokens = %d, want 16384", e.cfg.MaxTokens)
+	}
+}
+
+func TestPinnedEngineKeepsExplicitBudgetAcrossProviderSwitch(t *testing.T) {
+	deepSeek := &deepSeekDefaultBudgetProvider{mockProvider: mockProvider{modelID: "deepseek-v4-flash"}}
+	e, err := New(Config{Provider: deepSeek, Sessions: newMemorySessionManager(), MaxTokens: 32000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.SetProvider(&mockProvider{name: "openai", modelID: "gpt-5.6-sol"})
+	if e.cfg.MaxTokens != 32000 {
+		t.Fatalf("explicit MaxTokens after provider switch = %d, want 32000", e.cfg.MaxTokens)
+	}
+}
+
 func TestQueryFollowUpWaitsForRunningParentWithoutCancellingIt(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -452,6 +451,7 @@ func DecodeStrictToolInput[T any](input map[string]any) (T, error) {
 type ToolInputValidationError struct {
 	ToolName         string
 	UnexpectedFields []string
+	Violations       []ToolContractViolation
 }
 
 func (e *ToolInputValidationError) Error() string {
@@ -468,34 +468,45 @@ func (e *ToolInputValidationError) LocalizedToolInputValidation(lang i18n.Langua
 	for _, field := range e.UnexpectedFields {
 		parts = append(parts, i18n.Format(lang, i18n.KeyToolInputValidationUnexpectedParameter, field))
 	}
+	for _, violation := range e.Violations {
+		if violation.Code == ToolContractViolationUnexpectedProperty {
+			continue
+		}
+		// Codes, JSON Pointers, and JSON Schema keywords are stable protocol
+		// identifiers. Keeping this detail machine-shaped avoids value leakage.
+		parts = append(parts, strings.TrimSpace(strings.Join([]string{
+			string(violation.Code), violation.InstancePath, violation.Keyword,
+		}, " ")))
+	}
 	key := i18n.KeyToolInputValidationFailedPlural
-	if len(e.UnexpectedFields) == 1 {
+	if len(parts) == 1 {
 		key = i18n.KeyToolInputValidationFailedSingle
 	}
 	return i18n.Format(lang, key, e.ToolName, strings.Join(parts, "\n"))
 }
 
-// ValidateToolInput enforces the root strict-object boundary advertised by a
-// tool schema. Value and type validation remain owned by the individual tool.
+// ValidateToolInput recursively enforces the advertised tool input contract
+// before permission checks or execution. Diagnostics contain paths and schema
+// keywords but never rejected values.
 func ValidateToolInput(t Tool, input map[string]any) error {
 	if t == nil {
 		return nil
 	}
-	schema := t.Schema()
-	if !schema.RejectsUnknownFields() {
+	violations := ValidateToolInputSchema(t.Schema(), input)
+	return newToolInputValidationError(t.Name(), violations)
+}
+
+func newToolInputValidationError(toolName string, violations []ToolContractViolation) error {
+	if len(violations) == 0 {
 		return nil
 	}
-	unexpected := make([]string, 0)
-	for field := range input {
-		if _, ok := schema.Properties[field]; !ok {
-			unexpected = append(unexpected, field)
+	unexpected := make([]string, 0, len(violations))
+	for _, violation := range violations {
+		if violation.Code == ToolContractViolationUnexpectedProperty {
+			unexpected = append(unexpected, strings.TrimPrefix(violation.InstancePath, "/"))
 		}
 	}
-	if len(unexpected) == 0 {
-		return nil
-	}
-	sort.Strings(unexpected)
-	return &ToolInputValidationError{ToolName: t.Name(), UnexpectedFields: unexpected}
+	return &ToolInputValidationError{ToolName: toolName, UnexpectedFields: unexpected, Violations: violations}
 }
 
 // MapToolResult separates typed result data from provider-visible content.
@@ -629,6 +640,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 		ID                string                    `json:"id,omitempty"`
 		Role              Role                      `json:"role"`
 		Content           []json.RawMessage         `json:"content"`
+		StopReason        StopReason                `json:"stop_reason,omitempty"`
 		IsMeta            bool                      `json:"is_meta,omitempty"`
 		InternalKind      InternalMessageKind       `json:"internal_kind,omitempty"`
 		DeveloperMetadata *DeveloperMessageMetadata `json:"developer_metadata,omitempty"`
@@ -637,6 +649,7 @@ func (m Message) MarshalJSON() ([]byte, error) {
 	msg := messageJSON{
 		ID:                m.ID,
 		Role:              m.Role,
+		StopReason:        m.StopReason,
 		IsMeta:            m.IsMeta,
 		InternalKind:      m.InternalKind,
 		DeveloperMetadata: m.DeveloperMetadata,
@@ -810,6 +823,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 		ID                string                    `json:"id,omitempty"`
 		Role              Role                      `json:"role"`
 		Content           []json.RawMessage         `json:"content"`
+		StopReason        StopReason                `json:"stop_reason,omitempty"`
 		IsMeta            bool                      `json:"is_meta,omitempty"`
 		InternalKind      InternalMessageKind       `json:"internal_kind,omitempty"`
 		DeveloperMetadata *DeveloperMessageMetadata `json:"developer_metadata,omitempty"`
@@ -826,6 +840,7 @@ func (m *Message) UnmarshalJSON(data []byte) error {
 	m.ClearProviderContinuation()
 	m.ID = raw.ID
 	m.Role = raw.Role
+	m.StopReason = raw.StopReason
 	m.IsMeta = raw.IsMeta
 	m.InternalKind = raw.InternalKind
 	m.DeveloperMetadata = raw.DeveloperMetadata

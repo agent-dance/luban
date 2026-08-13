@@ -76,10 +76,13 @@ var agentColorNames = map[string]struct{}{
 
 // AgentTool spawns a sub-agent with its own conversation
 type AgentTool struct {
-	Provider           provider.Provider
-	Registry           *registry.Registry
-	System             string
-	Model              string
+	Provider provider.Provider
+	Registry *registry.Registry
+	System   string
+	Model    string
+	// MaxTokens is an optional application override inherited by every child.
+	// Zero selects the active provider/model request default.
+	MaxTokens          int
 	ProgressiveContext loop.ProgressiveContextConfig
 	// ServiceTier is inherited by every nested model generation so a
 	// contract-bound parent cannot spawn an unpinned scheduling lane.
@@ -1376,6 +1379,7 @@ func (t *AgentTool) buildSubAgentLoopWithOptions(agentID string, in agentcontrac
 		Registry:           subReg,
 		System:             parentRuntime.System,
 		Model:              model,
+		MaxTokens:          t.MaxTokens,
 		ProgressiveContext: t.ProgressiveContext,
 		ServiceTier:        t.ServiceTier,
 		Background:         t.Background,
@@ -1408,6 +1412,10 @@ func (t *AgentTool) buildSubAgentLoopWithOptions(agentID string, in agentcontrac
 			systemPrompt = strings.TrimSpace(systemPrompt) + "\n\n" + notice
 		}
 	}
+	maxOutputTokens := provider.ResolveRequestMaxOutput(agentProviderIdentity(childProvider), model, t.MaxTokens)
+	if maxOutputTokens <= 0 {
+		maxOutputTokens = 16384
+	}
 	cfg := loop.Config{
 		MaxTurns:               maxTurns,
 		DisableMaxTurns:        maxTurns == 0,
@@ -1415,9 +1423,9 @@ func (t *AgentTool) buildSubAgentLoopWithOptions(agentID string, in agentcontrac
 		Model:                  model,
 		ReasoningEffort:        profile.ReasoningEffort,
 		ServiceTier:            t.ServiceTier,
-		MaxTokens:              16384,
+		MaxTokens:              maxOutputTokens,
 		MaxContextTokens:       provider.LookupMaxContext(model),
-		MaxOutputTokens:        16384,
+		MaxOutputTokens:        maxOutputTokens,
 		ProgressiveContext:     t.ProgressiveContext,
 		SessionID:              agentID,
 		CacheLineageID:         cacheLineageID,

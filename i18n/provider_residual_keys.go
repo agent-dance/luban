@@ -7,6 +7,7 @@ const (
 	KeyProviderResponsesFailedParseFailed     Key = "provider.responses.failed_parse_failed"
 	KeyProviderResponsesContinuationInvalid   Key = "provider.responses.continuation_invalid"
 	KeyProviderResponsesCustomToolCallInvalid Key = "provider.responses.custom_tool_call_invalid"
+	KeyProviderResponsesKnownEventParseFailed Key = "provider.responses.known_event_parse_failed"
 )
 
 func init() {
@@ -58,4 +59,11 @@ func init() {
 		"Responses custom ツール呼び出しが不完全か、宣言されたプロトコルに違反しています。",
 		"Responses custom 도구 호출이 불완전하거나 선언된 프로토콜을 위반했습니다.",
 		"Вызов custom-инструмента Responses был неполным или нарушил заявленный протокол.")
+	add(KeyProviderResponsesKnownEventParseFailed,
+		"The Responses event %s could not be decoded.",
+		"无法解码 Responses 事件 %s。",
+		"Das Responses-Ereignis %s konnte nicht dekodiert werden.",
+		"Responses イベント %s をデコードできませんでした。",
+		"Responses 이벤트 %s을(를) 디코딩할 수 없습니다.",
+		"Не удалось декодировать событие Responses %s.")
 }

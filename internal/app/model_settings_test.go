@@ -82,6 +82,28 @@ func TestLoadStartupModelSettingsOverlaysCacheRoutingModeWithoutClearingModel(t 
 	}
 }
 
+func TestLoadStartupModelSettingsReadsExplicitMaxTokens(t *testing.T) {
+	home := t.TempDir()
+	cwd := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	path := filepath.Join(cwd, brand.ConfigDirName, "settings.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(`{"provider":"deepseek","model":"deepseek-v4-flash","maxTokens":32000}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := loadStartupModelSettings(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.MaxTokens != 32000 {
+		t.Fatalf("MaxTokens = %d, want explicit 32000", got.MaxTokens)
+	}
+}
+
 func TestLoadStartupModelSettingsProgressiveControlPlane(t *testing.T) {
 	home := t.TempDir()
 	cwd := t.TempDir()

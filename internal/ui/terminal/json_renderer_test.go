@@ -81,6 +81,31 @@ func TestJSONRenderer_Thinking(t *testing.T) {
 	}
 }
 
+func TestJSONRendererTurnEndPreservesTerminalReason(t *testing.T) {
+	var buf bytes.Buffer
+	r := ui.NewJSONRenderer(&buf)
+	r.RenderTurnEnd(presentation.ToolEventContext{
+		SessionID: "session-max-tokens", TurnID: "turn-2", ActorID: "main",
+	}, 2, "max_tokens")
+
+	lines := decodeLines(t, &buf)
+	if len(lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(lines))
+	}
+	if got := lines[0]["type"]; got != "turn_end" {
+		t.Fatalf("type = %q, want turn_end", got)
+	}
+	if got := lines[0]["terminal_reason"]; got != "max_tokens" {
+		t.Fatalf("terminal_reason = %q, want max_tokens", got)
+	}
+	if got := lines[0]["turn_count"]; got != float64(2) {
+		t.Fatalf("turn_count = %v, want 2", got)
+	}
+	if got := lines[0]["session_id"]; got != "session-max-tokens" {
+		t.Fatalf("session_id = %q", got)
+	}
+}
+
 func TestJSONRenderer_ToolCall(t *testing.T) {
 	var buf bytes.Buffer
 	r := ui.NewJSONRenderer(&buf)
@@ -516,7 +541,10 @@ func TestJSONRenderer_AgenticMetricsAreContentFree(t *testing.T) {
 		RequestID: "request-metrics", StartedAt: "2026-07-26T00:00:00Z", EndedAt: "2026-07-26T00:00:01Z",
 		Attempt: 2, MaxRetries: 3, RetryCount: 1, RetryKind: "stream", FirstTokenMilliseconds: 120, TotalMilliseconds: 400,
 		InputTokens: 100, CacheReadInputTokens: 80, CacheWriteInputTokens: 5, OutputTokens: 10,
-		Error: secret,
+		FailurePoint: types.ProviderFailureStreamInterrupted, FailureStage: types.ProviderErrorStageStream,
+		FailureClass: types.ProviderErrorClassTransport, ReplaySafety: types.ProviderReplaySafe, Decision: "retry",
+		DroppedFields: []string{"max_output_tokens"},
+		Error:         secret,
 	})
 	r.RenderToolRoundMetrics(ctx, &stream.ToolRoundMetricsEvent{
 		RoundID: "turn-metrics", LogicalModelVisibleCalls: 4, PhysicalChildOperations: 4,
@@ -531,6 +559,13 @@ func TestJSONRenderer_AgenticMetricsAreContentFree(t *testing.T) {
 	request, ok := lines[0]["request_status"].(map[string]any)
 	if !ok || request["request_id"] != "request-metrics" || request["cache_read_input_tokens"] != float64(80) || request["failed"] != true || request["retry_kind"] != "stream" {
 		t.Fatalf("request metrics = %#v", request)
+	}
+	if request["failure_point"] != string(types.ProviderFailureStreamInterrupted) || request["failure_stage"] != string(types.ProviderErrorStageStream) || request["failure_class"] != string(types.ProviderErrorClassTransport) || request["replay_safety"] != string(types.ProviderReplaySafe) || request["decision"] != "retry" {
+		t.Fatalf("request failure projection = %#v", request)
+	}
+	dropped, ok := request["dropped_fields"].([]any)
+	if !ok || len(dropped) != 1 || dropped[0] != "max_output_tokens" {
+		t.Fatalf("request dropped fields = %#v", request)
 	}
 	round, ok := lines[1]["tool_round"].(map[string]any)
 	if !ok || round["logical_model_visible_calls"] != float64(4) || round["fanout"] != float64(3) || round["error_count"] != float64(1) {

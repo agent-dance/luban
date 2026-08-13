@@ -134,3 +134,50 @@ func TestRuntimeErrorAuditRetainsSafeProviderRequestDiagnostic(t *testing.T) {
 		t.Fatalf("strict transcript exposed diagnostic: %#v", messages)
 	}
 }
+
+func TestRuntimeErrorAuditRetainsSafeProviderFailureDiagnostic(t *testing.T) {
+	state := NewAppState()
+	state.SessionID.Set("session-provider-failure")
+	state.SessionEpoch.Set(1)
+	secret := "SECRET_PROVIDER_PAYLOAD"
+	err := state.ApplyRuntimeError(ToolEventContext{SessionID: "session-provider-failure", TurnID: "turn-1"}, "", secret, &types.APIError{
+		Type: "invalid_tool_call", Message: secret,
+		FailureDiagnostic: &types.ProviderFailureDiagnostic{
+			SchemaVersion:  types.ProviderFailureDiagnosticSchema,
+			LocalRequestID: "local-17", Provider: "deepseek", Model: "deepseek-v4-flash",
+			APIFormat: "responses", Transport: "https", Endpoint: "https://gateway.example/…/responses",
+			FailurePoint: types.ProviderFailureFunctionDoneMissingArguments,
+			Stage:        types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent,
+			ReplaySafety: types.ProviderReplaySafe, WireSequence: 41,
+			WireEvent: "response.function_call_arguments.done", OutputIndex: 2, OutputSet: true,
+			EffectiveMaxOutputTokens: 16384, CatalogMaxOutputTokens: 393216,
+			DroppedField: "max_output_tokens", IncompleteReason: "unknown",
+		},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observations := state.Observations.Snapshot()
+	payload, err := state.ReadDetail(observations[0].ResultRefs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(payload, []byte(secret)) {
+		t.Fatalf("diagnostic projection leaked private provider prose: %s", payload)
+	}
+	var audit struct {
+		ProviderFailure *types.ProviderFailureDiagnostic `json:"provider_failure"`
+	}
+	if err := json.Unmarshal(payload, &audit); err != nil {
+		t.Fatal(err)
+	}
+	if audit.ProviderFailure == nil || audit.ProviderFailure.FailurePoint != types.ProviderFailureFunctionDoneMissingArguments ||
+		audit.ProviderFailure.LocalRequestID != "local-17" || audit.ProviderFailure.WireSequence != 41 || audit.ProviderFailure.OutputIndex != 2 ||
+		audit.ProviderFailure.EffectiveMaxOutputTokens != 16384 || audit.ProviderFailure.CatalogMaxOutputTokens != 393216 ||
+		audit.ProviderFailure.DroppedField != "max_output_tokens" || audit.ProviderFailure.IncompleteReason != "unknown" {
+		t.Fatalf("stored provider failure diagnostic = %+v", audit.ProviderFailure)
+	}
+	if messages := state.Messages.Get(); len(messages) != 1 || strings.Contains(messages[0].Text, "function.done") || strings.Contains(messages[0].Text, "local-17") {
+		t.Fatalf("strict transcript exposed diagnostic: %#v", messages)
+	}
+}

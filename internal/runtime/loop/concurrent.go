@@ -250,6 +250,18 @@ func executeOneTool(ctx context.Context, reg *registry.Registry, runner *hooks.R
 	}
 	execForTool.ToolUse = tu
 	toolContext := executioncontract.WithToolExecutionContext(ctx, execForTool)
+	// The provider-committed input must satisfy the authoritative local contract
+	// before any normalizer or hook can observe it. Hooks that intentionally
+	// modify input are validated again below before permission or execution.
+	if tool := reg.Get(tu.Name); tool != nil {
+		if validationErr := types.ValidateToolInput(tool, tu.Input); validationErr != nil {
+			return singleToolExecutionResult{Result: types.ToolResultBlock{
+				Type: types.ContentTypeToolResult, ToolUseID: tu.ID,
+				Content: i18n.FormatToolInputValidationError(i18n.DetectOrLoadLanguage(), validationErr),
+				IsError: true, Outcome: types.ToolOutcomeFailed,
+			}}, nil
+		}
+	}
 	if normalizer, ok := reg.Get(tu.Name).(interface {
 		NormalizeToolInput(context.Context, map[string]any) (map[string]any, error)
 	}); ok {
@@ -615,6 +627,35 @@ func inferredToolOutcome(result types.ToolResultBlock) types.ToolOutcome {
 
 func executeToolsConcurrentlyDetailed(ctx context.Context, reg *registry.Registry, runner *hooks.Runner, permHandler permission.PermissionHandler, sessionID string, execContext executioncontract.ToolExecutionContext, toolUses []types.ToolUseBlock, onResult func(int, types.ToolResultBlock)) (toolExecutionResults, error) {
 	roundStarted := time.Now()
+	// Admission is atomic for the provider-authorized batch. A malformed sibling
+	// must not allow another sibling to reach hooks, permission prompts, or a
+	// physical tool boundary.
+	for index, toolUse := range toolUses {
+		tool := reg.Get(toolUse.Name)
+		if tool == nil {
+			continue
+		}
+		if validationErr := types.ValidateToolInput(tool, toolUse.Input); validationErr != nil {
+			results := make([]types.ToolResultBlock, len(toolUses))
+			for siblingIndex, sibling := range toolUses {
+				content := i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeToolExecutionCancelled)
+				if siblingIndex == index {
+					content = i18n.FormatToolInputValidationError(i18n.DetectOrLoadLanguage(), validationErr)
+				}
+				results[siblingIndex] = types.ToolResultBlock{
+					Type: types.ContentTypeToolResult, ToolUseID: sibling.ID, ToolType: sibling.ToolType,
+					Content: content, IsError: true, Outcome: types.ToolOutcomeFailed,
+				}
+				if onResult != nil {
+					onResult(siblingIndex, results[siblingIndex])
+				}
+			}
+			return toolExecutionResults{
+				Results: results,
+				Metrics: toolExecutionMetrics{ErrorCount: len(results)},
+			}, nil
+		}
+	}
 	enqueuedAt := make([]time.Time, len(toolUses))
 	for index := range enqueuedAt {
 		enqueuedAt[index] = roundStarted

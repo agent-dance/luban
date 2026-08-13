@@ -291,11 +291,25 @@ func (p *ResponsesProvider) createResponsesHTTPStream(ctx context.Context, param
 	for {
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
-			return nil, i18n.WrapError(i18n.KeyProviderRequestEncodeFailed, err)
+			diagnostic := baseResponsesFailureDiagnostic(ctx, profile.providerName, model, "https", endpoint, "")
+			diagnostic.FailurePoint = types.ProviderFailureRequestEncode
+			cause := &types.APIError{
+				Type: "request_encode_error", Message: i18n.WrapError(i18n.KeyProviderRequestEncodeFailed, err).Error(),
+				Stage: types.ProviderErrorStageConnect, Class: types.ProviderErrorClassPermanent,
+				ReplaySafety: types.ProviderReplaySafe,
+			}
+			return nil, applyFailureDiagnosticToAPIError(cause, diagnostic)
 		}
 		req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(jsonBody))
 		if err != nil {
-			return nil, i18n.WrapError(i18n.KeyProviderRequestBuildFailed, err)
+			diagnostic := baseResponsesFailureDiagnostic(ctx, profile.providerName, model, "https", endpoint, "")
+			diagnostic.FailurePoint = types.ProviderFailureRequestBuild
+			cause := &types.APIError{
+				Type: "request_build_error", Message: i18n.WrapError(i18n.KeyProviderRequestBuildFailed, err).Error(),
+				Stage: types.ProviderErrorStageConnect, Class: types.ProviderErrorClassPermanent,
+				ReplaySafety: types.ProviderReplaySafe,
+			}
+			return nil, applyFailureDiagnosticToAPIError(cause, diagnostic)
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "text/event-stream")
@@ -318,7 +332,18 @@ func (p *ResponsesProvider) createResponsesHTTPStream(ctx context.Context, param
 
 		resp, err = profile.timeoutClient.Do(req)
 		if err != nil {
-			return nil, i18n.WrapError(i18n.KeyProviderRequestFailed, err, "Responses API")
+			wrapped := i18n.WrapError(i18n.KeyProviderRequestFailed, err, "Responses API")
+			if _, transportFailure := typedTransportAPIError(err, types.ProviderErrorStageConnect); !transportFailure {
+				return nil, wrapped
+			}
+			cause := &types.APIError{
+				Type: "transport_error", Message: wrapped.Error(),
+				Stage: types.ProviderErrorStageConnect, Class: types.ProviderErrorClassTransport,
+				ReplaySafety: types.ProviderReplaySafe,
+			}
+			diagnostic := baseResponsesFailureDiagnostic(ctx, profile.providerName, model, "https", endpoint, "")
+			diagnostic.FailurePoint = types.ProviderFailureRequestTransport
+			return nil, applyFailureDiagnosticToAPIError(cause, diagnostic)
 		}
 		if resp.StatusCode == http.StatusOK {
 			break
@@ -334,6 +359,14 @@ func (p *ResponsesProvider) createResponsesHTTPStream(ctx context.Context, param
 					parseResponsesHTTPError(resp.StatusCode, bodyBytes, resp.Header.Get("Retry-After")),
 					profile.providerName, "responses", endpoint, resp.Header,
 				)
+				diagnostic := baseResponsesFailureDiagnostic(
+					ctx, profile.providerName, model, "https", endpoint, providerRequestID(resp.Header),
+				)
+				diagnostic.FailurePoint = types.ProviderFailureRequestHTTPStatus
+				diagnostic.HTTPStatus = resp.StatusCode
+				diagnostic.Decision = "fallback"
+				diagnostic.DroppedField = field
+				applyFailureDiagnosticToAPIError(cause, diagnostic)
 				if attemptErr := beginNestedTransportAttempt(ctx, cause); attemptErr != nil {
 					return nil, attemptErr
 				}
@@ -347,15 +380,24 @@ func (p *ResponsesProvider) createResponsesHTTPStream(ctx context.Context, param
 		if profile.semantics == ResponsesSemanticsCompatible && responsesEndpointUnavailable(apiErr) {
 			apiErr.SuggestedAPIFormat = "chat-completions"
 		}
+		diagnostic := baseResponsesFailureDiagnostic(
+			ctx, profile.providerName, model, "https", endpoint, providerRequestID(resp.Header),
+		)
+		diagnostic.FailurePoint = types.ProviderFailureRequestHTTPStatus
+		diagnostic.HTTPStatus = resp.StatusCode
+		applyFailureDiagnosticToAPIError(apiErr, diagnostic)
 		return nil, apiErr
 	}
 
 	watchdogBody := newStreamWatchdogBody(resp.Body, responsesStreamWatchdogConfig())
+	streamCtx := withProviderFailureDiagnostic(ctx, baseResponsesFailureDiagnostic(
+		ctx, profile.providerName, model, "https", endpoint, providerRequestID(resp.Header),
+	))
 	ch := make(chan types.StreamEvent, 64)
 	go func() {
 		defer close(ch)
 		defer watchdogBody.Close()
-		processResponsesStreamForRequest(ctx, watchdogBody, ch, model, profile.semantics, responsesLite, params.ServiceTier)
+		processResponsesStreamForRequest(streamCtx, watchdogBody, ch, model, profile.semantics, responsesLite, params.ServiceTier)
 	}()
 
 	return ch, nil
@@ -394,6 +436,16 @@ func (p *ResponsesProvider) omitUnsupportedFields(model string, body map[string]
 			delete(body, field)
 		}
 	}
+}
+
+func (p *ResponsesProvider) UnsupportedRequestFields(model string) []string {
+	fields := make([]string, 0, len(responsesOptionalGatewayFields))
+	for _, field := range responsesOptionalGatewayFields {
+		if _, rejected := p.unsupportedFields.Load(unsupportedResponsesFieldKey(model, field)); rejected {
+			fields = append(fields, field)
+		}
+	}
+	return fields
 }
 
 // unsupportedResponsesRequestField identifies an optional gateway field that a
@@ -474,7 +526,7 @@ func processResponsesEventsForRequest(
 	expectedServiceTier ServiceTier,
 ) {
 	encryptedReasoning := semantics == ResponsesSemanticsOpenAIPublic || semantics == ResponsesSemanticsOpenAICodex
-	send := func(evt types.StreamEvent) bool {
+	sendRaw := func(evt types.StreamEvent) bool {
 		select {
 		case ch <- evt:
 			return true
@@ -483,7 +535,7 @@ func processResponsesEventsForRequest(
 		}
 	}
 
-	// Track output items by their index for mapping to stream events
+	// Track output items by their index for mapping to stream events.
 	type outputItem struct {
 		itemType           string // "message", "function_call", "custom_tool_call", "reasoning"
 		blockIdx           int    // our block index for StreamEvent
@@ -493,7 +545,9 @@ func processResponsesEventsForRequest(
 		providerStatus     string
 		signature          string
 		stopped            bool
+		itemDone           bool
 		functionInputBytes int
+		functionInput      strings.Builder
 		functionFinal      *string
 		customInput        strings.Builder
 		customFinal        *string
@@ -502,9 +556,120 @@ func processResponsesEventsForRequest(
 	completedOutputItems := make(map[int]json.RawMessage)
 	nextBlockIdx := 0
 	messageStarted := false
+	responseIDSeen := ""
+	wireSequence := 0
+	currentWireEvent := "unknown"
+	currentDataBytes := 0
+	baseDiagnostic := providerFailureDiagnosticFromContext(ctx)
+	if baseDiagnostic == nil {
+		baseDiagnostic = &types.ProviderFailureDiagnostic{
+			SchemaVersion: types.ProviderFailureDiagnosticSchema,
+			Model:         safeProviderProtocolIdentifier(requestModel), APIFormat: "responses",
+		}
+	}
+	buildFailureDiagnostic := func(point types.ProviderFailurePoint, outputIndex int, outputSet bool) *types.ProviderFailureDiagnostic {
+		diagnostic := baseDiagnostic.Clone()
+		diagnostic.FailurePoint = point
+		diagnostic.Stage = types.ProviderErrorStageStream
+		diagnostic.Class = types.ProviderErrorClassPermanent
+		diagnostic.ReplaySafety = types.ProviderReplaySafe
+		diagnostic.ResponseID = safeProviderProtocolIdentifier(responseIDSeen)
+		diagnostic.WireSequence = wireSequence
+		diagnostic.WireEvent = safeResponsesWireEvent(currentWireEvent)
+		diagnostic.DataBytes = currentDataBytes
+		diagnostic.OutputIndex = outputIndex
+		diagnostic.OutputSet = outputSet
+		diagnostic.MessageStarted = messageStarted
+		diagnostic.TrackedItems = len(outputItems)
+		diagnostic.CompletedItems = len(completedOutputItems)
+		for _, tracked := range outputItems {
+			if tracked != nil && tracked.stopped {
+				diagnostic.StoppedItems++
+			}
+		}
+		if outputSet {
+			item := outputItems[outputIndex]
+			diagnostic.ItemPresent = item != nil
+			if item != nil {
+				diagnostic.ItemType = safeResponsesItemType(item.itemType)
+				diagnostic.ItemStatus = safeResponsesItemStatus(item.providerStatus)
+				diagnostic.ItemStopped = item.stopped
+				diagnostic.CallIDPresent = item.callID != ""
+				diagnostic.NamePresent = item.name != ""
+				diagnostic.ItemIDPresent = item.providerItemID != ""
+				diagnostic.StreamInputBytes = item.functionInputBytes
+				diagnostic.FinalSeen = item.functionFinal != nil
+				if item.itemType == "custom_tool_call" {
+					diagnostic.StreamInputBytes = item.customInput.Len()
+					diagnostic.FinalSeen = item.customFinal != nil
+				}
+			}
+		}
+		return diagnostic
+	}
+	send := func(evt types.StreamEvent) bool {
+		if evt.Type == types.EventError && evt.Error != nil && evt.Error.FailureDiagnostic == nil {
+			point := types.ProviderFailureUnknown
+			switch evt.Error.Type {
+			case "stream_idle_timeout":
+				point = types.ProviderFailureStreamIdleTimeout
+			case "stream_interrupted":
+				point = types.ProviderFailureStreamInterrupted
+			case "invalid_continuation":
+				point = types.ProviderFailureContinuationInvalid
+			case "service_tier_mismatch":
+				point = types.ProviderFailureServiceTierMismatch
+			case "response_failed":
+				point = types.ProviderFailureResponseFailed
+			}
+			evt.Error = applyFailureDiagnosticToAPIError(evt.Error, buildFailureDiagnostic(point, 0, false))
+		}
+		if evt.Type == types.EventError && evt.Error != nil && evt.Error.FailureDiagnostic != nil {
+			contract := ClassifyAttemptError(evt.Error)
+			evt.Error.FailureDiagnostic.Stage = contract.Stage
+			evt.Error.FailureDiagnostic.Class = contract.Class
+			evt.Error.FailureDiagnostic.ReplaySafety = contract.ReplaySafety
+		}
+		return sendRaw(evt)
+	}
+	sendProtocolError := func(point types.ProviderFailurePoint, custom bool, outputIndex int, outputSet bool) {
+		errType := "invalid_tool_call"
+		if custom {
+			errType = "invalid_custom_tool_call"
+		}
+		diagnostic := buildFailureDiagnostic(point, outputIndex, outputSet)
+		send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+			Type: errType, Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCustomToolCallInvalid),
+			Stage: types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent,
+			ReplaySafety: types.ProviderReplaySafe,
+		}, diagnostic)})
+	}
+	sendKnownEventParseError := func(outputIndex int, outputSet bool, parseErrors ...error) {
+		diagnostic := buildFailureDiagnostic(types.ProviderFailureSSEKnownEventParse, outputIndex, outputSet)
+		var parseDiagnostic any = currentWireEvent
+		if len(parseErrors) > 0 && parseErrors[0] != nil {
+			parseDiagnostic = parseErrors[0]
+		}
+		message := i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesKnownEventParseFailed, currentWireEvent)
+		switch currentWireEvent {
+		case "response.completed":
+			message = i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCompletedParseFailed, parseDiagnostic)
+		case "response.incomplete":
+			message = i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesIncompleteParseFailed, parseDiagnostic)
+		case "response.failed":
+			message = i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesFailedParseFailed, parseDiagnostic)
+		}
+		send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+			Type: "parse_error", Message: message,
+			Stage: types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent,
+			ReplaySafety: types.ProviderReplaySafe,
+		}, diagnostic)})
+	}
 
 	completedNormally := false
 	for sse := range events {
+		wireSequence++
+		currentDataBytes = len(sse.Data)
 		if ctx.Err() != nil {
 			return
 		}
@@ -526,9 +691,23 @@ func processResponsesEventsForRequest(
 				eventType = peek.Type
 			}
 		}
+		currentWireEvent = eventType
 
 		switch eventType {
 		case "response.created", "response.in_progress":
+			var data struct {
+				Response struct {
+					ID string `json:"id"`
+				} `json:"response"`
+			}
+			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
+				sendKnownEventParseError(0, false, err)
+				completedNormally = true
+				return
+			}
+			if data.Response.ID != "" {
+				responseIDSeen = data.Response.ID
+			}
 			if !messageStarted {
 				if !send(types.StreamEvent{
 					Type: types.EventMessageStart,
@@ -551,7 +730,9 @@ func processResponsesEventsForRequest(
 				} `json:"item"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false, err)
+				completedNormally = true
+				return
 			}
 
 			item := &outputItem{
@@ -620,7 +801,9 @@ func processResponsesEventsForRequest(
 				} `json:"part"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 
 			item := outputItems[data.OutputIndex]
@@ -649,7 +832,9 @@ func processResponsesEventsForRequest(
 				Delta        string `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			item := outputItems[data.OutputIndex]
 			idx := 0
@@ -676,7 +861,9 @@ func processResponsesEventsForRequest(
 				} `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			item := outputItems[data.OutputIndex]
 			idx := 0
@@ -700,20 +887,34 @@ func processResponsesEventsForRequest(
 				Delta       string `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			item := outputItems[data.OutputIndex]
-			if item == nil || item.itemType != "function_call" || item.stopped {
-				sendResponsesToolInputProtocolError(send)
+			if item == nil {
+				sendProtocolError(types.ProviderFailureFunctionDeltaWithoutItem, false, data.OutputIndex, true)
+				completedNormally = true
+				return
+			}
+			if item.itemType != "function_call" {
+				sendProtocolError(types.ProviderFailureFunctionDeltaWrongItem, false, data.OutputIndex, true)
+				completedNormally = true
+				return
+			}
+			if item.stopped {
+				sendProtocolError(types.ProviderFailureFunctionDeltaAfterStop, false, data.OutputIndex, true)
 				completedNormally = true
 				return
 			}
 			if item.functionInputBytes+len(data.Delta) > responsesToolInputLimit(item.name) {
-				sendResponsesToolInputLimitError(send)
+				diagnostic := buildFailureDiagnostic(types.ProviderFailureToolInputLimit, data.OutputIndex, true)
+				sendResponsesToolInputLimitError(send, diagnostic)
 				completedNormally = true
 				return
 			}
 			item.functionInputBytes += len(data.Delta)
+			item.functionInput.WriteString(data.Delta)
 
 			if !send(types.StreamEvent{
 				Type:  types.EventContentBlockDelta,
@@ -732,16 +933,29 @@ func processResponsesEventsForRequest(
 				Delta       string `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			item := outputItems[data.OutputIndex]
-			if item == nil || item.itemType != "custom_tool_call" || item.stopped {
-				sendResponsesCustomToolProtocolError(send)
+			if item == nil {
+				sendProtocolError(types.ProviderFailureCustomDeltaWithoutItem, true, data.OutputIndex, true)
+				completedNormally = true
+				return
+			}
+			if item.itemType != "custom_tool_call" {
+				sendProtocolError(types.ProviderFailureCustomDeltaWrongItem, true, data.OutputIndex, true)
+				completedNormally = true
+				return
+			}
+			if item.stopped {
+				sendProtocolError(types.ProviderFailureCustomDeltaAfterStop, true, data.OutputIndex, true)
 				completedNormally = true
 				return
 			}
 			if item.customInput.Len()+len(data.Delta) > responsesToolInputLimit(item.name) {
-				sendResponsesToolInputLimitError(send)
+				diagnostic := buildFailureDiagnostic(types.ProviderFailureToolInputLimit, data.OutputIndex, true)
+				sendResponsesToolInputLimitError(send, diagnostic)
 				completedNormally = true
 				return
 			}
@@ -760,7 +974,9 @@ func processResponsesEventsForRequest(
 				Delta       string `json:"delta"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			item := outputItems[data.OutputIndex]
 			idx := 0
@@ -788,17 +1004,33 @@ func processResponsesEventsForRequest(
 				Arguments   *string `json:"arguments"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			item := outputItems[data.OutputIndex]
-			if item == nil || item.itemType != "function_call" || item.stopped || data.Arguments == nil ||
-				(data.ItemID != "" && item.providerItemID != "" && data.ItemID != item.providerItemID) {
-				sendResponsesToolInputProtocolError(send)
+			point := types.ProviderFailurePoint("")
+			switch {
+			case item == nil:
+				point = types.ProviderFailureFunctionDoneWithoutItem
+			case item.itemType != "function_call":
+				point = types.ProviderFailureFunctionDoneWrongItem
+			case item.stopped:
+				point = types.ProviderFailureFunctionDoneAfterStop
+			case data.Arguments == nil:
+				point = types.ProviderFailureFunctionDoneMissingArguments
+			case data.ItemID != "" && item.providerItemID != "" && data.ItemID != item.providerItemID:
+				point = types.ProviderFailureFunctionDoneItemIDMismatch
+			}
+			if point != "" {
+				sendProtocolError(point, false, data.OutputIndex, true)
 				completedNormally = true
 				return
 			}
 			if len(*data.Arguments) > responsesToolInputLimit(item.name) {
-				sendResponsesToolInputLimitError(send)
+				diagnostic := buildFailureDiagnostic(types.ProviderFailureToolInputLimit, data.OutputIndex, true)
+				diagnostic.FinalInputBytes = len(*data.Arguments)
+				sendResponsesToolInputLimitError(send, diagnostic)
 				completedNormally = true
 				return
 			}
@@ -821,21 +1053,43 @@ func processResponsesEventsForRequest(
 				Input       *string `json:"input"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			item := outputItems[data.OutputIndex]
-			if item == nil || item.itemType != "custom_tool_call" || item.stopped || data.Input == nil {
-				sendResponsesCustomToolProtocolError(send)
+			point := types.ProviderFailurePoint("")
+			switch {
+			case item == nil:
+				point = types.ProviderFailureCustomDoneWithoutItem
+			case item.itemType != "custom_tool_call":
+				point = types.ProviderFailureCustomDoneWrongItem
+			case item.stopped:
+				point = types.ProviderFailureCustomDoneAfterStop
+			case data.Input == nil:
+				point = types.ProviderFailureCustomDoneMissingInput
+			}
+			if point != "" {
+				sendProtocolError(point, true, data.OutputIndex, true)
 				completedNormally = true
 				return
 			}
 			if len(*data.Input) > responsesToolInputLimit(item.name) {
-				sendResponsesToolInputLimitError(send)
+				diagnostic := buildFailureDiagnostic(types.ProviderFailureToolInputLimit, data.OutputIndex, true)
+				diagnostic.FinalInputBytes = len(*data.Input)
+				sendResponsesToolInputLimitError(send, diagnostic)
 				completedNormally = true
 				return
 			}
 			if item.customInput.Len() > 0 && item.customInput.String() != *data.Input {
-				sendResponsesCustomToolProtocolError(send)
+				diagnostic := buildFailureDiagnostic(types.ProviderFailureCustomFinalMismatch, data.OutputIndex, true)
+				diagnostic.InputMatchChecked = true
+				diagnostic.InputMatched = false
+				diagnostic.FinalInputBytes = len(*data.Input)
+				send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+					Type: "invalid_custom_tool_call", Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCustomToolCallInvalid),
+					Stage: types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent, ReplaySafety: types.ProviderReplaySafe,
+				}, diagnostic)})
 				completedNormally = true
 				return
 			}
@@ -859,6 +1113,10 @@ func processResponsesEventsForRequest(
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &rawData); err == nil && len(rawData.Item) > 0 {
 				completedOutputItems[rawData.OutputIndex] = append(json.RawMessage(nil), rawData.Item...)
+			} else if err != nil {
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			var data struct {
 				OutputIndex int `json:"output_index"`
@@ -874,7 +1132,9 @@ func processResponsesEventsForRequest(
 				} `json:"item"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 
 			item := outputItems[data.OutputIndex]
@@ -930,10 +1190,50 @@ func processResponsesEventsForRequest(
 				nextBlockIdx = max(nextBlockIdx, item.blockIdx+1)
 			}
 			if item != nil {
-				if item.itemType == "custom_tool_call" && item.stopped {
-					sendResponsesCustomToolProtocolError(send)
+				if item.stopped && (item.itemType == "function_call" || item.itemType == "custom_tool_call") {
+					point := types.ProviderFailureCompletedToolBatchConflict
+					if item.itemType == "custom_tool_call" {
+						point = types.ProviderFailureCustomDuplicateStop
+					}
+					sendProtocolError(point, item.itemType == "custom_tool_call", data.OutputIndex, true)
 					completedNormally = true
 					return
+				}
+				if item.itemType == "function_call" || item.itemType == "custom_tool_call" {
+					custom := item.itemType == "custom_tool_call"
+					wireName := responsesLocalToolNameForSemantics(semantics, data.Item.Name, custom)
+					if data.Item.Status == "incomplete" {
+						// output_item.done is provisional when the provider is about
+						// to terminate the whole response as incomplete. Keep the item
+						// open so response.incomplete can authoritatively map the batch
+						// to max_tokens without ever authorizing a tool call.
+						item.providerStatus = data.Item.Status
+						item.itemDone = true
+						continue
+					}
+					if data.Item.Status != "completed" {
+						point := types.ProviderFailureFunctionInvalidStatus
+						if custom {
+							point = types.ProviderFailureCustomInvalidStatus
+						}
+						sendProtocolError(point, custom, data.OutputIndex, true)
+						completedNormally = true
+						return
+					}
+					identityConflict := data.Item.Type != item.itemType || data.Item.ID == "" ||
+						data.Item.CallID == "" || wireName == "" ||
+						(item.providerItemID != "" && item.providerItemID != data.Item.ID) ||
+						(item.callID != "" && item.callID != data.Item.CallID) ||
+						(item.name != "" && item.name != wireName)
+					if identityConflict {
+						sendProtocolError(types.ProviderFailureCompletedToolBatchConflict, custom, data.OutputIndex, true)
+						completedNormally = true
+						return
+					}
+					item.providerItemID = data.Item.ID
+					item.callID = data.Item.CallID
+					item.name = wireName
+					item.providerStatus = data.Item.Status
 				}
 				if item.itemType == "reasoning" {
 					changed := false
@@ -973,79 +1273,98 @@ func processResponsesEventsForRequest(
 						}
 					}
 				} else if item.itemType == "function_call" {
-					if data.Item.ID != "" {
-						item.providerItemID = data.Item.ID
-					}
-					if data.Item.Status != "" {
-						item.providerStatus = data.Item.Status
-					}
-					if data.Item.CallID != "" {
-						item.callID = data.Item.CallID
-					}
-					if data.Item.Name != "" {
-						item.name = responsesLocalToolNameForSemantics(semantics, data.Item.Name, false)
+					if data.Item.Arguments == nil && item.functionFinal == nil && item.functionInput.Len() == 0 {
+						sendProtocolError(types.ProviderFailureFunctionDoneMissingArguments, false, data.OutputIndex, true)
+						completedNormally = true
+						return
 					}
 					if data.Item.Arguments != nil && len(*data.Item.Arguments) > responsesToolInputLimit(item.name) {
-						sendResponsesToolInputLimitError(send)
+						diagnostic := buildFailureDiagnostic(types.ProviderFailureToolInputLimit, data.OutputIndex, true)
+						diagnostic.FinalInputBytes = len(*data.Item.Arguments)
+						sendResponsesToolInputLimitError(send, diagnostic)
 						completedNormally = true
 						return
 					}
 					if data.Item.Arguments != nil && item.functionFinal != nil && *data.Item.Arguments != *item.functionFinal {
-						sendResponsesToolInputProtocolError(send)
+						diagnostic := buildFailureDiagnostic(types.ProviderFailureFunctionFinalMismatch, data.OutputIndex, true)
+						diagnostic.InputMatchChecked = true
+						diagnostic.InputMatched = false
+						diagnostic.FinalInputBytes = len(*data.Item.Arguments)
+						send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+							Type: "invalid_tool_call", Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCustomToolCallInvalid),
+							Stage: types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent, ReplaySafety: types.ProviderReplaySafe,
+						}, diagnostic)})
 						completedNormally = true
 						return
 					}
-					if item.callID == "" || item.name == "" || (data.Item.Status != "" && data.Item.Status != "completed") {
-						sendResponsesToolInputProtocolError(send)
-						completedNormally = true
-						return
+					finalArguments := item.functionInput.String()
+					if item.functionFinal != nil {
+						finalArguments = *item.functionFinal
 					}
-					if data.Item.Arguments != nil && !send(types.StreamEvent{
+					if data.Item.Arguments != nil {
+						finalArguments = *data.Item.Arguments
+					}
+					item.functionFinal = &finalArguments
+					if !send(types.StreamEvent{
 						Type:  types.EventContentBlockDelta,
 						Index: item.blockIdx,
 						Delta: &types.ContentDelta{
-							Type:        "tool_state_final",
-							ID:          item.callID,
-							Name:        item.name,
-							PartialJSON: *data.Item.Arguments,
+							Type:           "tool_state_final",
+							ID:             item.callID,
+							Name:           item.name,
+							PartialJSON:    finalArguments,
+							ProviderStatus: "completed",
 						},
 					}) {
 						return
 					}
 				} else if item.itemType == "custom_tool_call" {
-					if data.Item.CallID != "" {
-						item.callID = data.Item.CallID
-					}
-					if data.Item.Name != "" {
-						item.name = responsesLocalToolNameForSemantics(semantics, data.Item.Name, true)
-					}
 					if data.Item.Input != nil && len(*data.Item.Input) > responsesToolInputLimit(item.name) {
-						sendResponsesToolInputLimitError(send)
+						diagnostic := buildFailureDiagnostic(types.ProviderFailureToolInputLimit, data.OutputIndex, true)
+						diagnostic.FinalInputBytes = len(*data.Item.Input)
+						sendResponsesToolInputLimitError(send, diagnostic)
 						completedNormally = true
 						return
 					}
-					if data.Item.Status != "completed" || item.callID == "" || item.name == "" || data.Item.Input == nil {
-						sendResponsesCustomToolProtocolError(send)
+					if data.Item.Input == nil && item.customFinal == nil {
+						sendProtocolError(types.ProviderFailureCustomDoneMissingInput, true, data.OutputIndex, true)
 						completedNormally = true
 						return
 					}
-					if (item.customFinal != nil && *item.customFinal != *data.Item.Input) ||
-						(item.customFinal == nil && item.customInput.Len() > 0 && item.customInput.String() != *data.Item.Input) {
-						sendResponsesCustomToolProtocolError(send)
+					if data.Item.Input != nil && ((item.customFinal != nil && *item.customFinal != *data.Item.Input) ||
+						(item.customFinal == nil && item.customInput.Len() > 0 && item.customInput.String() != *data.Item.Input)) {
+						diagnostic := buildFailureDiagnostic(types.ProviderFailureCustomFinalMismatch, data.OutputIndex, true)
+						diagnostic.InputMatchChecked = true
+						diagnostic.InputMatched = false
+						diagnostic.FinalInputBytes = len(*data.Item.Input)
+						send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+							Type: "invalid_custom_tool_call", Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCustomToolCallInvalid),
+							Stage: types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent, ReplaySafety: types.ProviderReplaySafe,
+						}, diagnostic)})
 						completedNormally = true
 						return
 					}
+					finalInput := ""
+					if item.customFinal != nil {
+						finalInput = *item.customFinal
+					}
+					if data.Item.Input != nil {
+						finalInput = *data.Item.Input
+					}
+					item.customFinal = &finalInput
 					if !send(types.StreamEvent{
 						Type:  types.EventContentBlockDelta,
 						Index: item.blockIdx,
 						Delta: &types.ContentDelta{
 							Type: "tool_state_final", ID: item.callID, Name: item.name,
-							ToolType: types.ToolDefinitionTypeCustom, PartialText: *data.Item.Input,
+							ToolType: types.ToolDefinitionTypeCustom, PartialText: finalInput,
+							ProviderStatus: "completed",
 						},
 					}) {
 						return
 					}
 				}
+				item.itemDone = true
 				if !send(types.StreamEvent{
 					Type:  types.EventContentBlockStop,
 					Index: item.blockIdx,
@@ -1061,7 +1380,9 @@ func processResponsesEventsForRequest(
 				OutputIndex int `json:"output_index"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				continue
+				sendKnownEventParseError(0, false)
+				completedNormally = true
+				return
 			}
 			// For message output items, the content_part.done signals text block end
 			// But we let output_item.done handle the EventContentBlockStop
@@ -1088,26 +1409,15 @@ func processResponsesEventsForRequest(
 				} `json:"response"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				parseKey := i18n.KeyProviderResponsesCompletedParseFailed
-				if eventType == "response.incomplete" {
-					parseKey = i18n.KeyProviderResponsesIncompleteParseFailed
-				}
-				send(types.StreamEvent{
-					Type: types.EventError,
-					Error: &types.APIError{
-						Type: "parse_error",
-						Message: i18n.Format(
-							i18n.DetectOrLoadLanguage(),
-							parseKey,
-							err,
-						),
-					},
-				})
+				sendKnownEventParseError(0, false, err)
 				completedNormally = true // don't also emit stream_interrupted
 				return
 			}
 			if eventType == "response.incomplete" && data.Response.Status == "" {
 				data.Response.Status = "incomplete"
+			}
+			if data.Response.ID != "" {
+				responseIDSeen = data.Response.ID
 			}
 			// Preserve usage even when a contract-bound request is rejected for
 			// scheduling drift; the provider may already have billed this attempt.
@@ -1140,39 +1450,133 @@ func processResponsesEventsForRequest(
 				for outputIndex := range responseOutput {
 					rawOutput, ok := completedOutputItems[outputIndex]
 					if !ok {
-						send(types.StreamEvent{
-							Type: types.EventError,
-							Error: &types.APIError{
-								Type:    "invalid_continuation",
-								Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesContinuationInvalid),
-							},
-						})
+						diagnostic := buildFailureDiagnostic(types.ProviderFailureCompletedOutputGap, outputIndex, true)
+						send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+							Type: "invalid_continuation", Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesContinuationInvalid),
+							Stage: types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent, ReplaySafety: types.ProviderReplaySafe,
+						}, diagnostic)})
 						completedNormally = true
 						return
 					}
 					responseOutput[outputIndex] = rawOutput
 				}
 			}
-			hasCustomToolCall := false
+			responseIncomplete := eventType == "response.incomplete" || data.Response.Status == "incomplete"
+			incompleteReason := strings.TrimSpace(data.Response.IncompleteDetails.Reason)
+			responseTruncated := incompleteReason == "max_output_tokens" || incompleteReason == "max_tokens"
+			if responseTruncated {
+				// A provider-declared output limit is a committed, incomplete response,
+				// not a transport failure. Commit only the safe observed prefix. In
+				// particular, do not issue a tool receipt or continuation: the runtime
+				// quarantines every provisional tool block for max_tokens responses.
+				sr := types.StopReasonMaxTokens
+				if !send(types.StreamEvent{Type: types.EventMessageDelta, StopReason: &sr, Usage: usage}) {
+					return
+				}
+				completedNormally = true
+				send(types.StreamEvent{Type: types.EventMessageStop, ResponseID: data.Response.ID})
+				return
+			}
+			if responseIncomplete {
+				// Unknown incomplete reasons are not interchangeable with output
+				// exhaustion. Fail closed with a typed, content-free diagnostic.
+				diagnostic := buildFailureDiagnostic(types.ProviderFailureResponseIncomplete, 0, false)
+				diagnostic.CommitSeen = false
+				diagnostic.IncompleteReason = safeResponsesIncompleteReason(incompleteReason)
+				send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+					Type: "response_incomplete", Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeResponsesStreamIncomplete),
+					Stage: types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent,
+					ReplaySafety: types.ProviderReplaySafe,
+				}, diagnostic)})
+				completedNormally = true
+				return
+			}
+			if data.Response.Status != "completed" {
+				sendProtocolError(types.ProviderFailureCompletedToolBatchConflict, false, 0, false)
+				completedNormally = true
+				return
+			}
+
+			seenToolItems := make(map[int]struct{})
+			toolBatchCalls := make([]types.ProviderToolCallCommit, 0)
 			for outputIndex, rawOutput := range responseOutput {
 				var output struct {
-					Type string `json:"type"`
+					Type      string  `json:"type"`
+					ID        string  `json:"id"`
+					CallID    string  `json:"call_id"`
+					Name      string  `json:"name"`
+					Status    string  `json:"status"`
+					Arguments *string `json:"arguments"`
+					Input     *string `json:"input"`
 				}
-				if json.Unmarshal(rawOutput, &output) != nil || output.Type != "custom_tool_call" {
-					continue
-				}
-				hasCustomToolCall = true
-				item := outputItems[outputIndex]
-				if item == nil || item.itemType != "custom_tool_call" || !item.stopped {
-					sendResponsesCustomToolProtocolError(send)
+				if json.Unmarshal(rawOutput, &output) != nil {
+					sendProtocolError(types.ProviderFailureCompletedToolBatchConflict, false, outputIndex, true)
 					completedNormally = true
 					return
 				}
+				if output.Type != "function_call" && output.Type != "custom_tool_call" {
+					continue
+				}
+				custom := output.Type == "custom_tool_call"
+				item := outputItems[outputIndex]
+				if item == nil || item.itemType != output.Type || !item.itemDone || !item.stopped {
+					point := types.ProviderFailureCompletedFunctionItemUnfinalized
+					if custom {
+						point = types.ProviderFailureCompletedCustomItemUnfinalized
+					}
+					sendProtocolError(point, custom, outputIndex, true)
+					completedNormally = true
+					return
+				}
+				wireName := responsesLocalToolNameForSemantics(semantics, output.Name, custom)
+				if (output.Status != "" && output.Status != "completed") || item.providerStatus != "completed" ||
+					item.providerItemID == "" || item.callID == "" || item.name == "" ||
+					(output.ID != "" && output.ID != item.providerItemID) ||
+					(output.CallID != "" && output.CallID != item.callID) ||
+					(output.Name != "" && wireName != item.name) {
+					point := types.ProviderFailureCompletedFunctionStatusInvalid
+					if custom {
+						point = types.ProviderFailureCompletedCustomStatusInvalid
+					}
+					sendProtocolError(point, custom, outputIndex, true)
+					completedNormally = true
+					return
+				}
+				var rawPayload string
+				if custom {
+					if item.customFinal == nil || (output.Input != nil && *output.Input != *item.customFinal) {
+						sendProtocolError(types.ProviderFailureCompletedToolBatchConflict, true, outputIndex, true)
+						completedNormally = true
+						return
+					}
+					rawPayload = *item.customFinal
+				} else {
+					if item.functionFinal == nil || (output.Arguments != nil && *output.Arguments != *item.functionFinal) {
+						sendProtocolError(types.ProviderFailureCompletedToolBatchConflict, false, outputIndex, true)
+						completedNormally = true
+						return
+					}
+					rawPayload = *item.functionFinal
+				}
+				toolType := types.ToolDefinitionTypeFunction
+				if custom {
+					toolType = types.ToolDefinitionTypeCustom
+				}
+				toolBatchCalls = append(toolBatchCalls, types.ProviderToolCallCommit{
+					OutputIndex: outputIndex, ToolType: toolType, ProviderItemID: item.providerItemID,
+					CallID: item.callID, Name: item.name, RawInput: rawPayload,
+				})
+				seenToolItems[outputIndex] = struct{}{}
 			}
-			if hasCustomToolCall && data.Response.Status != "completed" {
-				sendResponsesCustomToolProtocolError(send)
-				completedNormally = true
-				return
+			for outputIndex, item := range outputItems {
+				if item == nil || (item.itemType != "function_call" && item.itemType != "custom_tool_call") {
+					continue
+				}
+				if _, present := seenToolItems[outputIndex]; !present {
+					sendProtocolError(types.ProviderFailureCompletedToolBatchConflict, item.itemType == "custom_tool_call", outputIndex, true)
+					completedNormally = true
+					return
+				}
 			}
 
 			// Store response ID for next turn's chaining
@@ -1203,12 +1607,6 @@ func processResponsesEventsForRequest(
 					break
 				}
 			}
-			if eventType == "response.incomplete" || data.Response.Status == "incomplete" ||
-				data.Response.IncompleteDetails.Reason == "max_output_tokens" ||
-				data.Response.IncompleteDetails.Reason == "max_tokens" {
-				sr = types.StopReasonMaxTokens
-			}
-
 			if !send(types.StreamEvent{
 				Type:       types.EventMessageDelta,
 				StopReason: &sr,
@@ -1217,8 +1615,12 @@ func processResponsesEventsForRequest(
 				return
 			}
 
+			receipt := types.NewProviderToolCommitReceipt(baseDiagnostic.Provider, "responses", data.Response.Status, toolBatchCalls)
 			completedNormally = true
-			send(types.StreamEvent{Type: types.EventMessageStop, ResponseID: responseID, ProviderContinuation: continuation})
+			send(types.StreamEvent{
+				Type: types.EventMessageStop, ResponseID: responseID,
+				ProviderContinuation: continuation, ProviderCommitReceipt: receipt,
+			})
 			return
 
 		case "response.failed":
@@ -1234,17 +1636,7 @@ func processResponsesEventsForRequest(
 				} `json:"response"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				send(types.StreamEvent{
-					Type: types.EventError,
-					Error: &types.APIError{
-						Type: "parse_error",
-						Message: i18n.Format(
-							i18n.DetectOrLoadLanguage(),
-							i18n.KeyProviderResponsesFailedParseFailed,
-							err,
-						),
-					},
-				})
+				sendKnownEventParseError(0, false, err)
 				completedNormally = true
 				return
 			}
@@ -1264,9 +1656,10 @@ func processResponsesEventsForRequest(
 				code = errType
 			}
 
+			diagnostic := buildFailureDiagnostic(types.ProviderFailureResponseFailed, 0, false)
 			send(types.StreamEvent{
 				Type: types.EventError,
-				Error: &types.APIError{
+				Error: applyFailureDiagnosticToAPIError(&types.APIError{
 					Type:         errType,
 					Code:         code,
 					Message:      errMsg,
@@ -1274,14 +1667,14 @@ func processResponsesEventsForRequest(
 					RetryAfter:   retryAfter,
 					Stage:        types.ProviderErrorStageStream,
 					ReplaySafety: types.ProviderReplaySafe,
-				},
+				}, diagnostic),
 			})
 			completedNormally = true // explicit failure, not an interruption
 			return
 
 		case "error":
 			if errors.Is(sse.Err, errResponsesFunctionCallDeltaLineTooLarge) {
-				sendResponsesToolInputLimitError(send)
+				sendResponsesToolInputLimitError(send, buildFailureDiagnostic(types.ProviderFailureToolInputLimit, 0, false))
 				completedNormally = true
 				return
 			}
@@ -1319,13 +1712,7 @@ func processResponsesEventsForRequest(
 				} `json:"error"`
 			}
 			if err := json.Unmarshal([]byte(sse.Data), &data); err != nil {
-				send(types.StreamEvent{
-					Type: types.EventError,
-					Error: &types.APIError{
-						Type:    "stream_interrupted",
-						Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeResponsesStreamIncomplete),
-					},
-				})
+				sendKnownEventParseError(0, false)
 				completedNormally = true
 				return
 			}
@@ -1379,40 +1766,20 @@ func processResponsesEventsForRequest(
 	}
 }
 
-func sendResponsesCustomToolProtocolError(send func(types.StreamEvent) bool) {
-	send(types.StreamEvent{
-		Type: types.EventError,
-		Error: &types.APIError{
-			Type:    "invalid_custom_tool_call",
-			Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCustomToolCallInvalid),
-		},
-	})
-}
-
-func sendResponsesToolInputProtocolError(send func(types.StreamEvent) bool) {
-	send(types.StreamEvent{
-		Type: types.EventError,
-		Error: &types.APIError{
-			Type:    "invalid_tool_call",
-			Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyProviderResponsesCustomToolCallInvalid),
-		},
-	})
-}
-
 // A runaway argument stream is an uncommitted generation failure, so replay is
 // safe. Classifying it as a transport interruption reuses the generation-scoped
 // retry budget while closing the response body immediately; the caller never
 // accumulates the oversized JSON and no tool side effect can have started.
-func sendResponsesToolInputLimitError(send func(types.StreamEvent) bool) {
+func sendResponsesToolInputLimitError(send func(types.StreamEvent) bool, diagnostic *types.ProviderFailureDiagnostic) {
 	send(types.StreamEvent{
 		Type: types.EventError,
-		Error: &types.APIError{
+		Error: applyFailureDiagnosticToAPIError(&types.APIError{
 			Type:         "stream_interrupted",
 			Code:         "tool_arguments_too_large",
 			Message:      i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyRuntimeResponsesStreamIncomplete),
 			Stage:        types.ProviderErrorStageStream,
 			ReplaySafety: types.ProviderReplaySafe,
-		},
+		}, diagnostic),
 	})
 }
 

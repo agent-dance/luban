@@ -1,6 +1,7 @@
 package types
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 )
@@ -47,10 +48,92 @@ type StreamEvent struct {
 	// committed assistant message. It must never enter machine/debug events.
 	ProviderContinuation *ProviderContinuation `json:"-"`
 
+	// ProviderCommitReceipt is the provider-neutral authorization evidence for
+	// a committed response. A tool-bearing response is executable only when the
+	// provider adapter supplies a receipt whose status and tool batch were both
+	// reconciled against provider-native completion events. The receipt contains
+	// only counts and digests, never raw model or tool input.
+	ProviderCommitReceipt *ProviderCommitReceipt `json:"-"`
+
 	// SystemFingerprint identifies the provider-side serving configuration when
 	// the API exposes it. Cache diagnostics use it to distinguish prompt drift
 	// from a backend configuration change.
 	SystemFingerprint string `json:"system_fingerprint,omitempty"`
+}
+
+// ProviderCommitReceipt is content-free evidence that the provider adapter
+// observed and reconciled a terminal response. ToolBatchDigest commits to the
+// ordered raw tool payloads and identities without retaining them.
+type ProviderCommitReceipt struct {
+	SchemaVersion   string `json:"schema_version"`
+	Provider        string `json:"provider,omitempty"`
+	APIFormat       string `json:"api_format,omitempty"`
+	ResponseStatus  string `json:"response_status"`
+	ToolCalls       int    `json:"tool_calls"`
+	ToolBatchBytes  int    `json:"tool_batch_bytes,omitempty"`
+	ToolBatchDigest string `json:"tool_batch_digest,omitempty"`
+	ToolsAuthorized bool   `json:"tools_authorized"`
+}
+
+const ProviderCommitReceiptSchema = "provider-commit/v1"
+
+// ProviderToolCallCommit is the provider-neutral identity and authoritative
+// raw payload for one completed client tool item. RawInput is used only while
+// computing the content-free batch digest and is never retained by a receipt.
+type ProviderToolCallCommit struct {
+	OutputIndex    int
+	ToolType       ToolDefinitionType
+	ProviderItemID string
+	CallID         string
+	Name           string
+	RawInput       string
+}
+
+// ProviderToolCallCommitMaterial returns the stable, length-framed receipt
+// material shared by provider adapters and the Runtime verifier.
+func ProviderToolCallCommitMaterial(call ProviderToolCallCommit) []byte {
+	encoded, _ := json.Marshal(struct {
+		OutputIndex    int                `json:"output_index"`
+		ToolType       ToolDefinitionType `json:"tool_type"`
+		ProviderItemID string             `json:"provider_item_id"`
+		CallID         string             `json:"call_id"`
+		Name           string             `json:"name"`
+		RawInput       string             `json:"raw_input"`
+	}{call.OutputIndex, call.ToolType, call.ProviderItemID, call.CallID, call.Name, call.RawInput})
+	return encoded
+}
+
+// NewProviderToolCommitReceipt commits to an ordered set of completed tool
+// items without storing their raw payloads.
+func NewProviderToolCommitReceipt(provider, apiFormat, responseStatus string, calls []ProviderToolCallCommit) *ProviderCommitReceipt {
+	materials := make([][]byte, len(calls))
+	for index, call := range calls {
+		materials[index] = ProviderToolCallCommitMaterial(call)
+	}
+	return NewProviderCommitReceipt(provider, apiFormat, responseStatus, materials)
+}
+
+// NewProviderCommitReceipt builds a deterministic content-free receipt. Each
+// payload is length-framed before hashing so different call boundaries cannot
+// produce the same concatenated byte stream.
+func NewProviderCommitReceipt(provider, apiFormat, responseStatus string, toolPayloads [][]byte) *ProviderCommitReceipt {
+	digest := sha256.New()
+	total := 0
+	for _, payload := range toolPayloads {
+		_, _ = fmt.Fprintf(digest, "%d:", len(payload))
+		_, _ = digest.Write(payload)
+		total += len(payload)
+	}
+	receipt := &ProviderCommitReceipt{
+		SchemaVersion: ProviderCommitReceiptSchema,
+		Provider:      provider, APIFormat: apiFormat, ResponseStatus: responseStatus,
+		ToolCalls: len(toolPayloads), ToolBatchBytes: total,
+		ToolsAuthorized: responseStatus == "completed",
+	}
+	if len(toolPayloads) > 0 {
+		receipt.ToolBatchDigest = fmt.Sprintf("sha256:%x", digest.Sum(nil))
+	}
+	return receipt
 }
 
 // ContentDelta represents delta content in streaming
@@ -180,6 +263,11 @@ type APIError struct {
 	RequestID           string               `json:"request_id,omitempty"`
 	SuggestedAPIFormat  string               `json:"suggested_api_format,omitempty"`
 	AttemptedAPIFormats []string             `json:"attempted_api_formats,omitempty"`
+	// FailureDiagnostic is a content-free trace of the provider/runtime
+	// boundary that rejected this attempt. It must never contain prompts,
+	// model output, tool input, raw SSE data, paths, commands, or provider
+	// diagnostic prose.
+	FailureDiagnostic *ProviderFailureDiagnostic `json:"failure_diagnostic,omitempty"`
 }
 
 func (e *APIError) Error() string {

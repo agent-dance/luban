@@ -122,7 +122,10 @@ func TestSDKRequestStatusAdapterMapsEveryPhaseWithoutRawError(t *testing.T) {
 					RetryDelayMilliseconds: 250, RetryKind: "stream", RequestMilliseconds: 40,
 					FirstTokenMilliseconds: 80, TotalMilliseconds: 120,
 					InputTokens: 100, CacheReadInputTokens: 70, CacheWriteInputTokens: 10, OutputTokens: 20,
-					Error: secret,
+					FailurePoint: types.ProviderFailureStreamInterrupted, FailureStage: types.ProviderErrorStageStream,
+					FailureClass: types.ProviderErrorClassTransport, ReplaySafety: types.ProviderReplaySafe, Decision: "retry",
+					DroppedFields: []string{"max_output_tokens"},
+					Error:         secret,
 				},
 			})
 			status := event.RequestStatus
@@ -131,6 +134,12 @@ func TestSDKRequestStatusAdapterMapsEveryPhaseWithoutRawError(t *testing.T) {
 			}
 			if status.StartedAt == "" || status.EndedAt == "" || status.InputTokens != 100 || status.CacheReadInputTokens != 70 || status.CacheWriteInputTokens != 10 || status.OutputTokens != 20 {
 				t.Fatalf("request status lost timing/usage = %+v", status)
+			}
+			if status.FailurePoint != string(types.ProviderFailureStreamInterrupted) || status.FailureStage != string(types.ProviderErrorStageStream) || status.FailureClass != string(types.ProviderErrorClassTransport) || status.ReplaySafety != string(types.ProviderReplaySafe) || status.Decision != "retry" {
+				t.Fatalf("request status lost failure contract = %+v", status)
+			}
+			if len(status.DroppedFields) != 1 || status.DroppedFields[0] != "max_output_tokens" {
+				t.Fatalf("request status lost dropped fields = %+v", status)
 			}
 			if test.eventType == stream.EventRequestRetry && status.ErrorCode != "provider_request_retry" {
 				t.Fatalf("retry error projection = %+v", status)

@@ -294,6 +294,7 @@ func Run() (exitCode int) {
 	}
 	deps.AgentTool.ServiceTier = serviceTier
 	deps.AgentTool.ProgressiveContext = startupModelSettings.ProgressiveContext
+	deps.AgentTool.MaxTokens = startupModelSettings.MaxTokens
 	if opts.ForceSandboxTools {
 		if _, ok := sandbox.Snapshot(sb); !ok || deps.BashTool == nil {
 			fmt.Fprint(os.Stderr, i18n.Text(lang, i18n.KeyStartupSandboxUnavailable))
@@ -423,7 +424,7 @@ func Run() (exitCode int) {
 		GeneratedToolPrompt:   workspacePrompt.generated,
 		HookRunner:            hookRunner,
 		MaxTurns:              maxTurns,
-		MaxTokens:             16384,
+		MaxTokens:             startupModelSettings.MaxTokens,
 		MaxContextTokens:      200000,
 		ProgressiveContext:    startupModelSettings.ProgressiveContext,
 		ReasoningEffort:       reasoningEffort,

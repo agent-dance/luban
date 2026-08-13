@@ -518,14 +518,14 @@ func TestResponsesProvider_IncompleteDetailsMaxOutputTokens(t *testing.T) {
 		t.Fatalf("CreateStream: %v", err)
 	}
 
-	var stopReason *types.StopReason
+	var failed, stopped, maxTokens bool
 	for _, event := range collectStreamEvents(ch) {
-		if event.Type == types.EventMessageDelta {
-			stopReason = event.StopReason
-		}
+		failed = failed || event.Type == types.EventError
+		stopped = stopped || event.Type == types.EventMessageStop
+		maxTokens = maxTokens || event.Type == types.EventMessageDelta && event.StopReason != nil && *event.StopReason == types.StopReasonMaxTokens
 	}
-	if stopReason == nil || *stopReason != types.StopReasonMaxTokens {
-		t.Fatalf("stop reason = %#v, want max_tokens", stopReason)
+	if failed || !stopped || !maxTokens {
+		t.Fatalf("incomplete response terminus: failed=%v stopped=%v max_tokens=%v", failed, stopped, maxTokens)
 	}
 }
 
@@ -577,8 +577,8 @@ func TestResponsesProvider_StreamToolCall(t *testing.T) {
 		{Type: "response.output_item.added", Data: `{"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_abc","name":"Bash"}}`},
 		{Type: "response.function_call_arguments.delta", Data: `{"output_index":0,"delta":"{\"command\":"}`},
 		{Type: "response.function_call_arguments.delta", Data: `{"output_index":0,"delta":"\"ls\"}"}`},
-		{Type: "response.output_item.done", Data: `{"output_index":0}`},
-		{Type: "response.completed", Data: `{"response":{"id":"resp_2","status":"completed","usage":{"input_tokens":15,"output_tokens":8},"output":[{"type":"function_call"}]}}`},
+		{Type: "response.output_item.done", Data: `{"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_abc","name":"Bash","status":"completed","arguments":"{\"command\":\"ls\"}"}}`},
+		{Type: "response.completed", Data: `{"response":{"id":"resp_2","status":"completed","usage":{"input_tokens":15,"output_tokens":8},"output":[{"type":"function_call","id":"fc_1","call_id":"call_abc","name":"Bash","status":"completed","arguments":"{\"command\":\"ls\"}"}]}}`},
 	})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -692,9 +692,9 @@ func TestResponsesProviderStreamsMultipleFunctionCallsIndependently(t *testing.T
 		{Type: "response.output_item.added", Data: `{"output_index":1,"item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"Agent"}}`},
 		{Type: "response.function_call_arguments.delta", Data: `{"output_index":0,"delta":"{\"prompt\":\"first\"}"}`},
 		{Type: "response.function_call_arguments.delta", Data: `{"output_index":1,"delta":"{\"prompt\":\"second\"}"}`},
-		{Type: "response.output_item.done", Data: `{"output_index":0}`},
-		{Type: "response.output_item.done", Data: `{"output_index":1}`},
-		{Type: "response.completed", Data: `{"response":{"id":"resp_multi","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[{"type":"function_call"},{"type":"function_call"}]}}`},
+		{Type: "response.output_item.done", Data: `{"output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"Agent","status":"completed","arguments":"{\"prompt\":\"first\"}"}}`},
+		{Type: "response.output_item.done", Data: `{"output_index":1,"item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"Agent","status":"completed","arguments":"{\"prompt\":\"second\"}"}}`},
+		{Type: "response.completed", Data: `{"response":{"id":"resp_multi","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"Agent","status":"completed","arguments":"{\"prompt\":\"first\"}"},{"type":"function_call","id":"fc_2","call_id":"call_2","name":"Agent","status":"completed","arguments":"{\"prompt\":\"second\"}"}]}}`},
 	})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -1601,6 +1601,7 @@ func TestResponsesProvider_MaxOutputTokensOverride(t *testing.T) {
 
 func TestResponsesProvider_CustomEndpointRetriesUnsupportedOptionalField(t *testing.T) {
 	var requests []map[string]any
+	var retries []RetryEvent
 	sseData := buildSSEStream([]sseEvent{
 		{Type: "response.created", Data: `{"id":"resp_compat"}`},
 		{Type: "response.completed", Data: `{"response":{"id":"resp_compat","status":"completed","usage":{"input_tokens":5,"output_tokens":2},"output":[]}}`},
@@ -1629,7 +1630,11 @@ func TestResponsesProvider_CustomEndpointRetriesUnsupportedOptionalField(t *test
 		ReasoningEffort: "medium",
 	}
 	for call := 0; call < 2; call++ {
-		ch, err := p.CreateStream(context.Background(), params)
+		ctx := WithRetryObserver(context.Background(), func(event RetryEvent) {
+			retries = append(retries, event)
+		})
+		controller := NewAttemptController(DefaultRetryConfig())
+		ch, err := CreateStreamAttempt(ctx, controller, p, params)
 		if err != nil {
 			t.Fatalf("CreateStream call %d: %v", call+1, err)
 		}
@@ -1647,6 +1652,16 @@ func TestResponsesProvider_CustomEndpointRetriesUnsupportedOptionalField(t *test
 		if _, ok := request["reasoning"]; ok {
 			t.Fatalf("request %d retained rejected reasoning field: %#v", index+2, request["reasoning"])
 		}
+	}
+	if len(retries) != 1 || retries[0].DroppedField != "reasoning" {
+		t.Fatalf("optional-field fallback retries = %+v", retries)
+	}
+	if fields := p.UnsupportedRequestFields("gpt-5.4-mini"); len(fields) != 1 || fields[0] != "reasoning" {
+		t.Fatalf("remembered unsupported fields = %#v", fields)
+	}
+	apiErr, ok := AsAPIError(retries[0].Err)
+	if !ok || apiErr.FailureDiagnostic == nil || apiErr.FailureDiagnostic.DroppedField != "reasoning" || apiErr.FailureDiagnostic.Decision != "fallback" {
+		t.Fatalf("optional-field fallback diagnostic = %+v", retries[0].Err)
 	}
 }
 

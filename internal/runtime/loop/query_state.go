@@ -265,21 +265,22 @@ type AutoCompactTracking struct {
 // iterations. Several fields are not behaviorally active yet; they reserve the
 // same state surface the subsequent parity tasks will attach to.
 type QueryState struct {
-	Messages                     []types.Message
-	TurnCount                    int
-	AutoCompactTracking          AutoCompactTracking
-	MaxOutputTokensRecoveryCount int
-	ToolInputRecoveryCount       int
-	ToolInputRecoveryTools       []string
-	HasAttemptedReactiveCompact  bool
-	MaxOutputTokensOverride      int
-	TaskBudgetRemaining          *int
-	PendingToolUseSummary        any
-	StopHookActive               bool
-	Transition                   QueryTransition
-	PendingMemoryPrefetch        PendingAttachmentPrefetch
-	MemoryPrefetchConsumed       bool
-	PendingSkillPrefetch         PendingAttachmentPrefetch
+	Messages                      []types.Message
+	TurnCount                     int
+	AutoCompactTracking           AutoCompactTracking
+	MaxOutputTokensRecoveryCount  int
+	ToolInputRecoveryCount        int
+	ToolInputRecoveryTools        []string
+	ToolInputRecoveryFingerprints []string
+	HasAttemptedReactiveCompact   bool
+	MaxOutputTokensOverride       int
+	TaskBudgetRemaining           *int
+	PendingToolUseSummary         any
+	StopHookActive                bool
+	Transition                    QueryTransition
+	PendingMemoryPrefetch         PendingAttachmentPrefetch
+	MemoryPrefetchConsumed        bool
+	PendingSkillPrefetch          PendingAttachmentPrefetch
 }
 
 func (s *QueryState) recordTaskBudgetCompaction(total int, preCompactTokens int) {

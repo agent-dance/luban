@@ -97,6 +97,45 @@ func TestLookupMaxOutput(t *testing.T) {
 	}
 }
 
+func TestDefaultRequestMaxOutputUsesDeepSeekHarnessBudgetWithoutChangingHardLimit(t *testing.T) {
+	for _, model := range []string{"deepseek-v4-flash", "deepseek-v4-flash-2026-08", "deepseek-v4-pro"} {
+		if got := DefaultRequestMaxOutput("deepseek", model); got != 256000 {
+			t.Fatalf("DefaultRequestMaxOutput(deepseek, %q) = %d, want 256000", model, got)
+		}
+	}
+	if got := DefaultRequestMaxOutput("openai", "deepseek-v4-flash"); got != 0 {
+		t.Fatalf("cross-provider default = %d, want 0", got)
+	}
+	if got := DefaultRequestMaxOutput("deepseek", "deepseek-r1"); got != 0 {
+		t.Fatalf("unreviewed DeepSeek model default = %d, want 0", got)
+	}
+	if got := LookupMaxOutput("deepseek-v4-flash"); got != 393216 {
+		t.Fatalf("DeepSeek hard limit = %d, want catalog value 393216", got)
+	}
+}
+
+func TestResolveRequestMaxOutputPreservesExplicitConfiguration(t *testing.T) {
+	if got := ResolveRequestMaxOutput("deepseek", "deepseek-v4-flash", 32768); got != 32768 {
+		t.Fatalf("explicit DeepSeek output budget = %d, want 32768", got)
+	}
+	if got := ResolveRequestMaxOutput("openai", "gpt-5.6-sol", 0); got != 0 {
+		t.Fatalf("non-DeepSeek default = %d, want 0", got)
+	}
+}
+
+func TestDefaultRequestMaxOutputRespectsSmallerCatalogLimit(t *testing.T) {
+	previous := RuntimeModelOverrides()
+	t.Cleanup(func() { SetRuntimeModelOverrides(previous) })
+	maxOutput := 64000
+	SetRuntimeModelOverrides(ModelOverrides{
+		OverrideKey("deepseek", "deepseek-v4-flash"): {MaxOutput: &maxOutput},
+	})
+
+	if got := DefaultRequestMaxOutput("deepseek", "deepseek-v4-flash"); got != maxOutput {
+		t.Fatalf("request default = %d, want catalog limit %d", got, maxOutput)
+	}
+}
+
 func TestLookupMaxContext_Unknown(t *testing.T) {
 	got := LookupMaxContext("totally-unknown-model")
 	if got != defaultMaxContext {

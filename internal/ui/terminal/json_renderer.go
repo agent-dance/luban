@@ -137,23 +137,35 @@ func (r *JSONRenderer) RenderRequestMetrics(ctx presentation.ToolEventContext, p
 		return
 	}
 	request := map[string]any{
-		"request_id":               status.RequestID,
-		"phase":                    string(phase),
-		"started_at":               status.StartedAt,
-		"ended_at":                 status.EndedAt,
-		"attempt":                  status.Attempt,
-		"max_retries":              status.MaxRetries,
-		"retry_count":              status.RetryCount,
-		"retry_delay_ms":           status.RetryDelayMilliseconds,
-		"retry_kind":               status.RetryKind,
-		"request_ms":               status.RequestMilliseconds,
-		"first_token_ms":           status.FirstTokenMilliseconds,
-		"total_ms":                 status.TotalMilliseconds,
-		"input_tokens":             status.InputTokens,
-		"cache_read_input_tokens":  status.CacheReadInputTokens,
-		"cache_write_input_tokens": status.CacheWriteInputTokens,
-		"output_tokens":            status.OutputTokens,
-		"failed":                   phase == stream.EventRequestFailed,
+		"request_id":                status.RequestID,
+		"provider":                  status.Provider,
+		"model":                     status.Model,
+		"api_format":                status.APIFormat,
+		"reasoning_effort":          status.ReasoningEffort,
+		"max_output_tokens":         status.MaxOutputTokens,
+		"catalog_max_output_tokens": status.CatalogMaxOutputTokens,
+		"phase":                     string(phase),
+		"started_at":                status.StartedAt,
+		"ended_at":                  status.EndedAt,
+		"attempt":                   status.Attempt,
+		"max_retries":               status.MaxRetries,
+		"retry_count":               status.RetryCount,
+		"retry_delay_ms":            status.RetryDelayMilliseconds,
+		"retry_kind":                status.RetryKind,
+		"request_ms":                status.RequestMilliseconds,
+		"first_token_ms":            status.FirstTokenMilliseconds,
+		"total_ms":                  status.TotalMilliseconds,
+		"input_tokens":              status.InputTokens,
+		"cache_read_input_tokens":   status.CacheReadInputTokens,
+		"cache_write_input_tokens":  status.CacheWriteInputTokens,
+		"output_tokens":             status.OutputTokens,
+		"failed":                    phase == stream.EventRequestFailed,
+		"failure_point":             status.FailurePoint,
+		"failure_stage":             status.FailureStage,
+		"failure_class":             status.FailureClass,
+		"replay_safety":             status.ReplaySafety,
+		"decision":                  status.Decision,
+		"dropped_fields":            status.DroppedFields,
 	}
 	event := r.telemetryIdentity(ctx)
 	event["type"] = "agentic_metrics"
@@ -240,6 +252,18 @@ func (r *JSONRenderer) RenderCompactionMetrics(ctx presentation.ToolEventContext
 		"pre_compact_token_count":       compact.PreCompactTokenCount,
 		"post_compact_token_count":      compact.PostCompactTokenCount,
 		"true_post_compact_token_count": compact.TruePostCompactTokenCount,
+	}
+	r.writeLine(event)
+}
+
+// RenderTurnEnd emits the authoritative, content-free turn terminus. Keeping
+// this separate from usage makes a zero-usage max_tokens terminus observable.
+func (r *JSONRenderer) RenderTurnEnd(ctx presentation.ToolEventContext, turnCount int, terminalReason string) {
+	event := r.telemetryIdentity(ctx)
+	event["type"] = "turn_end"
+	event["turn_count"] = turnCount
+	if terminalReason != "" {
+		event["terminal_reason"] = terminalReason
 	}
 	r.writeLine(event)
 }

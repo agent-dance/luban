@@ -119,6 +119,23 @@ func (r *ProviderRef) ModelID() string {
 	return r.Get().ModelID()
 }
 
+// APIFormat exposes the snapshotted provider's wire protocol when available.
+func (r *ProviderRef) APIFormat() string {
+	p := r.Get()
+	if formatted, ok := p.(interface{ APIFormat() string }); ok {
+		return formatted.APIFormat()
+	}
+	return ""
+}
+
+func (r *ProviderRef) UnsupportedRequestFields(model string) []string {
+	p := r.Get()
+	if observable, ok := p.(interface{ UnsupportedRequestFields(string) []string }); ok {
+		return observable.UnsupportedRequestFields(model)
+	}
+	return nil
+}
+
 // CreateStream delegates to the current provider.
 // The provider is snapshotted at the start of the call, so a concurrent
 // Swap() does not affect an in-flight stream.

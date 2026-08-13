@@ -12,6 +12,7 @@ func TestProviderResidualKeysCoverEveryLanguage(t *testing.T) {
 		KeyProviderResponsesCompletedParseFailed,
 		KeyProviderResponsesIncompleteParseFailed,
 		KeyProviderResponsesFailedParseFailed,
+		KeyProviderResponsesKnownEventParseFailed,
 	}
 	diagnostic := errors.New("invalid character 'x'")
 

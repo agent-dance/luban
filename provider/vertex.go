@@ -161,5 +161,5 @@ func (p *VertexProvider) CreateStream(ctx context.Context, params Params) (<-cha
 	if params.PromptCacheTTL == "" {
 		params.PromptCacheTTL = anthropicPromptCacheTTL("vertex", params.Model)
 	}
-	return createAnthropicStream(ctx, &p.client, params)
+	return createAnthropicStream(ctx, &p.client, params, p.Name())
 }

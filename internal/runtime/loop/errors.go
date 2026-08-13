@@ -105,13 +105,35 @@ func (e *MessageHistoryLimitError) Error() string {
 // semantic machine codes. Keeping the typed cause here is what lets the
 // benchmark distinguish a provider-declared context exhaustion without
 // parsing localized error prose.
-func terminalProviderErrorEvent(err error, turnCount int) stream.Event {
+func terminalProviderErrorEvent(err error, turnCount int, attempts ...providerAttemptIdentity) stream.Event {
 	event := stream.Event{Type: stream.EventError, TurnCount: turnCount}
 	if err == nil {
 		return event
 	}
 	event.Text = err.Error()
 	if apiErr, ok := provider.AsAPIError(err); ok {
+		if apiErr.FailureDiagnostic == nil {
+			apiErr.FailureDiagnostic = &types.ProviderFailureDiagnostic{
+				SchemaVersion: types.ProviderFailureDiagnosticSchema,
+				FailurePoint:  types.ProviderFailureUnknown,
+			}
+		}
+		diagnostic := apiErr.FailureDiagnostic
+		contract := provider.ClassifyAttemptError(err)
+		diagnostic.Stage = contract.Stage
+		diagnostic.Class = contract.Class
+		diagnostic.ReplaySafety = contract.ReplaySafety
+		diagnostic.Decision = "terminal"
+		if len(attempts) > 0 {
+			attempt := attempts[0]
+			diagnostic.LocalRequestID = attempt.requestID
+			diagnostic.Provider = attempt.provider
+			diagnostic.Model = attempt.model
+			diagnostic.Attempt = attempt.attempt
+			diagnostic.MaxAttempts = attempt.maxRetries + 1
+			diagnostic.EffectiveMaxOutputTokens = attempt.maxOutputTokens
+			diagnostic.CatalogMaxOutputTokens = attempt.catalogMaxOutputTokens
+		}
 		event.Error = apiErr
 	}
 	return event

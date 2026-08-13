@@ -125,6 +125,41 @@ func TestDeepSeekFactoryKeepsProAndExplicitFlashOverrideOnChatCompletions(t *tes
 	}
 }
 
+func TestDeepSeekFactoryAppliesHarnessDefaultOutputBudgetAndPreservesOverride(t *testing.T) {
+	registry := NewProviderRegistry()
+	registerBuiltinProviders(registry)
+	for _, test := range []struct {
+		name       string
+		model      string
+		configured int
+		want       int
+	}{
+		{name: "Flash Responses default", model: "deepseek-v4-flash", want: 256000},
+		{name: "Pro Chat default", model: "deepseek-v4-pro", want: 256000},
+		{name: "explicit configuration wins", model: "deepseek-v4-flash", configured: 32000, want: 32000},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			created, err := registry.Create("deepseek", Config{APIKey: "key", MaxTokens: test.configured}, test.model)
+			if err != nil {
+				t.Fatal(err)
+			}
+			retry := created.(*RetryProvider)
+			switch inner := retry.inner.(type) {
+			case *ResponsesProvider:
+				if inner.maxTokens != test.want {
+					t.Fatalf("Responses maxTokens = %d, want %d", inner.maxTokens, test.want)
+				}
+			case *OpenAIProvider:
+				if inner.maxTokens != test.want {
+					t.Fatalf("Chat maxTokens = %d, want %d", inner.maxTokens, test.want)
+				}
+			default:
+				t.Fatalf("DeepSeek inner provider = %T", retry.inner)
+			}
+		})
+	}
+}
+
 func TestDeepSeekResponsesReplaysPlainReasoningAndCustomToolIdentity(t *testing.T) {
 	provider := NewResponses(Config{
 		ProviderName:       "deepseek",
@@ -188,8 +223,8 @@ func TestDeepSeekResponsesUsesAuthoritativeFinalArgumentsAndReasoningStatus(t *t
 			{Type: "response.output_item.added", Data: `{"output_index":1,"item":{"type":"function_call","id":"fc_ds","call_id":"call_ds","name":"Inspect","status":"in_progress"}}`},
 			{Type: "response.function_call_arguments.delta", Data: `{"output_index":1,"delta":"{\"path\":"}`},
 			{Type: "response.function_call_arguments.done", Data: `{"output_index":1,"item_id":"fc_ds","arguments":"{\"path\":\".\"}"}`},
-			{Type: "response.output_item.done", Data: `{"output_index":1,"item":{"type":"function_call","id":"fc_ds","call_id":"call_ds","name":"Inspect","status":"completed"}}`},
-			{Type: "response.completed", Data: `{"response":{"id":"resp_ds_final","model":"deepseek-v4-flash","status":"completed","usage":{"input_tokens":10,"output_tokens":4},"output":[{"type":"reasoning"},{"type":"function_call"}]}}`},
+			{Type: "response.output_item.done", Data: `{"output_index":1,"item":{"type":"function_call","id":"fc_ds","call_id":"call_ds","name":"Inspect","status":"completed","arguments":"{\"path\":\".\"}"}}`},
+			{Type: "response.completed", Data: `{"response":{"id":"resp_ds_final","model":"deepseek-v4-flash","status":"completed","usage":{"input_tokens":10,"output_tokens":4},"output":[{"type":"reasoning"},{"type":"function_call","id":"fc_ds","call_id":"call_ds","name":"Inspect","status":"completed","arguments":"{\"path\":\".\"}"}]}}`},
 		}))
 	}))
 	defer server.Close()
@@ -250,20 +285,43 @@ func TestDeepSeekResponsesIncompleteIsTerminalMaxTokens(t *testing.T) {
 		{Type: "response.incomplete", Data: `{"response":{"id":"resp_incomplete","model":"deepseek-v4-flash","incomplete_details":{"reason":"max_output_tokens"},"usage":{"input_tokens":3,"output_tokens":5},"output":[]}}`},
 	})
 	events := collectResponsesProtocolEvents(t, sse, ResponsesSemanticsDeepSeek)
-	var stopReason *types.StopReason
-	var stopped bool
+	var failed, stopped, maxTokens, toolReceipt bool
 	for _, event := range events {
 		if event.Type == types.EventError {
-			t.Fatalf("unexpected error: %#v", event.Error)
+			failed = true
 		}
-		if event.Type == types.EventMessageDelta {
-			stopReason = event.StopReason
+		if event.Type == types.EventMessageDelta && event.StopReason != nil && *event.StopReason == types.StopReasonMaxTokens {
+			maxTokens = true
 		}
 		if event.Type == types.EventMessageStop {
 			stopped = true
+			toolReceipt = event.ProviderCommitReceipt != nil
 		}
 	}
-	if stopReason == nil || *stopReason != types.StopReasonMaxTokens || !stopped {
+	if failed || !stopped || !maxTokens || toolReceipt {
 		t.Fatalf("incomplete events = %#v", events)
+	}
+}
+
+func TestDeepSeekResponsesUnknownIncompleteReasonIsProtocolError(t *testing.T) {
+	sse := buildSSEStream([]sseEvent{
+		{Type: "response.created", Data: `{"response":{"id":"resp_incomplete","model":"deepseek-v4-flash","status":"in_progress"}}`},
+		{Type: "response.incomplete", Data: `{"response":{"id":"resp_incomplete","model":"deepseek-v4-flash","status":"incomplete","incomplete_details":{"reason":"future_reason"},"usage":{"input_tokens":3,"output_tokens":5},"output":[]}}`},
+	})
+	events := collectResponsesProtocolEvents(t, sse, ResponsesSemanticsDeepSeek)
+	var failure *types.APIError
+	var stopped, maxTokens bool
+	for _, event := range events {
+		if event.Type == types.EventError {
+			failure = event.Error
+		}
+		stopped = stopped || event.Type == types.EventMessageStop
+		maxTokens = maxTokens || event.Type == types.EventMessageDelta && event.StopReason != nil && *event.StopReason == types.StopReasonMaxTokens
+	}
+	if failure == nil || failure.Type != "response_incomplete" || failure.FailureDiagnostic == nil {
+		t.Fatalf("unknown incomplete reason events = %#v", events)
+	}
+	if failure.FailureDiagnostic.FailurePoint != types.ProviderFailureResponseIncomplete || failure.FailureDiagnostic.IncompleteReason != "unknown" || stopped || maxTokens {
+		t.Fatalf("unknown incomplete reason was misclassified: %#v", events)
 	}
 }
