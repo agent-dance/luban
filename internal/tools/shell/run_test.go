@@ -17,6 +17,18 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
+func runArgvStep(id string, args ...string) map[string]any {
+	values := make([]any, len(args))
+	for index, arg := range args {
+		values[index] = arg
+	}
+	return map[string]any{"id": id, "command": map[string]any{"kind": "argv", "args": values}}
+}
+
+func runShellStep(id, script string) map[string]any {
+	return map[string]any{"id": id, "command": map[string]any{"kind": "shell", "script": script}}
+}
+
 func TestRunSchemaPublishesStrictDAGContract(t *testing.T) {
 	schema := NewRunTool(&BashTool{}).Schema()
 	if !schema.RejectsUnknownFields() {
@@ -31,8 +43,14 @@ func TestRunSchemaPublishesStrictDAGContract(t *testing.T) {
 		t.Fatalf("steps schema = %#v", steps)
 	}
 	item, ok := steps["items"].(map[string]any)
-	if !ok || item["additionalProperties"] != false || len(item["oneOf"].([]any)) != 2 {
+	if !ok || item["additionalProperties"] != false {
 		t.Fatalf("step schema = %#v", item)
+	}
+	properties, _ := item["properties"].(map[string]any)
+	command, _ := properties["command"].(map[string]any)
+	branches, _ := command["oneOf"].([]any)
+	if len(branches) != 2 {
+		t.Fatalf("command schema = %#v", command)
 	}
 }
 
@@ -98,6 +116,32 @@ func TestRunArgvDoesNotInvokeShell(t *testing.T) {
 	output := requireRunOutput(t, result)
 	if output.Steps[0].Status != runStatusSucceeded || output.Steps[0].Effect != "read" {
 		t.Fatalf("step output = %#v", output.Steps[0])
+	}
+}
+
+func TestRunAdvertisesDiscriminatedCommandContract(t *testing.T) {
+	schema := NewRunTool(nil).Schema()
+	steps := schema.Properties["steps"].(map[string]any)
+	step := steps["items"].(map[string]any)
+	properties := step["properties"].(map[string]any)
+	if _, legacy := properties["argv"]; legacy {
+		t.Fatalf("Run still advertises legacy argv field: %#v", properties)
+	}
+	if _, legacy := properties["shell_script"]; legacy {
+		t.Fatalf("Run still advertises legacy shell_script field: %#v", properties)
+	}
+	command := properties["command"].(map[string]any)
+	branches, ok := command["oneOf"].([]any)
+	if !ok || len(branches) != 2 {
+		t.Fatalf("Run command union = %#v", command)
+	}
+	valid := map[string]any{"steps": []any{runArgvStep("validate", "go", "test", "./...")}}
+	if err := types.ValidateToolInput(NewRunTool(nil), valid); err != nil {
+		t.Fatalf("new command contract rejected: %v", err)
+	}
+	legacy := map[string]any{"steps": []any{map[string]any{"id": "legacy", "argv": []any{"true"}}}}
+	if err := types.ValidateToolInput(NewRunTool(nil), legacy); err == nil {
+		t.Fatal("advertised Run contract accepted legacy flat argv")
 	}
 }
 

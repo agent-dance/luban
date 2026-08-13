@@ -10,14 +10,14 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
-func TestInspectModelShapedCursorContinuationAllowsInertPlaceholders(t *testing.T) {
+func TestInspectCursorContinuationUsesItsServerSnapshot(t *testing.T) {
 	root := t.TempDir()
 	for _, name := range []string{"alpha.txt", "beta.txt", "gamma.txt"} {
 		writeInspectFixture(t, filepath.Join(root, name), "value\n")
 	}
 
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, file.NewReadFileState())
-	first, err := tool.Execute(context.Background(), map[string]any{
+	first, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "files", "kind": KindGlob, "path": ".", "pattern": "**/*.txt",
 		}},
@@ -32,13 +32,7 @@ func TestInspectModelShapedCursorContinuationAllowsInertPlaceholders(t *testing.
 		t.Fatalf("first page did not paginate: %+v", firstPage)
 	}
 
-	continuation, err := tool.Execute(context.Background(), map[string]any{
-		"cursor":      firstPage.Cursor,
-		"requests":    []any{},
-		"max_chars":   maximumMaxChars,
-		"max_files":   maximumMaxFiles,
-		"max_matches": maximumMaxMatches,
-	})
+	continuation, err := executeInspectTest(tool, context.Background(), map[string]any{"cursor": firstPage.Cursor})
 	if err != nil || continuation.IsError {
 		t.Fatalf("model-shaped continuation failed: err=%v result=%+v", err, continuation)
 	}
@@ -48,23 +42,22 @@ func TestInspectModelShapedCursorContinuationAllowsInertPlaceholders(t *testing.
 	}
 }
 
-func TestInspectCursorContinuationStillRejectsNonEmptyRequestsAndUnknownFields(t *testing.T) {
+func TestInspectDiscriminatedContinuationRejectsNewFieldsAndUnknownFields(t *testing.T) {
 	tool := New(nil, nil)
 
 	if _, err := tool.validateInput(map[string]any{
-		"cursor": "opaque-cursor",
-		"requests": []any{map[string]any{
-			"id": "mixed", "kind": KindGlob,
-		}},
+		"operation": map[string]any{
+			"mode": ModeContinue, "cursor": "opaque-cursor",
+			"requests": []any{map[string]any{"id": "mixed", "kind": KindGlob}},
+		},
 	}); err == nil {
 		t.Fatal("cursor continuation accepted a non-empty request batch")
 	}
 
 	_, err := tool.validateInput(map[string]any{
-		"cursor":      "opaque-cursor",
-		"requests":    []any{},
-		"max_files":   1,
-		"unsupported": true,
+		"operation": map[string]any{
+			"mode": ModeContinue, "cursor": "opaque-cursor", "unsupported": true,
+		},
 	})
 	var validationErr *types.ToolInputValidationError
 	if !errors.As(err, &validationErr) {

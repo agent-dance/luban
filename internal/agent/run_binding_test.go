@@ -98,7 +98,7 @@ func TestAgentCWDRunUsesExactSandboxedChildBash(t *testing.T) {
 		t.Fatalf("child Run result=%+v err=%v", inside, err)
 	}
 	outsideInput := map[string]any{"steps": []any{
-		map[string]any{"id": "escape", "shell_script": "printf escaped > " + parentPath},
+		map[string]any{"id": "escape", "command": map[string]any{"kind": "shell", "script": "printf escaped > " + parentPath}},
 	}}
 	permission, err := child.CheckToolPermissions(context.Background(), "Run", outsideInput, types.ToolPermissionRequest{})
 	if err != nil || permission.Behavior != types.PermissionBehaviorDeny {
@@ -189,7 +189,9 @@ func TestAgentCWDV2CoreSharesOnlyChildReadEvidence(t *testing.T) {
 
 	wrapRegistryForAgentCWD(reg, childRoot)
 	inspectResult, err := executeApprovedRegistryToolForTest(t, reg, "Inspect", map[string]any{
-		"requests": []any{map[string]any{"id": "source", "kind": "read", "path": "target.txt"}},
+		"operation": map[string]any{
+			"mode": "new", "requests": []any{map[string]any{"id": "source", "kind": "read", "path": "target.txt"}},
+		},
 	})
 	if err != nil || inspectResult.IsError {
 		t.Fatalf("child Inspect result=%+v err=%v", inspectResult, err)
@@ -222,5 +224,5 @@ func runReadInput(path string) map[string]any {
 	if path == "pwd" {
 		argv = []any{"pwd"}
 	}
-	return map[string]any{"steps": []any{map[string]any{"id": "read", "argv": argv}}}
+	return map[string]any{"steps": []any{map[string]any{"id": "read", "command": map[string]any{"kind": "argv", "args": argv}}}}
 }

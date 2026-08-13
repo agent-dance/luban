@@ -128,35 +128,26 @@ func (t *Tool) validateInput(input map[string]any) (validatedInput, error) {
 	if err != nil {
 		return validatedInput{}, i18n.WrapInternalError(i18n.KeyToolInspectMalformedInput, err)
 	}
-	cursor := strings.TrimSpace(decoded.Cursor)
-	// DeepSeek strict tool projection can serialize an omitted optional string
-	// as the literal "null" while still supplying a real request batch. No
-	// cursor issued by Inspect uses this sentinel, so interpret it as absent
-	// only when requests make the intended branch unambiguous.
-	if len(decoded.Requests) > 0 && strings.EqualFold(cursor, "null") {
-		cursor = ""
+	operation := decoded.Operation
+	switch operation.Mode {
+	case ModeContinue:
+		return validatedInput{cursor: strings.TrimSpace(operation.Cursor)}, nil
+	case ModeNew:
+		// Continue below. JSON Schema admission already guarantees that requests
+		// and page belong only to this branch.
+	default:
+		return validatedInput{}, localizedError(i18n.KeyToolInspectMalformedInput)
 	}
-	// Strict provider projections commonly retain every schema property on a
-	// continuation, yielding requests: [] and max_* placeholders beside the
-	// cursor. The cursor's server-side pagination snapshot remains authoritative:
-	// ignore those inert placeholders, but never allow a non-empty request batch
-	// to be mixed into a continuation.
-	if cursor != "" && len(decoded.Requests) > 0 {
-		return validatedInput{}, localizedError(i18n.KeyToolInspectChooseRequestsOrCursor)
-	}
-	if cursor != "" {
-		return validatedInput{cursor: cursor}, nil
-	}
-	if len(decoded.Requests) == 0 {
+	if len(operation.Requests) == 0 {
 		return validatedInput{}, localizedError(i18n.KeyToolInspectRequestsRequired)
 	}
-	if len(decoded.Requests) > maximumRequests {
+	if len(operation.Requests) > maximumRequests {
 		return validatedInput{}, localizedError(i18n.KeyToolInspectTooManyRequests, maximumRequests)
 	}
 
 	pageLimits := limits{maxChars: defaultMaxChars, maxFiles: defaultMaxFiles, maxMatches: defaultMaxMatches}
-	if decoded.MaxChars != nil {
-		pageLimits.maxChars, err = validateIntegerLimit("max_chars", *decoded.MaxChars, minimumMaxChars, maximumMaxChars)
+	if operation.Page != nil && operation.Page.MaxChars != nil {
+		pageLimits.maxChars, err = validateIntegerLimit("max_chars", *operation.Page.MaxChars, minimumMaxChars, maximumMaxChars)
 		if err != nil {
 			return validatedInput{}, err
 		}
@@ -164,22 +155,22 @@ func (t *Tool) validateInput(input map[string]any) (validatedInput, error) {
 	if pageLimits.maxChars > maximumModelVisibleChars {
 		pageLimits.maxChars = maximumModelVisibleChars
 	}
-	if decoded.MaxFiles != nil {
-		pageLimits.maxFiles, err = validateIntegerLimit("max_files", *decoded.MaxFiles, 1, maximumMaxFiles)
+	if operation.Page != nil && operation.Page.MaxFiles != nil {
+		pageLimits.maxFiles, err = validateIntegerLimit("max_files", *operation.Page.MaxFiles, 1, maximumMaxFiles)
 		if err != nil {
 			return validatedInput{}, err
 		}
 	}
-	if decoded.MaxMatches != nil {
-		pageLimits.maxMatches, err = validateIntegerLimit("max_matches", *decoded.MaxMatches, 1, maximumMaxMatches)
+	if operation.Page != nil && operation.Page.MaxMatches != nil {
+		pageLimits.maxMatches, err = validateIntegerLimit("max_matches", *operation.Page.MaxMatches, 1, maximumMaxMatches)
 		if err != nil {
 			return validatedInput{}, err
 		}
 	}
 
-	requests := make([]normalizedRequest, 0, len(decoded.Requests))
-	seenIDs := make(map[string]struct{}, len(decoded.Requests))
-	for _, request := range decoded.Requests {
+	requests := make([]normalizedRequest, 0, len(operation.Requests))
+	seenIDs := make(map[string]struct{}, len(operation.Requests))
+	for _, request := range operation.Requests {
 		normalized, normalizeErr := normalizeRequest(request)
 		if normalizeErr != nil {
 			return validatedInput{}, normalizeErr

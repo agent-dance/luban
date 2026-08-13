@@ -7,6 +7,7 @@ const (
 	KeyToolRunDescription               Key = "tool.run.description"
 	KeyToolRunSchemaSteps               Key = "tool.run.schema.steps"
 	KeyToolRunSchemaStepID              Key = "tool.run.schema.step_id"
+	KeyToolRunSchemaCommand             Key = "tool.run.schema.command"
 	KeyToolRunSchemaArgv                Key = "tool.run.schema.argv"
 	KeyToolRunSchemaShellScript         Key = "tool.run.schema.shell_script"
 	KeyToolRunSchemaCWD                 Key = "tool.run.schema.cwd"
@@ -56,7 +57,7 @@ const (
 )
 
 var toolRunKeys = [...]Key{
-	KeyToolRunDescription, KeyToolRunSchemaSteps, KeyToolRunSchemaStepID,
+	KeyToolRunDescription, KeyToolRunSchemaSteps, KeyToolRunSchemaStepID, KeyToolRunSchemaCommand,
 	KeyToolRunSchemaArgv, KeyToolRunSchemaShellScript, KeyToolRunSchemaCWD,
 	KeyToolRunSchemaTimeout, KeyToolRunSchemaDependsOn, KeyToolRunSchemaFailFast,
 	KeyToolRunSchemaHead, KeyToolRunSchemaTail, KeyToolRunSchemaMaxChars,
@@ -92,16 +93,23 @@ func init() {
 		"변경 불가능한 명령 종속성 그래프를 한 번의 안전 사전 검사, 제한된 출력, 읽기 전용 단계의 병렬 실행으로 처리합니다.",
 		"Выполняет неизменяемый граф зависимостей команд с единой проверкой безопасности, ограниченным выводом и параллельными шагами только для чтения.")
 	add(KeyToolRunSchemaSteps,
-		"Commands and their dependencies. Each step must use exactly one of argv or shell_script.",
-		"命令及其依赖关系。每个步骤必须且只能使用 argv 或 shell_script 之一。",
-		"Befehle und ihre Abhängigkeiten. Jeder Schritt muss genau eines von argv oder shell_script verwenden.",
-		"コマンドとその依存関係。各ステップでは argv または shell_script のどちらか一方だけを指定します。",
-		"명령과 종속성입니다. 각 단계는 argv 또는 shell_script 중 정확히 하나만 사용해야 합니다.",
-		"Команды и их зависимости. Каждый шаг должен использовать только одно из полей argv или shell_script.")
+		"Commands and their dependencies. Each step uses a discriminated command branch.",
+		"命令及其依赖关系。每个步骤使用带判别字段的命令分支。",
+		"Befehle und ihre Abhängigkeiten. Jeder Schritt verwendet einen diskriminierten Befehlszweig.",
+		"コマンドとその依存関係。各ステップは判別付きコマンド分岐を使用します。",
+		"명령과 종속성입니다. 각 단계는 판별된 명령 분기를 사용합니다.",
+		"Команды и их зависимости. Каждый шаг использует дискриминируемую ветвь команды.")
 	add(KeyToolRunSchemaStepID,
 		"Stable step ID used by depends_on.", "depends_on 引用的稳定步骤 ID。",
 		"Stabile Schritt-ID für depends_on.", "depends_on から参照する安定したステップ ID。",
 		"depends_on에서 참조하는 안정적인 단계 ID입니다.", "Стабильный идентификатор шага для depends_on.")
+	add(KeyToolRunSchemaCommand,
+		"Discriminated command: kind=argv with args, or kind=shell with script.",
+		"带判别字段的命令：kind=argv 时使用 args，kind=shell 时使用 script。",
+		"Diskriminierter Befehl: kind=argv mit args oder kind=shell mit script.",
+		"判別付きコマンドです。kind=argv では args、kind=shell では script を使用します。",
+		"판별 명령입니다. kind=argv에는 args를, kind=shell에는 script를 사용합니다.",
+		"Дискриминируемая команда: kind=argv с args либо kind=shell со script.")
 	add(KeyToolRunSchemaArgv,
 		"Executable and arguments passed directly without a shell.", "不经过 shell、直接传递的可执行文件和参数。",
 		"Programm und Argumente, die ohne Shell direkt übergeben werden.", "シェルを介さず直接渡す実行ファイルと引数。",
@@ -155,7 +163,7 @@ func init() {
 	add(KeyToolRunStepIDRequired, "Step %d requires an ID.", "第 %d 个步骤需要 ID。", "Schritt %d benötigt eine ID.", "ステップ %d には ID が必要です。", "%d번째 단계에는 ID가 필요합니다.", "Для шага %d требуется идентификатор.")
 	add(KeyToolRunStepIDInvalid, "Step ID %q is invalid.", "步骤 ID %q 无效。", "Die Schritt-ID %q ist ungültig.", "ステップ ID %q は無効です。", "단계 ID %q이(가) 올바르지 않습니다.", "Недопустимый идентификатор шага %q.")
 	add(KeyToolRunStepIDDuplicate, "Step ID %q is duplicated.", "步骤 ID %q 重复。", "Die Schritt-ID %q ist doppelt vorhanden.", "ステップ ID %q が重複しています。", "단계 ID %q이(가) 중복되었습니다.", "Идентификатор шага %q повторяется.")
-	add(KeyToolRunCommandChoice, "Step %q must use exactly one of argv or shell_script.", "步骤 %q 必须且只能使用 argv 或 shell_script 之一。", "Schritt %q muss genau eines von argv oder shell_script verwenden.", "ステップ %q では argv または shell_script のどちらか一方だけを指定してください。", "%q 단계는 argv 또는 shell_script 중 정확히 하나만 사용해야 합니다.", "Шаг %q должен использовать только одно из полей argv или shell_script.")
+	add(KeyToolRunCommandChoice, "Step %q must use a valid discriminated command branch.", "步骤 %q 必须使用有效的判别命令分支。", "Schritt %q muss einen gültigen diskriminierten Befehlszweig verwenden.", "ステップ %q には有効な判別付きコマンド分岐が必要です。", "%q 단계는 유효한 판별 명령 분기를 사용해야 합니다.", "Шаг %q должен использовать допустимую дискриминируемую ветвь команды.")
 	add(KeyToolRunArgumentInvalid, "Step %q contains an invalid argument at position %d.", "步骤 %q 在位置 %d 包含无效参数。", "Schritt %q enthält an Position %d ein ungültiges Argument.", "ステップ %q の位置 %d に無効な引数があります。", "%q 단계의 %d 위치에 올바르지 않은 인수가 있습니다.", "Шаг %q содержит недопустимый аргумент в позиции %d.")
 	add(KeyToolRunCWDInvalid, "Step %q has an invalid working directory: %s", "步骤 %q 的工作目录无效：%s", "Schritt %q hat ein ungültiges Arbeitsverzeichnis: %s", "ステップ %q の作業ディレクトリが無効です: %s", "%q 단계의 작업 디렉터리가 올바르지 않습니다: %s", "Шаг %q содержит недопустимый рабочий каталог: %s")
 	add(KeyToolRunCWDNotDirectory, "Step %q working directory is not a directory: %s", "步骤 %q 的工作目录不是目录：%s", "Das Arbeitsverzeichnis von Schritt %q ist kein Verzeichnis: %s", "ステップ %q の作業ディレクトリはディレクトリではありません: %s", "%q 단계의 작업 디렉터리가 디렉터리가 아닙니다: %s", "Рабочий каталог шага %q не является каталогом: %s")

@@ -14,9 +14,11 @@ import (
 )
 
 const (
-	KindRead   = "read"
-	KindSearch = "search"
-	KindGlob   = "glob"
+	KindRead     = "read"
+	KindSearch   = "search"
+	KindGlob     = "glob"
+	ModeNew      = "new"
+	ModeContinue = "continue"
 )
 
 const (
@@ -47,11 +49,24 @@ const (
 )
 
 type Input struct {
-	Requests   []Request `json:"requests,omitempty"`
-	Cursor     string    `json:"cursor,omitempty"`
-	MaxChars   *float64  `json:"max_chars,omitempty"`
-	MaxFiles   *float64  `json:"max_files,omitempty"`
-	MaxMatches *float64  `json:"max_matches,omitempty"`
+	Operation Operation `json:"operation"`
+}
+
+// Operation is an explicitly discriminated input branch. New inspections and
+// cursor continuations deliberately do not share a flat bag of optional
+// properties: providers can project either branch without inventing inert
+// placeholders for the other branch.
+type Operation struct {
+	Mode     string      `json:"mode"`
+	Requests []Request   `json:"requests,omitempty"`
+	Page     *PageLimits `json:"page,omitempty"`
+	Cursor   string      `json:"cursor,omitempty"`
+}
+
+type PageLimits struct {
+	MaxChars   *float64 `json:"max_chars,omitempty"`
+	MaxFiles   *float64 `json:"max_files,omitempty"`
+	MaxMatches *float64 `json:"max_matches,omitempty"`
 }
 
 type Request struct {
@@ -272,47 +287,111 @@ func (t *Tool) Schema() types.JSONSchema {
 		"required":             []string{"start", "end"},
 		"additionalProperties": false,
 	}
-	requestSchema := map[string]any{
+	requestIDSchema := map[string]any{
+		"type": "string", "maxLength": maximumRequestID,
+		"description": i18n.Text(lang, i18n.KeyToolInspectRequestIDDescription),
+	}
+	pathSchema := map[string]any{
+		"type": "string", "maxLength": maximumPath,
+		"description": i18n.Text(lang, i18n.KeyToolInspectRequestPathDescription),
+	}
+	patternSchema := map[string]any{
+		"type": "string", "maxLength": maximumPattern,
+		"description": i18n.Text(lang, i18n.KeyToolInspectRequestPatternDescription),
+	}
+	kindSchema := func(kind string) map[string]any {
+		return map[string]any{
+			"type": "string", "enum": []string{kind},
+			"description": i18n.Text(lang, i18n.KeyToolInspectRequestKindDescription),
+		}
+	}
+	readRequestSchema := map[string]any{
 		"type": "object",
 		"properties": map[string]any{
-			"id": map[string]any{
-				"type": "string", "maxLength": maximumRequestID,
-				"description": i18n.Text(lang, i18n.KeyToolInspectRequestIDDescription),
-			},
-			"kind": map[string]any{
-				"type": "string", "enum": []string{KindRead, KindSearch, KindGlob},
-				"description": i18n.Text(lang, i18n.KeyToolInspectRequestKindDescription),
-			},
-			"path": map[string]any{
-				"type": "string", "maxLength": maximumPath,
-				"description": i18n.Text(lang, i18n.KeyToolInspectRequestPathDescription),
-			},
-			"pattern": map[string]any{
-				"type": "string", "maxLength": maximumPattern,
-				"description": i18n.Text(lang, i18n.KeyToolInspectRequestPatternDescription),
-			},
-			"ranges": map[string]any{
+			"id":   requestIDSchema,
+			"kind": kindSchema(KindRead),
+			"path": nullableInspectSchema(pathSchema),
+			"ranges": nullableInspectSchema(map[string]any{
 				"type": "array", "items": rangeSchema, "maxItems": maximumRanges,
 				"description": i18n.Text(lang, i18n.KeyToolInspectRequestRangesDescription),
-			},
-			"context":     toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectRequestContextDescription), 0, true),
-			"max_results": toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectRequestMaxResultsDescription), 1, true),
+			}),
 		},
 		"required":             []string{"id", "kind"},
 		"additionalProperties": false,
 	}
-	return types.StrictObjectSchema(map[string]any{
-		"requests": map[string]any{
-			"type": "array", "items": requestSchema, "maxItems": maximumRequests,
-			"description": i18n.Text(lang, i18n.KeyToolInspectInputRequestsDescription),
+	searchRequestSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"id":          requestIDSchema,
+			"kind":        kindSchema(KindSearch),
+			"path":        nullableInspectSchema(pathSchema),
+			"pattern":     patternSchema,
+			"context":     nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectRequestContextDescription), 0, true)),
+			"max_results": nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectRequestMaxResultsDescription), 1, true)),
 		},
-		"cursor": map[string]any{
-			"type": "string", "description": i18n.Text(lang, i18n.KeyToolInspectInputCursorDescription),
+		"required":             []string{"id", "kind", "pattern"},
+		"additionalProperties": false,
+	}
+	globRequestSchema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"id":          requestIDSchema,
+			"kind":        kindSchema(KindGlob),
+			"path":        nullableInspectSchema(pathSchema),
+			"pattern":     patternSchema,
+			"max_results": nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectRequestMaxResultsDescription), 1, true)),
 		},
-		"max_chars":   toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxCharsDescription), minimumMaxChars, true),
-		"max_files":   toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxFilesDescription), 1, true),
-		"max_matches": toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxMatchesDescription), 1, true),
-	})
+		"required":             []string{"id", "kind", "pattern"},
+		"additionalProperties": false,
+	}
+	requestsSchema := map[string]any{
+		"type": "array", "minItems": 1, "maxItems": maximumRequests,
+		"items":       map[string]any{"oneOf": []any{readRequestSchema, searchRequestSchema, globRequestSchema}},
+		"description": i18n.Text(lang, i18n.KeyToolInspectInputRequestsDescription),
+	}
+	pageSchema := map[string]any{
+		"type":        "object",
+		"description": i18n.Text(lang, i18n.KeyToolInspectInputPageDescription),
+		"properties": map[string]any{
+			"max_chars":   nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxCharsDescription), minimumMaxChars, true)),
+			"max_files":   nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxFilesDescription), 1, true)),
+			"max_matches": nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxMatchesDescription), 1, true)),
+		},
+		"additionalProperties": false,
+	}
+	modeDescription := i18n.Text(lang, i18n.KeyToolInspectInputModeDescription)
+	operationSchema := map[string]any{
+		"description": i18n.Text(lang, i18n.KeyToolInspectInputOperationDescription),
+		"oneOf": []any{
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"mode":     map[string]any{"type": "string", "enum": []string{ModeNew}, "description": modeDescription},
+					"requests": requestsSchema,
+					"page":     nullableInspectSchema(pageSchema),
+				},
+				"required":             []string{"mode", "requests"},
+				"additionalProperties": false,
+			},
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"mode": map[string]any{"type": "string", "enum": []string{ModeContinue}, "description": modeDescription},
+					"cursor": map[string]any{
+						"type": "string", "minLength": 1,
+						"description": i18n.Text(lang, i18n.KeyToolInspectInputCursorDescription),
+					},
+				},
+				"required":             []string{"mode", "cursor"},
+				"additionalProperties": false,
+			},
+		},
+	}
+	return types.StrictObjectSchema(map[string]any{"operation": operationSchema}, "operation")
+}
+
+func nullableInspectSchema(schema map[string]any) map[string]any {
+	return map[string]any{"anyOf": []any{schema, map[string]any{"type": "null"}}}
 }
 
 func (t *Tool) MapToolResultToToolResultBlock(data any, toolUseID string) types.ToolResultBlock {
