@@ -935,7 +935,7 @@ func TestPreToolUseModifiedInputFeedsPermissionAndExecution(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPreToolUse,
-		Command: `printf '{"modified_input":{"value":"hooked"}}'`,
+		Command: testHookOutputCommand(`{"modified_input":{"value":"hooked"}}`),
 		Timeout: 5,
 	}})
 	perm := &recordingPermissionHandler{}
@@ -966,7 +966,7 @@ func TestPreToolUsePermissionAllowBypassesPermissionHandler(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPreToolUse,
-		Command: `printf '{"permissionBehavior":"allow","updatedInput":{"value":"approved"}}'`,
+		Command: testHookOutputCommand(`{"permissionBehavior":"allow","updatedInput":{"value":"approved"}}`),
 		Timeout: 5,
 	}})
 	toolUses := []types.ToolUseBlock{
@@ -995,7 +995,7 @@ func TestPostToolUseFailureRunsForErrorResultAndExecutionError(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPostToolUseFailure,
-		Command: `printf '{"system_reminder":"failure hook ran"}'`,
+		Command: testHookOutputCommand(`{"system_reminder":"failure hook ran"}`),
 		Timeout: 5,
 	}})
 	toolUses := []types.ToolUseBlock{
@@ -1132,7 +1132,7 @@ func TestHookStoppedContinuationPreventsNextModelCall(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPostToolUse,
-		Command: `printf '{"prevent_continuation":true,"stop_reason":"stop after tool"}'`,
+		Command: testHookOutputCommand(`{"prevent_continuation":true,"stop_reason":"stop after tool"}`),
 		Timeout: 5,
 	}})
 	ql := New(prov, reg, Config{MaxTurns: 5, MaxTokens: 1024, HookRunner: runner})

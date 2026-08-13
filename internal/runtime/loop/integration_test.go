@@ -33,7 +33,7 @@ func (m *mockProvider) CreateStream(ctx context.Context, params provider.Params)
 	go func() {
 		defer close(ch)
 		if idx < len(m.responses) {
-			for _, ev := range m.responses[idx] {
+			for _, ev := range attachTestProviderCommitReceipts(m.responses[idx]) {
 				if ctx.Err() != nil {
 					return
 				}
@@ -143,7 +143,7 @@ func (m *recordingMockProvider) CreateStream(ctx context.Context, params provide
 	go func() {
 		defer close(ch)
 		if idx < len(m.responses) {
-			for _, ev := range m.responses[idx] {
+			for _, ev := range attachTestProviderCommitReceipts(m.responses[idx]) {
 				if ctx.Err() != nil {
 					return
 				}

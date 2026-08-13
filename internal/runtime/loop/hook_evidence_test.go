@@ -19,7 +19,7 @@ func TestToolHookSummaryInputIsImmutableAfterToolMutation(t *testing.T) {
 		input["added"] = true
 		return types.ToolResult{Content: "done"}, nil
 	}})
-	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookPreToolUse, Command: "true", Timeout: 5}})
+	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookPreToolUse, Command: testHookSuccessCommand(), Timeout: 5}})
 	toolUses := []types.ToolUseBlock{{
 		Type: types.ContentTypeToolUse,
 		ID:   "tool-immutable-input",
@@ -55,7 +55,7 @@ func TestPostToolHookCapturesInputBeforeToolMutation(t *testing.T) {
 		input["added"] = true
 		return types.ToolResult{Content: "done"}, nil
 	}})
-	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookPostToolUse, Command: "true", Timeout: 5}})
+	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookPostToolUse, Command: testHookSuccessCommand(), Timeout: 5}})
 
 	result, err := executeToolsConcurrentlyDetailed(context.Background(), reg, runner, nil, "session-post-input", executioncontract.ToolExecutionContext{
 		TurnID: "turn-post-input", ActorID: "assistant", ActorType: "assistant", WorkUnitID: "work-post-input",
@@ -91,7 +91,7 @@ func TestToolHookSummaryOutputIsImmutableAfterToolMutation(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPreToolUse,
-		Command: `printf '{"modified_input":{"nested":{"value":"captured"}}}'`,
+		Command: testHookOutputCommand(`{"modified_input":{"nested":{"value":"captured"}}}`),
 		Timeout: 5,
 	}})
 
@@ -117,7 +117,7 @@ func TestPostToolHookUsesCompleteExecutionContextAndTrueToolID(t *testing.T) {
 		return types.ToolResult{Content: "done"}, nil
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
-		Type: hooks.HookPostToolUse, Command: "printf exact-output", Timeout: 5,
+		Type: hooks.HookPostToolUse, Command: testHookOutputCommand("exact-output"), Timeout: 5,
 		Headers: map[string]string{"Authorization": "Bearer hidden", "X-Evidence": "visible"},
 	}})
 
@@ -156,7 +156,7 @@ func TestFailedPostToolHookRetainsCompleteIdentity(t *testing.T) {
 	reg.Register(&orderedBatchTool{name: "Fail", execute: func(context.Context, map[string]any) (types.ToolResult, error) {
 		return types.ToolResult{}, errors.New("tool failed")
 	}})
-	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookPostToolUseFailure, Command: "true", Timeout: 5}})
+	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookPostToolUseFailure, Command: testHookSuccessCommand(), Timeout: 5}})
 
 	result, err := executeToolsConcurrentlyDetailed(context.Background(), reg, runner, nil, "session-failure", executioncontract.ToolExecutionContext{
 		TurnID: "turn-failure", ActorID: "agent-failure", ActorType: "reviewer", WorkUnitID: "work-failure",

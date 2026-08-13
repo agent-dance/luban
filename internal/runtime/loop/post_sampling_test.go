@@ -21,7 +21,7 @@ func TestPostSamplingHookSeesMessagesForQueryAndAssistantMessage(t *testing.T) {
 	inputPath := filepath.Join(dir, "post-sampling-input.json")
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPostSampling,
-		Command: fmt.Sprintf("cat > %q", inputPath),
+		Command: testHookCaptureCommand(inputPath),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{{Events: parityTextEvents("sampled answer")}})
@@ -61,8 +61,8 @@ func TestToolHooksEmitCorrelatedLosslessExecutionEvidence(t *testing.T) {
 	prePath := filepath.Join(dir, "pre.json")
 	postPath := filepath.Join(dir, "post.json")
 	runner := hooks.NewRunner([]hooks.Hook{
-		{Type: hooks.HookPreToolUse, Command: fmt.Sprintf("cat > %q", prePath), Timeout: 5},
-		{Type: hooks.HookPostToolUse, Command: fmt.Sprintf("cat > %q", postPath), Timeout: 5},
+		{Type: hooks.HookPreToolUse, Command: testHookCaptureCommand(prePath), Timeout: 5},
+		{Type: hooks.HookPostToolUse, Command: testHookCaptureCommand(postPath), Timeout: 5},
 	})
 	prov := newParityFakeProvider([]parityProviderTurn{
 		{Events: postSamplingToolUseEvents("tool-correlated", "Echo", `{"text":"run"}`)},
@@ -124,12 +124,12 @@ func TestPostSamplingEmitsEvidenceForEachHookConfiguration(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{
 		{
 			Type:    hooks.HookPostSampling,
-			Command: fmt.Sprintf("cat > %q", passedInputPath),
+			Command: testHookCaptureCommand(passedInputPath),
 			Timeout: 5,
 		},
 		{
 			Type:    hooks.HookPostSampling,
-			Command: fmt.Sprintf("cat > %q; printf 'config failed' >&2; exit 1", failedInputPath),
+			Command: testHookCaptureAndFailCommand(failedInputPath, "config failed"),
 			Timeout: 5,
 		},
 	})
@@ -172,7 +172,7 @@ func TestPostSamplingEmitsEvidenceForEachHookConfiguration(t *testing.T) {
 func TestPostSamplingNonBlockingFailureDoesNotInterruptToolExecution(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPostSampling,
-		Command: `printf 'nonblocking failure' >&2; exit 1`,
+		Command: testFailingHookCommand("nonblocking failure"),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{
@@ -205,7 +205,7 @@ func TestPostSamplingNonBlockingFailureDoesNotInterruptToolExecution(t *testing.
 func TestPostSamplingBlockingFailureStopsBeforeToolExecution(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPostSampling,
-		Command: `printf '%s\n' '{"block":true,"system_reminder":"blocked by policy"}'`,
+		Command: testHookOutputCommand(`{"block":true,"system_reminder":"blocked by policy"}`),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{
@@ -231,18 +231,9 @@ func TestPostSamplingBlockingFailureStopsBeforeToolExecution(t *testing.T) {
 func TestStopFailureHookRunsOnceAfterTransientRecoveryExhausted(t *testing.T) {
 	dir := t.TempDir()
 	inputPath := filepath.Join(dir, "stop-failure-inputs.jsonl")
-	scriptPath := filepath.Join(dir, "stop-failure.sh")
-	script := fmt.Sprintf(`#!/usr/bin/env bash
-set -euo pipefail
-payload="$(cat)"
-printf '%%s\n' "$payload" >> %q
-`, inputPath)
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("write hook script: %v", err)
-	}
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookStopFailure,
-		Command: scriptPath,
+		Command: testHookAppendInputCommand(inputPath),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{

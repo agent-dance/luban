@@ -29,6 +29,7 @@ func (p *aggregateBudgetProvider) CreateStream(_ context.Context, params provide
 	if idx < len(p.events) {
 		events = p.events[idx]
 	}
+	events = attachTestProviderCommitReceipts(events)
 	ch := make(chan types.StreamEvent, len(events))
 	for _, event := range events {
 		ch <- event

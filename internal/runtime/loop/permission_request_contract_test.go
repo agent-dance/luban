@@ -3,6 +3,7 @@ package loop
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -96,6 +97,8 @@ func TestPermissionRequestPreservesSandboxCapability(t *testing.T) {
 }
 
 func TestPermissionRequestBuildsLocalizedReviewBasisWithoutPrivateCause(t *testing.T) {
+	projectRoot := filepath.Join(t.TempDir(), "project")
+	sharedRoot := filepath.Join(projectRoot, "..", "shared")
 	privateCause := errors.New("private analyzer diagnostic")
 	policy := types.PolicyDecision{
 		Disposition:  types.PolicyRequiredAsk,
@@ -103,8 +106,8 @@ func TestPermissionRequestBuildsLocalizedReviewBasisWithoutPrivateCause(t *testi
 		PrivateCause: privateCause,
 	}
 	snapshot := types.ToolRuntimeContext{
-		ProjectRoot: "/workspace/project",
-		AllowedDirs: []string{"/workspace/project", "/workspace/project/../shared"},
+		ProjectRoot: projectRoot,
+		AllowedDirs: []string{projectRoot, sharedRoot},
 	}
 	permissionResult := types.ToolPermissionResult{
 		Behavior:        types.PermissionBehaviorAsk,
@@ -122,9 +125,9 @@ func TestPermissionRequestBuildsLocalizedReviewBasisWithoutPrivateCause(t *testi
 	req := buildPermissionRequest("session", executioncontract.ToolExecutionContext{}, tool, permissionResult)
 	details := strings.Join(req.ReviewDetails, "\n")
 	for _, want := range []string{
-		"Normalized path: /workspace/project/report.txt",
-		"Allowed directory: /workspace/project",
-		"Allowed directory: /workspace/shared",
+		"Normalized path: " + normalizePermissionReviewPath("report.txt", projectRoot),
+		"Allowed directory: " + normalizePermissionReviewPath(projectRoot, projectRoot),
+		"Allowed directory: " + normalizePermissionReviewPath(sharedRoot, projectRoot),
 		"Access: read-only",
 		"Matched rule: shell.policy.ask.dynamic_target",
 		"Required approval scope: this invocation",
@@ -138,13 +141,13 @@ func TestPermissionRequestBuildsLocalizedReviewBasisWithoutPrivateCause(t *testi
 	}
 
 	localized := strings.Join(permissionReviewDetails(i18n.LangZH, "report.txt", tool, permissionResult), "\n")
-	if !strings.Contains(localized, "规范化路径：/workspace/project/report.txt") || !strings.Contains(localized, "访问类型：只读") {
+	if !strings.Contains(localized, "规范化路径："+normalizePermissionReviewPath("report.txt", projectRoot)) || !strings.Contains(localized, "访问类型：只读") {
 		t.Fatalf("localized review details = %q", localized)
 	}
 }
 
 func TestPermissionReviewDetailsDoNotRepeatAlreadyNormalizedTarget(t *testing.T) {
-	path := "/workspace/project/report.txt"
+	path := filepath.Join(t.TempDir(), "project", "report.txt")
 	details := permissionReviewDetails(i18n.LangEN, path, types.ToolUseBlock{
 		Name: "Write", Input: map[string]any{"file_path": path},
 	}, types.ToolPermissionResult{ToolMetadata: types.ToolMetadata{Write: true}})

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -295,7 +293,7 @@ func TestGoalContinuationStopPreventTakesPriorityOverEvaluator(t *testing.T) {
 	runtime := &goalContinuationRuntime{current: &current}
 	evaluator := &goalContinuationEvaluator{steps: []goalContinuationEvaluatorStep{{result: goalContinuationResult(false, "should not run", nil)}}}
 	runner := hooks.NewRunner([]hooks.Hook{{
-		Type: hooks.HookStop, Command: `printf '%s\n' '{"preventContinuation":true,"stopReason":"external stop"}'`, Timeout: 5,
+		Type: hooks.HookStop, Command: testHookOutputCommand(`{"preventContinuation":true,"stopReason":"external stop"}`), Timeout: 5,
 	}})
 	provider := newParityFakeProvider([]parityProviderTurn{{Events: endTurnTextEvents("stop now", 10)}})
 	query := New(provider, registry.New(), Config{
@@ -315,20 +313,9 @@ func TestGoalContinuationStopPreventTakesPriorityOverEvaluator(t *testing.T) {
 }
 
 func TestGoalContinuationStopBlockFeedbackRunsBeforeEvaluator(t *testing.T) {
-	dir := t.TempDir()
-	scriptPath := filepath.Join(dir, "goal-stop-hook.sh")
-	script := `#!/bin/sh
-payload="$(cat)"
-case "$payload" in
-  *'"stop_hook_active":true'*) exit 0 ;;
-esac
-printf 'revise before goal evaluation' >&2
-exit 2
-`
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookStop, Command: scriptPath, Timeout: 5}})
+	runner := hooks.NewRunner([]hooks.Hook{{
+		Type: hooks.HookStop, Command: testBlockingHookCommand("revise before goal evaluation", true), Timeout: 5,
+	}})
 	current := activeGoalForContinuation(t, 0)
 	runtime := &goalContinuationRuntime{current: &current}
 	evaluator := &goalContinuationEvaluator{steps: []goalContinuationEvaluatorStep{{result: goalContinuationResult(true, "revised answer satisfies the goal", nil)}}}
@@ -573,16 +560,9 @@ func TestGoalContinuationToolUseTurnsStopAtGoalTokenBudget(t *testing.T) {
 }
 
 func TestGoalContinuationStopHookBlockingCannotBypassGoalTokenBudget(t *testing.T) {
-	dir := t.TempDir()
-	scriptPath := filepath.Join(dir, "goal-budget-stop-hook.sh")
-	script := `#!/bin/sh
-printf 'blocking feedback' >&2
-exit 2
-`
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookStop, Command: scriptPath, Timeout: 5}})
+	runner := hooks.NewRunner([]hooks.Hook{{
+		Type: hooks.HookStop, Command: testBlockingHookCommand("blocking feedback", false), Timeout: 5,
+	}})
 	current := activeGoalForContinuation(t, 10)
 	runtime := &goalContinuationRuntime{current: &current}
 	evaluator := &goalContinuationEvaluator{}

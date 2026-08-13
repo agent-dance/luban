@@ -3,7 +3,6 @@ package loop
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,8 +44,8 @@ func TestQueryHooksBracketProviderWithCorrelatedEvidence(t *testing.T) {
 	preInputPath := filepath.Join(dir, "pre.json")
 	postInputPath := filepath.Join(dir, "post.json")
 	runner := hooks.NewRunner([]hooks.Hook{
-		{Type: hooks.HookPreQuery, Command: fmt.Sprintf("cat > %q; printf 'pre\\n' >> %q", preInputPath, orderPath), Timeout: 5},
-		{Type: hooks.HookPostQuery, Command: fmt.Sprintf("cat > %q; printf 'post\\n' >> %q", postInputPath, orderPath), Timeout: 5},
+		{Type: hooks.HookPreQuery, Command: testHookCaptureAndAppendCommand(preInputPath, orderPath, "pre"), Timeout: 5},
+		{Type: hooks.HookPostQuery, Command: testHookCaptureAndAppendCommand(postInputPath, orderPath, "post"), Timeout: 5},
 	})
 	prov := &queryHookOrderProvider{path: orderPath}
 	query := New(prov, registry.New(), Config{
@@ -109,10 +108,10 @@ func TestQueryHooksFailClosedBeforeDownstreamSideEffects(t *testing.T) {
 		wantHookRuns  int32
 		wantAssistant bool
 	}{
-		{name: "pre query execution error", hookType: hooks.HookPreQuery, command: "printf pre-error >&2; exit 1", wantCalls: 0},
-		{name: "pre query explicit block", hookType: hooks.HookPreQuery, command: `printf '{"block":true,"system_reminder":"pre-policy"}'`, wantCalls: 0},
-		{name: "post query execution error", hookType: hooks.HookPostQuery, command: "printf post-error >&2; exit 1", wantCalls: 1, wantAssistant: true},
-		{name: "post query explicit block", hookType: hooks.HookPostQuery, command: `printf '{"block":true,"system_reminder":"post-policy"}'`, wantCalls: 1, wantAssistant: true},
+		{name: "pre query execution error", hookType: hooks.HookPreQuery, command: testFailingHookCommand("pre-error"), wantCalls: 0},
+		{name: "pre query explicit block", hookType: hooks.HookPreQuery, command: testHookOutputCommand(`{"block":true,"system_reminder":"pre-policy"}`), wantCalls: 0},
+		{name: "post query execution error", hookType: hooks.HookPostQuery, command: testFailingHookCommand("post-error"), wantCalls: 1, wantAssistant: true},
+		{name: "post query explicit block", hookType: hooks.HookPostQuery, command: testHookOutputCommand(`{"block":true,"system_reminder":"post-policy"}`), wantCalls: 1, wantAssistant: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

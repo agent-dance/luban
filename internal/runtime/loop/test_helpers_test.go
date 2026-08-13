@@ -58,7 +58,8 @@ func (p *parityFakeProvider) CreateStream(ctx context.Context, params provider.P
 	if turn.Error != nil {
 		return nil, turn.Error
 	}
-	ch := make(chan types.StreamEvent, max(1, len(turn.Events)))
+	events := attachTestProviderCommitReceipts(turn.Events)
+	ch := make(chan types.StreamEvent, max(1, len(events)))
 	go func() {
 		defer close(ch)
 		if turn.DelayMS > 0 {
@@ -70,7 +71,7 @@ func (p *parityFakeProvider) CreateStream(ctx context.Context, params provider.P
 			case <-timer.C:
 			}
 		}
-		for _, evt := range turn.Events {
+		for _, evt := range events {
 			if ctx.Err() != nil {
 				return
 			}

@@ -251,6 +251,7 @@ func (p *goalPermissionProvider) CreateStream(context.Context, provider.Params) 
 }
 
 func goalPermissionStream(events ...types.StreamEvent) <-chan types.StreamEvent {
+	events = authorizeAppTestToolStreams(events)
 	stream := make(chan types.StreamEvent, len(events))
 	for _, event := range events {
 		stream <- event

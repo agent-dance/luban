@@ -90,7 +90,10 @@ func (p *streamingGateProvider) CreateStream(ctx context.Context, _ provider.Par
 		if !send(types.StreamEvent{Type: types.EventMessageDelta, StopReason: stopReasonForParity(types.StopReasonToolUse)}) {
 			return
 		}
-		_ = send(types.StreamEvent{Type: types.EventMessageStop})
+		receipt := types.NewProviderToolCommitReceipt("test", "test", "completed", []types.ProviderToolCallCommit{{
+			OutputIndex: 0, CallID: "read_1", Name: "Read", RawInput: `{"id":"read_1"}`,
+		}})
+		_ = send(types.StreamEvent{Type: types.EventMessageStop, ProviderCommitReceipt: receipt})
 	}()
 	return ch, nil
 }
@@ -317,8 +320,8 @@ func TestStreamingToolExecutorReturnsCorrelatedLosslessHookEvidence(t *testing.T
 	reg := registry.New()
 	reg.Register(read)
 	runner := hooks.NewRunner([]hooks.Hook{
-		{Type: hooks.HookPreToolUse, Command: "true", Timeout: 5},
-		{Type: hooks.HookPostToolUse, Command: "true", Timeout: 5},
+		{Type: hooks.HookPreToolUse, Command: testHookSuccessCommand(), Timeout: 5},
+		{Type: hooks.HookPostToolUse, Command: testHookSuccessCommand(), Timeout: 5},
 	})
 	executor := NewStreamingToolExecutor(ctx, reg, runner, nil, "session-stream", executioncontract.ToolExecutionContext{
 		Messages:   []types.Message{types.UserMessage("read")},

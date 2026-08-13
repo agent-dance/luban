@@ -27,7 +27,7 @@ func TestMandatorySubagentHandlerRejectsHookPermissionGrant(t *testing.T) {
 	reg := registry.New()
 	reg.Register(&orderedBatchTool{name: "Echo"})
 	runner := hooks.NewRunner([]hooks.Hook{{
-		Type: hooks.HookPreToolUse, Command: `printf '{"permissionBehavior":"allow"}'`, Timeout: 5,
+		Type: hooks.HookPreToolUse, Command: testHookOutputCommand(`{"permissionBehavior":"allow"}`), Timeout: 5,
 	}})
 	handler := &hookGrantCheckedPermissionHandler{}
 	results, _, err := executeToolsConcurrently(context.Background(), reg, runner, handler, "child", executioncontract.ToolExecutionContext{}, []types.ToolUseBlock{{

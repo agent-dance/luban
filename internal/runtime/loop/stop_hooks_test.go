@@ -3,7 +3,6 @@ package loop
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +19,7 @@ func TestStopHookRunsWhenAssistantHasNoToolUse(t *testing.T) {
 	inputPath := filepath.Join(dir, "stop-input.json")
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookStop,
-		Command: fmt.Sprintf("cat > %q", inputPath),
+		Command: testHookCaptureCommand(inputPath),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{{Events: parityTextEvents("done")}})
@@ -57,7 +56,7 @@ func TestStopHookRunsWhenAssistantHasNoToolUse(t *testing.T) {
 }
 
 func TestStopHookIdentityIsUniqueAcrossUserQueries(t *testing.T) {
-	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookStop, Command: "true", Timeout: 5}})
+	runner := hooks.NewRunner([]hooks.Hook{{Type: hooks.HookStop, Command: testHookSuccessCommand(), Timeout: 5}})
 	prov := newParityFakeProvider([]parityProviderTurn{{Events: parityTextEvents("first")}, {Events: parityTextEvents("second")}})
 	q := New(prov, registry.New(), Config{MaxTurns: 3, MaxTokens: 1024, HookRunner: runner, SessionID: "session-repeat"})
 	var summaries []stream.Event
@@ -82,26 +81,11 @@ func TestStopHookIdentityIsUniqueAcrossUserQueries(t *testing.T) {
 
 func TestStopHookBlockingContinuesWithStopHookActive(t *testing.T) {
 	dir := t.TempDir()
-	scriptPath := filepath.Join(dir, "stop-hook.sh")
 	firstInput := filepath.Join(dir, "first.json")
 	activeInput := filepath.Join(dir, "active.json")
-	script := fmt.Sprintf(`#!/usr/bin/env bash
-set -euo pipefail
-payload="$(cat)"
-if grep -q '"stop_hook_active":true' <<<"$payload"; then
-  printf '%%s' "$payload" > %q
-  exit 0
-fi
-printf '%%s' "$payload" > %q
-printf 'revise final answer' >&2
-exit 2
-`, activeInput, firstInput)
-	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
-		t.Fatalf("write hook script: %v", err)
-	}
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookStop,
-		Command: scriptPath,
+		Command: testStopHookCaptureCommand(firstInput, activeInput, "revise final answer"),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{
@@ -133,7 +117,7 @@ exit 2
 func TestStopHookPreventContinuationEndsWithoutNewRequest(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookStop,
-		Command: `printf '%s\n' '{"preventContinuation":true,"stopReason":"complete"}'`,
+		Command: testHookOutputCommand(`{"preventContinuation":true,"stopReason":"complete"}`),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{
@@ -158,7 +142,7 @@ func TestStopHookSkippedOnAPIError(t *testing.T) {
 	touched := filepath.Join(dir, "ran")
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookStop,
-		Command: fmt.Sprintf("touch %q", touched),
+		Command: testHookTouchCommand(touched),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{{
@@ -180,7 +164,7 @@ func TestSubagentStopUsesMappedStopHook(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookStop,
 		Matcher: "reviewer",
-		Command: fmt.Sprintf("cat > %q", inputPath),
+		Command: testHookCaptureCommand(inputPath),
 		Timeout: 5,
 	}}).WithHookTypeMapped(hooks.HookStop, hooks.HookSubagentStop)
 	prov := newParityFakeProvider([]parityProviderTurn{{Events: parityTextEvents("subagent done")}})

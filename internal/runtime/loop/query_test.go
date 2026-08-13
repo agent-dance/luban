@@ -3,6 +3,8 @@ package loop
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -11,12 +13,152 @@ import (
 )
 
 func makeStreamChan(events ...types.StreamEvent) <-chan types.StreamEvent {
+	events = attachTestProviderCommitReceipts(events)
+	return makeRawStreamChan(events...)
+}
+
+func makeRawStreamChan(events ...types.StreamEvent) <-chan types.StreamEvent {
 	ch := make(chan types.StreamEvent, len(events))
 	for _, e := range events {
 		ch <- e
 	}
 	close(ch)
 	return ch
+}
+
+func testStreamEvents(events ...types.StreamEvent) []types.StreamEvent {
+	return attachTestProviderCommitReceipts(events)
+}
+
+func authorizeTestProviderStreams(streams [][]types.StreamEvent) [][]types.StreamEvent {
+	for index := range streams {
+		streams[index] = attachTestProviderCommitReceipts(streams[index])
+	}
+	return streams
+}
+
+func testHookOutputCommand(output string) string {
+	if runtime.GOOS == "windows" {
+		return "[Console]::Out.Write('" + strings.ReplaceAll(output, "'", "''") + "')"
+	}
+	return "printf %s '" + strings.ReplaceAll(output, "'", `'"'"'`) + "'"
+}
+
+func testBlockingHookCommand(message string, allowStopHookActive bool) string {
+	quoted := strings.ReplaceAll(message, "'", "''")
+	if runtime.GOOS == "windows" {
+		prefix := ""
+		if allowStopHookActive {
+			prefix = `$payload=[Console]::In.ReadToEnd(); if ($payload -match '"stop_hook_active":true') { exit 0 }; `
+		}
+		return prefix + "[Console]::Error.Write('" + quoted + "'); exit 2"
+	}
+	prefix := ""
+	if allowStopHookActive {
+		prefix = `payload="$(cat)"; case "$payload" in *'"stop_hook_active":true'*) exit 0;; esac; `
+	}
+	return prefix + "printf %s '" + strings.ReplaceAll(message, "'", `'"'"'`) + "' >&2; exit 2"
+}
+
+func testHookSuccessCommand() string {
+	if runtime.GOOS == "windows" {
+		return "exit 0"
+	}
+	return "true"
+}
+
+func testHookCaptureCommand(path string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("[IO.File]::WriteAllText('%s',[Console]::In.ReadToEnd(),[Text.UTF8Encoding]::new($false))", strings.ReplaceAll(path, "'", "''"))
+	}
+	return "cat > '" + strings.ReplaceAll(path, "'", `'"'"'`) + "'"
+}
+
+func testHookCaptureAndAppendCommand(inputPath, orderPath, marker string) string {
+	if runtime.GOOS == "windows" {
+		return testHookCaptureCommand(inputPath) + fmt.Sprintf("; [IO.File]::AppendAllText('%s','%s'+[char]10,[Text.UTF8Encoding]::new($false))",
+			strings.ReplaceAll(orderPath, "'", "''"), strings.ReplaceAll(marker, "'", "''"))
+	}
+	return testHookCaptureCommand(inputPath) + "; printf '%s\\n' '" + strings.ReplaceAll(marker, "'", `'"'"'`) + "' >> '" + strings.ReplaceAll(orderPath, "'", `'"'"'`) + "'"
+}
+
+func testFailingHookCommand(message string) string {
+	if runtime.GOOS == "windows" {
+		return "[Console]::Error.Write('" + strings.ReplaceAll(message, "'", "''") + "'); exit 1"
+	}
+	return "printf %s '" + strings.ReplaceAll(message, "'", `'"'"'`) + "' >&2; exit 1"
+}
+
+func testHookCaptureAndFailCommand(path, message string) string {
+	return testHookCaptureCommand(path) + "; " + testFailingHookCommand(message)
+}
+
+func testHookTouchCommand(path string) string {
+	if runtime.GOOS == "windows" {
+		return "[IO.File]::WriteAllText('" + strings.ReplaceAll(path, "'", "''") + "','')"
+	}
+	return "touch '" + strings.ReplaceAll(path, "'", `'"'"'`) + "'"
+}
+
+func testHookAppendInputCommand(path string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf("$payload=[Console]::In.ReadToEnd(); [IO.File]::AppendAllText('%s',$payload+[Environment]::NewLine,[Text.UTF8Encoding]::new($false))", strings.ReplaceAll(path, "'", "''"))
+	}
+	return "payload=\"$(cat)\"; printf '%s\\n' \"$payload\" >> '" + strings.ReplaceAll(path, "'", `'"'"'`) + "'"
+}
+
+func testStopHookCaptureCommand(firstPath, activePath, message string) string {
+	if runtime.GOOS == "windows" {
+		return fmt.Sprintf(`$payload=[Console]::In.ReadToEnd(); $encoding=[Text.UTF8Encoding]::new($false); if ($payload -match '"stop_hook_active":true') { [IO.File]::WriteAllText('%s',$payload,$encoding); exit 0 }; [IO.File]::WriteAllText('%s',$payload,$encoding); [Console]::Error.Write('%s'); exit 2`, strings.ReplaceAll(activePath, "'", "''"), strings.ReplaceAll(firstPath, "'", "''"), strings.ReplaceAll(message, "'", "''"))
+	}
+	return fmt.Sprintf(`payload="$(cat)"; case "$payload" in *'"stop_hook_active":true'*) printf '%%s' "$payload" > '%s'; exit 0;; esac; printf '%%s' "$payload" > '%s'; printf '%%s' '%s' >&2; exit 2`, strings.ReplaceAll(activePath, "'", `'"'"'`), strings.ReplaceAll(firstPath, "'", `'"'"'`), strings.ReplaceAll(message, "'", `'"'"'`))
+}
+
+func attachTestProviderCommitReceipts(events []types.StreamEvent) []types.StreamEvent {
+	calls := make(map[int]types.ProviderToolCallCommit)
+	for index := range events {
+		event := &events[index]
+		switch event.Type {
+		case types.EventContentBlockStart:
+			if block := event.ContentBlock; block != nil && block.Type == types.ContentTypeToolUse {
+				calls[event.Index] = types.ProviderToolCallCommit{
+					OutputIndex: event.Index, ToolType: block.ToolType, ProviderItemID: block.ProviderItemID,
+					CallID: block.ID, Name: block.Name,
+				}
+			}
+		case types.EventContentBlockDelta:
+			if call, ok := calls[event.Index]; ok && event.Delta != nil {
+				switch event.Delta.Type {
+				case "input_json_delta":
+					call.RawInput += event.Delta.PartialJSON
+				case "tool_state_final":
+					if call.ToolType == types.ToolDefinitionTypeCustom || event.Delta.ToolType == types.ToolDefinitionTypeCustom {
+						call.ToolType = types.ToolDefinitionTypeCustom
+						call.RawInput = event.Delta.PartialText
+					} else {
+						call.RawInput = event.Delta.PartialJSON
+					}
+				case "input_text_delta":
+					call.RawInput += event.Delta.PartialText
+				case "tool_text_state_final":
+					call.RawInput = event.Delta.PartialText
+				}
+				calls[event.Index] = call
+			}
+		case types.EventMessageStop:
+			if event.ProviderCommitReceipt != nil || len(calls) == 0 {
+				continue
+			}
+			ordered := make([]types.ProviderToolCallCommit, 0, len(calls))
+			for outputIndex := 0; outputIndex <= len(events); outputIndex++ {
+				if call, ok := calls[outputIndex]; ok {
+					ordered = append(ordered, call)
+				}
+			}
+			event.ProviderCommitReceipt = types.NewProviderToolCommitReceipt("test", "test", "completed", ordered)
+		}
+	}
+	return events
 }
 
 type testVisibleReadEvidenceReceipt struct {
@@ -243,7 +385,7 @@ func TestProcessStreamPersistsSyntaxDiagnosticWithoutRegisteredSchemaField(t *te
 	}
 }
 
-func TestProcessStreamFlushPersistsSyntaxDiagnostic(t *testing.T) {
+func TestProcessStreamRejectsOpenToolBlockAtCommit(t *testing.T) {
 	ql := &QueryLoop{}
 	events := makeStreamChan(
 		types.StreamEvent{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
@@ -255,16 +397,12 @@ func TestProcessStreamFlushPersistsSyntaxDiagnostic(t *testing.T) {
 		types.StreamEvent{Type: types.EventMessageStop},
 	)
 	msg, _, _, err := ql.processStream(context.Background(), events, 1, func(stream.Event) {})
-	if err != nil {
-		t.Fatal(err)
-	}
-	invalid := msg.GetInvalidToolUses()
-	if len(invalid) != 1 || invalid[0].DiagnosticKind != types.ToolInputDiagnosticMissingValue || invalid[0].DiagnosticOffset != 12 || invalid[0].DiagnosticField != "" {
-		t.Fatalf("flush diagnostic = %#v", invalid)
+	if err == nil || msg != nil {
+		t.Fatalf("open tool block = (%#v, %v), want fail closed", msg, err)
 	}
 }
 
-func TestProcessStreamEmptyToolJSON(t *testing.T) {
+func TestProcessStreamEmptyToolJSONIsInvalid(t *testing.T) {
 	ql := &QueryLoop{}
 	onEvent := func(e stream.Event) {}
 
@@ -284,13 +422,11 @@ func TestProcessStreamEmptyToolJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	uses := msg.GetToolUses()
-	if len(uses) != 1 {
-		t.Fatalf("expected 1 tool use, got %d", len(uses))
+	if uses := msg.GetToolUses(); len(uses) != 0 {
+		t.Fatalf("tool uses = %#v, want none", uses)
 	}
-	// Empty input, not nil
-	if uses[0].Input == nil {
-		t.Error("expected non-nil empty map, got nil")
+	if invalid := msg.GetInvalidToolUses(); len(invalid) != 1 || invalid[0].DiagnosticKind != types.ToolInputDiagnosticNonObject {
+		t.Fatalf("invalid tool uses = %#v, want one empty-input diagnostic", invalid)
 	}
 }
 

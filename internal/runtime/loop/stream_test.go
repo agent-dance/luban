@@ -318,7 +318,7 @@ func TestProcessStreamRequiresMatchingToolCommitReceipt(t *testing.T) {
 		CallID: "call-1", Name: "Run", RawInput: raw,
 	}
 	events := func(receipt *types.ProviderCommitReceipt) <-chan types.StreamEvent {
-		return makeStreamChan(
+		return makeRawStreamChan(
 			types.StreamEvent{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
 				Type: types.ContentTypeToolUse, ID: call.CallID, Name: call.Name, ToolType: call.ToolType,
 				ProviderItemID: call.ProviderItemID, ProviderStatus: "completed",

@@ -145,16 +145,15 @@ func TestRunAdvertisesDiscriminatedCommandContract(t *testing.T) {
 	}
 }
 
-func TestRunStrictProjectionIgnoresEmptyMutuallyExclusiveSentinel(t *testing.T) {
+func TestRunInPlaceContractRejectsLegacyMutuallyExclusiveSentinels(t *testing.T) {
 	root := t.TempDir()
 	scope := (&BashTool{CWD: root, AllowedDirs: []string{root}}).executionScopeSnapshot()
 	for _, input := range []map[string]any{
 		{"id": "argv", "argv": []any{"printf", "ok"}, "shell_script": ""},
 		{"id": "shell", "argv": []any{}, "shell_script": "printf ok"},
 	} {
-		plan, err := compileRunPlan(map[string]any{"steps": []any{input}}, scope, types.ToolRuntimeContext{}, true)
-		if err != nil || len(plan.steps) != 1 {
-			t.Fatalf("input=%#v plan=%#v err=%v", input, plan, err)
+		if plan, err := compileRunPlan(map[string]any{"steps": []any{input}}, scope, types.ToolRuntimeContext{}, true); err == nil || plan != nil {
+			t.Fatalf("legacy input=%#v produced plan=%#v err=%v", input, plan, err)
 		}
 	}
 	_, err := compileRunPlan(map[string]any{"steps": []any{map[string]any{

@@ -47,7 +47,7 @@ func (p *toolInputRecoveryProvider) CreateStream(ctx context.Context, params pro
 		if index >= len(p.responses) {
 			return
 		}
-		for _, event := range p.responses[index] {
+		for _, event := range attachTestProviderCommitReceipts(p.responses[index]) {
 			select {
 			case stream <- event:
 			case <-ctx.Done():
@@ -63,16 +63,16 @@ func malformedToolResponse(responseID string) []types.StreamEvent {
 }
 
 func malformedToolResponseWithInput(responseID, input string) []types.StreamEvent {
-	return []types.StreamEvent{
-		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
+	return testStreamEvents(
+		types.StreamEvent{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
 			Type: types.ContentTypeToolUse, ID: "call_bad", Name: "Inspect", ProviderItemID: "fc_bad",
 		}},
-		{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: input}},
-		{Type: types.EventContentBlockStop, Index: 0},
-		{Type: types.EventMessageStop, ResponseID: responseID, ProviderContinuation: &types.ProviderContinuation{
+		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: input}},
+		types.StreamEvent{Type: types.EventContentBlockStop, Index: 0},
+		types.StreamEvent{Type: types.EventMessageStop, ResponseID: responseID, ProviderContinuation: &types.ProviderContinuation{
 			Protocol: "responses/test/standard", RequestedModel: "recovery-test-model",
 		}},
-	}
+	)
 }
 
 func TestParseToolInputJSONDiagnosesMissingRootFieldWithoutReadingValues(t *testing.T) {
@@ -130,16 +130,16 @@ func finalTextResponse(text string) []types.StreamEvent {
 }
 
 func correctedToolResponse() []types.StreamEvent {
-	return []types.StreamEvent{
-		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
+	return testStreamEvents(
+		types.StreamEvent{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
 			Type: types.ContentTypeToolUse, ID: "call_corrected", Name: "Inspect", ProviderItemID: "fc_corrected",
 		}},
-		{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{
+		types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{
 			Type: "tool_state_final", ID: "call_corrected", Name: "Inspect", PartialJSON: `{"path":"."}`,
 		}},
-		{Type: types.EventContentBlockStop, Index: 0},
-		{Type: types.EventMessageStop, ResponseID: "response-valid-tool"},
-	}
+		types.StreamEvent{Type: types.EventContentBlockStop, Index: 0},
+		types.StreamEvent{Type: types.EventMessageStop, ResponseID: "response-valid-tool"},
+	)
 }
 
 func TestMalformedToolInputRetriesFromSanitizedFullHistory(t *testing.T) {

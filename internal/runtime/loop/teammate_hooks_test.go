@@ -2,7 +2,6 @@ package loop
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,11 +30,11 @@ func TestTaskCompletedHookReceivesTaskAndTeammateContextBeforeIdle(t *testing.T)
 	runner := hooks.NewRunner([]hooks.Hook{
 		{
 			Type:    hooks.HookTaskCompleted,
-			Command: fmt.Sprintf(`cat > %q; printf 'task-completed\n' >> %q`, taskInputPath, orderPath),
+			Command: testHookCaptureAndAppendCommand(taskInputPath, orderPath, "task-completed"),
 		},
 		{
 			Type:    hooks.HookTeammateIdle,
-			Command: fmt.Sprintf(`cat > %q; printf 'teammate-idle\n' >> %q`, idleInputPath, orderPath),
+			Command: testHookCaptureAndAppendCommand(idleInputPath, orderPath, "teammate-idle"),
 		},
 	})
 	prov := newParityFakeProvider([]parityProviderTurn{{Events: parityTextEvents("done")}})
@@ -95,7 +94,7 @@ func TestTaskCompletedHookReceivesTaskAndTeammateContextBeforeIdle(t *testing.T)
 func TestTaskCompletedEmitsEvidenceForEachTask(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookTaskCompleted,
-		Command: "true",
+		Command: testHookSuccessCommand(),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{{Events: parityTextEvents("done")}})
@@ -152,7 +151,7 @@ func TestTaskCompletedEmitsEvidenceForEachTask(t *testing.T) {
 func TestTaskCompletedPreventContinuationStopsLoop(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookTaskCompleted,
-		Command: `printf '%s\n' '{"preventContinuation":true,"stopReason":"task complete gate"}'`,
+		Command: testHookOutputCommand(`{"preventContinuation":true,"stopReason":"task complete gate"}`),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{
@@ -177,7 +176,7 @@ func TestTaskCompletedPreventContinuationStopsLoop(t *testing.T) {
 func TestTeammateIdleBlockingContinuesNextTurn(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookTeammateIdle,
-		Command: `printf 'pick up another task' >&2; exit 2`,
+		Command: testBlockingHookCommand("pick up another task", false),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{
@@ -205,7 +204,7 @@ func TestTeammateIdleBlockingContinuesNextTurn(t *testing.T) {
 func TestTaskCompletedBlockingContinuesNextTurn(t *testing.T) {
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookTaskCompleted,
-		Command: `printf 'finish the handoff note' >&2; exit 2`,
+		Command: testBlockingHookCommand("finish the handoff note", false),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{
