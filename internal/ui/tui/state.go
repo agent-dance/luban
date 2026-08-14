@@ -207,6 +207,7 @@ type AppState struct {
 	ActivityFocus       *tui.State[string]
 	ActivityViewOffset  *tui.State[int]
 	LLMCall             *tui.State[*LLMCallStatus]
+	LLMRequestMetrics   *tui.State[*LLMRequestMetricsStatus]
 	CompactionProgress  *tui.State[*CompactionProgressStatus]
 	activitySequence    uint64
 
@@ -477,6 +478,19 @@ type LLMCallStatus struct {
 	Error              string
 }
 
+// LLMRequestMetricsStatus is the most recently established provider request's
+// presentation-safe latency and throughput summary. It intentionally outlives
+// the active LLMCallStatus so the last API measurements remain visible after
+// query settlement, but is reset when the session surface is replaced.
+type LLMRequestMetricsStatus struct {
+	RequestID                    string
+	ConnectionDuration           time.Duration
+	FirstTokenDuration           time.Duration
+	HasFirstToken                bool
+	AverageOutputTokensPerSecond float64
+	HasAverageOutputTokenRate    bool
+}
+
 // NewAppState creates a new AppState with initial values.
 func NewAppState() *AppState {
 	details := NewMemoryDetailStore()
@@ -490,6 +504,7 @@ func NewAppState() *AppState {
 		ActivityFocus:                     tui.NewState(""),
 		ActivityViewOffset:                tui.NewState(0),
 		LLMCall:                           tui.NewState[*LLMCallStatus](nil),
+		LLMRequestMetrics:                 tui.NewState[*LLMRequestMetricsStatus](nil),
 		CompactionProgress:                tui.NewState[*CompactionProgressStatus](nil),
 		DecisionReq:                       tui.NewState[*DecisionRequest](nil),
 		DecisionSelected:                  tui.NewState(0),
@@ -712,6 +727,7 @@ func (s *AppState) applySessionSnapshot(snapshot SessionSnapshot) error {
 	s.ActivityFocus.Set(activityFocus)
 	s.ActivityViewOffset.Set(activityOffset)
 	s.LLMCall.Set(nil)
+	s.LLMRequestMetrics.Set(nil)
 	s.CompactionProgress.Set(nil)
 	s.SessionNS.Set(snapshot.Identity.Namespace)
 	s.SessionID.Set(snapshot.Identity.SessionID)
@@ -2451,6 +2467,7 @@ func (s *AppState) clearMessages() {
 	s.Messages.Set(nil)
 	s.ToolSegmentExpansion.Set(nil)
 	s.LLMCall.Set(nil)
+	s.LLMRequestMetrics.Set(nil)
 	s.bumpViewRevision()
 	s.clearEpoch++
 }
@@ -2462,6 +2479,15 @@ func (s *AppState) SetLLMCall(status *LLMCallStatus) {
 	}
 	copyStatus := *status
 	s.LLMCall.Set(&copyStatus)
+}
+
+func (s *AppState) SetLLMRequestMetrics(status *LLMRequestMetricsStatus) {
+	if status == nil {
+		s.LLMRequestMetrics.Set(nil)
+		return
+	}
+	copyStatus := *status
+	s.LLMRequestMetrics.Set(&copyStatus)
 }
 
 // BeginLLMWork publishes the working state as soon as a submitted message is

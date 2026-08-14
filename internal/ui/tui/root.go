@@ -584,6 +584,7 @@ func (c *RootComponent) BindApp(app *tui.App) {
 	c.state.ActivityFocus.BindApp(app)
 	c.state.ActivityViewOffset.BindApp(app)
 	c.state.LLMCall.BindApp(app)
+	c.state.LLMRequestMetrics.BindApp(app)
 	c.state.DecisionReq.BindApp(app)
 	c.state.DecisionSelected.BindApp(app)
 	c.state.DecisionHistory.BindApp(app)
@@ -709,12 +710,21 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 
 	status := c.renderStatusBar(termWidth)
 	statusRows := status.HeightForWidth(termWidth)
+	requestMetrics := c.state.LLMRequestMetrics.Get()
+	requestMetricsRows := 0
+	var requestMetricsView *tui.Element
+	if requestMetrics != nil {
+		requestMetricsView = c.renderLLMRequestMetrics(requestMetrics, termWidth)
+		requestMetricsRows = 2
+	}
+	const statusSpacerRows = 1
 	queuedInputs := c.state.QueuedInputTexts.Get()
 	queuedInputRows := len(queuedInputs)
 
 	// Reserve rows for chrome: banner (3) + spacer (1) + status bar (dynamic) +
 	// queued input previews + optional centered LLM status band (top spacer +
-	// wrapped working rows or two problem rows) + optional slash suggestions + input (dynamic). The existing
+	// wrapped working rows or two problem rows) + optional slash suggestions + input (dynamic) +
+	// the persistent request-metrics section below the input. The existing
 	// status-bar spacer is the matching bottom half of the LLM status band.
 	llmStatusRows := 0
 	llmStatus := c.state.LLMCall.Get()
@@ -773,10 +783,24 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 	if taskViewRows > 0 {
 		taskTopSpacingRows = 1
 	}
-	chromeRows := 3 + 1 + statusRows + queuedInputRows + llmStatusRows + compactProgressRows + slashRows + permissionRows + askUserRows + goalViewRows + taskTopSpacingRows + taskViewRows + activityViewRows + decisionReceiptRows + inputRowHeight
+	pickerRows := 0
+	var sessionPickerView, forkPickerView, modelPickerView *tui.Element
+	if picker := c.state.SessionPicker.Get(); picker != nil && picker.Visible {
+		sessionPickerView = c.renderSessionPicker(picker)
+		pickerRows += sessionPickerView.HeightForWidth(termWidth)
+	}
+	if picker := c.state.ForkPicker.Get(); picker != nil && picker.Visible {
+		forkPickerView = c.renderForkPicker(picker)
+		pickerRows += forkPickerView.HeightForWidth(termWidth)
+	}
+	if picker := c.state.ModelPicker.Get(); picker != nil && picker.Visible {
+		modelPickerView = c.renderModelPicker(picker)
+		pickerRows += modelPickerView.HeightForWidth(termWidth)
+	}
+	chromeRows := 3 + statusSpacerRows + statusRows + queuedInputRows + llmStatusRows + compactProgressRows + slashRows + permissionRows + askUserRows + goalViewRows + taskTopSpacingRows + taskViewRows + activityViewRows + decisionReceiptRows + pickerRows + inputRowHeight + requestMetricsRows
 	if compactDecision {
 		llmStatusRows, compactProgressRows, queuedInputRows, slashRows, goalViewRows, taskTopSpacingRows, taskViewRows, activityViewRows = 0, 0, 0, 0, 0, 0, 0, 0
-		chromeRows = permissionRows + askUserRows + inputRowHeight
+		chromeRows = permissionRows + askUserRows + pickerRows + inputRowHeight + requestMetricsRows
 	}
 
 	// The skills checklist is a normal child of this root column, not a true
@@ -863,16 +887,16 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 	}
 
 	// --- Session picker overlay ---
-	if picker := c.state.SessionPicker.Get(); picker != nil && picker.Visible {
-		root.AddChild(c.renderSessionPicker(picker))
+	if sessionPickerView != nil {
+		root.AddChild(sessionPickerView)
 	}
-	if picker := c.state.ForkPicker.Get(); picker != nil && picker.Visible {
-		root.AddChild(c.renderForkPicker(picker))
+	if forkPickerView != nil {
+		root.AddChild(forkPickerView)
 	}
 
 	// --- Model picker overlay ---
-	if mp := c.state.ModelPicker.Get(); mp != nil && mp.Visible {
-		root.AddChild(c.renderModelPicker(mp))
+	if modelPickerView != nil {
+		root.AddChild(modelPickerView)
 	}
 	if skillsMenu != nil && skillsLayout.PanelHeight > 0 {
 		root.AddChild(c.renderSkillsMenuWithLayout(skillsMenu, skillsLayout))
@@ -900,6 +924,7 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 	inputBorder := tui.New(
 		tui.WithDisplay(tui.DisplayFlex),
 		tui.WithDirection(tui.Row),
+		tui.WithFlexShrink(0),
 		tui.WithHeight(inputRowHeight),
 		tui.WithWidthPercent(100),
 		tui.WithBorder(tui.BorderRounded),
@@ -933,7 +958,18 @@ func (c *RootComponent) renderAtSize(app *tui.App, termWidth, termHeight int) *t
 		inputEl = c.input.Render(nil)
 	}
 	inputBorder.AddChild(inputEl)
-	root.AddChild(inputBorder)
+	composerArea := tui.New(
+		tui.WithDisplay(tui.DisplayFlex),
+		tui.WithDirection(tui.Column),
+		tui.WithFlexShrink(0),
+		tui.WithHeight(inputRowHeight+requestMetricsRows),
+		tui.WithWidthPercent(100),
+	)
+	composerArea.AddChild(inputBorder)
+	if requestMetricsView != nil {
+		composerArea.AddChild(requestMetricsView)
+	}
+	root.AddChild(composerArea)
 
 	return root
 }
@@ -1110,6 +1146,7 @@ func (c *RootComponent) renderMessageArea(maxHeight int) *tui.Element {
 	opts := []tui.Option{
 		tui.WithDirection(tui.Column),
 		tui.WithFlexGrow(1),
+		tui.WithHeight(maxHeight),
 		tui.WithWidthPercent(100),
 		tui.WithScrollable(tui.ScrollVertical),
 		tui.WithScrollOffset(0, c.scrollY.Get()),
@@ -2423,11 +2460,19 @@ func (c *RootComponent) renderThinking(msg Message) *tui.Element {
 		tui.WithTextStyle(tui.NewStyle().Dim().Italic()),
 	))
 	if !c.state.TranscriptShowAll.Get() {
-		if preview := thinkingPreview(msg.Text, 80); preview != "" {
+		// Fill the transcript's usable row while reserving the two-cell indent
+		// and the final viewport column owned by the vertical scrollbar.
+		previewCells := c.termWidth - 3
+		if previewCells <= 0 {
+			previewCells = 77
+		}
+		if preview := thinkingPreview(msg.Text, previewCells); preview != "" {
 			container.AddChild(tui.New(
 				tui.WithText("  "+preview),
 				tui.WithTextStyle(tui.NewStyle().Dim()),
 				tui.WithWidthPercent(100),
+				tui.WithWrap(false),
+				tui.WithTruncate(true),
 			))
 		}
 		container.AddChild(tui.New(
@@ -2447,18 +2492,47 @@ func (c *RootComponent) renderThinking(msg Message) *tui.Element {
 	return container
 }
 
-func thinkingPreview(text string, limit int) string {
-	if limit <= 0 {
+func thinkingPreview(text string, maxCells int) string {
+	if maxCells <= 0 {
 		return ""
 	}
-	for _, line := range strings.Split(text, "\n") {
+	lines := strings.Split(text, "\n")
+	for index := len(lines) - 1; index >= 0; index-- {
+		line := lines[index]
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		runes := []rune(line)
-		if len(runes) > limit {
-			return string(runes[:limit]) + "…"
+		if terminalCellWidth(line) > maxCells {
+			// Keep the advancing edge visible even when a provider streams one
+			// long line without newline boundaries. Count terminal cells and keep
+			// grapheme clusters atomic so the result fits beside the scrollbar.
+			const prefix = "…"
+			remaining := maxCells - terminalCellWidth(prefix)
+			if remaining <= 0 {
+				return prefix
+			}
+			type cluster struct {
+				text  string
+				width int
+			}
+			clusters := make([]cluster, 0, len(line))
+			graphemes := uniseg.NewGraphemes(line)
+			for graphemes.Next() {
+				clusters = append(clusters, cluster{text: graphemes.Str(), width: graphemes.Width()})
+			}
+			start := len(clusters)
+			used := 0
+			for start > 0 && used+clusters[start-1].width <= remaining {
+				start--
+				used += clusters[start].width
+			}
+			var preview strings.Builder
+			preview.WriteString(prefix)
+			for _, item := range clusters[start:] {
+				preview.WriteString(item.text)
+			}
+			return preview.String()
 		}
 		return line
 	}
@@ -2801,6 +2875,13 @@ func formatLLMStatusDuration(duration time.Duration) string {
 	return formatPresentationDuration(duration.Milliseconds())
 }
 
+func formatLLMTokenRate(tokensPerSecond float64) string {
+	if tokensPerSecond < 0 {
+		tokensPerSecond = 0
+	}
+	return fmt.Sprintf("%.0f", tokensPerSecond)
+}
+
 func formatAssistantWorkDuration(duration time.Duration) string {
 	if duration < 0 {
 		duration = 0
@@ -2923,15 +3004,6 @@ func (c *RootComponent) renderLLMStatus(status *LLMCallStatus) *tui.Element {
 	statusView := tui.New(statusOptions...)
 	lang := c.state.Language.Get()
 	if status.Phase == LLMCallWorking {
-		requestDuration := "—"
-		if status.HasRequestDuration {
-			requestDuration = formatLLMStatusDuration(status.RequestDuration)
-		}
-		firstToken := "—"
-		if status.HasFirstToken {
-			firstToken = formatLLMStatusDuration(status.FirstTokenDuration)
-		}
-
 		total := status.TotalDuration
 		now := time.Now()
 		if c.now != nil {
@@ -2974,8 +3046,6 @@ func (c *RootComponent) renderLLMStatus(status *LLMCallStatus) *tui.Element {
 			maxRetries := max(status.MaxRetries, status.RetryCount)
 			spans = append(spans, tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMRequestRetryCount, status.RetryCount, maxRetries), Style: dimStyle})
 		}
-		spans = append(spans, tui.StyledSpan{Text: "  " + i18n.Format(lang, i18n.KeyLLMRequestMetrics,
-			requestDuration, firstToken), Style: dimStyle})
 		statusView.AddChild(tui.New(
 			tui.WithStyledSpans(spans),
 			tui.WithWidthPercent(100),
@@ -3018,6 +3088,52 @@ func (c *RootComponent) renderLLMStatus(status *LLMCallStatus) *tui.Element {
 		tui.WithTruncate(true),
 	))
 	return statusView
+}
+
+func (c *RootComponent) renderLLMRequestMetrics(status *LLMRequestMetricsStatus, width int) *tui.Element {
+	firstToken := "—"
+	if status.HasFirstToken {
+		firstToken = formatLLMStatusDuration(status.FirstTokenDuration)
+	}
+	tokenRate := "—"
+	if status.HasAverageOutputTokenRate {
+		tokenRate = formatLLMTokenRate(status.AverageOutputTokensPerSecond)
+	}
+	metrics := tui.New(
+		tui.WithText(i18n.Format(c.state.Language.Get(), i18n.KeyLLMRequestMetrics,
+			formatLLMStatusDuration(status.ConnectionDuration), firstToken, tokenRate)),
+		tui.WithTextStyle(tui.NewStyle().Dim()),
+		tui.WithHeight(1),
+		tui.WithWidthPercent(100),
+		tui.WithWrap(false),
+		tui.WithTruncate(true),
+	)
+	separator := tui.New(
+		tui.WithText(strings.Repeat(string(tui.BorderSingle.Chars().Top), max(width-2, 0))),
+		tui.WithTextStyle(llmRequestMetricsDividerStyle()),
+		tui.WithHeight(1),
+		tui.WithWidthPercent(100),
+		tui.WithWrap(false),
+		tui.WithTruncate(true),
+	)
+	view := tui.New(
+		tui.WithDisplay(tui.DisplayFlex),
+		tui.WithDirection(tui.Column),
+		tui.WithFlexShrink(0),
+		tui.WithHeight(2),
+		tui.WithWidthPercent(100),
+		tui.WithPaddingTRBL(0, 1, 0, 1),
+	)
+	view.AddChild(separator)
+	view.AddChild(metrics)
+	return view
+}
+
+func llmRequestMetricsDividerStyle() tui.Style {
+	if detectTerminalBackgroundPreference() == terminalBackgroundLight {
+		return tui.NewStyle().Foreground(tui.RGBColor(208, 213, 220))
+	}
+	return tui.NewStyle().Foreground(tui.RGBColor(43, 45, 50))
 }
 
 func (c *RootComponent) tickLLMWorkingShimmer() {

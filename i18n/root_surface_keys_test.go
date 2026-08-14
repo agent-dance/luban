@@ -55,7 +55,7 @@ func TestLLMRequestStatusKeysAreLocalizedAndComplete(t *testing.T) {
 			}
 		}
 	}
-	if got := Format(LangZH, KeyLLMRequestMetrics, "120ms", "800ms"); got != "建立连接 120ms · 首 token 800ms" {
+	if got := Format(LangZH, KeyLLMRequestMetrics, "120ms", "800ms", "42"); got != "建立连接 120ms · 首 token 800ms · 42 tok/s" {
 		t.Fatalf("Chinese LLM metrics = %q", got)
 	}
 	if got := Format(LangZH, KeyLLMRequestRetrying, 2, 10, "2.0s"); got != "第 2/10 次重试 · 2.0s 后继续" {

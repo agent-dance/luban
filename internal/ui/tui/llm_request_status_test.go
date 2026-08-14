@@ -24,6 +24,9 @@ func TestLLMRequestStatusShimmersWorkingAndDimsInterruptHintAndCallMetrics(t *te
 	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestFirstToken, stream.RequestStatusEvent{
 		RequestID: "request-1", FirstTokenMilliseconds: 130_000, TotalMilliseconds: 130_000,
 	})
+	renderer.LLMRequestStatusAtEpoch(1, stream.EventRequestEnd, stream.RequestStatusEvent{
+		RequestID: "request-1", TotalMilliseconds: 150_000, OutputTokens: 400,
+	})
 	status := state.LLMCall.Get()
 	if status == nil {
 		t.Fatal("LLM call status was not published")
@@ -34,29 +37,64 @@ func TestLLMRequestStatusShimmersWorkingAndDimsInterruptHintAndCallMetrics(t *te
 	root.now = func() time.Time { return now }
 	element := root.renderLLMStatus(status)
 	text := collectElementText(element)
-	for _, want := range []string{"• Working", "(1h1m1s • Ctrl+C to interrupt)", "Connection 1m10s", "First token 2m10s"} {
+	for _, want := range []string{"• Working", "(1h1m1s • Ctrl+C to interrupt)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("LLM request status omitted %q: %q", want, text)
 		}
 	}
-	for _, forbidden := range []string{"activities", "agents", "Agent", "Total"} {
+	for _, forbidden := range []string{"activities", "agents", "Agent", "Total", "Connection", "First token", "tok/s"} {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("LLM request status retained activity detail %q: %q", forbidden, text)
 		}
 	}
+	metrics := root.renderLLMRequestMetrics(state.LLMRequestMetrics.Get(), 120)
+	metricsText := collectElementText(metrics)
+	if want := "Connection 1m10s · First token 2m10s · 20 tok/s"; !strings.Contains(metricsText, want) {
+		t.Fatalf("LLM request metrics omitted %q: %q", want, metricsText)
+	}
 
 	buffer := gtui.NewBuffer(120, 1)
 	element.Render(buffer, 120, 1)
-	if rendered := buffer.String(); !strings.Contains(rendered, "• Working (1h1m1s • Ctrl+C to interrupt) Connection 1m10s · First token 2m10s") {
+	if rendered := buffer.String(); !strings.Contains(rendered, "• Working (1h1m1s • Ctrl+C to interrupt)") {
 		t.Fatalf("LLM request status layout = %q", rendered)
 	}
 	hintColumn := strings.Index(buffer.String(), "Ctrl+C to interrupt")
 	if hintColumn < 0 || !buffer.Cell(hintColumn, 0).Style.HasAttr(gtui.AttrDim) {
 		t.Fatalf("interrupt hint is not rendered dim: %q", buffer.String())
 	}
-	connectionColumn := strings.Index(buffer.String(), "Connection")
-	if connectionColumn < 0 || !buffer.Cell(connectionColumn, 0).Style.HasAttr(gtui.AttrDim) {
-		t.Fatalf("call metrics are not rendered dim: %q", buffer.String())
+	metricsBuffer := gtui.NewBuffer(120, 2)
+	metrics.Render(metricsBuffer, 120, 2)
+	connectionColumn := strings.Index(strings.Split(metricsBuffer.String(), "\n")[1], "Connection")
+	if connectionColumn != 1 || !metricsBuffer.Cell(connectionColumn, 1).Style.HasAttr(gtui.AttrDim) {
+		t.Fatalf("call metrics are not rendered dim: %q", metricsBuffer.String())
+	}
+	if left := metricsBuffer.Cell(0, 0).Rune; left != ' ' {
+		t.Fatalf("request metrics divider left inset = %q, want one blank cell", left)
+	}
+	if first := metricsBuffer.Cell(1, 0).Rune; first != gtui.BorderSingle.Chars().Top {
+		t.Fatalf("request metrics divider starts at cell 1 with %q", first)
+	}
+	if right := metricsBuffer.Cell(119, 0).Rune; right != ' ' {
+		t.Fatalf("request metrics divider right inset = %q, want one blank cell", right)
+	}
+}
+
+func TestLLMRequestMetricsDividerUsesSubtleThemeAwareColor(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		want gtui.Color
+	}{
+		{name: "dark terminal", env: "", want: gtui.RGBColor(43, 45, 50)},
+		{name: "light terminal", env: "0;15", want: gtui.RGBColor(208, 213, 220)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("COLORFGBG", tt.env)
+			if got := llmRequestMetricsDividerStyle().Fg; !got.Equal(tt.want) {
+				t.Fatalf("divider color = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 
@@ -188,10 +226,13 @@ func TestBeginLLMWorkIsVisibleBeforeProviderRequestStarts(t *testing.T) {
 	root.now = func() time.Time { return now }
 	element := root.renderLLMStatus(status)
 	text := collectElementText(element)
-	for _, want := range []string{"• 准备模型请求", "阶段 5.2s", "(5.2s • Ctrl+C 中断)", "建立连接 —", "首 token —"} {
+	for _, want := range []string{"• 准备模型请求", "阶段 5.2s", "(5.2s • Ctrl+C 中断)"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("pre-provider working status omitted %q: %q", want, text)
 		}
+	}
+	if state.LLMRequestMetrics.Get() != nil {
+		t.Fatalf("pre-provider work fabricated API metrics: %+v", state.LLMRequestMetrics.Get())
 	}
 	if strings.Contains(text, "总耗时") {
 		t.Fatalf("working status retained duplicate total-duration metric: %q", text)
@@ -437,9 +478,14 @@ func TestLLMWorkingStatusWrapsInsteadOfTruncatingOnNarrowTerminal(t *testing.T) 
 	}
 	rendered := renderElementText(element, 48, height)
 	withoutCellPadding := strings.ReplaceAll(rendered, " ", "")
-	for _, want := range []string{"Inspect", "重试1/5", "建立连接706ms", "首token1.2s"} {
+	for _, want := range []string{"Inspect", "重试1/5"} {
 		if !strings.Contains(withoutCellPadding, want) {
 			t.Fatalf("wrapped working status omitted %q:\n%s", want, rendered)
+		}
+	}
+	for _, forbidden := range []string{"建立连接", "首token", "tok/s"} {
+		if strings.Contains(withoutCellPadding, forbidden) {
+			t.Fatalf("working status retained API metric %q:\n%s", forbidden, rendered)
 		}
 	}
 	if strings.Contains(rendered, "…") {
@@ -456,17 +502,54 @@ func TestRootReservesRowsForWrappedLLMWorkingStatus(t *testing.T) {
 		MaxRetries: 5, RetryCount: 1, RequestDuration: 706 * time.Millisecond, HasRequestDuration: true,
 		FirstTokenDuration: 1200 * time.Millisecond, HasFirstToken: true,
 	})
+	state.SetLLMRequestMetrics(&LLMRequestMetricsStatus{
+		RequestID: "request-1", ConnectionDuration: 706 * time.Millisecond,
+		FirstTokenDuration: 1200 * time.Millisecond, HasFirstToken: true,
+		AverageOutputTokensPerSecond: 42, HasAverageOutputTokenRate: true,
+	})
 	root := NewRootComponent(state, nil, nil)
 	root.now = func() time.Time { return time.Unix(100, 0) }
 	rendered := renderElementText(root.renderAtSize(nil, 48, 24), 48, 24)
 	withoutCellPadding := strings.ReplaceAll(rendered, " ", "")
-	for _, want := range []string{"Inspect", "重试1/5", "建立连接706ms", "首token1.2s", "自动模式"} {
+	for _, want := range []string{"Inspect", "重试1/5", "建立连接706ms", "首token1.2s", "42tok/s", "自动模式"} {
 		if !strings.Contains(withoutCellPadding, want) {
 			t.Fatalf("root layout omitted %q after wrapping LLM status:\n%s", want, rendered)
 		}
 	}
+	lines := strings.Split(rendered, "\n")
+	inputRow, metricsRow, statusBarRow := -1, -1, -1
+	for index, line := range lines {
+		if strings.Contains(line, ">") {
+			inputRow = index
+		}
+		if strings.Contains(strings.ReplaceAll(line, " ", ""), "42tok/s") {
+			metricsRow = index
+		}
+		if strings.Contains(strings.ReplaceAll(line, " ", ""), "自动模式") {
+			statusBarRow = index
+		}
+	}
+	if inputRow < 0 || metricsRow != inputRow+3 {
+		t.Fatalf("request metrics must render below the input box: input=%d metrics=%d\n%s", inputRow, metricsRow, rendered)
+	}
+	separator := strings.TrimSpace(lines[metricsRow-1])
+	if separator == "" || strings.Trim(separator, string(gtui.BorderSingle.Chars().Top)) != "" {
+		t.Fatalf("request metrics separator row = %q\n%s", lines[metricsRow-1], rendered)
+	}
+	if statusBarRow <= 0 || strings.TrimSpace(lines[statusBarRow-1]) != "" {
+		t.Fatalf("status bar lost its blank row: status=%d above=%q\n%s", statusBarRow, lines[max(statusBarRow-1, 0)], rendered)
+	}
 	if strings.Contains(rendered, "…") {
 		t.Fatalf("root layout truncated wrapped LLM status:\n%s", rendered)
+	}
+
+	state.ClearLLMCall()
+	if state.LLMRequestMetrics.Get() == nil {
+		t.Fatal("query settlement cleared the last request metrics")
+	}
+	settled := strings.ReplaceAll(renderElementText(root.renderAtSize(nil, 48, 24), 48, 24), " ", "")
+	if !strings.Contains(settled, "42tok/s") || strings.Contains(settled, "Inspect") {
+		t.Fatalf("settled layout did not retain only the last API metrics:\n%s", settled)
 	}
 }
 
@@ -492,7 +575,7 @@ func TestLLMRequestStatusHasEqualBlankRowsAboveAndBelow(t *testing.T) {
 	lines := strings.Split(rendered, "\n")
 	statusRow := -1
 	for index, line := range lines {
-		if strings.Contains(line, "Working") && strings.Contains(line, "Connection") {
+		if strings.Contains(line, "Working") {
 			statusRow = index
 			break
 		}

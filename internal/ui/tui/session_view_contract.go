@@ -41,7 +41,7 @@ var rootSessionViewAccessContract = func() map[string]SessionViewOwnership {
 		"ContextMeasurement", "ContextWindowK", "Language", "ModelCanSeeImages", "ModelCostCurrency", "ModelCostIn", "ModelCostOut", "ProgressivePendingTools", "ProgressivePendingTokens", "ProvStatus", "ReasoningEffort", "TermWidth", "Tools",
 	)
 	register(SessionViewTransient,
-		"AskUserDraft", "CompactionProgress", "DecisionReq", "DecisionResp", "DecisionSelected", "ForkPicker", "HasActiveQuery", "LLMCall", "ModelPicker", "QueuedInputTexts", "SessionPicker", "SkillsMenu", "TryCancelQuery",
+		"AskUserDraft", "CompactionProgress", "DecisionReq", "DecisionResp", "DecisionSelected", "ForkPicker", "HasActiveQuery", "LLMCall", "LLMRequestMetrics", "ModelPicker", "QueuedInputTexts", "SessionPicker", "SkillsMenu", "TryCancelQuery",
 	)
 	register(SessionViewIdentity, "SessionID")
 	register(SessionViewMutation,

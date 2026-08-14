@@ -811,6 +811,10 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 	}
 	switch eventType {
 	case stream.EventRequestStart:
+		r.state.SetLLMRequestMetrics(&LLMRequestMetricsStatus{
+			RequestID:          event.RequestID,
+			ConnectionDuration: time.Duration(event.RequestMilliseconds) * time.Millisecond,
+		})
 		if current != nil && current.Phase == LLMCallRetrying {
 			// Match Codex's StreamError status lifecycle: keep the reconnect
 			// header and underlying problem visible while the replacement request
@@ -879,6 +883,12 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 			updated.StageStartedAt = time.Time{}
 		}
 		r.state.SetLLMCall(&updated)
+		if metrics := r.state.LLMRequestMetrics.Get(); metrics != nil && metrics.RequestID == event.RequestID {
+			updatedMetrics := *metrics
+			updatedMetrics.FirstTokenDuration = updated.FirstTokenDuration
+			updatedMetrics.HasFirstToken = true
+			r.state.SetLLMRequestMetrics(&updatedMetrics)
+		}
 	case stream.EventRequestFailed:
 		if current == nil || current.RequestID != event.RequestID {
 			return
@@ -890,6 +900,15 @@ func (r *TuiRenderer) applyLLMRequestStatus(eventType stream.EventType, event st
 		updated.Error = event.Error
 		r.state.SetLLMCall(&updated)
 	case stream.EventRequestEnd:
+		if metrics := r.state.LLMRequestMetrics.Get(); metrics != nil && metrics.RequestID == event.RequestID {
+			updatedMetrics := *metrics
+			generationDuration := time.Duration(event.TotalMilliseconds)*time.Millisecond - updatedMetrics.FirstTokenDuration
+			if updatedMetrics.HasFirstToken && event.OutputTokens > 0 && generationDuration > 0 {
+				updatedMetrics.AverageOutputTokensPerSecond = float64(event.OutputTokens) / generationDuration.Seconds()
+				updatedMetrics.HasAverageOutputTokenRate = true
+			}
+			r.state.SetLLMRequestMetrics(&updatedMetrics)
+		}
 		// A completed stream may be a tool-use response. Keep the execution
 		// status visible across tool work and subsequent model requests; the
 		// query's terminal settlement is the sole clearing boundary.

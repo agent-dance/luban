@@ -3,11 +3,43 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/provider"
 	gtui "github.com/grindlemire/go-tui"
 )
+
+func TestRootReservesCompleteModelPickerHeightWithPersistentRequestMetrics(t *testing.T) {
+	appState := NewAppState()
+	appState.Language.Set(i18n.LangEN)
+	appState.ModelPicker.Set(&ModelPickerState{
+		Visible: true,
+		Phase:   PickerPhaseProvider,
+		Providers: []ProviderPickerEntry{
+			{Name: "one", DisplayName: "Provider One", ConnectionState: "connected"},
+			{Name: "two", DisplayName: "Provider Two", ConnectionState: "connected"},
+			{Name: "three", DisplayName: "Provider Three", ConnectionState: "connected"},
+			{Name: "four", DisplayName: "Provider Four", ConnectionState: "connected"},
+			{Name: "five", DisplayName: "Provider Five", ConnectionState: "connected"},
+			{Name: "six", DisplayName: "Provider Six", ConnectionState: "connected"},
+		},
+	})
+	appState.SetLLMRequestMetrics(&LLMRequestMetricsStatus{
+		ConnectionDuration:           200 * time.Millisecond,
+		FirstTokenDuration:           400 * time.Millisecond,
+		HasFirstToken:                true,
+		AverageOutputTokensPerSecond: 42,
+		HasAverageOutputTokenRate:    true,
+	})
+	root := NewRootComponent(appState, nil, nil)
+	rendered := renderElementText(root.renderAtSize(nil, 100, 24), 100, 24)
+	for _, want := range []string{"Switch Model", "Provider One", "Provider Six", "42 tok/s"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("model picker was vertically clipped before %q:\n%s", want, rendered)
+		}
+	}
+}
 
 func TestModelPickerEnterConnectStoresSetupHint(t *testing.T) {
 	state := &ModelPickerState{Phase: PickerPhaseProvider}
