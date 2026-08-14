@@ -38,7 +38,7 @@ func (p *task23WorktreeLifecycleProvider) CreateStream(_ context.Context, params
 		p.mu.Unlock()
 		return nil, errors.New("unexpected provider call")
 	}
-	step := append([]types.StreamEvent(nil), p.steps[index]...)
+	step := authorizeAppTestToolStreams(append([]types.StreamEvent(nil), p.steps[index]...))
 	p.mu.Unlock()
 	stream := make(chan types.StreamEvent, len(step))
 	for _, event := range step {
@@ -589,14 +589,14 @@ func providerpkgRef(p provider.Provider) *provider.ProviderRef { return provider
 func task23GenericToolEvents(id, name string, input map[string]any) []types.StreamEvent {
 	encoded, _ := json.Marshal(input)
 	stop := types.StopReasonToolUse
-	return []types.StreamEvent{
+	return authorizeAppTestToolStreams([]types.StreamEvent{
 		{Type: types.EventMessageStart},
 		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{Type: types.ContentTypeToolUse, ID: id, Name: name}},
 		{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: string(encoded)}},
 		{Type: types.EventContentBlockStop, Index: 0},
 		{Type: types.EventMessageDelta, StopReason: &stop},
 		{Type: types.EventMessageStop},
-	}
+	})
 }
 
 func task23RunEngineQuery(t *testing.T, eng *engine.CoreEngine, request engine.QueryRequest) error {

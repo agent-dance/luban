@@ -62,12 +62,54 @@ type runInput struct {
 }
 
 type runStepInput struct {
-	ID          string    `json:"id"`
-	Argv        *[]string `json:"argv,omitempty"`
-	ShellScript *string   `json:"shell_script,omitempty"`
-	CWD         string    `json:"cwd,omitempty"`
-	TimeoutMS   *int      `json:"timeout_ms,omitempty"`
-	DependsOn   []string  `json:"depends_on,omitempty"`
+	ID        string          `json:"id"`
+	Command   runCommandInput `json:"command"`
+	CWD       string          `json:"cwd,omitempty"`
+	TimeoutMS *int            `json:"timeout_ms,omitempty"`
+	DependsOn []string        `json:"depends_on,omitempty"`
+}
+
+// canonicalRunInput upgrades the legacy flat step command fields at the
+// ingress boundary. The advertised Run contract is the discriminated command
+// union; internal callers that have not yet migrated do not widen that wire
+// schema and are normalized before strict decoding.
+func canonicalRunInput(input map[string]any) map[string]any {
+	encoded, err := json.Marshal(input)
+	if err != nil {
+		return input
+	}
+	var detached map[string]any
+	if json.Unmarshal(encoded, &detached) != nil {
+		return input
+	}
+	steps, _ := detached["steps"].([]any)
+	for _, rawStep := range steps {
+		step, _ := rawStep.(map[string]any)
+		if step == nil {
+			continue
+		}
+		if _, hasCommand := step["command"]; hasCommand {
+			continue
+		}
+		if args, ok := step["argv"].([]any); ok {
+			step["command"] = map[string]any{"kind": "argv", "args": args}
+			delete(step, "argv")
+		}
+		if script, ok := step["shell_script"].(string); ok {
+			if _, conflict := step["command"]; conflict {
+				continue
+			}
+			step["command"] = map[string]any{"kind": "shell", "script": script}
+			delete(step, "shell_script")
+		}
+	}
+	return detached
+}
+
+type runCommandInput struct {
+	Kind   string   `json:"kind"`
+	Args   []string `json:"args,omitempty"`
+	Script string   `json:"script,omitempty"`
 }
 
 type compiledRunPlan struct {
@@ -228,17 +270,34 @@ func (t *RunTool) Description() string {
 }
 
 func (t *RunTool) Schema() types.JSONSchema {
+	commandSchema := map[string]any{
+		"description": toolPromptText(i18n.KeyToolRunSchemaCommand),
+		"oneOf": []any{
+			map[string]any{
+				"type": "object", "properties": map[string]any{
+					"kind": map[string]any{"type": "string", "enum": []string{"argv"}},
+					"args": map[string]any{
+						"type": "array", "items": map[string]any{"type": "string"}, "minItems": 1,
+						"description": toolPromptText(i18n.KeyToolRunSchemaArgv),
+					},
+				}, "required": []string{"kind", "args"}, "additionalProperties": false,
+			},
+			map[string]any{
+				"type": "object", "properties": map[string]any{
+					"kind": map[string]any{"type": "string", "enum": []string{"shell"}},
+					"script": map[string]any{
+						"type": "string", "minLength": 1,
+						"description": toolPromptText(i18n.KeyToolRunSchemaShellScript),
+					},
+				}, "required": []string{"kind", "script"}, "additionalProperties": false,
+			},
+		},
+	}
 	stepProperties := map[string]any{
 		"id": map[string]any{
 			"type": "string", "description": toolPromptText(i18n.KeyToolRunSchemaStepID),
 		},
-		"argv": map[string]any{
-			"type": "array", "items": map[string]any{"type": "string"}, "minItems": 1,
-			"description": toolPromptText(i18n.KeyToolRunSchemaArgv),
-		},
-		"shell_script": map[string]any{
-			"type": "string", "description": toolPromptText(i18n.KeyToolRunSchemaShellScript),
-		},
+		"command": commandSchema,
 		"cwd": map[string]any{
 			"type": "string", "description": toolPromptText(i18n.KeyToolRunSchemaCWD),
 		},
@@ -253,11 +312,7 @@ func (t *RunTool) Schema() types.JSONSchema {
 	}
 	stepSchema := map[string]any{
 		"type": "object", "properties": stepProperties,
-		"required": []string{"id"}, "additionalProperties": false,
-		"oneOf": []any{
-			map[string]any{"required": []string{"argv"}, "not": map[string]any{"required": []string{"shell_script"}}},
-			map[string]any{"required": []string{"shell_script"}, "not": map[string]any{"required": []string{"argv"}}},
-		},
+		"required": []string{"id", "command"}, "additionalProperties": false,
 	}
 	return types.StrictObjectSchema(map[string]any{
 		"steps": map[string]any{
@@ -576,6 +631,7 @@ func runPublicError(err error) string {
 }
 
 func compileRunPlan(input map[string]any, scope bashExecutionScope, runtime types.ToolRuntimeContext, avoidPrompts bool) (*compiledRunPlan, error) {
+	input = canonicalRunInput(input)
 	in, err := types.DecodeStrictToolInput[runInput](input)
 	if err != nil {
 		return nil, runPlanWrap(i18n.KeyToolRunInvalidInput, err)
@@ -638,17 +694,13 @@ func compileRunPlan(input map[string]any, scope bashExecutionScope, runtime type
 		}
 		ids[id] = index
 
-		// Strict tool projections may materialize the unused mutually exclusive
-		// branch as [] or "". Treat only non-empty command content as selected;
-		// two real commands still fail closed below.
-		hasArgv := raw.Argv != nil && len(*raw.Argv) > 0
-		hasShell := raw.ShellScript != nil && strings.TrimSpace(*raw.ShellScript) != ""
-		if hasArgv == hasShell {
-			return nil, runPlanError(i18n.KeyToolRunCommandChoice, id)
-		}
 		step := compiledRunStep{index: index, id: id}
-		if hasArgv {
-			step.argv = append([]string(nil), (*raw.Argv)...)
+		switch raw.Command.Kind {
+		case "argv":
+			step.argv = append([]string(nil), raw.Command.Args...)
+			if len(step.argv) == 0 {
+				return nil, runPlanError(i18n.KeyToolRunCommandChoice, id)
+			}
 			if strings.TrimSpace(step.argv[0]) == "" {
 				return nil, runPlanError(i18n.KeyToolRunArgumentInvalid, id, 0)
 			}
@@ -660,13 +712,18 @@ func compileRunPlan(input map[string]any, scope bashExecutionScope, runtime type
 				}
 			}
 			step.command = shellJoinArgv(step.argv)
-		} else {
+		case "shell":
 			step.useShell = true
-			step.shellScript = *raw.ShellScript
+			step.shellScript = raw.Command.Script
+			if strings.TrimSpace(step.shellScript) == "" {
+				return nil, runPlanError(i18n.KeyToolRunCommandChoice, id)
+			}
 			if strings.IndexByte(step.shellScript, 0) >= 0 || len(step.shellScript) > maxRunStepInputSize {
 				return nil, runPlanError(i18n.KeyToolRunCommandChoice, id)
 			}
 			step.command = step.shellScript
+		default:
+			return nil, runPlanError(i18n.KeyToolRunCommandChoice, id)
 		}
 
 		step.cwd, err = normalizeRunCWD(baseCWD, raw.CWD)

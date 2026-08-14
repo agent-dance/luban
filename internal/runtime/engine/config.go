@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"strings"
+
 	"github.com/agent-dance/luban/hooks"
 	"github.com/agent-dance/luban/internal/contracts/permission"
 	"github.com/agent-dance/luban/internal/runtime/compact"
@@ -10,6 +12,8 @@ import (
 	"github.com/agent-dance/luban/registry"
 	"github.com/agent-dance/luban/skills"
 )
+
+const sharedDefaultMaxOutputTokens = 16384
 
 // Config holds all pluggable components for a CoreEngine.
 // Fields with nil values fall back to sensible defaults (documented per field).
@@ -113,6 +117,16 @@ type Config struct {
 
 // defaults fills in zero-value fields with their defaults.
 func (c *Config) defaults() {
+	if c.Provider != nil && c.MaxTokens <= 0 {
+		model := strings.TrimSpace(c.Model)
+		if model == "" {
+			model = c.Provider.ModelID()
+		}
+		c.MaxTokens = provider.ResolveRequestMaxOutput(c.Provider.Name(), model, c.MaxTokens)
+		if c.MaxTokens <= 0 {
+			c.MaxTokens = provider.DefaultMaxOutputTokens(c.Provider.Name(), model)
+		}
+	}
 	if c.Registry == nil {
 		c.Registry = registry.New()
 	}

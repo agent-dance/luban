@@ -29,7 +29,7 @@ func TestAgenticV2InspectPinsSessionAndWorktreeAndFeedsApplyPatch(t *testing.T) 
 		t.Fatalf("initial Inspect result did not paginate: %#v", first)
 	}
 	deps.PublishSessionID("inspect-session-two")
-	staleSession, staleSessionErr := deps.InspectTool.Execute(context.Background(), map[string]any{"cursor": first.Cursor})
+	staleSession, staleSessionErr := deps.InspectTool.Execute(context.Background(), inspectContinuation(first.Cursor))
 	if staleSessionErr != nil || !staleSession.IsError {
 		t.Fatalf("cursor crossed session identity: err=%v result=%+v", staleSessionErr, staleSession)
 	}
@@ -41,7 +41,7 @@ func TestAgenticV2InspectPinsSessionAndWorktreeAndFeedsApplyPatch(t *testing.T) 
 	if err := deps.WorktreeRuntime.SwitchCWDContext(context.Background(), next); err != nil {
 		t.Fatalf("switch worktree runtime: %v", err)
 	}
-	staleWorkspace, staleWorkspaceErr := deps.InspectTool.Execute(context.Background(), map[string]any{"cursor": second.Cursor})
+	staleWorkspace, staleWorkspaceErr := deps.InspectTool.Execute(context.Background(), inspectContinuation(second.Cursor))
 	if staleWorkspaceErr != nil || !staleWorkspace.IsError {
 		t.Fatalf("cursor crossed worktree runtime: err=%v result=%+v", staleWorkspaceErr, staleWorkspace)
 	}
@@ -51,7 +51,10 @@ func TestAgenticV2InspectPinsSessionAndWorktreeAndFeedsApplyPatch(t *testing.T) 
 		t.Fatalf("Inspect did not follow worktree root: %#v", current)
 	}
 	read, readErr := deps.InspectTool.Execute(context.Background(), map[string]any{
-		"requests": []any{map[string]any{"id": "target", "kind": toolinspect.KindRead, "path": "target.txt"}},
+		"operation": map[string]any{
+			"mode":     toolinspect.ModeNew,
+			"requests": []any{map[string]any{"id": "target", "kind": toolinspect.KindRead, "path": "target.txt"}},
+		},
 	})
 	if readErr != nil || read.IsError {
 		t.Fatalf("Inspect target read failed: err=%v result=%+v", readErr, read)
@@ -75,10 +78,13 @@ func TestAgenticV2InspectPinsSessionAndWorktreeAndFeedsApplyPatch(t *testing.T) 
 func executeInspectV2Glob(t testing.TB, deps *RegistryDeps, maxFiles int) toolinspect.Result {
 	t.Helper()
 	result, err := deps.InspectTool.Execute(context.Background(), map[string]any{
-		"requests": []any{map[string]any{
-			"id": "files", "kind": toolinspect.KindGlob, "path": ".", "pattern": "**/*.txt", "max_results": 10,
-		}},
-		"max_files": maxFiles,
+		"operation": map[string]any{
+			"mode": toolinspect.ModeNew,
+			"requests": []any{map[string]any{
+				"id": "files", "kind": toolinspect.KindGlob, "path": ".", "pattern": "**/*.txt", "max_results": 10,
+			}},
+			"page": map[string]any{"max_files": maxFiles},
+		},
 	})
 	if err != nil || result.IsError {
 		t.Fatalf("Inspect glob failed: err=%v result=%+v", err, result)
@@ -88,6 +94,10 @@ func executeInspectV2Glob(t testing.TB, deps *RegistryDeps, maxFiles int) toolin
 		t.Fatalf("Inspect result data = %T", result.Data)
 	}
 	return output
+}
+
+func inspectContinuation(cursor string) map[string]any {
+	return map[string]any{"operation": map[string]any{"mode": toolinspect.ModeContinue, "cursor": cursor}}
 }
 
 func writeInspectV2Fixture(t testing.TB, path, content string) {

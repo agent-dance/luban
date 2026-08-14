@@ -53,22 +53,40 @@ func assertProviderUsageMetadata(t *testing.T, event stream.Event, providerName,
 	}
 }
 
-func TestMaxTokensRecoveryAccountsDiscardedAndFinalAttemptsOnce(t *testing.T) {
+func TestRequestStatusExposesEffectiveGenerationEnvelope(t *testing.T) {
+	prov := newParityFakeProvider([]parityProviderTurn{{
+		Events: providerUsageTextEvents("done", types.Usage{OutputTokens: 1}, types.StopReasonEndTurn),
+	}})
+	prov.name = "deepseek"
+	q := New(prov, registry.New(), Config{MaxTurns: 1, Model: "deepseek-v4-flash", MaxTokens: 256000, ReasoningEffort: "max"})
+	var started *stream.RequestStatusEvent
+	if err := q.Run(context.Background(), "hello", func(event stream.Event) {
+		if event.Type == stream.EventRequestStart {
+			started = event.RequestStatus
+		}
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if started == nil || started.Provider != "deepseek" || started.Model != "deepseek-v4-flash" ||
+		started.APIFormat != "responses" || started.ReasoningEffort != "max" ||
+		started.MaxOutputTokens != 256000 || started.CatalogMaxOutputTokens != 393216 {
+		t.Fatalf("request status envelope = %#v", started)
+	}
+}
+
+func TestMaxTokensAccountsCommittedPartialAttemptOnce(t *testing.T) {
 	first := types.Usage{InputTokens: 100, OutputTokens: 10, CacheReadInputTokens: 80}
-	final := types.Usage{InputTokens: 120, OutputTokens: 20, CacheCreationInputTokens: 25}
 	prov := newParityFakeProvider([]parityProviderTurn{
 		{Events: providerUsageTextEvents("partial", first, types.StopReasonMaxTokens)},
-		{Events: providerUsageTextEvents("complete", final, types.StopReasonEndTurn)},
 	})
 	q := New(prov, registry.New(), Config{MaxTurns: 3, Model: "primary-model", MaxTokens: 1024})
 
 	attempts, turnEnds := collectProviderAccountingEvents(t, q)
-	if len(attempts) != 1 || attempts[0].Usage == nil || *attempts[0].Usage != first {
-		t.Fatalf("discarded attempt events = %+v, want exactly first usage %+v", attempts, first)
+	if len(attempts) != 0 {
+		t.Fatalf("discarded attempt events = %+v, want none", attempts)
 	}
-	assertProviderUsageMetadata(t, attempts[0], "parity-fake", "primary-model")
-	if len(turnEnds) != 1 || turnEnds[0].Usage == nil || *turnEnds[0].Usage != final {
-		t.Fatalf("turn_end events = %+v, want exactly final usage %+v", turnEnds, final)
+	if len(turnEnds) != 1 || turnEnds[0].Usage == nil || *turnEnds[0].Usage != first || turnEnds[0].TerminalReason != string(types.StopReasonMaxTokens) {
+		t.Fatalf("turn_end events = %+v, want committed max_tokens usage %+v", turnEnds, first)
 	}
 	assertProviderUsageMetadata(t, turnEnds[0], "parity-fake", "primary-model")
 }

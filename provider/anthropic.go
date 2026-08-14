@@ -475,12 +475,12 @@ func (p *AnthropicProvider) CreateStream(ctx context.Context, params Params) (<-
 	if params.PromptCacheTTL == "" {
 		params.PromptCacheTTL = anthropicPromptCacheTTL(p.name, params.Model)
 	}
-	return createAnthropicStream(ctx, &p.client, params)
+	return createAnthropicStream(ctx, &p.client, params, p.Name())
 }
 
 // createAnthropicStream is the shared streaming implementation used by AnthropicProvider,
 // BedrockProvider, and VertexProvider. The caller must set params.Model before calling.
-func createAnthropicStream(ctx context.Context, client *anthropic.Client, params Params) (<-chan types.StreamEvent, error) {
+func createAnthropicStream(ctx context.Context, client *anthropic.Client, params Params, providerName string) (<-chan types.StreamEvent, error) {
 	maxTokens := int64(params.MaxTokens)
 	if params.MaxOutputTokensOverride > 0 {
 		maxTokens = int64(params.MaxOutputTokensOverride)
@@ -568,7 +568,8 @@ func createAnthropicStream(ctx context.Context, client *anthropic.Client, params
 		defer cancel()
 		defer close(ch)
 		defer stream.Close()
-		summary, streamErr := processAnthropicStream(streamCtx, stream, ch)
+		policy := anthropicStreamPolicy{provider: CanonicalProviderName(providerName), model: params.Model}
+		summary, streamErr := processAnthropicStream(streamCtx, stream, ch, policy)
 		if streamCtx.Err() != nil {
 			return
 		}
@@ -579,16 +580,22 @@ func createAnthropicStream(ctx context.Context, client *anthropic.Client, params
 			}
 			if attemptErr := beginNestedTransportAttempt(streamCtx, cause); attemptErr != nil {
 				streamErr = attemptErr
-			} else if fallbackErr := emitAnthropicNonStreamingFallback(streamCtx, client, reqParams, requestOptions, ch); fallbackErr == nil {
+			} else if fallbackErr := emitAnthropicNonStreamingFallback(streamCtx, client, reqParams, requestOptions, ch, policy); fallbackErr == nil {
 				return
 			} else if streamErr == nil {
 				streamErr = fallbackErr
 			}
 		}
 		if streamErr != nil {
+			apiErr := parseAnthropicStreamError(streamErr)
+			if summary.messageStarted && apiErr.FailureDiagnostic == nil {
+				apiErr = applyFailureDiagnosticToAPIError(apiErr, anthropicFailureDiagnostic(
+					policy, types.ProviderFailureAnthropicUnsafeFallback, summary, 0, false,
+				))
+			}
 			sendEvent(streamCtx, ch, types.StreamEvent{
 				Type:  types.EventError,
-				Error: parseAnthropicStreamError(streamErr),
+				Error: apiErr,
 			})
 		}
 	}()
@@ -629,13 +636,39 @@ func sendEvent(ctx context.Context, ch chan<- types.StreamEvent, evt types.Strea
 }
 
 type anthropicStreamSummary struct {
-	messageStarted     bool
-	contentBlockClosed bool
-	messageStopped     bool
+	messageStarted   bool
+	messageStopped   bool
+	startedBlocks    int
+	closedBlocks     int
+	openBlocks       int
+	clientToolBlocks int
 }
 
-func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthropic.MessageStreamEventUnion], ch chan<- types.StreamEvent) (anthropicStreamSummary, error) {
+type anthropicStreamPolicy struct {
+	provider string
+	model    string
+}
+
+type anthropicBlockState struct {
+	blockType types.ContentType
+	toolID    string
+	toolName  string
+	toolInput strings.Builder
+	closed    bool
+}
+
+func processAnthropicStream(
+	ctx context.Context,
+	stream *ssestream.Stream[anthropic.MessageStreamEventUnion],
+	ch chan<- types.StreamEvent,
+	policy anthropicStreamPolicy,
+) (anthropicStreamSummary, error) {
 	var summary anthropicStreamSummary
+	blocks := make(map[int]*anthropicBlockState)
+	var stopReason *types.StopReason
+	protocolError := func(point types.ProviderFailurePoint, index int, indexSet bool) error {
+		return anthropicProtocolError(policy, point, summary, index, indexSet)
+	}
 	for stream.Next() {
 		if ctx.Err() != nil {
 			return summary, nil
@@ -645,6 +678,9 @@ func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthro
 
 		switch e := event.AsAny().(type) {
 		case anthropic.MessageStartEvent:
+			if summary.messageStarted || summary.startedBlocks != 0 {
+				return summary, protocolError(types.ProviderFailureAnthropicBlockProtocol, 0, false)
+			}
 			summary.messageStarted = true
 			evt := types.StreamEvent{
 				Type: types.EventMessageStart,
@@ -660,7 +696,25 @@ func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthro
 
 		case anthropic.ContentBlockStartEvent:
 			idx := int(e.Index)
+			if !summary.messageStarted || summary.messageStopped {
+				return summary, protocolError(types.ProviderFailureAnthropicBlockProtocol, idx, true)
+			}
+			if _, exists := blocks[idx]; exists {
+				return summary, protocolError(types.ProviderFailureAnthropicBlockProtocol, idx, true)
+			}
 			cb := anthropicStreamContentBlock(e.ContentBlock)
+			state := &anthropicBlockState{blockType: cb.Type}
+			if cb.Type == types.ContentTypeToolUse {
+				summary.clientToolBlocks++
+				state.toolID = cb.ID
+				state.toolName = cb.Name
+				if state.toolID == "" || state.toolName == "" {
+					return summary, protocolError(types.ProviderFailureAnthropicBlockProtocol, idx, true)
+				}
+			}
+			blocks[idx] = state
+			summary.startedBlocks++
+			summary.openBlocks++
 			if !sendEvent(ctx, ch, types.StreamEvent{
 				Type:         types.EventContentBlockStart,
 				Index:        idx,
@@ -671,6 +725,10 @@ func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthro
 
 		case anthropic.ContentBlockDeltaEvent:
 			idx := int(e.Index)
+			state := blocks[idx]
+			if state == nil || state.closed || summary.messageStopped {
+				return summary, protocolError(types.ProviderFailureAnthropicBlockProtocol, idx, true)
+			}
 			delta := &types.ContentDelta{}
 			switch d := e.Delta.AsAny().(type) {
 			case anthropic.TextDelta:
@@ -679,6 +737,12 @@ func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthro
 			case anthropic.InputJSONDelta:
 				delta.Type = "input_json_delta"
 				delta.PartialJSON = d.PartialJSON
+				if state.blockType == types.ContentTypeToolUse {
+					if state.toolInput.Len()+len(d.PartialJSON) > anthropicToolInputLimit(state.toolName) {
+						return summary, anthropicToolInputLimitError(policy, summary, idx)
+					}
+					state.toolInput.WriteString(d.PartialJSON)
+				}
 			case anthropic.ThinkingDelta:
 				delta.Type = "thinking_delta"
 				delta.Thinking = d.Thinking
@@ -696,16 +760,30 @@ func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthro
 			}
 
 		case anthropic.ContentBlockStopEvent:
-			summary.contentBlockClosed = true
+			idx := int(e.Index)
+			state := blocks[idx]
+			if state == nil || state.closed || summary.messageStopped {
+				return summary, protocolError(types.ProviderFailureAnthropicBlockProtocol, idx, true)
+			}
+			state.closed = true
+			summary.closedBlocks++
+			summary.openBlocks--
 			if !sendEvent(ctx, ch, types.StreamEvent{
 				Type:  types.EventContentBlockStop,
-				Index: int(e.Index),
+				Index: idx,
 			}) {
 				return summary, nil
 			}
 
 		case anthropic.MessageDeltaEvent:
 			sr := types.StopReason(e.Delta.StopReason)
+			if sr != "" {
+				if stopReason != nil && *stopReason != sr {
+					return summary, protocolError(types.ProviderFailureAnthropicStopReasonMismatch, 0, false)
+				}
+				captured := sr
+				stopReason = &captured
+			}
 			evt := types.StreamEvent{
 				Type:       types.EventMessageDelta,
 				StopReason: &sr,
@@ -728,28 +806,49 @@ func processAnthropicStream(ctx context.Context, stream *ssestream.Stream[anthro
 			}
 
 		case anthropic.MessageStopEvent:
+			if !summary.messageStarted || summary.messageStopped {
+				return summary, protocolError(types.ProviderFailureAnthropicBlockProtocol, 0, false)
+			}
+			if summary.openBlocks != 0 {
+				return summary, protocolError(types.ProviderFailureAnthropicOpenBlock, 0, false)
+			}
+			toolCalls := anthropicCompletedToolCalls(blocks)
+			if len(toolCalls) > 0 && (stopReason == nil || *stopReason != types.StopReasonToolUse) {
+				return summary, protocolError(types.ProviderFailureAnthropicStopReasonMismatch, 0, false)
+			}
 			summary.messageStopped = true
-			if !sendEvent(ctx, ch, types.StreamEvent{Type: types.EventMessageStop}) {
+			status := anthropicResponseStatus(stopReason)
+			receipt := types.NewProviderToolCommitReceipt(policy.provider, "anthropic_messages", status, toolCalls)
+			if !sendEvent(ctx, ch, types.StreamEvent{Type: types.EventMessageStop, ProviderCommitReceipt: receipt}) {
 				return summary, nil
 			}
 			_ = e
+			return summary, nil
 		}
 	}
 
 	if err := stream.Err(); err != nil {
 		return summary, err
 	}
+	if summary.messageStarted && !summary.messageStopped {
+		point := types.ProviderFailureAnthropicUnsafeFallback
+		if summary.openBlocks != 0 && summary.clientToolBlocks > 0 {
+			point = types.ProviderFailureAnthropicOpenBlock
+		}
+		return summary, protocolError(point, 0, false)
+	}
 	return summary, nil
 }
 
 func shouldFallbackAnthropicStream(summary anthropicStreamSummary, streamErr error) bool {
 	if streamErr != nil {
-		return !summary.contentBlockClosed
+		var apiErr *types.APIError
+		if errors.As(streamErr, &apiErr) && apiErr.FailureDiagnostic != nil {
+			return false
+		}
+		return !summary.messageStarted
 	}
-	if !summary.messageStarted {
-		return true
-	}
-	return !summary.contentBlockClosed && !summary.messageStopped
+	return !summary.messageStarted
 }
 
 func emitAnthropicNonStreamingFallback(
@@ -758,10 +857,34 @@ func emitAnthropicNonStreamingFallback(
 	reqParams anthropic.MessageNewParams,
 	requestOptions []option.RequestOption,
 	ch chan<- types.StreamEvent,
+	policy anthropicStreamPolicy,
 ) error {
 	msg, err := client.Messages.New(ctx, reqParams, requestOptions...)
 	if err != nil {
 		return err
+	}
+
+	toolCalls := make([]types.ProviderToolCallCommit, 0)
+	for index, block := range msg.Content {
+		toolUse, ok := block.AsAny().(anthropic.ToolUseBlock)
+		if !ok {
+			continue
+		}
+		if toolUse.ID == "" || toolUse.Name == "" {
+			return anthropicProtocolError(policy, types.ProviderFailureAnthropicBlockProtocol, anthropicStreamSummary{}, index, true)
+		}
+		rawInput := string(toolUse.Input)
+		if len(rawInput) > anthropicToolInputLimit(toolUse.Name) {
+			return anthropicToolInputLimitError(policy, anthropicStreamSummary{}, index)
+		}
+		toolCalls = append(toolCalls, types.ProviderToolCallCommit{
+			OutputIndex: index, ToolType: types.ToolDefinitionTypeFunction,
+			CallID: toolUse.ID, Name: toolUse.Name, RawInput: rawInput,
+		})
+	}
+	stopReason := types.StopReason(msg.StopReason)
+	if len(toolCalls) > 0 && stopReason != types.StopReasonToolUse {
+		return anthropicProtocolError(policy, types.ProviderFailureAnthropicStopReasonMismatch, anthropicStreamSummary{}, 0, false)
 	}
 
 	start := types.StreamEvent{
@@ -801,7 +924,6 @@ func emitAnthropicNonStreamingFallback(
 		}
 	}
 
-	stopReason := types.StopReason(msg.StopReason)
 	if !sendEvent(ctx, ch, types.StreamEvent{
 		Type:       types.EventMessageDelta,
 		StopReason: &stopReason,
@@ -811,8 +933,91 @@ func emitAnthropicNonStreamingFallback(
 	}) {
 		return nil
 	}
-	sendEvent(ctx, ch, types.StreamEvent{Type: types.EventMessageStop})
+	receipt := types.NewProviderToolCommitReceipt(
+		policy.provider, "anthropic_messages", anthropicResponseStatus(&stopReason), toolCalls,
+	)
+	sendEvent(ctx, ch, types.StreamEvent{Type: types.EventMessageStop, ProviderCommitReceipt: receipt})
 	return nil
+}
+
+func anthropicCompletedToolCalls(blocks map[int]*anthropicBlockState) []types.ProviderToolCallCommit {
+	indices := make([]int, 0, len(blocks))
+	for index, block := range blocks {
+		if block != nil && block.closed && block.blockType == types.ContentTypeToolUse {
+			indices = append(indices, index)
+		}
+	}
+	sort.Ints(indices)
+	calls := make([]types.ProviderToolCallCommit, 0, len(indices))
+	for _, index := range indices {
+		block := blocks[index]
+		calls = append(calls, types.ProviderToolCallCommit{
+			OutputIndex: index, ToolType: types.ToolDefinitionTypeFunction,
+			CallID: block.toolID, Name: block.toolName, RawInput: block.toolInput.String(),
+		})
+	}
+	return calls
+}
+
+func anthropicResponseStatus(stopReason *types.StopReason) string {
+	if stopReason != nil && *stopReason == types.StopReasonMaxTokens {
+		return "incomplete"
+	}
+	return "completed"
+}
+
+func anthropicToolInputLimit(name string) int {
+	return responsesToolInputLimit(name)
+}
+
+func anthropicProtocolError(
+	policy anthropicStreamPolicy,
+	point types.ProviderFailurePoint,
+	summary anthropicStreamSummary,
+	outputIndex int,
+	outputSet bool,
+) *types.APIError {
+	diagnostic := anthropicFailureDiagnostic(policy, point, summary, outputIndex, outputSet)
+	return applyFailureDiagnosticToAPIError(&types.APIError{
+		Type: "provider_protocol_error", Code: string(point),
+		Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopStreamClosedBeforeCommit),
+		Stage:   types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent,
+		ReplaySafety: types.ProviderReplaySafe,
+	}, diagnostic)
+}
+
+func anthropicFailureDiagnostic(
+	policy anthropicStreamPolicy,
+	point types.ProviderFailurePoint,
+	summary anthropicStreamSummary,
+	outputIndex int,
+	outputSet bool,
+) *types.ProviderFailureDiagnostic {
+	return &types.ProviderFailureDiagnostic{
+		SchemaVersion: types.ProviderFailureDiagnosticSchema,
+		Provider:      policy.provider, Model: policy.model, APIFormat: "anthropic_messages", Transport: "sse",
+		FailurePoint: point, OutputIndex: outputIndex, OutputSet: outputSet,
+		MessageStarted: summary.messageStarted, CommitSeen: summary.messageStopped,
+		TrackedItems: summary.startedBlocks, CompletedItems: summary.closedBlocks,
+		StoppedItems: summary.closedBlocks, OpenBlocks: summary.openBlocks,
+	}
+}
+
+func anthropicToolInputLimitError(policy anthropicStreamPolicy, summary anthropicStreamSummary, index int) *types.APIError {
+	diagnostic := &types.ProviderFailureDiagnostic{
+		SchemaVersion: types.ProviderFailureDiagnosticSchema,
+		Provider:      policy.provider, Model: policy.model, APIFormat: "anthropic_messages", Transport: "sse",
+		FailurePoint: types.ProviderFailureAnthropicToolInputLimit,
+		OutputIndex:  index, OutputSet: true, MessageStarted: summary.messageStarted,
+		TrackedItems: summary.startedBlocks, CompletedItems: summary.closedBlocks,
+		StoppedItems: summary.closedBlocks, OpenBlocks: summary.openBlocks,
+	}
+	return applyFailureDiagnosticToAPIError(&types.APIError{
+		Type: "stream_interrupted", Code: "tool_arguments_too_large",
+		Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopStreamClosedBeforeCommit),
+		Stage:   types.ProviderErrorStageStream, Class: types.ProviderErrorClassTransport,
+		ReplaySafety: types.ProviderReplaySafe,
+	}, diagnostic)
 }
 
 func anthropicUsageToTypes(u anthropic.Usage) *types.Usage {
@@ -907,6 +1112,10 @@ func anthropicBlockToEvents(block anthropic.ContentBlockUnion) (*types.ContentDe
 // parseAnthropicStreamError converts an Anthropic SDK error into our typed APIError.
 // This enables downstream retry logic to inspect status codes and error types.
 func parseAnthropicStreamError(err error) *types.APIError {
+	var apiErr *types.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr
+	}
 	var sdkErr *anthropic.Error
 	if errors.As(err, &sdkErr) {
 		retryAfter := ""

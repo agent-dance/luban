@@ -78,22 +78,34 @@ func (e Event) MarshalJSON() ([]byte, error) {
 }
 
 type RequestStatusEvent struct {
-	RequestID              string `json:"request_id"`
-	StartedAt              string `json:"started_at,omitempty"`
-	EndedAt                string `json:"ended_at,omitempty"`
-	Attempt                int    `json:"attempt,omitempty"`
-	MaxRetries             int    `json:"max_retries,omitempty"`
-	RetryCount             int    `json:"retry_count,omitempty"`
-	RetryDelayMilliseconds int64  `json:"retry_delay_ms,omitempty"`
-	RetryKind              string `json:"retry_kind,omitempty"`
-	RequestMilliseconds    int64  `json:"request_ms,omitempty"`
-	FirstTokenMilliseconds int64  `json:"first_token_ms,omitempty"`
-	TotalMilliseconds      int64  `json:"total_ms,omitempty"`
-	InputTokens            int    `json:"input_tokens,omitempty"`
-	CacheReadInputTokens   int    `json:"cache_read_input_tokens,omitempty"`
-	CacheWriteInputTokens  int    `json:"cache_write_input_tokens,omitempty"`
-	OutputTokens           int    `json:"output_tokens,omitempty"`
-	Error                  string `json:"error,omitempty"`
+	RequestID              string                     `json:"request_id"`
+	Provider               string                     `json:"provider,omitempty"`
+	Model                  string                     `json:"model,omitempty"`
+	APIFormat              string                     `json:"api_format,omitempty"`
+	ReasoningEffort        string                     `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens        int                        `json:"max_output_tokens,omitempty"`
+	CatalogMaxOutputTokens int                        `json:"catalog_max_output_tokens,omitempty"`
+	StartedAt              string                     `json:"started_at,omitempty"`
+	EndedAt                string                     `json:"ended_at,omitempty"`
+	Attempt                int                        `json:"attempt,omitempty"`
+	MaxRetries             int                        `json:"max_retries,omitempty"`
+	RetryCount             int                        `json:"retry_count,omitempty"`
+	RetryDelayMilliseconds int64                      `json:"retry_delay_ms,omitempty"`
+	RetryKind              string                     `json:"retry_kind,omitempty"`
+	RequestMilliseconds    int64                      `json:"request_ms,omitempty"`
+	FirstTokenMilliseconds int64                      `json:"first_token_ms,omitempty"`
+	TotalMilliseconds      int64                      `json:"total_ms,omitempty"`
+	InputTokens            int                        `json:"input_tokens,omitempty"`
+	CacheReadInputTokens   int                        `json:"cache_read_input_tokens,omitempty"`
+	CacheWriteInputTokens  int                        `json:"cache_write_input_tokens,omitempty"`
+	OutputTokens           int                        `json:"output_tokens,omitempty"`
+	Error                  string                     `json:"error,omitempty"`
+	FailurePoint           types.ProviderFailurePoint `json:"failure_point,omitempty"`
+	FailureStage           types.ProviderErrorStage   `json:"failure_stage,omitempty"`
+	FailureClass           types.ProviderErrorClass   `json:"failure_class,omitempty"`
+	ReplaySafety           types.ProviderReplaySafety `json:"replay_safety,omitempty"`
+	Decision               string                     `json:"decision,omitempty"`
+	DroppedFields          []string                   `json:"dropped_fields,omitempty"`
 }
 
 // ToolRoundMetricsEvent is a content-free performance projection for one

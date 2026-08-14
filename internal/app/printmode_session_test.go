@@ -43,9 +43,12 @@ func (e *printModeInspectProbeEngine) Query(ctx context.Context, request engine.
 		CWD:               request.CWD,
 	})
 	e.decision, e.checkErr = e.inspect.CheckPermissions(executionCtx, map[string]any{
-		"requests": []any{map[string]any{
-			"id": "probe", "kind": toolinspect.KindRead, "path": "fixture.txt",
-		}},
+		"operation": map[string]any{
+			"mode": toolinspect.ModeNew,
+			"requests": []any{map[string]any{
+				"id": "probe", "kind": toolinspect.KindRead, "path": "fixture.txt",
+			}},
+		},
 	}, types.ToolPermissionRequest{SessionID: request.SessionID, Runtime: e.runtime})
 
 	events := make(chan engine.Event, 1)

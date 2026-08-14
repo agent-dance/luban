@@ -72,7 +72,7 @@ func (p *queryConfigMutatingProvider) CreateStream(_ context.Context, params pro
 	idx := len(p.calls) - 1
 	ch := make(chan types.StreamEvent, 16)
 	if idx < len(p.responses) {
-		for _, event := range p.responses[idx] {
+		for _, event := range attachTestProviderCommitReceipts(p.responses[idx]) {
 			ch <- event
 		}
 	}

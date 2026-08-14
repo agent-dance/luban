@@ -147,6 +147,7 @@ func TestGetToolUses(t *testing.T) {
 
 func TestMessageMarshalJSON(t *testing.T) {
 	msg := UserMessage("hello")
+	msg.StopReason = StopReasonMaxTokens
 	data, err := json.Marshal(msg)
 	if err != nil {
 		t.Fatalf("marshal error: %v", err)
@@ -162,6 +163,9 @@ func TestMessageMarshalJSON(t *testing.T) {
 	}
 	if decoded.GetText() != "hello" {
 		t.Errorf("expected text 'hello', got '%s'", decoded.GetText())
+	}
+	if decoded.StopReason != StopReasonMaxTokens {
+		t.Errorf("expected stop reason %s, got %s", StopReasonMaxTokens, decoded.StopReason)
 	}
 }
 
@@ -210,6 +214,7 @@ func TestMessageWithInvalidToolUseAndThinkingKindRoundTrip(t *testing.T) {
 				Type: ContentTypeInvalidToolUse, ID: "call_bad", Name: "Inspect",
 				RawInput: "{", InputBytes: 1, InputDigest: "sha256:test",
 				FailureKind: ToolInputFailureInvalidJSON, Recoverable: true,
+				DiagnosticKind: ToolInputDiagnosticMissingValue, DiagnosticOffset: 12, DiagnosticField: "cursor",
 			},
 		},
 	}
@@ -228,5 +233,20 @@ func TestMessageWithInvalidToolUseAndThinkingKindRoundTrip(t *testing.T) {
 	invalid := decoded.GetInvalidToolUses()
 	if len(invalid) != 1 || invalid[0].Name != "Inspect" || invalid[0].FailureKind != ToolInputFailureInvalidJSON || !invalid[0].Recoverable {
 		t.Fatalf("invalid tool round trip = %#v", invalid)
+	}
+	if invalid[0].DiagnosticKind != ToolInputDiagnosticMissingValue || invalid[0].DiagnosticOffset != 12 || invalid[0].DiagnosticField != "cursor" {
+		t.Fatalf("invalid tool diagnostic round trip = %#v", invalid[0])
+	}
+}
+
+func TestInvalidToolUseWithoutDiagnosticRemainsBackwardCompatible(t *testing.T) {
+	var decoded Message
+	err := json.Unmarshal([]byte(`{"role":"assistant","content":[{"type":"invalid_tool_use","name":"Inspect","input_bytes":1,"input_digest":"sha256:old","failure_kind":"invalid_json","recoverable":true}]}`), &decoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invalid := decoded.GetInvalidToolUses()
+	if len(invalid) != 1 || invalid[0].DiagnosticKind != "" || invalid[0].DiagnosticOffset != 0 || invalid[0].DiagnosticField != "" {
+		t.Fatalf("old invalid tool record changed semantics: %#v", invalid)
 	}
 }

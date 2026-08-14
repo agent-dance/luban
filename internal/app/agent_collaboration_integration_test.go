@@ -59,7 +59,7 @@ func (p *appCollaborationProvider) CreateStream(context.Context, provider.Params
 func appCollaborationToolEvents(id, name string, input map[string]any) []types.StreamEvent {
 	encoded, _ := json.Marshal(input)
 	stop := types.StopReasonToolUse
-	return []types.StreamEvent{
+	return authorizeAppTestToolStreams([]types.StreamEvent{
 		{Type: types.EventMessageStart},
 		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
 			Type: types.ContentTypeToolUse, ID: id, Name: name,
@@ -70,7 +70,7 @@ func appCollaborationToolEvents(id, name string, input map[string]any) []types.S
 		{Type: types.EventContentBlockStop, Index: 0},
 		{Type: types.EventMessageDelta, StopReason: &stop},
 		{Type: types.EventMessageStop},
-	}
+	})
 }
 
 func appCollaborationTextEvents(text string) []types.StreamEvent {

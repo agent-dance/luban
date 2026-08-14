@@ -57,6 +57,7 @@ func (p *task19RecordingProvider) CreateStream(ctx context.Context, params provi
 	if turn.err != nil {
 		return nil, turn.err
 	}
+	turn.events = attachTestProviderCommitReceipts(turn.events)
 	stream := make(chan types.StreamEvent, len(turn.events))
 	go func() {
 		defer close(stream)

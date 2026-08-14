@@ -137,6 +137,9 @@ type CoreEngine struct {
 	providerRef *provider.ProviderRef
 	permission  *permissionHandlerRef
 	sessions    SessionManager
+	// maxTokensExplicit prevents provider/model switches from replacing an
+	// application-supplied request budget with a model default.
+	maxTokensExplicit bool
 
 	permissionUpdateMu sync.Mutex
 	// providerUpdateMu serializes provider transitions while SetProvider takes
@@ -157,6 +160,7 @@ type CoreEngine struct {
 
 // New creates a CoreEngine from cfg. The provider field is required.
 func New(cfg Config) (*CoreEngine, error) {
+	maxTokensExplicit := cfg.MaxTokens > 0
 	cfg.defaults()
 	if cfg.Provider == nil {
 		return nil, ErrNoProvider
@@ -181,13 +185,14 @@ func New(cfg Config) (*CoreEngine, error) {
 	}
 
 	eng := &CoreEngine{
-		cfg:         cfg,
-		providerRef: pRef,
-		permission:  newPermissionHandlerRef(cfg.Permission),
-		sessions:    sm,
-		convs:       make(map[conversationKey]*conversation),
-		deleted:     make(map[conversationKey]struct{}),
-		shutdownCh:  make(chan struct{}),
+		cfg:               cfg,
+		providerRef:       pRef,
+		permission:        newPermissionHandlerRef(cfg.Permission),
+		sessions:          sm,
+		maxTokensExplicit: maxTokensExplicit,
+		convs:             make(map[conversationKey]*conversation),
+		deleted:           make(map[conversationKey]struct{}),
+		shutdownCh:        make(chan struct{}),
 	}
 	eng.publishChildPermissionHandler()
 	return eng, nil
@@ -1079,6 +1084,9 @@ func (e *CoreEngine) SetModel(sessionID string, model string) error {
 		return ErrShutdown
 	}
 	e.cfg.Model = model
+	if !e.maxTokensExplicit {
+		e.cfg.MaxTokens = engineDefaultRequestMaxOutput(e.providerRef.Name(), model)
+	}
 
 	e.convsMu.RLock()
 	conv, ok := e.convs[e.currentConversationKey(sessionID)]
@@ -1090,8 +1098,8 @@ func (e *CoreEngine) SetModel(sessionID string, model string) error {
 	conv.mu.Lock()
 	conv.model = model
 	conv.ql.SetModel(model)
-	if e.cfg.MaxTokens <= 0 {
-		conv.ql.SetMaxTokens(provider.DefaultMaxOutputTokens(e.providerRef.Name(), model))
+	if !e.maxTokensExplicit {
+		conv.ql.SetMaxTokens(e.cfg.MaxTokens)
 	}
 	conv.mu.Unlock()
 	return nil
@@ -1347,11 +1355,14 @@ func (e *CoreEngine) SetProvider(p provider.Provider) {
 		if len(missing) == 0 {
 			e.providerRef.Swap(p)
 			e.cfg.Model = p.ModelID()
+			if !e.maxTokensExplicit {
+				e.cfg.MaxTokens = engineDefaultRequestMaxOutput(p.Name(), p.ModelID())
+			}
 			for _, conv := range e.convs {
 				conv.mu.Lock()
 				conv.ql.HandleProviderChange()
-				if e.cfg.MaxTokens <= 0 {
-					conv.ql.SetMaxTokens(provider.DefaultMaxOutputTokens(p.Name(), p.ModelID()))
+				if !e.maxTokensExplicit {
+					conv.ql.SetMaxTokens(e.cfg.MaxTokens)
 				}
 				conv.mu.Unlock()
 			}
@@ -1368,6 +1379,13 @@ func (e *CoreEngine) SetProvider(p provider.Provider) {
 			releases[conv] = release
 		}
 	}
+}
+
+func engineDefaultRequestMaxOutput(providerName, model string) int {
+	if budget := provider.DefaultRequestMaxOutput(providerName, model); budget > 0 {
+		return budget
+	}
+	return provider.DefaultMaxOutputTokens(providerName, model)
 }
 
 // ProviderRef returns the shared ProviderRef.

@@ -182,6 +182,14 @@ func executeRunStep(ctx context.Context, scope bashExecutionScope, step compiled
 	processStarted := time.Now()
 	runErr := command.Start()
 	if runErr == nil {
+		// Job-object attachment is a best-effort hardening on Windows. Some
+		// hosts place this process in a non-breakaway parent job; falling back to
+		// direct-process cancellation is safer than rejecting a process that has
+		// already started.
+		_ = commandStarted(command)
+		defer commandFinished(command)
+	}
+	if runErr == nil {
 		result.output.Invoked = true
 		result.output.StartedOffsetMS = max(int64(0), processStarted.Sub(logicalStarted).Milliseconds())
 		runErr = command.Wait()

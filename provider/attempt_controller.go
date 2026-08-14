@@ -122,6 +122,12 @@ func beginNestedTransportAttempt(ctx context.Context, cause error) error {
 			Delay:      0,
 			Err:        cause,
 			Kind:       "request",
+			DroppedField: func() string {
+				if apiErr, ok := AsAPIError(cause); ok && apiErr.FailureDiagnostic != nil {
+					return apiErr.FailureDiagnostic.DroppedField
+				}
+				return ""
+			}(),
 		})
 	}
 	return nil

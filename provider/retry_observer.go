@@ -13,6 +13,9 @@ type RetryEvent struct {
 	Delay      time.Duration
 	Err        error
 	Kind       string
+	// DroppedField is an implementation-owned allowlisted request field removed
+	// by a compatible gateway fallback. It never contains provider text.
+	DroppedField string
 }
 
 type retryObserverContextKey struct{}

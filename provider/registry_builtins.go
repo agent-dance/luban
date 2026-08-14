@@ -303,6 +303,7 @@ func registerDeepSeek(r *ProviderRegistry) {
 		if model == "" {
 			model = envOrDefault("DEEPSEEK_MODEL", brand.DeepSeekDefaultModel)
 		}
+		maxTokens := ResolveRequestMaxOutput(brand.DeepSeekProvider, model, cfg.MaxTokens)
 		if apiKey == "" {
 			return NewUnconfiguredProvider(brand.DeepSeekProvider, model, "DEEPSEEK_API_KEY", ""), nil
 		}
@@ -321,7 +322,7 @@ func registerDeepSeek(r *ProviderRegistry) {
 			APIKey:                    apiKey,
 			BaseURL:                   baseURL,
 			Model:                     model,
-			MaxTokens:                 cfg.MaxTokens,
+			MaxTokens:                 maxTokens,
 			Headers:                   cloneHeaders(cfg.Headers),
 			DisableStrictTools:        cfg.DisableStrictTools,
 			DisablePromptCacheOptions: cfg.DisablePromptCacheOptions,

@@ -525,7 +525,7 @@ func task28SurfaceTextEvents(value string) []types.StreamEvent {
 
 func task28SurfaceToolEvents(id, name string, input map[string]any) []types.StreamEvent {
 	raw, _ := json.Marshal(input)
-	return []types.StreamEvent{
+	return authorizeAppTestToolStreams([]types.StreamEvent{
 		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
 			Type: types.ContentTypeToolUse, ID: id, Name: name,
 		}},
@@ -534,7 +534,7 @@ func task28SurfaceToolEvents(id, name string, input map[string]any) []types.Stre
 		}},
 		{Type: types.EventContentBlockStop, Index: 0},
 		{Type: types.EventMessageStop},
-	}
+	})
 }
 
 func task28SurfaceEventStream(events []types.StreamEvent) <-chan types.StreamEvent {

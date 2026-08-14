@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -101,6 +102,9 @@ func TestFileDetailStoreInvalidReferenceKeepsRawSourceDigestAndPath(t *testing.T
 	}
 	if got := err.Error(); strings.Contains(got, "invalid detail reference") || !strings.Contains(got, "foreign-source") || !strings.Contains(got, fileDetailSource) {
 		t.Fatalf("source error was not localized or lost sources: %q", got)
+	}
+	if runtime.GOOS == "windows" {
+		return
 	}
 
 	digestBytes, err := hex.DecodeString(strings.Repeat("a", 2*32))

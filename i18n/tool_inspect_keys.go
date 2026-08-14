@@ -4,8 +4,11 @@ package i18n
 const (
 	KeyToolInspectDescription                  Key = "tool.inspect.description"
 	KeyToolInspectSearchHint                   Key = "tool.inspect.search_hint"
+	KeyToolInspectInputOperationDescription    Key = "tool.inspect.input.operation.description"
+	KeyToolInspectInputModeDescription         Key = "tool.inspect.input.mode.description"
 	KeyToolInspectInputRequestsDescription     Key = "tool.inspect.input.requests.description"
 	KeyToolInspectInputCursorDescription       Key = "tool.inspect.input.cursor.description"
+	KeyToolInspectInputPageDescription         Key = "tool.inspect.input.page.description"
 	KeyToolInspectInputMaxCharsDescription     Key = "tool.inspect.input.max_chars.description"
 	KeyToolInspectInputMaxFilesDescription     Key = "tool.inspect.input.max_files.description"
 	KeyToolInspectInputMaxMatchesDescription   Key = "tool.inspect.input.max_matches.description"
@@ -20,7 +23,6 @@ const (
 	KeyToolInspectRequestMaxResultsDescription Key = "tool.inspect.request.max_results.description"
 	KeyToolInspectInvalidInput                 Key = "tool.inspect.error.invalid_input"
 	KeyToolInspectMalformedInput               Key = "tool.inspect.error.malformed_input"
-	KeyToolInspectChooseRequestsOrCursor       Key = "tool.inspect.error.choose_requests_or_cursor"
 	KeyToolInspectRequestsRequired             Key = "tool.inspect.error.requests_required"
 	KeyToolInspectTooManyRequests              Key = "tool.inspect.error.too_many_requests"
 	KeyToolInspectRequestIDRequired            Key = "tool.inspect.error.request_id_required"
@@ -43,8 +45,11 @@ const (
 var toolInspectKeys = [...]Key{
 	KeyToolInspectDescription,
 	KeyToolInspectSearchHint,
+	KeyToolInspectInputOperationDescription,
+	KeyToolInspectInputModeDescription,
 	KeyToolInspectInputRequestsDescription,
 	KeyToolInspectInputCursorDescription,
+	KeyToolInspectInputPageDescription,
 	KeyToolInspectInputMaxCharsDescription,
 	KeyToolInspectInputMaxFilesDescription,
 	KeyToolInspectInputMaxMatchesDescription,
@@ -59,7 +64,6 @@ var toolInspectKeys = [...]Key{
 	KeyToolInspectRequestMaxResultsDescription,
 	KeyToolInspectInvalidInput,
 	KeyToolInspectMalformedInput,
-	KeyToolInspectChooseRequestsOrCursor,
 	KeyToolInspectRequestsRequired,
 	KeyToolInspectTooManyRequests,
 	KeyToolInspectRequestIDRequired,
@@ -100,10 +104,16 @@ func init() {
 		"リポジトリの一括調査、ソース読み取り、検索、ファイル探索",
 		"저장소 일괄 조사, 소스 읽기, 검색 및 파일 탐색",
 		"пакетное исследование репозитория, чтение исходников, поиск и обнаружение файлов")
+	addInspect(KeyToolInspectInputOperationDescription,
+		"Inspect operation: start a new request batch or continue one exact cursor snapshot", "Inspect 操作：启动新的请求批次，或继续一个精确的游标快照", "Inspect-Vorgang: einen neuen Anfragestapel beginnen oder exakt einen Cursor-Schnappschuss fortsetzen", "Inspect 操作。新しいリクエストバッチを開始するか、1 つのカーソルスナップショットをそのまま継続します", "Inspect 작업: 새 요청 배치를 시작하거나 정확한 커서 스냅샷 하나를 계속합니다", "Операция Inspect: начать новый пакет запросов или продолжить один точный снимок курсора")
+	addInspect(KeyToolInspectInputModeDescription,
+		"Operation branch discriminator: new or continue", "操作分支判别字段：new 或 continue", "Diskriminator des Vorgangszweigs: new oder continue", "操作分岐の判別子: new または continue", "작업 분기 판별자: new 또는 continue", "Дискриминатор ветви операции: new или continue")
 	addInspect(KeyToolInspectInputRequestsDescription,
-		"Ordered read, search, or glob requests; provide this or cursor, but not both", "按顺序执行的 read、search 或 glob 请求；请提供此字段或 cursor，但不能同时提供", "Geordnete read-, search- oder glob-Anfragen; entweder diese oder cursor angeben, nicht beides", "順序付きの read、search、glob リクエスト。これか cursor の一方だけを指定", "순서가 있는 read, search, glob 요청. 이 필드와 cursor 중 하나만 지정", "Упорядоченные запросы read, search или glob; укажите их либо cursor, но не оба поля")
+		"Ordered read, search, or glob requests in the new branch", "new 分支中按顺序执行的 read、search 或 glob 请求", "Geordnete read-, search- oder glob-Anfragen im new-Zweig", "new 分岐で順に実行する read、search、glob リクエスト", "new 분기에서 순서대로 실행할 read, search, glob 요청", "Упорядоченные запросы read, search или glob в ветви new")
 	addInspect(KeyToolInspectInputCursorDescription,
-		"Opaque cursor from a partial Inspect result", "Inspect 部分结果返回的不透明游标", "Opaker Cursor aus einem unvollständigen Inspect-Ergebnis", "Inspect の部分結果から返された不透明カーソル", "Inspect 부분 결과에서 반환된 불투명 커서", "Непрозрачный курсор из частичного результата Inspect")
+		"Opaque cursor from a partial Inspect result in the continue branch", "continue 分支中使用的 Inspect 部分结果不透明游标", "Opaker Cursor aus einem unvollständigen Inspect-Ergebnis im continue-Zweig", "continue 分岐で使う Inspect 部分結果の不透明カーソル", "continue 분기에서 사용하는 Inspect 부분 결과의 불투명 커서", "Непрозрачный курсор из частичного результата Inspect в ветви continue")
+	addInspect(KeyToolInspectInputPageDescription,
+		"Optional page limits for a new inspection", "新检查可选的分页限制", "Optionale Seitengrenzen für eine neue Untersuchung", "新しい調査に適用する任意のページ上限", "새 조사에 적용할 선택적 페이지 제한", "Необязательные ограничения страницы для нового исследования")
 	addInspect(KeyToolInspectInputMaxCharsDescription,
 		"Requested model-visible page size; large values are safely paginated so the cursor is never truncated", "请求的模型可见页面大小；较大的值会被安全分页，确保游标不会被截断", "Angeforderte modellsichtbare Seitengröße; große Werte werden sicher paginiert, damit der Cursor nie abgeschnitten wird", "モデルに表示するページサイズの要求値。大きな値は安全にページ分割され、カーソルが切り捨てられることはありません", "모델에 표시할 페이지 크기 요청값입니다. 큰 값은 안전하게 페이지로 나뉘므로 커서가 잘리지 않습니다", "Запрошенный размер видимой модели страницы; большие значения безопасно разбиваются на страницы, поэтому курсор не обрезается")
 	addInspect(KeyToolInspectInputMaxFilesDescription,
@@ -133,8 +143,6 @@ func init() {
 		"invalid Inspect input: %v", "Inspect 输入无效：%v", "Ungültige Inspect-Eingabe: %v", "Inspect の入力が無効です: %v", "Inspect 입력이 올바르지 않습니다: %v", "Недопустимый ввод Inspect: %v")
 	addInspect(KeyToolInspectMalformedInput,
 		"Inspect input has an invalid value or type", "Inspect 输入包含无效的值或类型", "Die Inspect-Eingabe enthält einen ungültigen Wert oder Typ", "Inspect の入力に無効な値または型があります", "Inspect 입력에 잘못된 값이나 형식이 있습니다", "Ввод Inspect содержит недопустимое значение или тип")
-	addInspect(KeyToolInspectChooseRequestsOrCursor,
-		"provide requests or cursor, but not both", "请提供 requests 或 cursor，但不能同时提供", "Entweder requests oder cursor angeben, nicht beides", "requests または cursor の一方だけを指定してください", "requests와 cursor 중 하나만 제공하세요", "Укажите requests или cursor, но не оба поля")
 	addInspect(KeyToolInspectRequestsRequired,
 		"at least one Inspect request is required", "至少需要一个 Inspect 请求", "Mindestens eine Inspect-Anfrage ist erforderlich", "Inspect リクエストを 1 件以上指定してください", "Inspect 요청이 하나 이상 필요합니다", "Требуется хотя бы один запрос Inspect")
 	addInspect(KeyToolInspectTooManyRequests,

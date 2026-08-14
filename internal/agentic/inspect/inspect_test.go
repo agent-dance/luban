@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -38,6 +39,29 @@ func (p testRuntimeProvider) ToolRuntimeContext() types.ToolRuntimeContext {
 	return cloneRuntimeContext(p.runtime)
 }
 
+// inspectTestInput keeps behavioral tests focused on repository semantics
+// while constructing the current discriminated wire contract in one place.
+func inspectTestInput(fields map[string]any) map[string]any {
+	if cursor, ok := fields["cursor"]; ok {
+		return map[string]any{"operation": map[string]any{"mode": ModeContinue, "cursor": cursor}}
+	}
+	operation := map[string]any{"mode": ModeNew, "requests": fields["requests"]}
+	page := map[string]any{}
+	for _, name := range []string{"max_chars", "max_files", "max_matches"} {
+		if value, ok := fields[name]; ok {
+			page[name] = value
+		}
+	}
+	if len(page) > 0 {
+		operation["page"] = page
+	}
+	return map[string]any{"operation": operation}
+}
+
+func executeInspectTest(t *Tool, ctx context.Context, fields map[string]any) (types.ToolResult, error) {
+	return t.Execute(ctx, inspectTestInput(fields))
+}
+
 func TestInspectEmptyPathDefaultsToRepositoryRootForAllKinds(t *testing.T) {
 	for _, request := range []Request{
 		{ID: "read", Kind: KindRead},
@@ -54,16 +78,16 @@ func TestInspectEmptyPathDefaultsToRepositoryRootForAllKinds(t *testing.T) {
 	}
 }
 
-func TestInspectRequestBatchTreatsStrictNullCursorSentinelAsAbsent(t *testing.T) {
+func TestInspectRejectsLegacyNullCursorSentinel(t *testing.T) {
 	tool := New(nil, nil)
-	validated, err := tool.validateInput(map[string]any{
+	_, err := tool.validateInput(map[string]any{
 		"cursor": "null",
 		"requests": []any{map[string]any{
 			"id": "source", "kind": KindRead, "path": "main.go",
 		}},
 	})
-	if err != nil || validated.cursor != "" || len(validated.requests) != 1 {
-		t.Fatalf("validated=%+v err=%v", validated, err)
+	if err == nil {
+		t.Fatal("legacy cursor sentinel was accepted")
 	}
 }
 
@@ -75,7 +99,7 @@ func TestInspectMixedBatchIsStableAndRecordsSearchEvidence(t *testing.T) {
 
 	state := toolfile.NewReadFileState()
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, state)
-	result, err := tool.Execute(context.Background(), map[string]any{
+	result, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{
 			map[string]any{
 				"id": "read-alpha", "kind": KindRead, "path": "alpha.go",
@@ -138,7 +162,7 @@ func TestInspectDirectoryReadSurfacesPrecisePartialFailure(t *testing.T) {
 	writeInspectFixture(t, filepath.Join(root, "first.txt"), "first\n")
 	writeInspectFixture(t, filepath.Join(root, "second.txt"), "second\n")
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, nil)
-	result, err := tool.Execute(context.Background(), map[string]any{
+	result, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{
 			map[string]any{"id": "root", "kind": KindRead, "path": "."},
 			map[string]any{"id": "first", "kind": KindRead, "path": "first.txt"},
@@ -202,6 +226,42 @@ func TestInspectToolContractIsEagerReadOnlyAndStrict(t *testing.T) {
 	}
 }
 
+func TestInspectRequestUnionRejectsFieldsFromAnotherKind(t *testing.T) {
+	tool := New(nil, nil)
+	for name, request := range map[string]map[string]any{
+		"read_with_pattern": {
+			"id": "read", "kind": KindRead, "path": "main.go", "pattern": "needle",
+		},
+		"glob_with_context": {
+			"id": "glob", "kind": KindGlob, "pattern": "*.go", "context": 2,
+		},
+		"search_without_pattern": {
+			"id": "search", "kind": KindSearch,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := tool.validateInput(map[string]any{"operation": map[string]any{
+				"mode": ModeNew, "requests": []any{request},
+			}})
+			var validationErr *types.ToolInputValidationError
+			if !errors.As(err, &validationErr) {
+				t.Fatalf("wrong-kind fields were accepted or misclassified: %T %v", err, err)
+			}
+		})
+	}
+}
+
+func TestInspectLegacyFlatContractIsRejected(t *testing.T) {
+	tool := New(nil, nil)
+	_, err := tool.validateInput(map[string]any{"requests": []any{
+		map[string]any{"id": "legacy", "kind": KindRead, "path": "main.go"},
+	}})
+	var validationErr *types.ToolInputValidationError
+	if !errors.As(err, &validationErr) {
+		t.Fatalf("legacy flat input was accepted or misclassified: %T %v", err, err)
+	}
+}
+
 func TestInspectPartialDiagnosticsCountFailedRequestsNotErrorEntries(t *testing.T) {
 	metadata := inspectPartialDiagnosticMetadata(batchResult{requests: []completedRequest{
 		{result: RequestResult{ID: "failed", Kind: KindRead, Path: "broken.txt", Errors: []RequestError{
@@ -224,26 +284,52 @@ func TestInspectPartialDiagnosticsCountFailedRequestsNotErrorEntries(t *testing.
 
 func TestInspectSchemaProjectsRuntimeCollectionAndStringLimits(t *testing.T) {
 	schema := New(nil, nil).Schema()
-	requests, ok := schema.Properties["requests"].(map[string]any)
+	operation, ok := schema.Properties["operation"].(map[string]any)
+	if !ok {
+		t.Fatalf("operation schema = %#v", schema.Properties["operation"])
+	}
+	branches, ok := operation["oneOf"].([]any)
+	if !ok || len(branches) != 2 {
+		t.Fatalf("operation branches = %#v", operation["oneOf"])
+	}
+	newBranch, ok := branches[0].(map[string]any)
+	if !ok {
+		t.Fatalf("new branch = %#v", branches[0])
+	}
+	newProperties, ok := newBranch["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("new properties = %#v", newBranch["properties"])
+	}
+	requests, ok := newProperties["requests"].(map[string]any)
 	if !ok || requests["maxItems"] != maximumRequests {
 		t.Fatalf("requests schema = %#v", requests)
 	}
-	request, ok := requests["items"].(map[string]any)
+	requestUnion, ok := requests["items"].(map[string]any)
 	if !ok {
-		t.Fatalf("request item schema = %#v", requests["items"])
+		t.Fatalf("request union = %#v", requests["items"])
 	}
+	requestBranches, ok := requestUnion["oneOf"].([]any)
+	if !ok || len(requestBranches) != 3 {
+		t.Fatalf("request branches = %#v", requestUnion["oneOf"])
+	}
+	request := requestBranches[0].(map[string]any)
 	properties, ok := request["properties"].(map[string]any)
 	if !ok {
 		t.Fatalf("request properties = %#v", request["properties"])
 	}
-	for name, maximum := range map[string]int{"id": maximumRequestID, "path": maximumPath, "pattern": maximumPattern} {
+	for name, maximum := range map[string]int{"id": maximumRequestID} {
 		property, propertyOK := properties[name].(map[string]any)
 		if !propertyOK || property["maxLength"] != maximum {
 			t.Fatalf("%s schema = %#v", name, property)
 		}
 	}
-	ranges, ok := properties["ranges"].(map[string]any)
-	if !ok || ranges["maxItems"] != maximumRanges {
+	rangesNullable, ok := properties["ranges"].(map[string]any)
+	if !ok {
+		t.Fatalf("ranges schema = %#v", properties["ranges"])
+	}
+	rangeBranches := rangesNullable["anyOf"].([]any)
+	ranges := rangeBranches[0].(map[string]any)
+	if ranges["maxItems"] != maximumRanges {
 		t.Fatalf("ranges schema = %#v", ranges)
 	}
 }
@@ -255,7 +341,7 @@ func TestInspectGlobalFileLimitUsesOneShotOpaqueCursor(t *testing.T) {
 		writeInspectFixture(t, name, "value\n")
 	}
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
-	first, err := tool.Execute(context.Background(), map[string]any{
+	first, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "files", "kind": KindGlob, "path": ".", "pattern": "**/*.txt", "max_results": 10,
 		}},
@@ -280,7 +366,7 @@ func TestInspectGlobalFileLimitUsesOneShotOpaqueCursor(t *testing.T) {
 	oldCursor := firstPage.Cursor
 	page := firstPage
 	for page.Cursor != "" {
-		next, nextErr := tool.Execute(context.Background(), map[string]any{"cursor": page.Cursor})
+		next, nextErr := executeInspectTest(tool, context.Background(), map[string]any{"cursor": page.Cursor})
 		if nextErr != nil || next.IsError {
 			t.Fatalf("cursor page failed: err=%v result=%+v", nextErr, next)
 		}
@@ -301,7 +387,7 @@ func TestInspectGlobalFileLimitUsesOneShotOpaqueCursor(t *testing.T) {
 		}
 	}
 
-	replay, replayErr := tool.Execute(context.Background(), map[string]any{"cursor": oldCursor})
+	replay, replayErr := executeInspectTest(tool, context.Background(), map[string]any{"cursor": oldCursor})
 	if replayErr != nil || !replay.IsError {
 		t.Fatalf("consumed cursor replay = err:%v result:%+v", replayErr, replay)
 	}
@@ -324,7 +410,7 @@ func TestInspectRejectsRepositoryEscapeAndFiltersReadDeniedSearchPaths(t *testin
 	runtime := testRuntime(root)
 	runtime.DeniedRules = []types.PermissionRuleValue{{ToolName: "Read", RuleContent: "secret/**"}}
 	tool := New(testRuntimeProvider{runtime: runtime}, toolfile.NewReadFileState())
-	result, err := tool.Execute(context.Background(), map[string]any{
+	result, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{
 			map[string]any{"id": "escape", "kind": KindRead, "path": "escape.txt"},
 			map[string]any{"id": "search", "kind": KindSearch, "path": ".", "pattern": "needle"},
@@ -349,7 +435,7 @@ func TestInspectRequestLimitIsSourcePartialNotToolError(t *testing.T) {
 	root := t.TempDir()
 	writeInspectFixture(t, filepath.Join(root, "matches.txt"), "needle one\nneedle two\n")
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
-	result, err := tool.Execute(context.Background(), map[string]any{
+	result, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "limited", "kind": KindSearch, "path": ".", "pattern": "needle", "max_results": 1,
 		}},
@@ -382,7 +468,7 @@ func TestInspectSearchReturnsContextAcrossSnippetChunks(t *testing.T) {
 	}, "\n"))
 
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
-	result, err := tool.Execute(context.Background(), map[string]any{
+	result, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "context", "kind": KindSearch, "path": ".", "pattern": "needle", "context": 2,
 		}},
@@ -422,18 +508,18 @@ func TestInspectUnchangedRangeDoesNotReuseWholeSnapshotAsRange(t *testing.T) {
 	writeInspectFixture(t, filepath.Join(root, "range.txt"), "one\ntwo\nthree\nfour\nfive\n")
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
 
-	full, fullErr := tool.Execute(context.Background(), map[string]any{
+	full, fullErr := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{"id": "full", "kind": KindRead, "path": "range.txt"}},
 	})
 	if fullErr != nil || full.IsError {
 		t.Fatalf("full snapshot read failed: err=%v result=%+v", fullErr, full)
 	}
-	input := map[string]any{
+	input := inspectTestInput(map[string]any{
 		"requests": []any{map[string]any{
 			"id": "range", "kind": KindRead, "path": "range.txt",
 			"ranges": []any{map[string]any{"start": 3, "end": 3}},
 		}},
-	}
+	})
 	first, firstErr := tool.Execute(context.Background(), input)
 	if firstErr != nil || first.IsError {
 		t.Fatalf("first range read failed: err=%v result=%+v", firstErr, first)
@@ -460,7 +546,7 @@ func TestInspectLargeRequestedPageStaysValidAndPreservesCursor(t *testing.T) {
 	writeInspectFixture(t, filepath.Join(root, "large.txt"), source.String())
 
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
-	result, err := tool.Execute(context.Background(), map[string]any{
+	result, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "large", "kind": KindRead, "path": "large.txt",
 		}},
@@ -499,7 +585,7 @@ func TestInspectVisiblePageDoesNotAuthorizeUnseenApplyPatch(t *testing.T) {
 	writeInspectFixture(t, path, source.String())
 	readState := toolfile.NewReadFileState()
 	inspectTool := New(testRuntimeProvider{runtime: testRuntime(root)}, readState)
-	first, err := inspectTool.Execute(context.Background(), map[string]any{
+	first, err := executeInspectTest(inspectTool, context.Background(), map[string]any{
 		"requests":  []any{map[string]any{"id": "large", "kind": KindRead, "path": "large.txt"}},
 		"max_chars": maximumModelVisibleChars,
 	})
@@ -534,7 +620,7 @@ func TestInspectVisiblePageDoesNotAuthorizeUnseenApplyPatch(t *testing.T) {
 
 	page := firstPage
 	for page.Cursor != "" {
-		next, nextErr := inspectTool.Execute(context.Background(), map[string]any{"cursor": page.Cursor})
+		next, nextErr := executeInspectTest(inspectTool, context.Background(), map[string]any{"cursor": page.Cursor})
 		if nextErr != nil || next.IsError {
 			t.Fatalf("Inspect continuation: result=%+v err=%v", next, nextErr)
 		}
@@ -557,10 +643,10 @@ func TestInspectCursorRejectsWorkspaceRevisionChangeAndReemits(t *testing.T) {
 	ledger := workspacerevision.NewLedger()
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
 	tool.WorkspaceRevisions = ledger
-	input := map[string]any{
+	input := inspectTestInput(map[string]any{
 		"requests":  []any{map[string]any{"id": "revision", "kind": KindRead, "path": "revision.txt"}},
 		"max_chars": minimumMaxChars,
-	}
+	})
 	first, err := tool.Execute(context.Background(), input)
 	if err != nil || first.IsError {
 		t.Fatalf("first page: result=%+v err=%v", first, err)
@@ -580,7 +666,7 @@ func TestInspectCursorRejectsWorkspaceRevisionChangeAndReemits(t *testing.T) {
 	if workspaceErr != nil || !workspace.workspaceRevisionBound || workspace.workspaceRevision != 1 {
 		t.Fatalf("Inspect revision snapshot = %+v, err=%v", workspace, workspaceErr)
 	}
-	stale, staleErr := tool.Execute(context.Background(), map[string]any{"cursor": page.Cursor})
+	stale, staleErr := executeInspectTest(tool, context.Background(), map[string]any{"cursor": page.Cursor})
 	if staleErr != nil || !stale.IsError {
 		t.Fatalf("stale workspace cursor was accepted: result=%+v err=%v", stale, staleErr)
 	}
@@ -610,7 +696,7 @@ func TestInspectFirstPageHasEveryRequestEnvelopeAndPrioritizesExactRead(t *testi
 		"id": "priority-read", "kind": KindRead, "path": "z-priority.txt",
 	})
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
-	result, err := tool.Execute(context.Background(), map[string]any{
+	result, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": requests, "max_files": 1, "max_chars": minimumMaxChars,
 	})
 	if err != nil || result.IsError {
@@ -642,7 +728,7 @@ func TestInspectModelEvidenceDeduplicatesOverlappingLinesAcrossCalls(t *testing.
 	writeInspectFixture(t, path, "one\ntwo\nthree\nfour\n")
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
 
-	first, firstErr := tool.Execute(context.Background(), map[string]any{
+	first, firstErr := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "first", "kind": KindRead, "path": "evidence.txt",
 			"ranges": []any{map[string]any{"start": 1, "end": 4}},
@@ -657,7 +743,7 @@ func TestInspectModelEvidenceDeduplicatesOverlappingLinesAcrossCalls(t *testing.
 		t.Fatalf("cold evidence stats = %+v", firstStats)
 	}
 
-	second, secondErr := tool.Execute(context.Background(), map[string]any{
+	second, secondErr := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "overlap", "kind": KindRead, "path": "evidence.txt",
 			"ranges": []any{map[string]any{"start": 2, "end": 3}},
@@ -680,7 +766,7 @@ func TestInspectModelEvidenceDeduplicatesOverlappingLinesAcrossCalls(t *testing.
 	}
 
 	writeInspectFixture(t, path, "one\ntwo changed\nthree\nfour\n")
-	third, thirdErr := tool.Execute(context.Background(), map[string]any{
+	third, thirdErr := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "changed", "kind": KindRead, "path": "evidence.txt",
 			"ranges": []any{map[string]any{"start": 2, "end": 3}},
@@ -711,9 +797,9 @@ func TestInspectEvidenceLedgerIsSessionScoped(t *testing.T) {
 	writeInspectFixture(t, filepath.Join(root, "scope.txt"), "session evidence\n")
 	parentRuntime := testRuntime(root)
 	parent := New(testRuntimeProvider{runtime: parentRuntime}, toolfile.NewReadFileState())
-	input := map[string]any{"requests": []any{map[string]any{
+	input := inspectTestInput(map[string]any{"requests": []any{map[string]any{
 		"id": "scope", "kind": KindRead, "path": "scope.txt",
-	}}}
+	}}})
 	first, firstErr := parent.Execute(context.Background(), input)
 	if firstErr != nil || first.IsError {
 		t.Fatalf("parent read failed: err=%v result=%+v", firstErr, first)
@@ -777,9 +863,9 @@ func TestInspectConcurrentDuplicateEvidenceEmitsOneContentCopy(t *testing.T) {
 	root := t.TempDir()
 	writeInspectFixture(t, filepath.Join(root, "concurrent.txt"), "shared one\nshared two\n")
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
-	input := map[string]any{"requests": []any{map[string]any{
+	input := inspectTestInput(map[string]any{"requests": []any{map[string]any{
 		"id": "same", "kind": KindRead, "path": "concurrent.txt",
-	}}}
+	}}})
 
 	type executionResult struct {
 		result types.ToolResult
@@ -820,7 +906,7 @@ func TestInspectPinsOneRuntimeSnapshotAndWithRuntimeCannotConsumeParentCursor(t 
 
 	provider := &switchingRuntimeProvider{values: []types.ToolRuntimeContext{testRuntime(rootA), testRuntime(rootB)}}
 	snapshotTool := New(provider, toolfile.NewReadFileState())
-	snapshotResult, err := snapshotTool.Execute(context.Background(), map[string]any{
+	snapshotResult, err := executeInspectTest(snapshotTool, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "parent", "kind": KindGlob, "path": ".", "pattern": "**/*.txt", "max_results": 10,
 		}},
@@ -845,7 +931,7 @@ func TestInspectPinsOneRuntimeSnapshotAndWithRuntimeCannotConsumeParentCursor(t 
 	}
 
 	parent := New(testRuntimeProvider{runtime: testRuntime(rootA)}, toolfile.NewReadFileState())
-	first, err := parent.Execute(context.Background(), map[string]any{
+	first, err := executeInspectTest(parent, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "parent", "kind": KindGlob, "path": ".", "pattern": "**/*.txt", "max_results": 10,
 		}},
@@ -862,12 +948,12 @@ func TestInspectPinsOneRuntimeSnapshotAndWithRuntimeCannotConsumeParentCursor(t 
 	childRuntime := testRuntime(rootB)
 	childRuntime.SessionID = "inspect-child"
 	child := parent.WithRuntime(testRuntimeProvider{runtime: childRuntime}).(*Tool)
-	foreign, foreignErr := child.Execute(context.Background(), map[string]any{"cursor": page.Cursor})
+	foreign, foreignErr := executeInspectTest(child, context.Background(), map[string]any{"cursor": page.Cursor})
 	if foreignErr != nil || !foreign.IsError {
 		t.Fatalf("child consumed parent cursor: err=%v result=%+v", foreignErr, foreign)
 	}
 
-	continuation, continuationErr := parent.Execute(context.Background(), map[string]any{"cursor": page.Cursor})
+	continuation, continuationErr := executeInspectTest(parent, context.Background(), map[string]any{"cursor": page.Cursor})
 	if continuationErr != nil || continuation.IsError {
 		t.Fatalf("foreign cursor attempt destroyed parent cursor: err=%v result=%+v", continuationErr, continuation)
 	}
@@ -876,7 +962,7 @@ func TestInspectPinsOneRuntimeSnapshotAndWithRuntimeCannotConsumeParentCursor(t 
 		t.Fatalf("parent continuation crossed workspace: %#v", continuedPage)
 	}
 
-	childResult, childErr := child.Execute(context.Background(), map[string]any{
+	childResult, childErr := executeInspectTest(child, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "child", "kind": KindGlob, "path": ".", "pattern": "**/*.txt",
 		}},
@@ -901,7 +987,7 @@ func TestInspectActorCloneUsesChildReadStateAndIsolatesCursor(t *testing.T) {
 	parentState := toolfile.NewReadFileState()
 	childState := toolfile.NewReadFileState()
 	parent := New(runtime, parentState)
-	first, err := parent.Execute(context.Background(), map[string]any{
+	first, err := executeInspectTest(parent, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "files", "kind": KindGlob, "path": ".", "pattern": "**/*.txt", "max_results": 10,
 		}},
@@ -916,16 +1002,16 @@ func TestInspectActorCloneUsesChildReadStateAndIsolatesCursor(t *testing.T) {
 	}
 
 	child := parent.WithRuntimeAndReadState(runtime, childState).(*Tool)
-	foreign, foreignErr := child.Execute(context.Background(), map[string]any{"cursor": parentPage.Cursor})
+	foreign, foreignErr := executeInspectTest(child, context.Background(), map[string]any{"cursor": parentPage.Cursor})
 	if foreignErr != nil || !foreign.IsError {
 		t.Fatalf("child consumed parent actor cursor: err=%v result=%+v", foreignErr, foreign)
 	}
-	continued, continueErr := parent.Execute(context.Background(), map[string]any{"cursor": parentPage.Cursor})
+	continued, continueErr := executeInspectTest(parent, context.Background(), map[string]any{"cursor": parentPage.Cursor})
 	if continueErr != nil || continued.IsError {
 		t.Fatalf("child cursor attempt affected parent: err=%v result=%+v", continueErr, continued)
 	}
 
-	read, readErr := child.Execute(context.Background(), map[string]any{
+	read, readErr := executeInspectTest(child, context.Background(), map[string]any{
 		"requests": []any{map[string]any{
 			"id": "child-read", "kind": KindRead, "path": "child.txt",
 		}},

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -287,10 +288,10 @@ func TestResponsesCustomToolDoneOnlyRecoversAuthoritativeInput(t *testing.T) {
 func TestResponsesFunctionDoneWithoutArgumentsDoesNotEraseDeltas(t *testing.T) {
 	sse := buildSSEStream([]sseEvent{
 		{Type: "response.created", Data: `{"response":{"id":"resp_fn"}}`},
-		{Type: "response.output_item.added", Data: `{"output_index":0,"item":{"type":"function_call","call_id":"call_fn","name":"Run"}}`},
+		{Type: "response.output_item.added", Data: `{"output_index":0,"item":{"type":"function_call","id":"fc_fn","call_id":"call_fn","name":"Run","status":"in_progress"}}`},
 		{Type: "response.function_call_arguments.delta", Data: `{"output_index":0,"delta":"{\"command\":\"go test ./...\"}"}`},
-		{Type: "response.output_item.done", Data: `{"output_index":0}`},
-		{Type: "response.completed", Data: `{"response":{"id":"resp_fn","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[{"type":"function_call"}]}}`},
+		{Type: "response.output_item.done", Data: `{"output_index":0,"item":{"type":"function_call","id":"fc_fn","call_id":"call_fn","name":"Run","status":"completed","arguments":"{\"command\":\"go test ./...\"}"}}`},
+		{Type: "response.completed", Data: `{"response":{"id":"resp_fn","model":"gpt-5.6-sol","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[{"type":"function_call","id":"fc_fn","call_id":"call_fn","name":"Run","status":"completed","arguments":"{\"command\":\"go test ./...\"}"}]}}`},
 	})
 	events := collectResponsesProtocolEvents(t, sse, ResponsesSemanticsCompatible)
 	var fragments, finals []string
@@ -305,7 +306,7 @@ func TestResponsesFunctionDoneWithoutArgumentsDoesNotEraseDeltas(t *testing.T) {
 			finals = append(finals, event.Delta.PartialJSON)
 		}
 	}
-	if strings.Join(fragments, "") != `{"command":"go test ./..."}` || len(finals) != 0 {
+	if strings.Join(fragments, "") != `{"command":"go test ./..."}` || len(finals) != 1 || finals[0] != `{"command":"go test ./..."}` {
 		t.Fatalf("fragments=%q finals=%#v", strings.Join(fragments, ""), finals)
 	}
 }
@@ -348,12 +349,22 @@ func TestResponsesCustomToolProtocolFailsClosed(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			events := collectResponsesProtocolEvents(t, buildSSEStream(test.events), ResponsesSemanticsOpenAIPublic)
-			hasError, hasCommit := false, false
+			hasError, hasMessageStop, hasToolReceipt, hasMaxTokens := false, false, false, false
 			for _, event := range events {
 				hasError = hasError || event.Type == types.EventError
-				hasCommit = hasCommit || event.Type == types.EventMessageStop
+				if event.Type == types.EventMessageStop {
+					hasMessageStop = true
+					hasToolReceipt = event.ProviderCommitReceipt != nil
+				}
+				hasMaxTokens = hasMaxTokens || event.Type == types.EventMessageDelta && event.StopReason != nil && *event.StopReason == types.StopReasonMaxTokens
 			}
-			if !hasError || hasCommit {
+			if test.name == "incomplete response cannot commit patch" {
+				if hasError || !hasMessageStop || hasToolReceipt || !hasMaxTokens {
+					t.Fatalf("incomplete response crossed the provider tool commit boundary: %#v", events)
+				}
+				return
+			}
+			if !hasError || hasMessageStop {
 				t.Fatalf("events = %#v", events)
 			}
 		})
@@ -388,4 +399,51 @@ func collectResponsesProtocolEvents(t *testing.T, sse string, semantics Response
 		processResponsesStreamForRequest(context.Background(), strings.NewReader(sse), ch, "gpt-5.6-sol", semantics, false)
 	}()
 	return collectStreamEvents(ch)
+}
+
+func TestResponsesCompletedFunctionCallEmitsAuthorizedBatchReceipt(t *testing.T) {
+	arguments := `{"steps":[{"id":"check","argv":["go","test","./..."]}]}`
+	events := collectResponsesProtocolEvents(t, buildSSEStream([]sseEvent{
+		{Type: "response.created", Data: `{"response":{"id":"resp_receipt","model":"gpt-5.6-sol"}}`},
+		{Type: "response.output_item.added", Data: `{"output_index":0,"item":{"type":"function_call","id":"fc_receipt","call_id":"call_receipt","name":"Run","status":"in_progress"}}`},
+		{Type: "response.function_call_arguments.done", Data: `{"output_index":0,"item_id":"fc_receipt","arguments":` + strconv.Quote(arguments) + `}`},
+		{Type: "response.output_item.done", Data: `{"output_index":0,"item":{"type":"function_call","id":"fc_receipt","call_id":"call_receipt","name":"Run","status":"completed","arguments":` + strconv.Quote(arguments) + `}}`},
+		{Type: "response.completed", Data: `{"response":{"id":"resp_receipt","model":"gpt-5.6-sol","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[{"type":"function_call","id":"fc_receipt","call_id":"call_receipt","name":"Run","status":"completed","arguments":` + strconv.Quote(arguments) + `}]}}`},
+	}), ResponsesSemanticsOpenAIPublic)
+	var receipt *types.ProviderCommitReceipt
+	for _, event := range events {
+		if event.Type == types.EventError {
+			t.Fatalf("unexpected error: %#v", event.Error)
+		}
+		if event.Type == types.EventMessageStop {
+			receipt = event.ProviderCommitReceipt
+		}
+	}
+	if receipt == nil || !receipt.ToolsAuthorized || receipt.ToolCalls != 1 || receipt.ToolBatchBytes == 0 || !strings.HasPrefix(receipt.ToolBatchDigest, "sha256:") {
+		t.Fatalf("commit receipt = %#v", receipt)
+	}
+}
+
+func TestResponsesCompletedRejectsOpenFunctionCallAndContinuation(t *testing.T) {
+	arguments := `{"steps":[{"id":"check","argv":["go","test","./..."]}]}`
+	events := collectResponsesProtocolEvents(t, buildSSEStream([]sseEvent{
+		{Type: "response.created", Data: `{"response":{"id":"resp_open","model":"gpt-5.6-sol"}}`},
+		{Type: "response.output_item.added", Data: `{"output_index":0,"item":{"type":"function_call","id":"fc_open","call_id":"call_open","name":"Run","status":"in_progress"}}`},
+		{Type: "response.function_call_arguments.done", Data: `{"output_index":0,"item_id":"fc_open","arguments":` + strconv.Quote(arguments) + `}`},
+		{Type: "response.completed", Data: `{"response":{"id":"resp_open","model":"gpt-5.6-sol","status":"completed","usage":{"input_tokens":1,"output_tokens":1},"output":[{"type":"function_call","id":"fc_open","call_id":"call_open","name":"Run","status":"in_progress","arguments":` + strconv.Quote(arguments) + `}]}}`},
+	}), ResponsesSemanticsOpenAIPublic)
+	var failed, committed bool
+	for _, event := range events {
+		failed = failed || event.Type == types.EventError
+		committed = committed || event.Type == types.EventMessageStop
+	}
+	if !failed || committed {
+		t.Fatalf("open function call crossed commit boundary: %#v", events)
+	}
+	if _, err := buildResponsesContinuation(
+		[]json.RawMessage{json.RawMessage(`{"type":"function_call","id":"fc_open","call_id":"call_open","name":"Run","status":"in_progress","arguments":"{}"}`)},
+		"gpt-5.6-sol", "gpt-5.6-sol", "completed", ResponsesSemanticsOpenAIPublic, false,
+	); err == nil {
+		t.Fatal("in-progress function call entered continuation")
+	}
 }

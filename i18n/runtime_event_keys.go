@@ -123,7 +123,7 @@ func init() {
 	add(KeyRuntimeStreamTransportFallback,
 		"Repeated stream failures; falling back from %s to %s", "stream 连续失败；正在从 %s 降级到 %s", "Wiederholte Stream-Fehler; Fallback von %s auf %s", "stream が繰り返し失敗したため、%s から %s に切り替えます", "stream이 반복해서 실패하여 %s에서 %s(으)로 전환합니다", "Повторные сбои stream; переключение с %s на %s")
 	add(KeyRuntimeResponseTruncated,
-		"Response truncated (max_tokens)", "响应已截断（max_tokens）", "Antwort gekürzt (max_tokens)", "応答が切り詰められました（max_tokens）", "응답이 잘렸습니다(max_tokens)", "Ответ усечён (max_tokens)")
+		"Response reached max_tokens; partial output was saved. Send “continue” to resume.", "响应达到 max_tokens；部分输出已保存。发送“继续”即可续写。", "Die Antwort hat max_tokens erreicht; die Teilausgabe wurde gespeichert. Senden Sie „weiter“, um fortzufahren.", "応答が max_tokens に達しました。途中までの出力は保存されています。続けるには「続けて」と送信してください。", "응답이 max_tokens에 도달했습니다. 부분 출력은 저장되었습니다. 계속하려면 ‘계속’이라고 보내세요.", "Ответ достиг max_tokens; частичный результат сохранён. Отправьте «продолжить», чтобы продолжить.")
 	add(KeyRuntimeResponseRetryMaxTokens,
 		"Response truncated (max_tokens); retrying with max_output_tokens=%d", "响应已截断（max_tokens）；正在以 max_output_tokens=%d 重试", "Antwort gekürzt (max_tokens); erneuter Versuch mit max_output_tokens=%d",
 		"応答が切り詰められました（max_tokens）。max_output_tokens=%d で再試行します", "응답이 잘렸습니다(max_tokens). max_output_tokens=%d(으)로 다시 시도합니다", "Ответ усечён (max_tokens); повтор с max_output_tokens=%d")

@@ -21,6 +21,10 @@ type eventAdapter struct {
 	// accumulated text content for the current assistant turn
 	textBuf   string
 	turnCount int
+	// terminalReason is captured from the authoritative turn_end event and
+	// repeated on the final result envelope for clients that do not retain the
+	// full event stream.
+	terminalReason string
 }
 
 func newEventAdapter(sessionID string, language i18n.Language) *eventAdapter {
@@ -171,9 +175,11 @@ func (a *eventAdapter) process(ev Event) []any {
 
 	case EventTurnEnd:
 		a.turnCount = ev.TurnCount
-		// Turn end doesn't produce an SDK message on its own — the final
-		// SDKResultMessage is emitted separately by the transport layer.
-		return nil
+		a.terminalReason = ev.TerminalReason
+		return []any{StreamEventMsg{
+			Type: "stream_event", Event: runtimeEventPayload(a.sessionID, ev, a.language),
+			UUID: uuid.New().String(), SessionID: a.sessionID,
+		}}
 
 	case EventError:
 		message, ok := a.runtimeErrorMessage(ev)
@@ -381,6 +387,8 @@ func runtimeEventPayload(sessionID string, ev Event, language i18n.Language) Run
 		payload.Tombstone = safeTombstone(ev.Tombstone)
 	case EventUserInterruption:
 		payload.TerminalReason = ev.TerminalReason
+	case EventTurnEnd:
+		payload.TerminalReason = ev.TerminalReason
 	case EventHookSummary:
 		payload.ToolUseID = ev.ToolUseID
 		payload.HookSummary = safeHookSummary(ev.HookSummary)
@@ -527,15 +535,16 @@ func (a *eventAdapter) resultMessage(lang i18n.Language, sessionID, msgUUID stri
 	}
 
 	return SDKResultMessage{
-		Type:        "result",
-		Subtype:     subtype,
-		SessionID:   sessionID,
-		ProjectRoot: a.projectRoot,
-		UUID:        msgUUID,
-		IsError:     isError,
-		Result:      a.textBuf,
-		NumTurns:    a.turnCount,
-		DurationMs:  float64(time.Since(a.startTime).Milliseconds()),
-		Errors:      errs,
+		Type:           "result",
+		Subtype:        subtype,
+		SessionID:      sessionID,
+		ProjectRoot:    a.projectRoot,
+		UUID:           msgUUID,
+		IsError:        isError,
+		Result:         a.textBuf,
+		NumTurns:       a.turnCount,
+		TerminalReason: a.terminalReason,
+		DurationMs:     float64(time.Since(a.startTime).Milliseconds()),
+		Errors:         errs,
 	}
 }

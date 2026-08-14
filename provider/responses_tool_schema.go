@@ -35,8 +35,21 @@ func convertToolsToResponsesAPIForSemantics(tools []types.ToolDefinition, strict
 			schema.Properties = map[string]any{}
 		}
 		strict := strictMode && t.Strict
+		strictDowngraded := false
 		var parameters any = schema
-		if semantics == ResponsesSemanticsOpenAIPublic || semantics == ResponsesSemanticsDeepSeek {
+		switch semantics {
+		case ResponsesSemanticsOpenAIPublic:
+			parameters = canonicalOpenAIResponsesToolSchema(schema, strict)
+		case ResponsesSemanticsDeepSeek:
+			// DeepSeek's strict contract cannot faithfully represent optional
+			// properties: it requires every declared property to be required and
+			// does not have OpenAI's documented nullable-optional projection. Keep
+			// strict mode for schemas that are already fully required, but preserve
+			// the local optional shape for tools such as Inspect.
+			if strict && responsesSchemaHasOptionalProperties(schema) {
+				strict = false
+				strictDowngraded = true
+			}
 			parameters = canonicalOpenAIResponsesToolSchema(schema, strict)
 		}
 		tool := map[string]any{
@@ -47,9 +60,9 @@ func convertToolsToResponsesAPIForSemantics(tools []types.ToolDefinition, strict
 		}
 		if strict {
 			tool["strict"] = true
-		} else if !strictMode && t.Strict && semantics == ResponsesSemanticsOpenAIPublic {
-			// Responses may normalize an omitted strict field back to strict mode.
-			// The compatibility default must opt out explicitly.
+		} else if strictDowngraded || (!strictMode && t.Strict && semantics == ResponsesSemanticsOpenAIPublic) {
+			// Both a DeepSeek capability downgrade and OpenAI's compatibility
+			// default must opt out explicitly rather than rely on omission.
 			tool["strict"] = false
 		}
 		result = append(result, tool)
@@ -104,9 +117,11 @@ func responseToolChoiceType(definitions []types.ToolDefinition, name string) str
 	return "function"
 }
 
-// canonicalOpenAIResponsesToolSchema returns a detached, OpenAI-public wire
-// schema. Local schemas intentionally carry semantic annotations used by tool
-// introspection; the Responses API must never receive those private markers.
+// canonicalOpenAIResponsesToolSchema returns a detached Responses wire schema.
+// Local schemas intentionally carry semantic annotations used by tool
+// introspection; provider APIs must never receive those private markers. In
+// strict mode, local optional properties become required nullable properties,
+// which is OpenAI's supported representation for optional function input.
 func canonicalOpenAIResponsesToolSchema(schema types.JSONSchema, strict bool) map[string]any {
 	raw, err := json.Marshal(schema)
 	if err != nil {
@@ -136,6 +151,13 @@ func sanitizeOpenAIResponsesSchemaNode(value any, strict bool) any {
 				properties = map[string]any{}
 				clean["properties"] = properties
 			}
+			requiredBeforeProjection := responsesSchemaRequiredPropertySet(clean["required"], properties)
+			for name, property := range properties {
+				if _, required := requiredBeforeProjection[name]; required {
+					continue
+				}
+				properties[name] = openAIResponsesNullableSchema(property)
+			}
 			clean["required"] = canonicalRequiredProperties(clean["required"], properties)
 			clean["additionalProperties"] = false
 		}
@@ -149,6 +171,152 @@ func sanitizeOpenAIResponsesSchemaNode(value any, strict bool) any {
 	default:
 		return value
 	}
+}
+
+func openAIResponsesNullableSchema(value any) any {
+	node, ok := value.(map[string]any)
+	if !ok {
+		return value
+	}
+	if openAIResponsesSchemaAcceptsNull(node) {
+		return node
+	}
+	return map[string]any{
+		"anyOf": []any{node, map[string]any{"type": "null"}},
+	}
+}
+
+// openAIResponsesSchemaAcceptsNull recognizes schemas that already admit null
+// without weakening sibling constraints such as enum or const. It is
+// deliberately conservative for references and conditionals: an unnecessary
+// outer nullable branch is safe, while incorrectly assuming nullability is not.
+func openAIResponsesSchemaAcceptsNull(node map[string]any) bool {
+	if _, hasRef := node["$ref"]; hasRef {
+		return false
+	}
+	if _, conditional := node["if"]; conditional {
+		return false
+	}
+	if typed, present := node["type"]; present && !openAIResponsesSchemaIncludesType(typed, "null") {
+		return false
+	}
+	if enum, present := node["enum"]; present {
+		values, ok := enum.([]any)
+		if !ok || !responsesSchemaValuesIncludeNull(values) {
+			return false
+		}
+	}
+	if constant, present := node["const"]; present && constant != nil {
+		return false
+	}
+	if alternative, present := node["not"]; present {
+		if forbidden, ok := alternative.(map[string]any); !ok || openAIResponsesSchemaAcceptsNull(forbidden) {
+			return false
+		}
+	}
+	for _, keyword := range []string{"allOf", "anyOf", "oneOf"} {
+		raw, present := node[keyword]
+		if !present {
+			continue
+		}
+		alternatives, ok := raw.([]any)
+		if !ok || len(alternatives) == 0 {
+			return false
+		}
+		accepting := 0
+		for _, rawAlternative := range alternatives {
+			alternative, ok := rawAlternative.(map[string]any)
+			if ok && openAIResponsesSchemaAcceptsNull(alternative) {
+				accepting++
+			}
+		}
+		switch keyword {
+		case "allOf":
+			if accepting != len(alternatives) {
+				return false
+			}
+		case "anyOf":
+			if accepting == 0 {
+				return false
+			}
+		case "oneOf":
+			if accepting != 1 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func responsesSchemaValuesIncludeNull(values []any) bool {
+	for _, value := range values {
+		if value == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func responsesSchemaHasOptionalProperties(schema types.JSONSchema) bool {
+	raw, err := json.Marshal(schema)
+	if err != nil {
+		return true
+	}
+	var detached any
+	if err := json.Unmarshal(raw, &detached); err != nil {
+		return true
+	}
+	return responsesSchemaNodeHasOptionalProperties(detached)
+}
+
+func responsesSchemaNodeHasOptionalProperties(value any) bool {
+	switch node := value.(type) {
+	case map[string]any:
+		if openAIResponsesSchemaIncludesType(node["type"], "object") {
+			if properties, ok := node["properties"].(map[string]any); ok {
+				required := responsesSchemaRequiredPropertySet(node["required"], properties)
+				if len(required) != len(properties) {
+					return true
+				}
+			}
+		}
+		for _, child := range node {
+			if responsesSchemaNodeHasOptionalProperties(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range node {
+			if responsesSchemaNodeHasOptionalProperties(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func responsesSchemaRequiredPropertySet(value any, properties map[string]any) map[string]struct{} {
+	required := make(map[string]struct{}, len(properties))
+	var entries []any
+	switch typed := value.(type) {
+	case []any:
+		entries = typed
+	case []string:
+		entries = make([]any, len(typed))
+		for index, entry := range typed {
+			entries[index] = entry
+		}
+	}
+	for _, entry := range entries {
+		name, ok := entry.(string)
+		if !ok {
+			continue
+		}
+		if _, exists := properties[name]; exists {
+			required[name] = struct{}{}
+		}
+	}
+	return required
 }
 
 func sanitizeOpenAIResponsesSchemaKeyword(keyword string, value any, strict bool) any {

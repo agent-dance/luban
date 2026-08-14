@@ -756,12 +756,15 @@ func task26LoopTextEvents(text string) []types.StreamEvent {
 func task26LoopToolEvents(id, name string, input map[string]any) []types.StreamEvent {
 	encoded, _ := json.Marshal(input)
 	stop := types.StopReasonToolUse
+	receipt := types.NewProviderToolCommitReceipt("test", "test", "completed", []types.ProviderToolCallCommit{{
+		OutputIndex: 0, CallID: id, Name: name, RawInput: string(encoded),
+	}})
 	return []types.StreamEvent{
 		{Type: types.EventMessageStart},
 		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{Type: types.ContentTypeToolUse, ID: id, Name: name}},
 		{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: string(encoded)}},
 		{Type: types.EventContentBlockStop, Index: 0},
 		{Type: types.EventMessageDelta, StopReason: &stop},
-		{Type: types.EventMessageStop},
+		{Type: types.EventMessageStop, ProviderCommitReceipt: receipt},
 	}
 }

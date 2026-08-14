@@ -28,3 +28,7 @@ func configureCommandCancellation(cmd *exec.Cmd) {
 	}
 	cmd.WaitDelay = 2 * time.Second
 }
+
+func commandStarted(*exec.Cmd) error { return nil }
+
+func commandFinished(*exec.Cmd) {}

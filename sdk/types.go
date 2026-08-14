@@ -142,16 +142,17 @@ type InitializeResponse struct {
 
 // SDKResultMessage is the terminal message for a query stream.
 type SDKResultMessage struct {
-	Type        string   `json:"type"`    // "result"
-	Subtype     string   `json:"subtype"` // "success" | "error_during_execution" | ...
-	SessionID   string   `json:"session_id"`
-	ProjectRoot string   `json:"project_root,omitempty"`
-	UUID        string   `json:"uuid"`
-	IsError     bool     `json:"is_error"`
-	Result      string   `json:"result,omitempty"` // last text output on success
-	NumTurns    int      `json:"num_turns"`
-	DurationMs  float64  `json:"duration_ms"`
-	Errors      []string `json:"errors,omitempty"` // populated on error subtypes
+	Type           string   `json:"type"`    // "result"
+	Subtype        string   `json:"subtype"` // "success" | "error_during_execution" | ...
+	SessionID      string   `json:"session_id"`
+	ProjectRoot    string   `json:"project_root,omitempty"`
+	UUID           string   `json:"uuid"`
+	IsError        bool     `json:"is_error"`
+	Result         string   `json:"result,omitempty"` // last text output on success
+	NumTurns       int      `json:"num_turns"`
+	TerminalReason string   `json:"terminal_reason,omitempty"`
+	DurationMs     float64  `json:"duration_ms"`
+	Errors         []string `json:"errors,omitempty"` // populated on error subtypes
 }
 
 // SDKSystemMessage carries system-level notifications (init, error, status).

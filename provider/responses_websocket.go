@@ -591,11 +591,7 @@ func (p *ResponsesProvider) forwardResponsesWebSocketStream(
 	}()
 
 	committed := false
-	chainable := true
 	for event := range parsed {
-		if event.Type == types.EventMessageDelta && event.StopReason != nil && *event.StopReason == types.StopReasonMaxTokens {
-			chainable = false
-		}
 		select {
 		case out <- event:
 		case <-ctx.Done():
@@ -604,8 +600,9 @@ func (p *ResponsesProvider) forwardResponsesWebSocketStream(
 			return
 		}
 		if event.Type == types.EventMessageStop {
-			committed = true
-			if chainable && event.ResponseID != "" {
+			receipt := event.ProviderCommitReceipt
+			committed = receipt != nil && receipt.ResponseStatus == "completed" && receipt.ToolsAuthorized
+			if committed && event.ResponseID != "" {
 				session.commit(wire, event.ResponseID, requestModel, continuationAge, credentialAge, envelopeDigest)
 			} else {
 				session.clearChain(wire)

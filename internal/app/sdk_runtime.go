@@ -291,6 +291,12 @@ func sdkRequestStatus(eventType stream.EventType, source *stream.RequestStatusEv
 		return out
 	}
 	out.RequestID = source.RequestID
+	out.Provider = source.Provider
+	out.Model = source.Model
+	out.APIFormat = source.APIFormat
+	out.ReasoningEffort = source.ReasoningEffort
+	out.MaxOutputTokens = source.MaxOutputTokens
+	out.CatalogMaxOutputTokens = source.CatalogMaxOutputTokens
 	out.StartedAt = source.StartedAt
 	out.EndedAt = source.EndedAt
 	if source.Attempt > 0 {
@@ -309,6 +315,12 @@ func sdkRequestStatus(eventType stream.EventType, source *stream.RequestStatusEv
 	out.CacheReadInputTokens = source.CacheReadInputTokens
 	out.CacheWriteInputTokens = source.CacheWriteInputTokens
 	out.OutputTokens = source.OutputTokens
+	out.FailurePoint = string(source.FailurePoint)
+	out.FailureStage = string(source.FailureStage)
+	out.FailureClass = string(source.FailureClass)
+	out.ReplaySafety = string(source.ReplaySafety)
+	out.Decision = source.Decision
+	out.DroppedFields = append([]string(nil), source.DroppedFields...)
 	if source.Error != "" {
 		switch eventType {
 		case stream.EventRequestRetry:

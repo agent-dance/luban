@@ -50,6 +50,7 @@ func (p *resultStoreRecordingProvider) CreateStream(ctx context.Context, params 
 			{Type: types.EventMessageStop},
 		}
 	}
+	events = attachTestProviderCommitReceipts(events)
 
 	ch := make(chan types.StreamEvent, len(events))
 	for _, event := range events {

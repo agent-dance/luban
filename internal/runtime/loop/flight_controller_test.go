@@ -859,7 +859,7 @@ func TestQueryLoopAgenticFlightStopHookPreventContinuationCommitsVerifiedTermina
 		{Events: parityTextEvents("complete")},
 	})
 	runner := hooks.NewRunner([]hooks.Hook{{
-		Type: hooks.HookStop, Command: `printf '%s\n' '{"preventContinuation":true,"stopReason":"complete"}'`, Timeout: 5,
+		Type: hooks.HookStop, Command: testHookOutputCommand(`{"preventContinuation":true,"stopReason":"complete"}`), Timeout: 5,
 	}})
 	query := New(provider, reg, Config{
 		MaxTurns: 4, MaxTokens: 1024, ProjectRoot: root, CWD: root, HookRunner: runner,

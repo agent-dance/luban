@@ -3,7 +3,6 @@ package loop
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -461,7 +460,7 @@ func TestRecoveryFailureDoesNotRunStopHook(t *testing.T) {
 	touched := filepath.Join(dir, "ran")
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookStop,
-		Command: fmt.Sprintf("touch %q", touched),
+		Command: testHookTouchCommand(touched),
 		Timeout: 5,
 	}})
 	prov := newParityFakeProvider([]parityProviderTurn{{

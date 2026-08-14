@@ -266,6 +266,23 @@ func NewFileStore(dir string) *FileStore {
 	return store
 }
 
+// Close releases the pinned secure root handle. Long-lived stores may retain
+// it for repeated path-identity checks; short-lived callers and tests must
+// close it so Windows can remove the backing directory.
+func (s *FileStore) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.rootMu.Lock()
+	defer s.rootMu.Unlock()
+	if s.root == nil {
+		return nil
+	}
+	err := s.root.Close()
+	s.root = nil
+	return err
+}
+
 func (s *FileStore) ensureReadyLocked(sessionID string) error {
 	if _, err := s.storageRoot(); err != nil {
 		return err

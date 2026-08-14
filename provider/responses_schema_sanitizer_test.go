@@ -88,9 +88,19 @@ func TestOpenAIPublicResponsesSanitizesExact3InspectSchemaOnWire(t *testing.T) {
 	assertOpenAIResponsesStrictObjects(t, parameters, "parameters")
 
 	maxChars := parameters["properties"].(map[string]any)["max_chars"].(map[string]any)
-	if maxChars["type"] != "number" || maxChars["minimum"] != float64(8_192) || maxChars["description"] == "" {
+	maxChars = assertNullableResponsesSchema(t, maxChars, "number")
+	if maxChars["minimum"] != float64(8_192) || maxChars["description"] == "" {
 		t.Fatalf("supported Inspect constraints were lost: %#v", maxChars)
 	}
+	properties := parameters["properties"].(map[string]any)
+	assertNullableResponsesSchema(t, properties["cursor"].(map[string]any), "string")
+	requests := assertNullableResponsesSchema(t, properties["requests"].(map[string]any), "array")
+	request := requests["items"].(map[string]any)
+	requestProperties := request["properties"].(map[string]any)
+	assertResponsesSchemaNotNullable(t, requestProperties["id"].(map[string]any), "string")
+	assertResponsesSchemaNotNullable(t, requestProperties["kind"].(map[string]any), "string")
+	assertNullableResponsesSchema(t, requestProperties["path"].(map[string]any), "string")
+	assertNullableResponsesSchema(t, requestProperties["ranges"].(map[string]any), "array")
 	localAfter, err := json.Marshal(localSchema)
 	if err != nil {
 		t.Fatal(err)
@@ -164,6 +174,9 @@ func TestOpenAIResponsesSchemaSanitizerPreservesNamedSchemaStructure(t *testing.
 		t.Fatalf("property name was confused with a schema annotation: %#v", properties)
 	}
 	choice := properties["choice"].(map[string]any)
+	if !openAIResponsesSchemaAcceptsNull(choice) {
+		t.Fatalf("already nullable composed schema lost null support: %#v", choice)
+	}
 	for _, key := range []string{"description", "oneOf", "allOf"} {
 		if _, ok := choice[key]; !ok {
 			t.Fatalf("supported structure %q was removed: %#v", key, choice)
@@ -176,6 +189,185 @@ func TestOpenAIResponsesSchemaSanitizerPreservesNamedSchemaStructure(t *testing.
 	}
 	if _, ok := text["default"]; ok {
 		t.Fatalf("nested default annotation was not removed: %#v", text)
+	}
+}
+
+func TestDeepSeekResponsesDisablesStrictForOptionalInspectSchema(t *testing.T) {
+	localSchema := exact3V2InspectSchemaForResponsesTest()
+	converted := convertToolsToResponsesAPIForSemantics([]types.ToolDefinition{{
+		Name: "Inspect", Description: "Inspect repository files in batches.",
+		InputSchema: localSchema, Strict: true,
+	}}, true, ResponsesSemanticsDeepSeek)
+	if len(converted) != 1 {
+		t.Fatalf("converted tools = %#v", converted)
+	}
+	tool := converted[0]
+	if strict, present := tool["strict"].(bool); !present || strict {
+		t.Fatalf("DeepSeek optional Inspect did not declare selective strict downgrade: %#v", tool)
+	}
+	parameters := tool["parameters"].(map[string]any)
+	properties := parameters["properties"].(map[string]any)
+	if properties["cursor"].(map[string]any)["type"] != "string" {
+		t.Fatalf("DeepSeek cursor was rewritten instead of preserved as optional: %#v", properties["cursor"])
+	}
+	if required, present := parameters["required"]; present && len(required.([]any)) != 0 {
+		t.Fatalf("DeepSeek root optional fields became required: %#v", required)
+	}
+	request := properties["requests"].(map[string]any)["items"].(map[string]any)
+	if !reflect.DeepEqual(request["required"], []any{"id", "kind"}) {
+		t.Fatalf("DeepSeek nested required fields changed: %#v", request["required"])
+	}
+	wire, err := json.Marshal(parameters)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{`"_semantic"`, `"integer"`, `"default"`} {
+		if strings.Contains(string(wire), forbidden) {
+			t.Fatalf("DeepSeek non-strict schema retained %s: %s", forbidden, wire)
+		}
+	}
+}
+
+func TestDeepSeekResponsesOmitsStrictWithoutSelectiveDowngrade(t *testing.T) {
+	schema := exact3V2InspectSchemaForResponsesTest()
+	tests := []struct {
+		name       string
+		strictMode bool
+		toolStrict bool
+	}{
+		{name: "tool never requested strict", strictMode: true, toolStrict: false},
+		{name: "request disabled strict mode", strictMode: false, toolStrict: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			converted := convertToolsToResponsesAPIForSemantics([]types.ToolDefinition{{
+				Name: "Inspect", InputSchema: schema, Strict: test.toolStrict,
+			}}, test.strictMode, ResponsesSemanticsDeepSeek)
+			if _, present := converted[0]["strict"]; present {
+				t.Fatalf("ordinary non-strict tool received an explicit flag: %#v", converted[0])
+			}
+		})
+	}
+}
+
+func TestOpenAIResponsesNullableProjectionPreservesEnumAndConst(t *testing.T) {
+	schema := types.StrictObjectSchema(map[string]any{
+		"enum_value": map[string]any{
+			"type": "string", "enum": []any{"read", "glob"},
+		},
+		"const_value": map[string]any{
+			"type": "string", "const": "fixed",
+		},
+		"already_nullable_enum": map[string]any{
+			"type": []any{"string", "null"}, "enum": []any{"read", nil},
+		},
+		"type_nullable_enum_rejects_null": map[string]any{
+			"type": []any{"string", "null"}, "enum": []any{"read"},
+		},
+	})
+	clean := canonicalOpenAIResponsesToolSchema(schema, true)
+	properties := clean["properties"].(map[string]any)
+
+	enumBranch := assertNullableResponsesSchema(t, properties["enum_value"].(map[string]any), "string")
+	if !reflect.DeepEqual(enumBranch["enum"], []any{"read", "glob"}) {
+		t.Fatalf("enum constraint changed while adding nullable branch: %#v", properties["enum_value"])
+	}
+	if responsesSchemaValuesIncludeNull(enumBranch["enum"].([]any)) {
+		t.Fatalf("null was incorrectly inserted into original enum: %#v", enumBranch)
+	}
+	constBranch := assertNullableResponsesSchema(t, properties["const_value"].(map[string]any), "string")
+	if constBranch["const"] != "fixed" {
+		t.Fatalf("const constraint changed while adding nullable branch: %#v", properties["const_value"])
+	}
+	alreadyNullable := properties["already_nullable_enum"].(map[string]any)
+	if _, wrapped := alreadyNullable["anyOf"]; wrapped {
+		t.Fatalf("already nullable enum received a duplicate wrapper: %#v", alreadyNullable)
+	}
+	assertNullableResponsesSchema(t, alreadyNullable, "string")
+	rejectingEnumBranch := assertNullableResponsesSchema(t, properties["type_nullable_enum_rejects_null"].(map[string]any), "string")
+	if !reflect.DeepEqual(rejectingEnumBranch["enum"], []any{"read"}) {
+		t.Fatalf("type-nullable enum constraint changed: %#v", properties["type_nullable_enum_rejects_null"])
+	}
+}
+
+func TestDeepSeekResponsesKeepsStrictForFullyRequiredNestedSchema(t *testing.T) {
+	nested := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"id":   map[string]any{"type": "string"},
+			"kind": map[string]any{"type": "string"},
+		},
+		"required": []string{"id", "kind"}, "additionalProperties": false,
+	}
+	schema := types.StrictObjectSchema(map[string]any{
+		"request": nested,
+		"limit":   map[string]any{"type": "number"},
+	}, "request", "limit")
+	converted := convertToolsToResponsesAPIForSemantics([]types.ToolDefinition{{
+		Name: "FullyRequired", InputSchema: schema, Strict: true,
+	}}, true, ResponsesSemanticsDeepSeek)
+	tool := converted[0]
+	if strict, _ := tool["strict"].(bool); !strict {
+		t.Fatalf("fully-required DeepSeek tool lost strict mode: %#v", tool)
+	}
+	parameters := tool["parameters"].(map[string]any)
+	assertOpenAIResponsesStrictObjects(t, parameters, "parameters")
+	properties := parameters["properties"].(map[string]any)
+	assertResponsesSchemaNotNullable(t, properties["limit"].(map[string]any), "number")
+	request := properties["request"].(map[string]any)
+	assertResponsesSchemaNotNullable(t, request["properties"].(map[string]any)["id"].(map[string]any), "string")
+}
+
+func assertNullableResponsesSchema(t *testing.T, node map[string]any, nonNullType string) map[string]any {
+	t.Helper()
+	if nonNullType == "" && openAIResponsesSchemaAcceptsNull(node) {
+		return node
+	}
+	if types, ok := node["type"].([]any); ok {
+		hasNull := false
+		hasNonNull := nonNullType == ""
+		for _, candidate := range types {
+			hasNull = hasNull || candidate == "null"
+			hasNonNull = hasNonNull || candidate == nonNullType
+		}
+		if hasNull && hasNonNull {
+			return node
+		}
+	}
+	alternatives, ok := node["anyOf"].([]any)
+	if !ok {
+		t.Fatalf("schema is not nullable: %#v", node)
+	}
+	var nonNull map[string]any
+	hasNull := false
+	for _, alternative := range alternatives {
+		candidate, _ := alternative.(map[string]any)
+		if openAIResponsesSchemaAcceptsNull(candidate) {
+			hasNull = true
+			continue
+		}
+		if nonNull == nil {
+			nonNull = candidate
+		}
+	}
+	if !hasNull || nonNull == nil || (nonNullType != "" && !openAIResponsesSchemaIncludesType(nonNull["type"], nonNullType)) {
+		t.Fatalf("schema has invalid nullable alternatives: %#v", node)
+	}
+	return nonNull
+}
+
+func assertResponsesSchemaNotNullable(t *testing.T, node map[string]any, expectedType string) {
+	t.Helper()
+	if !openAIResponsesSchemaIncludesType(node["type"], expectedType) || openAIResponsesSchemaIncludesType(node["type"], "null") {
+		t.Fatalf("required schema type = %#v, want non-nullable %q", node["type"], expectedType)
+	}
+	if alternatives, ok := node["anyOf"].([]any); ok {
+		for _, alternative := range alternatives {
+			candidate, _ := alternative.(map[string]any)
+			if openAIResponsesSchemaIncludesType(candidate["type"], "null") {
+				t.Fatalf("required schema unexpectedly accepts null: %#v", node)
+			}
+		}
 	}
 }
 

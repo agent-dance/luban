@@ -1145,7 +1145,7 @@ func RunTUIREPL(ctx context.Context, cfg TUIREPLConfig, sigHandler *SignalHandle
 	persistErr := persistTUISessionLifecycleForApp(cfg, tuiApp)
 	closeErr := tuiApp.Close()
 	if persistErr != nil {
-		persistErr = i18n.WrapInternalError(i18n.KeyREPLTUILifecycleSaveFailed, persistErr)
+		persistErr = i18n.WrapError(i18n.KeyREPLTUILifecycleSaveFailed, persistErr)
 	}
 	if closeErr != nil {
 		closeErr = i18n.WrapInternalError(i18n.KeyREPLTUICleanupFailed, closeErr)

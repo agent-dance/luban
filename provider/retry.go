@@ -68,8 +68,23 @@ func NewRetryProvider(inner Provider, cfg RetryConfig) *RetryProvider {
 // Name delegates to the wrapped provider.
 func (r *RetryProvider) Name() string { return r.inner.Name() }
 
+func (r *RetryProvider) UnsupportedRequestFields(model string) []string {
+	if observable, ok := r.inner.(interface{ UnsupportedRequestFields(string) []string }); ok {
+		return observable.UnsupportedRequestFields(model)
+	}
+	return nil
+}
+
 // ModelID delegates to the wrapped provider.
 func (r *RetryProvider) ModelID() string { return r.inner.ModelID() }
+
+// APIFormat exposes the wrapped OpenAI-family wire protocol for diagnostics.
+func (r *RetryProvider) APIFormat() string {
+	if formatted, ok := r.inner.(interface{ APIFormat() string }); ok {
+		return formatted.APIFormat()
+	}
+	return ""
+}
 
 // Capabilities implements CapabilityProvider by delegating to the inner provider
 // if it also implements CapabilityProvider. Returns zero-value if not supported.

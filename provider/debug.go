@@ -67,36 +67,39 @@ type DebugEvent struct {
 // DebugRequest is the complete provider-neutral payload handed to the active
 // provider after prompt construction, history preparation, and compaction.
 type DebugRequest struct {
-	Stream                  bool                         `json:"stream"`
-	Model                   string                       `json:"model"`
-	MaxTokens               int                          `json:"max_tokens"`
-	MaxOutputTokensOverride int                          `json:"max_output_tokens_override,omitempty"`
-	System                  string                       `json:"system,omitempty"`
-	SystemBlocks            []prompt.SystemPromptBlock   `json:"system_blocks,omitempty"`
-	Messages                []types.Message              `json:"messages"`
-	Tools                   []types.ToolDefinition       `json:"tools,omitempty"`
-	ExtraToolSchemas        []types.ServerToolDefinition `json:"extra_tool_schemas,omitempty"`
-	ToolChoice              *ToolChoice                  `json:"tool_choice,omitempty"`
-	Thinking                *ThinkingConfig              `json:"thinking,omitempty"`
-	TaskBudget              *TaskBudget                  `json:"task_budget,omitempty"`
-	Conversation            string                       `json:"conversation,omitempty"`
-	PreviousResponseID      string                       `json:"previous_response_id,omitempty"`
-	Truncation              string                       `json:"truncation,omitempty"`
-	PromptCacheKey          string                       `json:"prompt_cache_key,omitempty"`
-	ReasoningEffort         string                       `json:"reasoning_effort,omitempty"`
-	ServiceTier             ServiceTier                  `json:"service_tier,omitempty"`
-	UsePromptCache          bool                         `json:"use_prompt_cache,omitempty"`
+	Stream                   bool                         `json:"stream"`
+	Model                    string                       `json:"model"`
+	MaxTokens                int                          `json:"max_tokens"`
+	MaxOutputTokensOverride  int                          `json:"max_output_tokens_override,omitempty"`
+	EffectiveMaxOutputTokens int                          `json:"effective_max_output_tokens,omitempty"`
+	CatalogMaxOutputTokens   int                          `json:"catalog_max_output_tokens,omitempty"`
+	System                   string                       `json:"system,omitempty"`
+	SystemBlocks             []prompt.SystemPromptBlock   `json:"system_blocks,omitempty"`
+	Messages                 []types.Message              `json:"messages"`
+	Tools                    []types.ToolDefinition       `json:"tools,omitempty"`
+	ExtraToolSchemas         []types.ServerToolDefinition `json:"extra_tool_schemas,omitempty"`
+	ToolChoice               *ToolChoice                  `json:"tool_choice,omitempty"`
+	Thinking                 *ThinkingConfig              `json:"thinking,omitempty"`
+	TaskBudget               *TaskBudget                  `json:"task_budget,omitempty"`
+	Conversation             string                       `json:"conversation,omitempty"`
+	PreviousResponseID       string                       `json:"previous_response_id,omitempty"`
+	Truncation               string                       `json:"truncation,omitempty"`
+	PromptCacheKey           string                       `json:"prompt_cache_key,omitempty"`
+	ReasoningEffort          string                       `json:"reasoning_effort,omitempty"`
+	ServiceTier              ServiceTier                  `json:"service_tier,omitempty"`
+	UsePromptCache           bool                         `json:"use_prompt_cache,omitempty"`
 }
 
 // DebugResponse is the semantic model result reconstructed from the provider
 // stream. Token-level deltas are collapsed into content and tool-use blocks.
 type DebugResponse struct {
-	Message           *types.Message    `json:"message,omitempty"`
-	Usage             *types.Usage      `json:"usage,omitempty"`
-	StopReason        *types.StopReason `json:"stop_reason,omitempty"`
-	ResponseID        string            `json:"response_id,omitempty"`
-	SystemFingerprint string            `json:"system_fingerprint,omitempty"`
-	Error             string            `json:"error,omitempty"`
+	Message           *types.Message                   `json:"message,omitempty"`
+	Usage             *types.Usage                     `json:"usage,omitempty"`
+	StopReason        *types.StopReason                `json:"stop_reason,omitempty"`
+	ResponseID        string                           `json:"response_id,omitempty"`
+	SystemFingerprint string                           `json:"system_fingerprint,omitempty"`
+	Error             string                           `json:"error,omitempty"`
+	FailureDiagnostic *types.ProviderFailureDiagnostic `json:"failure_diagnostic,omitempty"`
 }
 
 type debugCallContext struct {
@@ -157,26 +160,32 @@ func newDebugRequest(params Params, model string) *DebugRequest {
 	if params.Model != "" {
 		model = params.Model
 	}
+	effectiveMaxOutputTokens := params.MaxTokens
+	if params.MaxOutputTokensOverride > 0 {
+		effectiveMaxOutputTokens = params.MaxOutputTokensOverride
+	}
 	return &DebugRequest{
-		Stream:                  true,
-		Model:                   model,
-		MaxTokens:               params.MaxTokens,
-		MaxOutputTokensOverride: params.MaxOutputTokensOverride,
-		System:                  params.JoinedSystemPrompt(),
-		SystemBlocks:            params.SystemTextBlocks(),
-		Messages:                sanitizeDebugMessages(params.Messages),
-		Tools:                   params.Tools,
-		ExtraToolSchemas:        params.ExtraToolSchemas,
-		ToolChoice:              params.ToolChoice,
-		Thinking:                params.Thinking,
-		TaskBudget:              params.TaskBudget,
-		Conversation:            params.Conversation,
-		PreviousResponseID:      params.PreviousResponseID,
-		Truncation:              params.Truncation,
-		PromptCacheKey:          params.PromptCacheKey,
-		ReasoningEffort:         params.ReasoningEffort,
-		ServiceTier:             params.ServiceTier,
-		UsePromptCache:          params.UsePromptCache,
+		Stream:                   true,
+		Model:                    model,
+		MaxTokens:                params.MaxTokens,
+		MaxOutputTokensOverride:  params.MaxOutputTokensOverride,
+		EffectiveMaxOutputTokens: effectiveMaxOutputTokens,
+		CatalogMaxOutputTokens:   LookupMaxOutput(model),
+		System:                   params.JoinedSystemPrompt(),
+		SystemBlocks:             params.SystemTextBlocks(),
+		Messages:                 sanitizeDebugMessages(params.Messages),
+		Tools:                    params.Tools,
+		ExtraToolSchemas:         params.ExtraToolSchemas,
+		ToolChoice:               params.ToolChoice,
+		Thinking:                 params.Thinking,
+		TaskBudget:               params.TaskBudget,
+		Conversation:             params.Conversation,
+		PreviousResponseID:       params.PreviousResponseID,
+		Truncation:               params.Truncation,
+		PromptCacheKey:           params.PromptCacheKey,
+		ReasoningEffort:          params.ReasoningEffort,
+		ServiceTier:              params.ServiceTier,
+		UsePromptCache:           params.UsePromptCache,
 	}
 }
 
@@ -262,6 +271,7 @@ func newDebugResponse(events []types.StreamEvent, responseError string) *DebugRe
 		case types.EventError:
 			if event.Error != nil {
 				response.Error = event.Error.Error()
+				response.FailureDiagnostic = event.Error.FailureDiagnostic.Clone()
 			}
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +92,7 @@ type retryAfterCapture struct {
 	mu        sync.Mutex
 	value     string
 	requestID string
+	doneSeen  bool
 }
 
 func (c *retryAfterCapture) set(value string) {
@@ -129,6 +131,71 @@ func (c *retryAfterCapture) getRequestID() string {
 	return c.requestID
 }
 
+func (c *retryAfterCapture) resetDone() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.doneSeen = false
+	c.mu.Unlock()
+}
+
+func (c *retryAfterCapture) markDone() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.doneSeen = true
+	c.mu.Unlock()
+}
+
+func (c *retryAfterCapture) sawDone() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.doneSeen
+}
+
+type openAIChatDoneCaptureBody struct {
+	io.ReadCloser
+	capture      *retryAfterCapture
+	line         []byte
+	lineOverflow bool
+}
+
+func (body *openAIChatDoneCaptureBody) Read(p []byte) (int, error) {
+	n, err := body.ReadCloser.Read(p)
+	if n <= 0 || body.capture == nil || body.capture.sawDone() {
+		return n, err
+	}
+	for _, next := range p[:n] {
+		if next != '\n' {
+			if len(body.line) < 4096 {
+				body.line = append(body.line, next)
+			} else {
+				body.lineOverflow = true
+			}
+			continue
+		}
+		if !body.lineOverflow && isOpenAIChatDoneLine(body.line) {
+			body.capture.markDone()
+		}
+		body.line = body.line[:0]
+		body.lineOverflow = false
+	}
+	return n, err
+}
+
+func isOpenAIChatDoneLine(line []byte) bool {
+	line = bytes.TrimSpace(line)
+	if !bytes.HasPrefix(line, []byte("data:")) {
+		return false
+	}
+	return bytes.Equal(bytes.TrimSpace(line[len("data:"):]), []byte("[DONE]"))
+}
+
 // retryAfterCaptureTransport retains only the Retry-After response field. The
 // go-openai SDK preserves status/body errors but discards response headers.
 type retryAfterCaptureTransport struct{ base http.RoundTripper }
@@ -136,12 +203,16 @@ type retryAfterCaptureTransport struct{ base http.RoundTripper }
 func (t *retryAfterCaptureTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	response, err := t.base.RoundTrip(req)
 	capture, _ := req.Context().Value(retryAfterCaptureContextKey{}).(*retryAfterCapture)
+	capture.resetDone()
 	if response == nil {
 		capture.set("")
 		capture.setRequestID("")
 	} else {
 		capture.set(response.Header.Get("Retry-After"))
 		capture.setRequestID(providerRequestID(response.Header))
+		if response.Body != nil && strings.HasSuffix(req.URL.Path, "/chat/completions") {
+			response.Body = &openAIChatDoneCaptureBody{ReadCloser: response.Body, capture: capture}
+		}
 	}
 	return response, err
 }
@@ -687,7 +758,10 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 	go func() {
 		defer close(ch)
 		defer stream.Close()
-		processStreamWithDialect(ctx, stream, ch, p.dialect)
+		processStreamWithDialect(
+			ctx, stream, ch, p.dialect,
+			firstNonEmpty(p.name, "openai"), model, p.baseURL, retryAfter.getRequestID(), retryAfter.sawDone,
+		)
 	}()
 
 	return ch, nil
@@ -695,7 +769,14 @@ func (p *OpenAIProvider) CreateStream(ctx context.Context, params Params) (<-cha
 
 // processStreamWithDialect reads chunks from the go-openai stream and emits types.StreamEvent values,
 // applying dialect-specific transformations (e.g. DeepSeek <think> tag parsing).
-func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletionStream, ch chan<- types.StreamEvent, dialect OpenAIDialect) {
+func processStreamWithDialect(
+	ctx context.Context,
+	stream *openai.ChatCompletionStream,
+	ch chan<- types.StreamEvent,
+	dialect OpenAIDialect,
+	providerName, model, baseURL, upstreamRequestID string,
+	doneSeen func() bool,
+) {
 	// sendEvent sends an event to the channel, respecting context cancellation.
 	send := func(evt types.StreamEvent) bool {
 		select {
@@ -715,10 +796,12 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 
 	// Track per-index tool-call state so we can emit block-start once per tool call.
 	type toolAcc struct {
-		id, name string
-		blockIdx int // actual block index assigned to this tool call
+		id, name  string
+		blockIdx  int // actual block index assigned to this tool call
+		arguments strings.Builder
 	}
 	toolCalls := make(map[int]*toolAcc)
+	toolCallIDs := make(map[string]int)
 	var textStarted bool
 
 	// DeepSeek <think> tag state machine
@@ -729,6 +812,60 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 	textBlockIdx := 0   // block index of the currently open text block
 	carry := ""         // leftover from previous chunk that might contain a partial tag
 	systemFingerprint := ""
+	terminalSeen := false
+	terminalReason := openai.FinishReason("")
+	choiceIndex := 0
+	choiceIndexSet := false
+	messageStarted := true
+	wireSequence := 0
+
+	buildFailureDiagnostic := func(point types.ProviderFailurePoint, outputIndex int, outputSet bool) *types.ProviderFailureDiagnostic {
+		completedItems := 0
+		if terminalSeen {
+			completedItems = len(toolCalls)
+		}
+		return &types.ProviderFailureDiagnostic{
+			SchemaVersion:     types.ProviderFailureDiagnosticSchema,
+			Provider:          CanonicalProviderName(providerName),
+			Model:             safeProviderProtocolIdentifier(model),
+			APIFormat:         "chat-completions",
+			Transport:         "sse",
+			Endpoint:          redactProviderEndpoint(baseURL+"/chat/completions", "chat-completions"),
+			UpstreamRequestID: safeProviderProtocolIdentifier(upstreamRequestID),
+			FailurePoint:      point, Stage: types.ProviderErrorStageStream,
+			Class: types.ProviderErrorClassPermanent, ReplaySafety: types.ProviderReplaySafe,
+			WireSequence: wireSequence, WireEvent: "chat.completion.chunk",
+			OutputIndex: outputIndex, OutputSet: outputSet,
+			MessageStarted: messageStarted, TrackedItems: len(toolCalls), CompletedItems: completedItems,
+		}
+	}
+	protocolError := func(point types.ProviderFailurePoint, outputIndex int, outputSet bool, code string) {
+		diagnostic := buildFailureDiagnostic(point, outputIndex, outputSet)
+		send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+			Type: "invalid_tool_call", Code: code,
+			Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopStreamClosedBeforeCommit),
+			Stage:   types.ProviderErrorStageStream, Class: types.ProviderErrorClassPermanent,
+			ReplaySafety: types.ProviderReplaySafe,
+		}, diagnostic)})
+	}
+	interrupted := func(point types.ProviderFailurePoint) {
+		diagnostic := buildFailureDiagnostic(point, 0, false)
+		diagnostic.Class = types.ProviderErrorClassTransport
+		send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+			Type: "stream_interrupted", Code: string(point),
+			Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopStreamClosedBeforeCommit),
+			Stage:   types.ProviderErrorStageStream, Class: types.ProviderErrorClassTransport,
+			ReplaySafety: types.ProviderReplaySafe,
+		}, diagnostic)})
+	}
+	orderedToolIndexes := func() []int {
+		indexes := make([]int, 0, len(toolCalls))
+		for index := range toolCalls {
+			indexes = append(indexes, index)
+		}
+		sort.Ints(indexes)
+		return indexes
+	}
 
 	for {
 		if ctx.Err() != nil {
@@ -746,6 +883,7 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 			})
 			return
 		}
+		wireSequence++
 		resp, usage, err := decodeOpenAIStreamChunk(raw, dialect)
 		if err != nil {
 			send(types.StreamEvent{
@@ -777,11 +915,41 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 		}
 
 		if len(resp.Choices) == 0 {
+			if terminalSeen && usage == nil {
+				protocolError(types.ProviderFailureChatLateDelta, 0, false, "late_empty_chunk_after_terminal")
+				return
+			}
 			continue
+		}
+		if usage != nil {
+			protocolError(types.ProviderFailureChatLateDelta, 0, false, "usage_chunk_contains_choice")
+			return
+		}
+		if len(resp.Choices) != 1 {
+			protocolError(types.ProviderFailureChatIdentityConflict, 0, false, "choice_count_conflict")
+			return
 		}
 
 		choice := resp.Choices[0]
+		if !choiceIndexSet {
+			choiceIndex = choice.Index
+			choiceIndexSet = true
+		} else if choice.Index != choiceIndex {
+			protocolError(types.ProviderFailureChatIdentityConflict, choice.Index, true, "choice_index_conflict")
+			return
+		}
 		delta := choice.Delta
+		if terminalSeen {
+			if delta.Role != "" || delta.Content != "" || delta.ReasoningContent != "" || delta.Refusal != "" || delta.FunctionCall != nil || len(delta.ToolCalls) > 0 ||
+				(choice.FinishReason != "" && choice.FinishReason != "null" && choice.FinishReason != terminalReason) {
+				protocolError(types.ProviderFailureChatLateDelta, 0, false, "late_delta_after_terminal")
+				return
+			}
+			// Some compatible endpoints repeat the same terminal reason in an
+			// otherwise-empty trailer before [DONE]. It carries no payload or new
+			// authorization fact, so ignore it without reopening any block.
+			continue
+		}
 		if dialect == DialectDeepSeek && delta.ReasoningContent != "" {
 			if textStarted {
 				if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: textBlockIdx}) {
@@ -811,6 +979,10 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 		}
 
 		// ── Text content ──────────────────────────────────────────────────────
+		if delta.FunctionCall != nil {
+			protocolError(types.ProviderFailureChatIdentityConflict, 0, false, "legacy_function_call_unsupported")
+			return
+		}
 		if delta.Content != "" {
 			if nativeReasoning {
 				if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: thinkBlockIdx}) {
@@ -966,12 +1138,26 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 				}
 				inThinkTag = false
 			}
-			idx := 0
-			if tc.Index != nil {
-				idx = *tc.Index
+			if tc.Index == nil || *tc.Index < 0 {
+				protocolError(types.ProviderFailureChatIdentityConflict, 0, false, "tool_index_missing")
+				return
+			}
+			idx := *tc.Index
+			if tc.Type != "" && tc.Type != openai.ToolTypeFunction {
+				protocolError(types.ProviderFailureChatIdentityConflict, idx, true, "tool_type_conflict")
+				return
 			}
 
-			if _, exists := toolCalls[idx]; !exists {
+			ta, exists := toolCalls[idx]
+			if !exists {
+				if tc.ID == "" || tc.Function.Name == "" {
+					protocolError(types.ProviderFailureChatIdentityConflict, idx, true, "tool_identity_missing")
+					return
+				}
+				if previousIndex, duplicate := toolCallIDs[tc.ID]; duplicate && previousIndex != idx {
+					protocolError(types.ProviderFailureChatIdentityConflict, idx, true, "tool_call_id_duplicate")
+					return
+				}
 				// First delta for this tool call: close any open text block, then
 				// announce a new tool_use content block.
 				if textStarted {
@@ -982,7 +1168,9 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 				}
 				blockIdx := nextBlockIdx
 				nextBlockIdx = blockIdx + 1
-				toolCalls[idx] = &toolAcc{id: tc.ID, name: tc.Function.Name, blockIdx: blockIdx}
+				ta = &toolAcc{id: tc.ID, name: tc.Function.Name, blockIdx: blockIdx}
+				toolCalls[idx] = ta
+				toolCallIDs[tc.ID] = idx
 				if !send(types.StreamEvent{
 					Type:  types.EventContentBlockStart,
 					Index: blockIdx,
@@ -994,11 +1182,25 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 				}) {
 					return
 				}
+			} else if (tc.ID != "" && tc.ID != ta.id) || (tc.Function.Name != "" && tc.Function.Name != ta.name) {
+				protocolError(types.ProviderFailureChatIdentityConflict, idx, true, "tool_identity_conflict")
+				return
 			}
 
 			// Stream argument JSON fragments.
 			if tc.Function.Arguments != "" {
-				ta := toolCalls[idx]
+				if ta.arguments.Len()+len(tc.Function.Arguments) > responsesToolInputLimit(ta.name) {
+					diagnostic := buildFailureDiagnostic(types.ProviderFailureChatToolInputLimit, idx, true)
+					diagnostic.StreamInputBytes = ta.arguments.Len() + len(tc.Function.Arguments)
+					send(types.StreamEvent{Type: types.EventError, Error: applyFailureDiagnosticToAPIError(&types.APIError{
+						Type: "stream_interrupted", Code: "tool_arguments_too_large",
+						Message: i18n.Text(i18n.DetectOrLoadLanguage(), i18n.KeyLoopStreamClosedBeforeCommit),
+						Stage:   types.ProviderErrorStageStream, Class: types.ProviderErrorClassTransport,
+						ReplaySafety: types.ProviderReplaySafe,
+					}, diagnostic)})
+					return
+				}
+				ta.arguments.WriteString(tc.Function.Arguments)
 				if !send(types.StreamEvent{
 					Type:  types.EventContentBlockDelta,
 					Index: ta.blockIdx,
@@ -1015,6 +1217,46 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 		// ── Finish reason ─────────────────────────────────────────────────────
 		// go-openai uses "" for non-final chunks and "null" for explicit JSON null.
 		if fr := choice.FinishReason; fr != "" && fr != "null" {
+			terminalSeen = true
+			terminalReason = fr
+			if len(toolCalls) > 0 && fr != openai.FinishReasonToolCalls {
+				protocolError(types.ProviderFailureChatFinishReasonMismatch, 0, false, "tool_finish_reason_mismatch")
+				return
+			}
+			if len(toolCalls) == 0 && fr == openai.FinishReasonToolCalls {
+				protocolError(types.ProviderFailureChatFinishReasonMismatch, 0, false, "tool_finish_without_calls")
+				return
+			}
+			switch fr {
+			case openai.FinishReasonStop, openai.FinishReasonLength, openai.FinishReasonContentFilter, openai.FinishReasonToolCalls:
+			default:
+				protocolError(types.ProviderFailureChatFinishReasonMismatch, 0, false, "unsupported_finish_reason")
+				return
+			}
+
+			// A terminal reason is the provider-native authorization boundary.
+			// Resolve a partial DeepSeek tag before closing its content block; never
+			// emit a payload delta after the corresponding block stop.
+			if dialect == DialectDeepSeek && carry != "" {
+				if inThinkTag {
+					if !send(types.StreamEvent{Type: types.EventContentBlockDelta, Index: thinkBlockIdx, Delta: &types.ContentDelta{Type: "thinking_delta", Thinking: carry}}) {
+						return
+					}
+				} else {
+					if !textStarted {
+						textBlockIdx = nextBlockIdx
+						nextBlockIdx++
+						if !send(types.StreamEvent{Type: types.EventContentBlockStart, Index: textBlockIdx, ContentBlock: &types.ContentDelta{Type: types.ContentTypeText}}) {
+							return
+						}
+						textStarted = true
+					}
+					if !send(types.StreamEvent{Type: types.EventContentBlockDelta, Index: textBlockIdx, Delta: &types.ContentDelta{Type: "text_delta", Text: carry}}) {
+						return
+					}
+				}
+				carry = ""
+			}
 			if nativeReasoning {
 				if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: thinkBlockIdx}) {
 					return
@@ -1031,8 +1273,10 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 				if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: textBlockIdx}) {
 					return
 				}
+				textStarted = false
 			}
-			for _, ta := range toolCalls {
+			for _, index := range orderedToolIndexes() {
+				ta := toolCalls[index]
 				if !send(types.StreamEvent{Type: types.EventContentBlockStop, Index: ta.blockIdx}) {
 					return
 				}
@@ -1050,40 +1294,32 @@ func processStreamWithDialect(ctx context.Context, stream *openai.ChatCompletion
 			}
 		}
 	}
+	if !terminalSeen || doneSeen == nil || !doneSeen() {
+		interrupted(types.ProviderFailureChatEOFBeforeTerminal)
+		return
+	}
 
-	// Flush any remaining carry buffer content (partial tag that turned out to be just text)
-	if dialect == DialectDeepSeek && carry != "" {
-		if inThinkTag {
-			send(types.StreamEvent{
-				Type:  types.EventContentBlockDelta,
-				Index: thinkBlockIdx,
-				Delta: &types.ContentDelta{Type: "thinking_delta", Thinking: carry},
-			})
-		} else {
-			if !textStarted {
-				send(types.StreamEvent{
-					Type:         types.EventContentBlockStart,
-					Index:        nextBlockIdx,
-					ContentBlock: &types.ContentDelta{Type: types.ContentTypeText},
-				})
-				textStarted = true
-				textBlockIdx = nextBlockIdx
-			}
-			send(types.StreamEvent{
-				Type:  types.EventContentBlockDelta,
-				Index: textBlockIdx,
-				Delta: &types.ContentDelta{Type: "text_delta", Text: carry},
-			})
+	responseStatus := "completed"
+	if terminalReason == openai.FinishReasonLength || terminalReason == openai.FinishReasonContentFilter {
+		responseStatus = "incomplete"
+	}
+	toolCommits := make([]types.ProviderToolCallCommit, 0, len(toolCalls))
+	for _, index := range orderedToolIndexes() {
+		ta := toolCalls[index]
+		rawInput := ta.arguments.String()
+		if rawInput == "" {
+			rawInput = "{}"
 		}
+		toolCommits = append(toolCommits, types.ProviderToolCallCommit{
+			OutputIndex: ta.blockIdx, ToolType: types.ToolDefinitionTypeFunction,
+			CallID: ta.id, Name: ta.name, RawInput: rawInput,
+		})
 	}
-	if nativeReasoning {
-		send(types.StreamEvent{Type: types.EventContentBlockStop, Index: thinkBlockIdx})
-	}
-	if inThinkTag {
-		send(types.StreamEvent{Type: types.EventContentBlockStop, Index: thinkBlockIdx})
-	}
-
-	send(types.StreamEvent{Type: types.EventMessageStop, SystemFingerprint: systemFingerprint})
+	receipt := types.NewProviderToolCommitReceipt(CanonicalProviderName(providerName), "chat-completions", responseStatus, toolCommits)
+	send(types.StreamEvent{
+		Type: types.EventMessageStop, SystemFingerprint: systemFingerprint,
+		ProviderCommitReceipt: receipt,
+	})
 }
 
 // splitAtPartialTag splits content into a safe prefix and a remainder that

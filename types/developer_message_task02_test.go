@@ -52,6 +52,7 @@ func TestDeveloperMessageJSONRoundTrip(t *testing.T) {
 
 func TestDeveloperMessageSessionPersistenceRoundTrip(t *testing.T) {
 	store := session.NewFileStore(t.TempDir())
+	t.Cleanup(func() { _ = store.Close() })
 	want := types.DeveloperMessage("current catalog", types.DeveloperMessageMetadata{
 		Kind:     types.DeveloperMessageKindSkillCatalogSnapshot,
 		Revision: 41,

@@ -170,7 +170,7 @@ func init() {
 		KeyREPLTUIContextWindowRange:     repl("Context window must be between %d and %d", "上下文窗口必须介于 %d 和 %d 之间", "Das Kontextfenster muss zwischen %d und %d liegen", "コンテキストウィンドウは %d から %d の範囲にしてください", "컨텍스트 창은 %d에서 %d 사이여야 합니다", "Размер окна контекста должен быть от %d до %d"),
 		KeyREPLTUIModeSwitchFailed:       repl("Could not switch mode: %s", "无法切换模式：%s", "Modus konnte nicht gewechselt werden: %s", "モードを切り替えられませんでした: %s", "모드를 전환하지 못했습니다: %s", "Не удалось переключить режим: %s"),
 		KeyREPLTUIActivityActionFailed:   repl("Activity action failed: %s", "活动操作失败：%s", "Aktivitätsaktion fehlgeschlagen: %s", "アクティビティ操作に失敗しました: %s", "활동 작업 실패: %s", "Действие с активностью не выполнено: %s"),
-		KeyREPLTUILifecycleSaveFailed:    repl("Could not save TUI session state", "无法保存 TUI 会话状态", "TUI-Sitzungsstatus konnte nicht gespeichert werden", "TUI セッションの状態を保存できませんでした", "TUI 세션 상태를 저장하지 못했습니다", "Не удалось сохранить состояние сеанса TUI"),
+		KeyREPLTUILifecycleSaveFailed:    repl("Could not save TUI session state: %v", "无法保存 TUI 会话状态：%v", "TUI-Sitzungsstatus konnte nicht gespeichert werden: %v", "TUI セッションの状態を保存できませんでした: %v", "TUI 세션 상태를 저장하지 못했습니다: %v", "Не удалось сохранить состояние сеанса TUI: %v"),
 		KeyREPLTUICleanupFailed:          repl("TUI cleanup failed", "TUI 清理失败", "TUI-Bereinigung fehlgeschlagen", "TUI のクリーンアップに失敗しました", "TUI 정리 실패", "Не удалось очистить TUI"),
 		KeyREPLTUIAgentGroupTotal:        repl("Agent group: %d total", "Agent 组：共 %d 个", "Agent-Gruppe: insgesamt %d", "Agent グループ: 合計 %d", "Agent 그룹: 총 %d개", "Группа Agent: всего %d"),
 		KeyREPLTUIAgentCountFailed:       repl("%d failed", "%d 个失败", "%d fehlgeschlagen", "%d 件失敗", "%d개 실패", "ошибок: %d"),

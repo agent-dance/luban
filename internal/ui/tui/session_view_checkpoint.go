@@ -935,7 +935,7 @@ func readSessionViewJSON(path string, limit int64, target any) (bool, error) {
 	if err != nil {
 		return false, i18n.WrapError(i18n.KeyTUISessionViewOpenCheckpoint, err)
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 || info.Size() < 0 || info.Size() > limit {
+	if !info.Mode().IsRegular() || !privateRuntimeFileModeAcceptable(info.Mode()) || info.Size() < 0 || info.Size() > limit {
 		return false, i18n.NewError(i18n.KeyTUISessionViewInvalidCheckpoint)
 	}
 	file, err := os.Open(path)

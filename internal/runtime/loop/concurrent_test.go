@@ -68,6 +68,26 @@ type inputAwareBatchTool struct {
 	orderedBatchTool
 }
 
+type atomicAdmissionProbeTool struct {
+	name     string
+	executed *atomic.Int32
+}
+
+func (t *atomicAdmissionProbeTool) Name() string        { return t.name }
+func (t *atomicAdmissionProbeTool) Description() string { return "admission probe" }
+func (t *atomicAdmissionProbeTool) Schema() types.JSONSchema {
+	return types.StrictObjectSchema(map[string]any{
+		"payload": map[string]any{
+			"type": "object", "properties": map[string]any{"value": map[string]any{"type": "string"}},
+			"required": []string{"value"}, "additionalProperties": false,
+		},
+	}, "payload")
+}
+func (t *atomicAdmissionProbeTool) Execute(context.Context, map[string]any) (types.ToolResult, error) {
+	t.executed.Add(1)
+	return types.ToolResult{Content: "executed"}, nil
+}
+
 type fusionMutationData struct {
 	receipt workspacerevision.Receipt
 }
@@ -188,6 +208,31 @@ func (t *fusionVerificationTool) Execute(ctx context.Context, _ map[string]any) 
 func (t *inputAwareBatchTool) ToolMetadata(input map[string]any) types.ToolMetadata {
 	safe, _ := input["safe"].(bool)
 	return types.ToolMetadata{ConcurrencySafe: safe}
+}
+
+func TestToolBatchAdmissionIsAtomicBeforeExecution(t *testing.T) {
+	reg := registry.New()
+	var firstExecuted atomic.Int32
+	var secondExecuted atomic.Int32
+	reg.Register(&atomicAdmissionProbeTool{name: "First", executed: &firstExecuted})
+	reg.Register(&atomicAdmissionProbeTool{name: "Second", executed: &secondExecuted})
+
+	result, err := executeToolsConcurrentlyDetailed(
+		context.Background(), reg, nil, nil, "session", executioncontract.ToolExecutionContext{},
+		[]types.ToolUseBlock{
+			{ID: "call_first", Name: "First", Input: map[string]any{"payload": map[string]any{"value": "ok"}}},
+			{ID: "call_second", Name: "Second", Input: map[string]any{"payload": map[string]any{"unexpected": "invalid"}}},
+		}, nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstExecuted.Load() != 0 || secondExecuted.Load() != 0 {
+		t.Fatalf("invalid batch crossed execution boundary: first=%d second=%d", firstExecuted.Load(), secondExecuted.Load())
+	}
+	if len(result.Results) != 2 || !result.Results[0].IsError || !result.Results[1].IsError {
+		t.Fatalf("atomic rejection results = %#v", result.Results)
+	}
 }
 
 type recordingPermissionHandler struct {
@@ -890,7 +935,7 @@ func TestPreToolUseModifiedInputFeedsPermissionAndExecution(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPreToolUse,
-		Command: `printf '{"modified_input":{"value":"hooked"}}'`,
+		Command: testHookOutputCommand(`{"modified_input":{"value":"hooked"}}`),
 		Timeout: 5,
 	}})
 	perm := &recordingPermissionHandler{}
@@ -921,7 +966,7 @@ func TestPreToolUsePermissionAllowBypassesPermissionHandler(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPreToolUse,
-		Command: `printf '{"permissionBehavior":"allow","updatedInput":{"value":"approved"}}'`,
+		Command: testHookOutputCommand(`{"permissionBehavior":"allow","updatedInput":{"value":"approved"}}`),
 		Timeout: 5,
 	}})
 	toolUses := []types.ToolUseBlock{
@@ -950,7 +995,7 @@ func TestPostToolUseFailureRunsForErrorResultAndExecutionError(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPostToolUseFailure,
-		Command: `printf '{"system_reminder":"failure hook ran"}'`,
+		Command: testHookOutputCommand(`{"system_reminder":"failure hook ran"}`),
 		Timeout: 5,
 	}})
 	toolUses := []types.ToolUseBlock{
@@ -1087,7 +1132,7 @@ func TestHookStoppedContinuationPreventsNextModelCall(t *testing.T) {
 	}})
 	runner := hooks.NewRunner([]hooks.Hook{{
 		Type:    hooks.HookPostToolUse,
-		Command: `printf '{"prevent_continuation":true,"stop_reason":"stop after tool"}'`,
+		Command: testHookOutputCommand(`{"prevent_continuation":true,"stop_reason":"stop after tool"}`),
 		Timeout: 5,
 	}})
 	ql := New(prov, reg, Config{MaxTurns: 5, MaxTokens: 1024, HookRunner: runner})

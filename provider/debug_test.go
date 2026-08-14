@@ -110,6 +110,9 @@ func TestProviderRefDebugObserverCapturesFullExchange(t *testing.T) {
 	if request.Request.System != "full system prompt" {
 		t.Fatalf("request system = %q", request.Request.System)
 	}
+	if request.Request.EffectiveMaxOutputTokens != 2048 {
+		t.Fatalf("effective max output = %d, want 2048", request.Request.EffectiveMaxOutputTokens)
+	}
 	if response.Phase != DebugPhaseResponse || response.Response == nil {
 		t.Fatalf("second debug event = %#v, want response", response)
 	}

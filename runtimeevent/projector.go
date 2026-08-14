@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/agent-dance/luban/i18n"
@@ -77,13 +78,14 @@ type ProjectedRuntimeEvent struct {
 	ActorID           string `json:"actor_id,omitempty"`
 	ActorType         string `json:"actor_type,omitempty"`
 
-	Outcome         types.ToolOutcome          `json:"outcome,omitempty"`
-	Code            string                     `json:"code"`
-	Message         string                     `json:"message"`
-	PublicKey       i18n.Key                   `json:"public_key,omitempty"`
-	PublicArgs      []any                      `json:"public_args,omitempty"`
-	EvidenceRef     *types.RuntimeEvidenceRef  `json:"evidence_ref,omitempty"`
-	ProviderRequest *ProviderRequestDiagnostic `json:"provider_request,omitempty"`
+	Outcome         types.ToolOutcome                `json:"outcome,omitempty"`
+	Code            string                           `json:"code"`
+	Message         string                           `json:"message"`
+	PublicKey       i18n.Key                         `json:"public_key,omitempty"`
+	PublicArgs      []any                            `json:"public_args,omitempty"`
+	EvidenceRef     *types.RuntimeEvidenceRef        `json:"evidence_ref,omitempty"`
+	ProviderRequest *ProviderRequestDiagnostic       `json:"provider_request,omitempty"`
+	ProviderFailure *types.ProviderFailureDiagnostic `json:"provider_failure,omitempty"`
 
 	PrivateCause    string         `json:"private_cause,omitempty"`
 	PrivateMetadata map[string]any `json:"private_metadata,omitempty"`
@@ -148,6 +150,7 @@ func (AudienceProjector) Project(event types.RuntimeEvent, options ProjectionOpt
 		projected.EvidenceRef = cloneEvidenceRef(event.EvidenceRef)
 		if apiError := runtimeEventAPIError(event); apiError != nil {
 			projected.ProviderRequest = projectProviderRequestDiagnostic(apiError, lang)
+			projected.ProviderFailure = projectProviderFailureDiagnostic(apiError.FailureDiagnostic)
 		}
 	}
 	if options.Redaction == RedactionRaw {
@@ -155,6 +158,64 @@ func (AudienceProjector) Project(event types.RuntimeEvent, options ProjectionOpt
 		projected.PrivateMetadata = cloneMetadata(event.PrivateMetadata)
 	}
 	return projected, nil
+}
+
+func projectProviderFailureDiagnostic(source *types.ProviderFailureDiagnostic) *types.ProviderFailureDiagnostic {
+	if source == nil || source.SchemaVersion != types.ProviderFailureDiagnosticSchema {
+		return nil
+	}
+	projected := source.Clone()
+	projected.LocalRequestID = safeDiagnosticIdentifier(projected.LocalRequestID)
+	projected.UpstreamRequestID = safeDiagnosticIdentifier(projected.UpstreamRequestID)
+	projected.ResponseID = safeDiagnosticIdentifier(projected.ResponseID)
+	projected.Provider = safeDiagnosticIdentifier(projected.Provider)
+	projected.Model = safeDiagnosticIdentifier(projected.Model)
+	projected.APIFormat = safeAPIFormat(projected.APIFormat)
+	projected.Endpoint = safeDiagnosticEndpoint(projected.Endpoint)
+	if projected.HTTPStatus < 100 || projected.HTTPStatus > 599 {
+		projected.HTTPStatus = 0
+	}
+	if projected.EffectiveMaxOutputTokens < 0 {
+		projected.EffectiveMaxOutputTokens = 0
+	}
+	if projected.CatalogMaxOutputTokens < 0 {
+		projected.CatalogMaxOutputTokens = 0
+	}
+	if !slices.Contains([]string{"max_output_tokens", "prompt_cache_key", "truncation", "output_config", "reasoning", "parallel_tool_calls"}, projected.DroppedField) {
+		projected.DroppedField = ""
+	}
+	if !slices.Contains([]string{"max_output_tokens", "max_tokens", "content_filter", "safety", "policy", "missing", "unknown"}, projected.IncompleteReason) {
+		projected.IncompleteReason = ""
+	}
+	switch projected.Transport {
+	case "https", "websocket":
+	default:
+		projected.Transport = ""
+	}
+	if !validProviderFailurePoint(projected.FailurePoint) {
+		projected.FailurePoint = types.ProviderFailureUnknown
+	}
+	if projected.WireEvent != "unknown" && !strings.HasPrefix(projected.WireEvent, "response.") && projected.WireEvent != "error" {
+		projected.WireEvent = "unknown"
+	}
+	if projected.ItemType != "message" && projected.ItemType != "function_call" && projected.ItemType != "custom_tool_call" && projected.ItemType != "reasoning" {
+		projected.ItemType = ""
+	}
+	if projected.ItemStatus != "in_progress" && projected.ItemStatus != "completed" && projected.ItemStatus != "incomplete" && projected.ItemStatus != "failed" {
+		projected.ItemStatus = ""
+	}
+	if projected.Decision != "terminal" && projected.Decision != "retry" && projected.Decision != "fallback" && projected.Decision != "cancel" {
+		projected.Decision = ""
+	}
+	return projected
+}
+
+func validProviderFailurePoint(value types.ProviderFailurePoint) bool {
+	if value == types.ProviderFailureUnknown {
+		return true
+	}
+	return strings.HasPrefix(string(value), "responses.") || strings.HasPrefix(string(value), "chat.") ||
+		strings.HasPrefix(string(value), "anthropic.") || strings.HasPrefix(string(value), "runtime.")
 }
 
 func runtimeEventAPIError(event types.RuntimeEvent) *types.APIError {

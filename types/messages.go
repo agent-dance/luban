@@ -190,12 +190,14 @@ func (continuation *ProviderContinuation) Clone() *ProviderContinuation {
 
 // ToolUseBlock represents a tool invocation from the assistant
 type ToolUseBlock struct {
-	Type     ContentType        `json:"type"`
-	ID       string             `json:"id"`
-	Name     string             `json:"name"`
-	Input    map[string]any     `json:"input"`
-	ToolType ToolDefinitionType `json:"tool_type,omitempty"`
-	RawInput string             `json:"raw_input,omitempty"`
+	Type           ContentType        `json:"type"`
+	ID             string             `json:"id"`
+	Name           string             `json:"name"`
+	Input          map[string]any     `json:"input"`
+	ToolType       ToolDefinitionType `json:"tool_type,omitempty"`
+	RawInput       string             `json:"raw_input,omitempty"`
+	ProviderItemID string             `json:"provider_item_id,omitempty"`
+	ProviderStatus string             `json:"provider_status,omitempty"`
 }
 
 func (b ToolUseBlock) GetType() ContentType { return ContentTypeToolUse }
@@ -209,23 +211,39 @@ const (
 	ToolInputFailureCustomDecode ToolInputFailureKind = "custom_decode"
 )
 
+// ToolInputDiagnosticKind is a safe, value-free classification of a malformed
+// JSON function-call payload. It is suitable for durable audit records and
+// bounded model recovery prompts.
+type ToolInputDiagnosticKind string
+
+const (
+	ToolInputDiagnosticMissingValue  ToolInputDiagnosticKind = "missing_value"
+	ToolInputDiagnosticUnexpectedEOF ToolInputDiagnosticKind = "unexpected_eof"
+	ToolInputDiagnosticInvalidJSON   ToolInputDiagnosticKind = "invalid_json_syntax"
+	ToolInputDiagnosticNonObject     ToolInputDiagnosticKind = "non_object"
+	ToolInputDiagnosticTrailingData  ToolInputDiagnosticKind = "trailing_data"
+)
+
 // InvalidToolUseBlock is the durable audit record for a provider-committed
 // tool call that was never executed. RawInput is a bounded diagnostic prefix;
 // InputBytes and InputDigest describe the complete provider payload.
 // Provider/model projections must strip this block before sampling.
 type InvalidToolUseBlock struct {
-	Type              ContentType          `json:"type"`
-	ID                string               `json:"id,omitempty"`
-	Name              string               `json:"name"`
-	ToolType          ToolDefinitionType   `json:"tool_type,omitempty"`
-	RawInput          string               `json:"raw_input,omitempty"`
-	InputBytes        int                  `json:"input_bytes"`
-	InputDigest       string               `json:"input_digest"`
-	RawInputTruncated bool                 `json:"raw_input_truncated,omitempty"`
-	ProviderItemID    string               `json:"provider_item_id,omitempty"`
-	ProviderStatus    string               `json:"provider_status,omitempty"`
-	FailureKind       ToolInputFailureKind `json:"failure_kind"`
-	Recoverable       bool                 `json:"recoverable"`
+	Type              ContentType             `json:"type"`
+	ID                string                  `json:"id,omitempty"`
+	Name              string                  `json:"name"`
+	ToolType          ToolDefinitionType      `json:"tool_type,omitempty"`
+	RawInput          string                  `json:"raw_input,omitempty"`
+	InputBytes        int                     `json:"input_bytes"`
+	InputDigest       string                  `json:"input_digest"`
+	RawInputTruncated bool                    `json:"raw_input_truncated,omitempty"`
+	ProviderItemID    string                  `json:"provider_item_id,omitempty"`
+	ProviderStatus    string                  `json:"provider_status,omitempty"`
+	FailureKind       ToolInputFailureKind    `json:"failure_kind"`
+	Recoverable       bool                    `json:"recoverable"`
+	DiagnosticKind    ToolInputDiagnosticKind `json:"diagnostic_kind,omitempty"`
+	DiagnosticOffset  int                     `json:"diagnostic_offset,omitempty"`
+	DiagnosticField   string                  `json:"diagnostic_field,omitempty"`
 }
 
 func (b InvalidToolUseBlock) GetType() ContentType { return ContentTypeInvalidToolUse }
@@ -399,6 +417,7 @@ type Message struct {
 	ID                string                    `json:"id,omitempty"`
 	Role              Role                      `json:"role"`
 	Content           []ContentBlock            `json:"content"`
+	StopReason        StopReason                `json:"stop_reason,omitempty"`
 	IsMeta            bool                      `json:"is_meta,omitempty"`
 	DeveloperMetadata *DeveloperMessageMetadata `json:"developer_metadata,omitempty"`
 	InternalKind      InternalMessageKind       `json:"internal_kind,omitempty"`

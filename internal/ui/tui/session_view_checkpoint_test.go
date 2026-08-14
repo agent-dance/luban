@@ -546,6 +546,38 @@ func checkpointStateFixture(t *testing.T, identity SessionIdentity, persisted []
 	return state
 }
 
+func TestEmptySessionViewCheckpointPublishesOnCurrentPlatform(t *testing.T) {
+	identity := SessionIdentity{Namespace: "/workspace", SessionID: "empty-checkpoint", Epoch: 1}
+	state := checkpointStateFixture(t, identity, nil)
+	root := t.TempDir()
+	if err := SaveSessionViewCheckpoint(root, state, nil); err != nil {
+		t.Fatalf("SaveSessionViewCheckpoint() error = %v", err)
+	}
+	digest, err := sessionViewTranscriptDigest(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(sessionViewCheckpointPath(root, 0, digest)); err != nil {
+		t.Fatalf("empty checkpoint was not published: %v", err)
+	}
+	if _, err := os.Stat(sessionViewManifestPath(root)); err != nil {
+		t.Fatalf("empty checkpoint manifest was not published: %v", err)
+	}
+}
+
+func TestSessionViewCheckpointRoundTripsOnCurrentPlatform(t *testing.T) {
+	persisted := []types.Message{types.UserMessage("checkpoint payload")}
+	identity := SessionIdentity{Namespace: "/workspace", SessionID: "checkpoint-round-trip", Epoch: 1}
+	state := checkpointStateFixture(t, identity, persisted)
+	root := t.TempDir()
+	if err := SaveSessionViewCheckpoint(root, state, persisted); err != nil {
+		t.Fatal(err)
+	}
+	if _, restored, err := LoadSessionViewCheckpoint(root, persisted, identity); err != nil || !restored {
+		t.Fatalf("LoadSessionViewCheckpoint() restored=%v err=%v", restored, err)
+	}
+}
+
 func checkpointPaginationStateFixture(t *testing.T, identity SessionIdentity) (*AppState, []types.Message) {
 	t.Helper()
 	const toolUseID = "inspect-page"

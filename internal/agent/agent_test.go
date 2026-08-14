@@ -2429,6 +2429,46 @@ func TestAgentToolBuildLoopUsesInlineJSONAgentProfile(t *testing.T) {
 	}
 }
 
+func TestAgentToolDeepSeekChildUsesHarnessDefaultOutputBudget(t *testing.T) {
+	backend := &deepSeekCaptureAgentProvider{captureAgentProvider: captureAgentProvider{
+		responses: []string{"done"},
+	}}
+	tool := &AgentTool{Provider: backend, Registry: registry.New()}
+	bundle, err := tool.buildSubAgentLoopWithOptions("agent-deepseek-budget", agentcontract.Input{
+		Prompt: "inspect",
+	}, agentLoopOptions{Profile: &agentProfile{Name: "general-purpose"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runAgentCleanup(bundle.Cleanup)
+	if _, err := runAgentQueryLoop(context.Background(), bundle.Loop, bundle.Metadata, "agent-deepseek-budget", "inspect", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.params) != 1 || backend.params[0].MaxTokens != 256000 {
+		t.Fatalf("DeepSeek child request params = %#v, want max tokens 256000", backend.params)
+	}
+}
+
+func TestAgentToolDeepSeekChildPreservesExplicitOutputBudget(t *testing.T) {
+	backend := &deepSeekCaptureAgentProvider{captureAgentProvider: captureAgentProvider{
+		responses: []string{"done"},
+	}}
+	tool := &AgentTool{Provider: backend, Registry: registry.New(), MaxTokens: 32000}
+	bundle, err := tool.buildSubAgentLoopWithOptions("agent-deepseek-explicit-budget", agentcontract.Input{
+		Prompt: "inspect",
+	}, agentLoopOptions{Profile: &agentProfile{Name: "general-purpose"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer runAgentCleanup(bundle.Cleanup)
+	if _, err := runAgentQueryLoop(context.Background(), bundle.Loop, bundle.Metadata, "agent-deepseek-explicit-budget", "inspect", nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(backend.params) != 1 || backend.params[0].MaxTokens != 32000 {
+		t.Fatalf("DeepSeek child request params = %#v, want explicit max tokens 32000", backend.params)
+	}
+}
+
 func TestAgentToolInlineJSONExplicitEmptyToolsDeniesAllTools(t *testing.T) {
 	tool := &AgentTool{Registry: registry.New()}
 	tool.Registry.Register(&toolfile.FileReadTool{})
@@ -3180,6 +3220,13 @@ type captureAgentProvider struct {
 	params    []provider.Params
 	delay     time.Duration
 }
+
+type deepSeekCaptureAgentProvider struct {
+	captureAgentProvider
+}
+
+func (*deepSeekCaptureAgentProvider) Name() string    { return "deepseek" }
+func (*deepSeekCaptureAgentProvider) ModelID() string { return "deepseek-v4-flash" }
 
 type turnLimitAgentProvider struct {
 	toolName    string

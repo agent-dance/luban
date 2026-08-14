@@ -231,25 +231,37 @@ type RuntimeProgressEvent struct {
 // transport request. ErrorMessage is semantic copy; raw provider errors never
 // cross the SDK boundary.
 type RequestStatusEvent struct {
-	RequestID              string `json:"request_id"`
-	Phase                  string `json:"phase"`
-	Status                 string `json:"status"`
-	StartedAt              string `json:"started_at,omitempty"`
-	EndedAt                string `json:"ended_at,omitempty"`
-	Attempt                int    `json:"attempt,omitempty"`
-	MaxAttempts            int    `json:"max_attempts,omitempty"`
-	RetryCount             int    `json:"retry_count,omitempty"`
-	RetryDelayMilliseconds int64  `json:"retry_delay_ms,omitempty"`
-	RetryKind              string `json:"retry_kind,omitempty"`
-	RequestMilliseconds    int64  `json:"request_ms,omitempty"`
-	FirstTokenMilliseconds int64  `json:"first_token_ms,omitempty"`
-	TotalMilliseconds      int64  `json:"total_ms,omitempty"`
-	InputTokens            int    `json:"input_tokens,omitempty"`
-	CacheReadInputTokens   int    `json:"cache_read_input_tokens,omitempty"`
-	CacheWriteInputTokens  int    `json:"cache_write_input_tokens,omitempty"`
-	OutputTokens           int    `json:"output_tokens,omitempty"`
-	ErrorCode              string `json:"error_code,omitempty"`
-	ErrorMessage           string `json:"error_message,omitempty"`
+	RequestID              string   `json:"request_id"`
+	Provider               string   `json:"provider,omitempty"`
+	Model                  string   `json:"model,omitempty"`
+	APIFormat              string   `json:"api_format,omitempty"`
+	ReasoningEffort        string   `json:"reasoning_effort,omitempty"`
+	MaxOutputTokens        int      `json:"max_output_tokens,omitempty"`
+	CatalogMaxOutputTokens int      `json:"catalog_max_output_tokens,omitempty"`
+	Phase                  string   `json:"phase"`
+	Status                 string   `json:"status"`
+	StartedAt              string   `json:"started_at,omitempty"`
+	EndedAt                string   `json:"ended_at,omitempty"`
+	Attempt                int      `json:"attempt,omitempty"`
+	MaxAttempts            int      `json:"max_attempts,omitempty"`
+	RetryCount             int      `json:"retry_count,omitempty"`
+	RetryDelayMilliseconds int64    `json:"retry_delay_ms,omitempty"`
+	RetryKind              string   `json:"retry_kind,omitempty"`
+	RequestMilliseconds    int64    `json:"request_ms,omitempty"`
+	FirstTokenMilliseconds int64    `json:"first_token_ms,omitempty"`
+	TotalMilliseconds      int64    `json:"total_ms,omitempty"`
+	InputTokens            int      `json:"input_tokens,omitempty"`
+	CacheReadInputTokens   int      `json:"cache_read_input_tokens,omitempty"`
+	CacheWriteInputTokens  int      `json:"cache_write_input_tokens,omitempty"`
+	OutputTokens           int      `json:"output_tokens,omitempty"`
+	FailurePoint           string   `json:"failure_point,omitempty"`
+	FailureStage           string   `json:"failure_stage,omitempty"`
+	FailureClass           string   `json:"failure_class,omitempty"`
+	ReplaySafety           string   `json:"replay_safety,omitempty"`
+	Decision               string   `json:"decision,omitempty"`
+	DroppedFields          []string `json:"dropped_fields,omitempty"`
+	ErrorCode              string   `json:"error_code,omitempty"`
+	ErrorMessage           string   `json:"error_message,omitempty"`
 }
 
 // ToolRoundMetricsEvent is the public content-free performance summary for a

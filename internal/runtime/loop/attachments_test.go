@@ -37,7 +37,7 @@ func (p *attachmentCaptureProvider) CreateStream(ctx context.Context, params pro
 		if idx >= len(p.responses) {
 			return
 		}
-		for _, event := range p.responses[idx] {
+		for _, event := range attachTestProviderCommitReceipts(p.responses[idx]) {
 			if ctx.Err() != nil {
 				return
 			}
@@ -149,14 +149,14 @@ func (r mcpStateRefresher) RefreshTools(context.Context, *registry.Registry) (*r
 
 func attachmentToolUseEvents(id, name string, input map[string]any) []types.StreamEvent {
 	data, _ := json.Marshal(input)
-	return []types.StreamEvent{
+	return attachTestProviderCommitReceipts([]types.StreamEvent{
 		{Type: types.EventMessageStart},
 		{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{Type: types.ContentTypeToolUse, ID: id, Name: name}},
 		{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: string(data)}},
 		{Type: types.EventContentBlockStop, Index: 0},
 		{Type: types.EventMessageDelta, StopReason: attachmentStopReasonPtr(types.StopReasonToolUse)},
 		{Type: types.EventMessageStop},
-	}
+	})
 }
 
 func attachmentTextEvents(text string) []types.StreamEvent {

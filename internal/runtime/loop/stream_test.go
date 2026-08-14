@@ -75,7 +75,7 @@ func TestProcessStreamCommitFlushesTextWithoutContentBlockStop(t *testing.T) {
 	}
 }
 
-func TestProcessStreamCommitFlushesToolWithoutContentBlockStop(t *testing.T) {
+func TestProcessStreamRejectsOpenToolAtCommit(t *testing.T) {
 	ql := &QueryLoop{}
 	onEvent := func(e stream.Event) {}
 
@@ -90,15 +90,12 @@ func TestProcessStreamCommitFlushesToolWithoutContentBlockStop(t *testing.T) {
 	)
 
 	msg, _, _, err := ql.processStream(context.Background(), stream, 1, onEvent)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil || msg != nil {
+		t.Fatalf("open tool commit = (%#v, %v), want fail closed", msg, err)
 	}
-	uses := msg.GetToolUses()
-	if len(uses) != 1 {
-		t.Fatalf("expected 1 flushed tool use, got %d", len(uses))
-	}
-	if uses[0].Name != "Bash" {
-		t.Errorf("expected Bash, got %s", uses[0].Name)
+	var partial *PartialStreamError
+	if !errors.As(err, &partial) {
+		t.Fatalf("error = %T, want PartialStreamError", err)
 	}
 }
 
@@ -311,5 +308,39 @@ func TestProcessStreamCommitSurvivesTrailingDisconnect(t *testing.T) {
 	}
 	if ql.lastResponseID != "resp_committed" {
 		t.Fatalf("lastResponseID = %q, want committed response id", ql.lastResponseID)
+	}
+}
+
+func TestProcessStreamRequiresMatchingToolCommitReceipt(t *testing.T) {
+	raw := `{"steps":[{"id":"check","argv":["go","test","./..."]}]}`
+	call := types.ProviderToolCallCommit{
+		OutputIndex: 0, ToolType: types.ToolDefinitionTypeFunction, ProviderItemID: "item-1",
+		CallID: "call-1", Name: "Run", RawInput: raw,
+	}
+	events := func(receipt *types.ProviderCommitReceipt) <-chan types.StreamEvent {
+		return makeRawStreamChan(
+			types.StreamEvent{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{
+				Type: types.ContentTypeToolUse, ID: call.CallID, Name: call.Name, ToolType: call.ToolType,
+				ProviderItemID: call.ProviderItemID, ProviderStatus: "completed",
+			}},
+			types.StreamEvent{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: raw}},
+			types.StreamEvent{Type: types.EventContentBlockStop, Index: 0},
+			types.StreamEvent{Type: types.EventMessageStop, ProviderCommitReceipt: receipt},
+		)
+	}
+	ql := &QueryLoop{}
+	if msg, _, _, err := ql.processStream(context.Background(), events(nil), 1, func(stream.Event) {}); err == nil || msg != nil {
+		t.Fatalf("missing receipt = (%#v, %v), want fail closed", msg, err)
+	}
+	badCall := call
+	badCall.RawInput += " "
+	bad := types.NewProviderToolCommitReceipt("deepseek", "responses", "completed", []types.ProviderToolCallCommit{badCall})
+	if msg, _, _, err := ql.processStream(context.Background(), events(bad), 1, func(stream.Event) {}); err == nil || msg != nil {
+		t.Fatalf("mismatched receipt = (%#v, %v), want fail closed", msg, err)
+	}
+	good := types.NewProviderToolCommitReceipt("deepseek", "responses", "completed", []types.ProviderToolCallCommit{call})
+	msg, _, _, err := ql.processStream(context.Background(), events(good), 1, func(stream.Event) {})
+	if err != nil || msg == nil || len(msg.GetToolUses()) != 1 {
+		t.Fatalf("matching receipt = (%#v, %v), want one tool", msg, err)
 	}
 }

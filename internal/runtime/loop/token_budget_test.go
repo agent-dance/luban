@@ -74,31 +74,48 @@ func TestTokenBudgetDecisionStopsOnDiminishingReturns(t *testing.T) {
 	}
 }
 
-func TestMaxOutputTokensEscalatesBeforeRecoveryMessage(t *testing.T) {
+func TestMaxTokensCommitsPartialWithoutAutomaticRetry(t *testing.T) {
 	p := newParityFakeProvider([]parityProviderTurn{
 		{Events: maxTokensTextEvents("partial", 1024)},
 		{Events: endTurnTextEvents("done", 10)},
 	})
 	ql := New(p, registry.New(), Config{MaxTurns: 5, MaxTokens: 1024, Model: "claude-sonnet-4-6"})
 
-	if err := ql.Run(context.Background(), "hi", func(stream.Event) {}); err != nil {
+	var events []stream.Event
+	if err := ql.Run(context.Background(), "hi", func(event stream.Event) { events = append(events, event) }); err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if len(p.Calls) != 2 {
-		t.Fatalf("CreateStream calls = %d, want 2", len(p.Calls))
+	if len(p.Calls) != 1 {
+		t.Fatalf("CreateStream calls = %d, want 1", len(p.Calls))
 	}
 	if p.Calls[0].MaxOutputTokensOverride != 0 {
 		t.Fatalf("first override = %d, want 0", p.Calls[0].MaxOutputTokensOverride)
 	}
-	if p.Calls[1].MaxOutputTokensOverride != 64000 {
-		t.Fatalf("second override = %d, want 64000", p.Calls[1].MaxOutputTokensOverride)
+	messages := ql.Messages()
+	if len(messages) != 2 || messages[1].GetText() != "partial" || messages[1].StopReason != types.StopReasonMaxTokens {
+		t.Fatalf("durable messages = %#v, want max_tokens partial", messages)
 	}
-	if len(p.Calls[1].Messages) != 1 || strings.Contains(p.Calls[1].Messages[0].GetText(), "continue") {
-		t.Fatalf("escalation should retry the same request without a continue message: %#v", p.Calls[1].Messages)
+	var warnings, errors, maxTokenEnds int
+	for _, event := range events {
+		switch event.Type {
+		case stream.EventSystemWarning:
+			if event.RuntimeEvent != nil && event.RuntimeEvent.PrivateMetadata["terminal_reason"] == string(types.StopReasonMaxTokens) {
+				warnings++
+			}
+		case stream.EventError:
+			errors++
+		case stream.EventTurnEnd:
+			if event.TerminalReason == string(types.StopReasonMaxTokens) {
+				maxTokenEnds++
+			}
+		}
+	}
+	if warnings != 1 || errors != 0 || maxTokenEnds != 1 {
+		t.Fatalf("events warning/error/max_tokens turn_end = %d/%d/%d, want 1/0/1", warnings, errors, maxTokenEnds)
 	}
 }
 
-func TestMaxOutputTokensRecoveryUsesMessageAtMostThreeTimes(t *testing.T) {
+func TestMaxTokensDoesNotInjectRecoveryMessages(t *testing.T) {
 	p := newParityFakeProvider([]parityProviderTurn{
 		{Events: maxTokensTextEvents("first", 100)},
 		{Events: maxTokensTextEvents("second", 100)},
@@ -113,17 +130,65 @@ func TestMaxOutputTokensRecoveryUsesMessageAtMostThreeTimes(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	recoveryMessages := 0
+	if len(p.Calls) != 1 {
+		t.Fatalf("CreateStream calls = %d, want 1", len(p.Calls))
+	}
 	for _, msg := range ql.messages {
 		if msg.Role == types.RoleUser && strings.Contains(msg.GetText(), "Output token limit hit") {
-			recoveryMessages++
+			t.Fatalf("automatic recovery message leaked into durable history: %#v", msg)
 		}
 	}
-	if recoveryMessages != maxOutputTokensRecoveryLimit {
-		t.Fatalf("recovery messages observed = %d, want %d", recoveryMessages, maxOutputTokensRecoveryLimit)
+}
+
+type maxTokensCountingTool struct{ calls int }
+
+func (t *maxTokensCountingTool) Name() string { return "Mutate" }
+func (t *maxTokensCountingTool) Description() string {
+	return "mutates test state" // i18n:allow test-only tool metadata
+}
+func (t *maxTokensCountingTool) Schema() types.JSONSchema {
+	return types.JSONSchema{Type: "object"}
+}
+func (t *maxTokensCountingTool) Execute(context.Context, map[string]any) (types.ToolResult, error) {
+	t.calls++
+	return types.ToolResult{Content: "mutated"}, nil
+}
+
+func TestMaxTokensQuarantinesSyntacticallyCompleteToolCall(t *testing.T) {
+	reason := types.StopReasonMaxTokens
+	p := newParityFakeProvider([]parityProviderTurn{
+		{Events: []types.StreamEvent{
+			{Type: types.EventContentBlockStart, Index: 0, ContentBlock: &types.ContentDelta{Type: types.ContentTypeText}},
+			{Type: types.EventContentBlockDelta, Index: 0, Delta: &types.ContentDelta{Type: "text_delta", Text: "safe partial"}},
+			{Type: types.EventContentBlockStop, Index: 0},
+			{Type: types.EventContentBlockStart, Index: 1, ContentBlock: &types.ContentDelta{Type: types.ContentTypeToolUse, ID: "call-cutoff", Name: "Mutate"}},
+			{Type: types.EventContentBlockDelta, Index: 1, Delta: &types.ContentDelta{Type: "input_json_delta", PartialJSON: `{"value":1}`}},
+			{Type: types.EventContentBlockStop, Index: 1},
+			{Type: types.EventMessageDelta, Usage: &types.Usage{OutputTokens: 100}, StopReason: &reason},
+			{Type: types.EventMessageStop, ResponseID: "response-incomplete"},
+		}},
+	})
+	tool := &maxTokensCountingTool{}
+	reg := registry.New()
+	reg.Register(tool)
+	ql := New(p, reg, Config{MaxTurns: 2, MaxTokens: 1024})
+	var toolEvents int
+	if err := ql.Run(context.Background(), "hi", func(event stream.Event) {
+		if event.Type == stream.EventToolUse {
+			toolEvents++
+		}
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
 	}
-	if len(p.Calls) < 3 || p.Calls[2].MaxOutputTokensOverride != 0 {
-		t.Fatalf("recovery call should reset override, got calls=%d override=%d", len(p.Calls), p.Calls[2].MaxOutputTokensOverride)
+	if tool.calls != 0 || toolEvents != 0 {
+		t.Fatalf("truncated tool execution calls/events = %d/%d, want 0/0", tool.calls, toolEvents)
+	}
+	messages := ql.Messages()
+	if len(messages) != 2 || messages[1].GetText() != "safe partial" || len(messages[1].GetToolUses()) != 0 || len(messages[1].GetInvalidToolUses()) != 0 {
+		t.Fatalf("quarantined message = %#v", messages)
+	}
+	if ql.lastResponseID != "" || !ql.disableResponseChain {
+		t.Fatalf("truncated native response remained chainable: response_id=%q disabled=%v", ql.lastResponseID, ql.disableResponseChain)
 	}
 }
 
