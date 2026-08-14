@@ -54,7 +54,6 @@ func TestDeepSeekFlashFactoryUsesNativeResponsesAPI(t *testing.T) {
 		Messages:        []types.Message{types.UserMessage("change it")},
 		Tools:           []types.ToolDefinition{responsesCustomToolFixture()},
 		ToolChoice:      &ToolChoice{Type: "tool", Name: "ApplyPatch"},
-		MaxTokens:       321,
 		ReasoningEffort: "high",
 		PromptCacheKey:  "session-lineage",
 		UsePromptCache:  true,
@@ -72,7 +71,7 @@ func TestDeepSeekFlashFactoryUsesNativeResponsesAPI(t *testing.T) {
 	if path != "/responses" {
 		t.Fatalf("path = %q, want /responses", path)
 	}
-	if request["model"] != "deepseek-v4-flash" || request["max_output_tokens"] != float64(321) {
+	if request["model"] != "deepseek-v4-flash" || request["max_output_tokens"] != float64(256_000) {
 		t.Fatalf("model/output limit = %#v/%#v", request["model"], request["max_output_tokens"])
 	}
 	reasoning, _ := request["reasoning"].(map[string]any)

@@ -358,7 +358,7 @@ func TestResolveCredentialConfigAddsCodexHeadersForOpenAIOAuth(t *testing.T) {
 	}
 }
 
-func TestOpenAIPublicProxyCredentialKeepsReasoningAndRelaxesStrictTools(t *testing.T) {
+func TestOpenAIPublicProxyDefaultsToNonStrictToolsAndImplicitCache(t *testing.T) {
 	var body map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		raw, _ := io.ReadAll(request.Body)
@@ -377,8 +377,7 @@ func TestOpenAIPublicProxyCredentialKeepsReasoningAndRelaxesStrictTools(t *testi
 	}
 	if err := store.Set(CredentialEntry{
 		Provider: "openai", AuthMethod: "api_key", APIKey: "meter-key",
-		BaseURL: server.URL, APIFormat: "responses", DisableStrictTools: true,
-		DisablePromptCacheOptions: true,
+		BaseURL: server.URL, APIFormat: "responses",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -431,8 +430,8 @@ func TestOpenAIPublicProxyCredentialKeepsReasoningAndRelaxesStrictTools(t *testi
 	}
 	tools, _ := body["tools"].([]any)
 	tool, _ := tools[0].(map[string]any)
-	if _, strict := tool["strict"]; strict {
-		t.Fatalf("strict compatibility override was ignored: %#v", tool)
+	if strict, ok := tool["strict"].(bool); !ok || strict {
+		t.Fatalf("strict compatibility default = %#v, want false", tool["strict"])
 	}
 }
 

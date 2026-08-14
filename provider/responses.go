@@ -75,9 +75,13 @@ func NewResponses(cfg Config) *ResponsesProvider {
 	if model == "" {
 		model = CatalogDefaultModel("openai", "gpt-5.6-sol")
 	}
+	providerName := CanonicalProviderName(cfg.ProviderName)
+	if providerName == "" {
+		providerName = "openai"
+	}
 	maxTokens := cfg.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 16384
+		maxTokens = DefaultMaxOutputTokens(providerName, model)
 	}
 	timeout := time.Duration(cfg.Timeout) * time.Second
 	watchdogConfig := responsesStreamWatchdogConfig()
@@ -89,10 +93,6 @@ func NewResponses(cfg Config) *ResponsesProvider {
 		bearerToken = authToken
 	}
 	cacheUserNamespace := promptCacheUserNamespace(cfg)
-	providerName := CanonicalProviderName(cfg.ProviderName)
-	if providerName == "" {
-		providerName = "openai"
-	}
 	semantics := resolveResponsesSemantics(cfg)
 
 	return &ResponsesProvider{

@@ -423,7 +423,7 @@ func Run() (exitCode int) {
 		GeneratedToolPrompt:   workspacePrompt.generated,
 		HookRunner:            hookRunner,
 		MaxTurns:              maxTurns,
-		MaxTokens:             16384,
+		MaxTokens:             0,
 		MaxContextTokens:      200000,
 		ProgressiveContext:    startupModelSettings.ProgressiveContext,
 		ReasoningEffort:       reasoningEffort,

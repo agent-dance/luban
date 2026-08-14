@@ -438,9 +438,10 @@ func NewOpenAI(cfg Config) *OpenAIProvider {
 	if model == "" {
 		model = CatalogDefaultModel("openai", "gpt-5.6-sol")
 	}
+	providerName := CanonicalProviderName(cfg.ProviderName)
 	maxTokens := cfg.MaxTokens
 	if maxTokens == 0 {
-		maxTokens = 16384
+		maxTokens = DefaultMaxOutputTokens(providerName, model)
 	}
 	timeout := time.Duration(cfg.Timeout) * time.Second
 	if timeout == 0 {
@@ -448,7 +449,6 @@ func NewOpenAI(cfg Config) *OpenAIProvider {
 	}
 
 	dialect := detectDialect(cfg)
-	providerName := CanonicalProviderName(cfg.ProviderName)
 	nativeOpenAIChatContract := providerName == "" || providerName == "openai"
 	// OpenAI, Mistral, and Kimi document prompt_cache_key. Other compatible
 	// providers still receive it as a best-effort fallback per the shared cache

@@ -1369,6 +1369,22 @@ func (q *QueryLoop) SetModel(model string) {
 	q.config.Model = model
 }
 
+// SetMaxTokens updates the request budget and the matching context-window
+// output reservation for future turns.
+func (q *QueryLoop) SetMaxTokens(maxTokens int) {
+	if maxTokens < 0 {
+		maxTokens = 0
+	}
+	if maxTokens != q.config.MaxTokens {
+		q.invalidateProviderContinuation()
+	}
+	q.config.MaxTokens = maxTokens
+	q.config.MaxOutputTokens = maxTokens
+	if q.ctxWindow != nil {
+		q.ctxWindow.MaxOutputTokens = maxTokens
+	}
+}
+
 // SetReasoningEffort updates the reasoning effort used for future requests.
 func (q *QueryLoop) SetReasoningEffort(effort string) {
 	q.config.ReasoningEffort = effort

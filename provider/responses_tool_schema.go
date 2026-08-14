@@ -47,6 +47,10 @@ func convertToolsToResponsesAPIForSemantics(tools []types.ToolDefinition, strict
 		}
 		if strict {
 			tool["strict"] = true
+		} else if !strictMode && t.Strict && semantics == ResponsesSemanticsOpenAIPublic {
+			// Responses may normalize an omitted strict field back to strict mode.
+			// The compatibility default must opt out explicitly.
+			tool["strict"] = false
 		}
 		result = append(result, tool)
 	}

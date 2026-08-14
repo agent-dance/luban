@@ -1573,6 +1573,42 @@ func TestSetModel_ChangesModel(t *testing.T) {
 	}
 }
 
+func TestDefaultMaxTokensFollowsProvider(t *testing.T) {
+	const sessionID = "provider-default-max-tokens"
+
+	deepSeek := &mockProvider{name: "deepseek", modelID: "deepseek-v4-flash"}
+	e, err := New(Config{Provider: deepSeek, Sessions: newMemorySessionManager()})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	first, err := e.Query(context.Background(), QueryRequest{SessionID: sessionID, Message: "first"})
+	if err != nil {
+		t.Fatalf("DeepSeek query: %v", err)
+	}
+	drainEvents(t, first, 5*time.Second)
+	deepSeek.mu.Lock()
+	deepSeekMaxTokens := deepSeek.lastParams.MaxTokens
+	deepSeek.mu.Unlock()
+	if deepSeekMaxTokens != 256_000 {
+		t.Fatalf("DeepSeek MaxTokens = %d, want %d", deepSeekMaxTokens, 256_000)
+	}
+
+	openAI := &mockProvider{name: "openai", modelID: "gpt-5.6-sol"}
+	e.SetProvider(openAI)
+	second, err := e.Query(context.Background(), QueryRequest{SessionID: sessionID, Message: "second"})
+	if err != nil {
+		t.Fatalf("OpenAI query: %v", err)
+	}
+	drainEvents(t, second, 5*time.Second)
+	openAI.mu.Lock()
+	openAIMaxTokens := openAI.lastParams.MaxTokens
+	openAI.mu.Unlock()
+	if openAIMaxTokens != 16*1024 {
+		t.Fatalf("OpenAI MaxTokens = %d, want %d", openAIMaxTokens, 16*1024)
+	}
+}
+
 func TestQueryFollowUpWaitsForRunningParentWithoutCancellingIt(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})

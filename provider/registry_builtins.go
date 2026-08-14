@@ -152,14 +152,13 @@ func registerOpenAI(r *ProviderRegistry) {
 			BaseURL:                   firstNonEmpty(cfg.BaseURL, os.Getenv("OPENAI_BASE_URL")),
 			Model:                     model,
 			Headers:                   cloneHeaders(cfg.Headers),
-			DisablePromptCacheOptions: cfg.DisablePromptCacheOptions,
+			DisableStrictTools:        true,
+			DisablePromptCacheOptions: true,
 			CacheRoutingPreference:    cfg.CacheRoutingPreference,
 		}
-		// Transport location is not a capability signal. A content-blind proxy
-		// for OpenAI public Responses must preserve the exact strict tool body;
-		// genuinely incompatible gateways opt into the compatible provider or an
-		// explicit DisableStrictTools setting.
-		providerCfg.DisableStrictTools = cfg.DisableStrictTools
+		// Keep optional strict schemas and explicit cache-control extensions off
+		// by default. Content-blind OpenAI proxies commonly forward the provider
+		// identity while rejecting one or both request extensions.
 
 		// Keep API selection inside the OpenAI provider: explicit flags win and
 		// models otherwise use their native cataloged format. BaseURL changes only

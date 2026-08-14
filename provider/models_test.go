@@ -97,6 +97,25 @@ func TestLookupMaxOutput(t *testing.T) {
 	}
 }
 
+func TestDefaultMaxOutputTokens(t *testing.T) {
+	tests := []struct {
+		provider string
+		model    string
+		want     int
+	}{
+		{provider: "deepseek", model: "deepseek-v4-flash", want: 256_000},
+		{provider: "DeepSeek", model: "deepseek-v4-pro", want: 256_000},
+		{provider: "", model: "deepseek-v4-flash", want: 256_000},
+		{provider: "openai", model: "gpt-5.6-sol", want: 16 * 1024},
+		{provider: "anthropic", model: "claude-sonnet-5", want: 16 * 1024},
+	}
+	for _, tt := range tests {
+		if got := DefaultMaxOutputTokens(tt.provider, tt.model); got != tt.want {
+			t.Errorf("DefaultMaxOutputTokens(%q, %q) = %d, want %d", tt.provider, tt.model, got, tt.want)
+		}
+	}
+}
+
 func TestLookupMaxContext_Unknown(t *testing.T) {
 	got := LookupMaxContext("totally-unknown-model")
 	if got != defaultMaxContext {

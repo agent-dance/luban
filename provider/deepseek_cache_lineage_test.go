@@ -115,11 +115,10 @@ func TestDeepSeekChatUsesDocumentedGenerationFields(t *testing.T) {
 		Model:        "deepseek-v4-flash",
 	}, Params{
 		Messages:        []types.Message{types.UserMessage("hello")},
-		MaxTokens:       321,
 		ReasoningEffort: "high",
 	})
-	if got := request["max_tokens"]; got != float64(321) {
-		t.Fatalf("DeepSeek max_tokens = %#v, want 321", got)
+	if got := request["max_tokens"]; got != float64(256_000) {
+		t.Fatalf("DeepSeek max_tokens = %#v, want %d", got, 256_000)
 	}
 	if got, found := request["max_completion_tokens"]; found {
 		t.Fatalf("DeepSeek sent undocumented max_completion_tokens = %#v", got)

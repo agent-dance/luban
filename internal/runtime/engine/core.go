@@ -1090,6 +1090,9 @@ func (e *CoreEngine) SetModel(sessionID string, model string) error {
 	conv.mu.Lock()
 	conv.model = model
 	conv.ql.SetModel(model)
+	if e.cfg.MaxTokens <= 0 {
+		conv.ql.SetMaxTokens(provider.DefaultMaxOutputTokens(e.providerRef.Name(), model))
+	}
 	conv.mu.Unlock()
 	return nil
 }
@@ -1347,6 +1350,9 @@ func (e *CoreEngine) SetProvider(p provider.Provider) {
 			for _, conv := range e.convs {
 				conv.mu.Lock()
 				conv.ql.HandleProviderChange()
+				if e.cfg.MaxTokens <= 0 {
+					conv.ql.SetMaxTokens(provider.DefaultMaxOutputTokens(p.Name(), p.ModelID()))
+				}
 				conv.mu.Unlock()
 			}
 			e.convsMu.Unlock()
@@ -1678,6 +1684,10 @@ func (e *CoreEngine) buildConvWithRuntime(sessionID, model, system string, syste
 	if maxCtx <= 0 {
 		maxCtx = provider.LookupMaxContext(model)
 	}
+	maxTokens := e.cfg.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = provider.DefaultMaxOutputTokens(e.providerRef.Name(), model)
+	}
 
 	// Pass the ProviderRef as the provider. Since ProviderRef implements
 	// the Provider interface, loop.New() accepts it directly. This means
@@ -1701,11 +1711,11 @@ func (e *CoreEngine) buildConvWithRuntime(sessionID, model, system string, syste
 		GeneratedToolPrompt: runtime.GeneratedToolPrompt,
 		GoalRuntime:         goalRuntime,
 		GoalEvaluator:       goalEvaluator,
-		MaxTokens:           e.cfg.MaxTokens,
+		MaxTokens:           maxTokens,
 		TaskBudget:          e.cfg.TaskBudget,
 		MaxTurns:            maxTurns,
 		MaxContextTokens:    maxCtx,
-		MaxOutputTokens:     e.cfg.MaxTokens, // pass to ContextWindow for output reservation
+		MaxOutputTokens:     maxTokens, // pass to ContextWindow for output reservation
 		ProgressiveContext:  e.cfg.ProgressiveContext,
 		HookRunner:          runtime.HookRunner,
 		SessionID:           sessionID,
