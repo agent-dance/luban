@@ -3,7 +3,8 @@
 set -eu
 
 REPOSITORY="agent-dance/luban"
-PROGRAM="luban-code"
+PROGRAM="luban"
+ASSET_PREFIX="luban-code"
 VERSION="latest"
 INSTALL_DIR="${XDG_BIN_HOME:-${HOME}/.local/bin}"
 UNINSTALL=false
@@ -20,7 +21,7 @@ Usage:
 Options:
   --version       Release tag to install (for example, v0.1.0). Default: latest.
   --install-dir   Destination directory. Default: $XDG_BIN_HOME or ~/.local/bin.
-  --uninstall     Remove luban-code from the destination directory.
+  --uninstall     Remove luban from the destination directory.
   -h, --help      Show this help.
 
 The installer never invokes sudo. It verifies the release SHA-256 checksum
@@ -65,15 +66,24 @@ case "$INSTALL_DIR" in
 esac
 
 TARGET="$INSTALL_DIR/$PROGRAM"
+LEGACY_TARGET="$INSTALL_DIR/luban-code"
 
 if [ "$UNINSTALL" = true ]; then
-  if [ ! -e "$TARGET" ]; then
+  if [ ! -e "$TARGET" ] && [ ! -e "$LEGACY_TARGET" ]; then
     printf '%s is not installed at %s\n' "$PROGRAM" "$TARGET"
     exit 0
   fi
-  [ -f "$TARGET" ] || die "refusing to remove non-file path: $TARGET"
+  if [ -e "$TARGET" ]; then
+    [ -f "$TARGET" ] || die "refusing to remove non-file path: $TARGET"
+  fi
+  if [ -e "$LEGACY_TARGET" ]; then
+    [ -f "$LEGACY_TARGET" ] || die "refusing to remove non-file path: $LEGACY_TARGET"
+  fi
   [ -w "$INSTALL_DIR" ] || die "installation directory is not writable: $INSTALL_DIR"
   rm -f -- "$TARGET"
+  if [ -f "$LEGACY_TARGET" ]; then
+    rm -f -- "$LEGACY_TARGET"
+  fi
   printf 'Removed %s\n' "$TARGET"
   exit 0
 fi
@@ -115,7 +125,7 @@ if ! printf '%s\n' "$VERSION" | awk '
   die "invalid release version '$VERSION'; expected a tag such as v0.1.0"
 fi
 
-ARCHIVE="${PROGRAM}_${OS}_${ARCH}.tar.gz"
+ARCHIVE="${ASSET_PREFIX}_${OS}_${ARCH}.tar.gz"
 DOWNLOAD_ROOT="$RELEASES_URL/download/$VERSION"
 TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/luban-install.XXXXXX") || die "could not create a temporary directory"
 STAGED=
@@ -161,6 +171,9 @@ STAGED="$INSTALL_DIR/.${PROGRAM}.install.$$"
 cp "$TMP_DIR/$PROGRAM" "$STAGED" || die "could not stage the executable in $INSTALL_DIR"
 chmod +x "$STAGED"
 mv -f "$STAGED" "$TARGET"
+if [ -f "$LEGACY_TARGET" ]; then
+  rm -f -- "$LEGACY_TARGET"
+fi
 
 printf 'Installed %s %s to %s\n' "$PROGRAM" "$VERSION" "$TARGET"
 case ":${PATH}:" in

@@ -9,7 +9,7 @@ import (
 const (
 	DisplayName = "LUBAN Code"
 	RuntimeName = DisplayName
-	CommandName = "luban-code"
+	CommandName = "luban"
 
 	ConfigDirName         = ".luban-code"
 	InstructionsFile      = "LUBAN.md"

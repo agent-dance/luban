@@ -346,7 +346,7 @@ func ReadPipedPrompt(input io.Reader) (string, error) {
 	return string(data), nil
 }
 
-// RunMCPCLI executes the non-interactive `luban-code mcp ...` management
+// RunMCPCLI executes the non-interactive `luban mcp ...` management
 // surface. It is intentionally small and delegates behavior to commands/mcp.go.
 func RunMCPCLI(args []string, stdout, stderr io.Writer) int {
 	if stdout == nil {

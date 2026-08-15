@@ -29,7 +29,7 @@ curl -fsSL https://raw.githubusercontent.com/agent-dance/luban/main/install.sh |
 irm https://raw.githubusercontent.com/agent-dance/luban/main/install.ps1 | iex
 ```
 
-Alternatively, download and extract the Windows ZIP from [GitHub Releases](https://github.com/agent-dance/luban/releases/latest), then add the directory containing `luban-code.exe` to `PATH`.
+Alternatively, download and extract the Windows ZIP from [GitHub Releases](https://github.com/agent-dance/luban/releases/latest), then add the directory containing `luban.exe` to `PATH`.
 
 ## Quick start
 
@@ -45,13 +45,13 @@ Start LUBAN Code inside a repository:
 
 ```bash
 cd your-project
-luban-code
+luban
 ```
 
 Run a one-shot task with:
 
 ```bash
-luban-code -p "Explain this repository's architecture"
+luban -p "Explain this repository's architecture"
 ```
 
 LUBAN Code auto-detects a configured provider. Use `--provider` and `--model` to override the selection. See [configuration](docs/configuration.md) for provider, project, and permission settings.

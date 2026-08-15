@@ -9,7 +9,7 @@ before:
 builds:
   - id: luban-code
     main: ./cmd/luban-code
-    binary: luban-code
+    binary: luban
     env:
       - CGO_ENABLED=0
     goos:

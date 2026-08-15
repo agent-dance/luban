@@ -10,8 +10,8 @@ func TestProductIdentity(t *testing.T) {
 	if DisplayName != "LUBAN Code" || RuntimeName != DisplayName {
 		t.Fatalf("display/runtime identity = %q/%q, want LUBAN Code", DisplayName, RuntimeName)
 	}
-	if CommandName != "luban-code" {
-		t.Fatalf("command name = %q, want luban-code", CommandName)
+	if CommandName != "luban" {
+		t.Fatalf("command name = %q, want luban", CommandName)
 	}
 	if ConfigDirName != ".luban-code" {
 		t.Fatalf("config directory = %q, want .luban-code", ConfigDirName)

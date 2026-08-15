@@ -8,7 +8,7 @@ macOS 和 Linux 用户可以安装官方 tap：
 
 ```bash
 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install agent-dance/tap/luban-code
-luban-code --version
+luban --version
 ```
 
 `HOMEBREW_NO_INSTALL_CLEANUP=1` 只阻止 Homebrew 在本次安装后执行全局清理，
@@ -84,10 +84,10 @@ Get-Content .\install.ps1
 | Linux ARM64 | `luban-code_Linux_arm64.tar.gz` |
 | Windows x86-64 | `luban-code_Windows_x86_64.zip` |
 
-解压归档，将 `luban-code`（Windows 为 `luban-code.exe`）移动到 `PATH` 中的目录，然后运行：
+解压归档，将 `luban`（Windows 为 `luban.exe`）移动到 `PATH` 中的目录，然后运行：
 
 ```bash
-luban-code --version
+luban --version
 ```
 
 ## 校验发布资产
@@ -138,7 +138,7 @@ sh install.sh --uninstall
 .\install.ps1 -Uninstall
 ```
 
-手动安装则删除安装目录中的 `luban-code` 或 `luban-code.exe`。Windows 用户如不再使用该目录，可从用户 `PATH` 中移除它。
+手动安装则删除安装目录中的 `luban` 或 `luban.exe`。Windows 用户如不再使用该目录，可从用户 `PATH` 中移除它。
 
 运行数据和凭据保存在用户主目录下的 `.luban-code`。卸载二进制不会删除这些数据。仅当确定不再需要账号凭据、会话和用户配置时，才手动删除该目录；项目自己的 `.luban-code` 目录也不会自动删除。
 
@@ -149,8 +149,8 @@ sh install.sh --uninstall
 ```bash
 git clone https://github.com/agent-dance/luban.git
 cd luban
-go build -o luban-code ./cmd/luban-code
-./luban-code --version
+go build -o luban ./cmd/luban-code
+./luban --version
 ```
 
 请使用 `go.mod` 声明的 Go 版本。由于仓库包含本地模块替换，当前不要将 `go install github.com/agent-dance/luban/cmd/luban-code@latest` 作为正式安装入口。

@@ -11,14 +11,14 @@ TAG=v0.1.0
 ASSET=calculated-later
 mkdir -p "$RELEASES/download/$TAG" "$TEST_ROOT/payload" "$TEST_ROOT/home"
 
-cat > "$TEST_ROOT/payload/luban-code" <<'EOF'
+cat > "$TEST_ROOT/payload/luban" <<'EOF'
 #!/bin/sh
 printf 'test-release-v1\n'
 EOF
-chmod +x "$TEST_ROOT/payload/luban-code"
+chmod +x "$TEST_ROOT/payload/luban"
 
 ASSET=luban-code_Linux_x86_64.tar.gz
-tar -czf "$RELEASES/download/$TAG/$ASSET" -C "$TEST_ROOT/payload" luban-code
+tar -czf "$RELEASES/download/$TAG/$ASSET" -C "$TEST_ROOT/payload" luban
 if command -v sha256sum >/dev/null 2>&1; then
   HASH=$(sha256sum "$RELEASES/download/$TAG/$ASSET" | awk '{print $1}')
 else
@@ -43,22 +43,27 @@ assert_contains() {
 }
 
 output=$(run_installer)
-assert_contains "$output" "Installed luban-code v0.1.0"
-[ "$("$TEST_ROOT/home/.local/bin/luban-code")" = test-release-v1 ]
+assert_contains "$output" "Installed luban v0.1.0"
+[ "$("$TEST_ROOT/home/.local/bin/luban")" = test-release-v1 ]
+
+# Upgrading from v0.1.0 removes the legacy command name after the new binary is staged.
+cp "$TEST_ROOT/home/.local/bin/luban" "$TEST_ROOT/home/.local/bin/luban-code"
+run_installer --version "$TAG" >/dev/null
+[ ! -e "$TEST_ROOT/home/.local/bin/luban-code" ]
 
 # Reinstalling the same release exercises the atomic, idempotent upgrade path.
 run_installer --version "$TAG" >/dev/null
-[ "$("$TEST_ROOT/home/.local/bin/luban-code")" = test-release-v1 ]
+[ "$("$TEST_ROOT/home/.local/bin/luban")" = test-release-v1 ]
 
 output=$(run_installer --uninstall)
 assert_contains "$output" "Removed"
-[ ! -e "$TEST_ROOT/home/.local/bin/luban-code" ]
+[ ! -e "$TEST_ROOT/home/.local/bin/luban" ]
 output=$(run_installer --uninstall)
 assert_contains "$output" "is not installed"
 
 CUSTOM="$TEST_ROOT/custom bin"
 run_installer --install-dir "$CUSTOM" >/dev/null
-[ -x "$CUSTOM/luban-code" ]
+[ -x "$CUSTOM/luban" ]
 
 cp "$RELEASES/download/$TAG/checksums.txt" "$TEST_ROOT/good-checksums"
 printf '%064d  %s\n' 0 "$ASSET" > "$RELEASES/download/$TAG/checksums.txt"

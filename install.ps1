@@ -13,7 +13,7 @@ Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
 $script:ProductName = "LUBAN Code"
-$script:ExecutableName = "luban-code.exe"
+$script:ExecutableName = "luban.exe"
 $script:InstallMarkerName = ".luban-code-install"
 
 function Show-LubanInstallerHelp {
@@ -27,7 +27,7 @@ Usage:
 
 Options:
   -Version          Release tag to install. Defaults to latest.
-  -InstallDir       Destination directory for luban-code.exe.
+  -InstallDir       Destination directory for luban.exe.
   -NoPath           Do not add the destination to the user PATH.
   -Uninstall        Remove the script-managed executable and PATH entry.
   -Repository       GitHub owner/repository. Intended for mirrors and testing.
@@ -138,7 +138,7 @@ function Add-LubanUserPath {
     $entries = @(Get-LubanUserPathEntries)
     if (-not ($entries | Where-Object { [IO.Path]::GetFullPath($_).TrimEnd('\') -ieq $fullDirectory })) {
         Set-LubanUserPathEntries -Entries @($entries + $fullDirectory)
-        Write-Host "Added $fullDirectory to the user PATH. Open a new terminal to use luban-code."
+        Write-Host "Added $fullDirectory to the user PATH. Open a new terminal to use luban."
     }
     if (-not (($env:Path -split ';') -contains $fullDirectory)) {
         $env:Path = "$fullDirectory;$env:Path"
@@ -160,11 +160,13 @@ function Uninstall-LubanCode {
 
     $fullDestination = [IO.Path]::GetFullPath($Destination)
     $executable = Join-Path $fullDestination $script:ExecutableName
+    $legacyExecutable = Join-Path $fullDestination "luban-code.exe"
     $marker = Join-Path $fullDestination $script:InstallMarkerName
 
     if (Test-Path -LiteralPath $marker -PathType Leaf) {
         Remove-LubanUserPath -Directory $fullDestination
         Remove-Item -LiteralPath $executable -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $legacyExecutable -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $marker -Force
         $remaining = @(Get-ChildItem -LiteralPath $fullDestination -Force -ErrorAction SilentlyContinue)
         if ($remaining.Count -eq 0) { Remove-Item -LiteralPath $fullDestination -Force }
@@ -212,9 +214,13 @@ function Install-LubanCode {
         $fullDestination = [IO.Path]::GetFullPath($Destination)
         New-Item -ItemType Directory -Path $fullDestination -Force | Out-Null
         $destinationExecutable = Join-Path $fullDestination $script:ExecutableName
+        $legacyExecutable = Join-Path $fullDestination "luban-code.exe"
         $stagedExecutable = Join-Path $fullDestination (".$script:ExecutableName.new")
         Copy-Item -LiteralPath $candidates[0].FullName -Destination $stagedExecutable -Force
         Move-Item -LiteralPath $stagedExecutable -Destination $destinationExecutable -Force
+        if (Test-Path -LiteralPath (Join-Path $fullDestination $script:InstallMarkerName) -PathType Leaf) {
+            Remove-Item -LiteralPath $legacyExecutable -Force -ErrorAction SilentlyContinue
+        }
         Set-Content -LiteralPath (Join-Path $fullDestination $script:InstallMarkerName) -Value $releaseVersion -Encoding ASCII
 
         if (-not $SkipPath) { Add-LubanUserPath -Directory $fullDestination }

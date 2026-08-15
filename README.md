@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/agent-dance/luban/main/install.sh |
 irm https://raw.githubusercontent.com/agent-dance/luban/main/install.ps1 | iex
 ```
 
-也可以从 [GitHub Releases](https://github.com/agent-dance/luban/releases/latest) 下载 Windows ZIP，解压后将 `luban-code.exe` 所在目录加入 `PATH`。
+也可以从 [GitHub Releases](https://github.com/agent-dance/luban/releases/latest) 下载 Windows ZIP，解压后将 `luban.exe` 所在目录加入 `PATH`。
 
 ## 快速开始
 
@@ -52,13 +52,13 @@ export ANTHROPIC_API_KEY="your-api-key"
 
 ```bash
 cd your-project
-luban-code
+luban
 ```
 
 也可以执行一次性任务：
 
 ```bash
-luban-code -p "解释这个仓库的架构"
+luban -p "解释这个仓库的架构"
 ```
 
 LUBAN Code 会根据可用的 key 自动选择提供商；可用 `--provider` 和 `--model` 显式指定。完整环境变量、项目配置和权限选项见[配置指南](docs/configuration.md)。

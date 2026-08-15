@@ -4,6 +4,13 @@ LUBAN Code 的重要用户可见变更记录在此文件中。格式参考 [Keep
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-15
+
+### Changed
+
+- 安装后的唯一可执行命令改为 `luban`；发布归档和 Homebrew Cask 名称保持兼容。
+- 安装器升级时移除旧的 `luban-code` 可执行文件，避免残留两个启动命令。
+
 ## [0.1.0] - 2026-08-15
 
 ### Added
@@ -15,5 +22,6 @@ LUBAN Code 的重要用户可见变更记录在此文件中。格式参考 [Keep
 - DeepSeek、OpenAI、Anthropic 及其他兼容模型提供商接入。
 - 工具调用、权限控制、会话管理与多语言界面。
 
-[Unreleased]: https://github.com/agent-dance/luban/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/agent-dance/luban/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/agent-dance/luban/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/agent-dance/luban/releases/tag/v0.1.0

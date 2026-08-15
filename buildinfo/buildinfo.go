@@ -13,7 +13,7 @@ import (
 
 // DefaultVersion is the source-tree version used when neither ldflags nor Go
 // module metadata provides a release version.
-const DefaultVersion = "v0.1.0"
+const DefaultVersion = "v0.1.1"
 
 // These values are intended to be populated with go build -ldflags -X. Empty
 // values deliberately mean unknown so debug.ReadBuildInfo can provide the

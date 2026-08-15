@@ -8,7 +8,7 @@
 
 ```bash
 brew list --cask --versions luban-code
-luban-code --version
+luban --version
 ```
 
 这是 Homebrew 安装结束后执行的全局清理失败，不是 LUBAN Code 下载、校验或
@@ -26,19 +26,19 @@ Homebrew 6 还可能列出机器上其他未受信任的第三方 taps。只要�
 `Trusted cask agent-dance/tap/luban-code`，这些警告就不表示 LUBAN Code Cask
 未受信任；不要全局设置 `HOMEBREW_NO_REQUIRE_TAP_TRUST=1`。
 
-## 找不到 `luban-code`
+## 找不到 `luban`
 
 先重新打开终端并运行：
 
 ```bash
-command -v luban-code
-luban-code --version
+command -v luban
+luban --version
 ```
 
 脚本安装后仍找不到命令，通常是安装目录不在 `PATH`。重新运行安装脚本并查看结束提示，或用 `--install-dir` 指定已有的 `PATH` 目录。Windows 可用：
 
 ```powershell
-Get-Command luban-code
+Get-Command luban
 $env:Path -split ';'
 ```
 
@@ -52,7 +52,7 @@ test -n "$OPENAI_API_KEY" && echo configured
 test -n "$ANTHROPIC_API_KEY" && echo configured
 ```
 
-存在多个凭据时显式运行 `luban-code --provider <name> --model <id>`。检查自定义 endpoint 是否包含提供商要求的 API 基础路径。
+存在多个凭据时显式运行 `luban --provider <name> --model <id>`。检查自定义 endpoint 是否包含提供商要求的 API 基础路径。
 
 ## checksum 不匹配
 
@@ -73,8 +73,8 @@ test -n "$ANTHROPIC_API_KEY" && echo configured
 确认终端支持 ANSI 和交互式输入。可尝试：
 
 ```bash
-luban-code --no-color
-luban-code --screen-reader
+luban --no-color
+luban --screen-reader
 ```
 
 通过管道执行任务时使用 `--print`；屏幕阅读器模式必须连接交互式终端。
@@ -84,7 +84,7 @@ luban-code --screen-reader
 检查提供商状态、网络代理、endpoint 和模型名称。先用一次性、最小请求排除项目因素：
 
 ```bash
-luban-code --provider <name> -p "回复 OK"
+luban --provider <name> -p "回复 OK"
 ```
 
 需要收集诊断时，可以临时使用 `--debug-file <path>`。提交前必须检查并移除 API key、提示词、源码片段和其他敏感数据。
@@ -93,7 +93,7 @@ luban-code --provider <name> -p "回复 OK"
 
 普通缺陷请提交 GitHub Issue，并包含：
 
-- `luban-code --version` 输出；
+- `luban --version` 输出；
 - 操作系统和架构；
 - 安装方式；
 - 可复现的最小步骤；
