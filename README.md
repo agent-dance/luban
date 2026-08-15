@@ -14,7 +14,7 @@ LUBAN Code 是一款运行在终端中的开源 AI 编程代理，面向真实�
 ### Homebrew（macOS / Linux）
 
 ```bash
-HOMEBREW_NO_INSTALL_CLEANUP=1 brew install agent-dance/tap/luban-code
+brew install agent-dance/tap/luban-code
 ```
 
 ### 安装脚本（macOS / Linux）

@@ -14,7 +14,7 @@ LUBAN Code is an open-source terminal coding agent for understanding and modifyi
 ### Homebrew (macOS and Linux)
 
 ```bash
-HOMEBREW_NO_INSTALL_CLEANUP=1 brew install agent-dance/tap/luban-code
+brew install agent-dance/tap/luban-code
 ```
 
 ### Install script (macOS and Linux)
