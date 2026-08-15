@@ -1,5 +1,116 @@
 # LUBAN Code
 
+[![CI](https://github.com/agent-dance/luban/actions/workflows/ci.yml/badge.svg)](https://github.com/agent-dance/luban/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/agent-dance/luban)](https://github.com/agent-dance/luban/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-blue)](#支持平台)
+
+[English](README.en.md) · [安装指南](docs/installation.md) · [配置指南](docs/configuration.md) · [故障排查](docs/troubleshooting.md)
+
+LUBAN Code 是一款运行在终端中的开源 AI 编程代理，面向真实代码库提供代码理解、修改、命令验证、会话管理和多模型接入能力。
+
+## 安装
+
+### Homebrew（macOS / Linux）
+
+```bash
+brew install agent-dance/tap/luban-code
+```
+
+### 安装脚本（macOS / Linux）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/agent-dance/luban/main/install.sh | sh
+```
+
+脚本会下载 GitHub Release 中与当前平台匹配的归档并校验 SHA-256；默认安装到用户可写目录，不会静默使用 `sudo`。需要固定版本或安装目录时，请参阅[安装指南](docs/installation.md)。
+
+### PowerShell（Windows）
+
+```powershell
+irm https://raw.githubusercontent.com/agent-dance/luban/main/install.ps1 | iex
+```
+
+也可以从 [GitHub Releases](https://github.com/agent-dance/luban/releases/latest) 下载 Windows ZIP，解压后将 `luban-code.exe` 所在目录加入 `PATH`。
+
+## 快速开始
+
+选择一个模型提供商并设置 API key：
+
+```bash
+# DeepSeek
+export DEEPSEEK_API_KEY="your-api-key"
+
+# 或 OpenAI
+export OPENAI_API_KEY="your-api-key"
+
+# 或 Anthropic
+export ANTHROPIC_API_KEY="your-api-key"
+```
+
+进入项目并启动交互界面：
+
+```bash
+cd your-project
+luban-code
+```
+
+也可以执行一次性任务：
+
+```bash
+luban-code -p "解释这个仓库的架构"
+```
+
+LUBAN Code 会根据可用的 key 自动选择提供商；可用 `--provider` 和 `--model` 显式指定。完整环境变量、项目配置和权限选项见[配置指南](docs/configuration.md)。
+
+## 升级与卸载
+
+```bash
+# Homebrew
+brew upgrade luban-code
+brew uninstall luban-code
+
+# 安装脚本安装的版本
+curl -fsSL https://raw.githubusercontent.com/agent-dance/luban/main/install.sh | sh
+```
+
+Windows 用户可重新运行 `install.ps1` 升级；卸载方式和数据目录说明见[安装指南](docs/installation.md#卸载)。
+
+## 校验下载
+
+Release 同时发布 SHA-256 校验文件、SBOM 和 GitHub artifact attestation。下载归档后可验证：
+
+```bash
+sha256sum -c checksums.txt --ignore-missing
+gh attestation verify luban-code_Darwin_arm64.tar.gz --repo agent-dance/luban
+```
+
+macOS 可使用 `shasum -a 256 <archive>` 与 `checksums.txt` 中对应条目比较。安装脚本会自动执行 checksum 校验，但直接下载的用户应手动校验。
+
+## 支持平台
+
+| 操作系统 | 架构 | 发布格式 | 安装方式 |
+| --- | --- | --- | --- |
+| macOS | Apple Silicon (`arm64`) | `tar.gz` | Homebrew、`install.sh`、手动下载 |
+| macOS | Intel (`x86_64`) | `tar.gz` | Homebrew、`install.sh`、手动下载 |
+| Linux | `x86_64` | `tar.gz` | Homebrew、`install.sh`、手动下载 |
+| Linux | `arm64` | `tar.gz` | Homebrew、`install.sh`、手动下载 |
+| Windows | `x86_64` | `zip` | `install.ps1`、手动下载 |
+
+运行时不要求安装 Go。源码构建需要仓库 `go.mod` 声明的 Go 版本。平台归档名称和离线安装步骤见[安装指南](docs/installation.md)。
+
+## 文档与项目治理
+
+- [安装、升级与卸载](docs/installation.md)
+- [模型与项目配置](docs/configuration.md)
+- [故障排查](docs/troubleshooting.md)
+- [贡献指南](CONTRIBUTING.md)
+- [安全政策](SECURITY.md)
+- [更新日志](CHANGELOG.md)
+- [MIT License](LICENSE)
+
+## 性能与评测
+
 ## 15 题优化实测：Luban 总耗时低 28.8%，Token 低 61.7%，LLM 调用低 30.8%
 
 以 Codex 为 `0%` 基准；负值表示 Luban 更低。每格按“优化前 → 优化后 / Codex（优化后相对 Codex）”展示。针对原先落后的 7 道题完成优化复测后，Luban 的 15 题合计耗时从高于 Codex `96.3%` 变为低 `28.8%`，超时从 2 次降为 0 次；7 道复测题的耗时与 Token 均已低于 Codex。

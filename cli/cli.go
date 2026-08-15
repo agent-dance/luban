@@ -13,12 +13,15 @@ import (
 	"time"
 
 	"github.com/agent-dance/luban/brand"
+	"github.com/agent-dance/luban/buildinfo"
 	"github.com/agent-dance/luban/commands"
 	"github.com/agent-dance/luban/i18n"
 	"github.com/agent-dance/luban/prompt"
 )
 
-const Version = "v0.1.0"
+// Version is the user-visible release version. Release builds override it with
+// -ldflags -X while source builds retain the repository default.
+var Version = buildinfo.DefaultVersion
 
 // maxPipedPromptBytes bounds implicit print-mode input before any provider or
 // session runtime is initialized.

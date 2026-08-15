@@ -1,0 +1,86 @@
+version: 2
+
+project_name: luban-code
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: luban-code
+    main: ./cmd/luban-code
+    binary: luban-code
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/agent-dance/luban/buildinfo.Version={{ .Tag }}
+      - -X github.com/agent-dance/luban/cli.Version={{ .Tag }}
+      - -X github.com/agent-dance/luban/buildinfo.Revision={{ .FullCommit }}
+      - -X github.com/agent-dance/luban/buildinfo.Dirty=false
+      - -X github.com/agent-dance/luban/buildinfo.BuildTime={{ .Date }}
+
+archives:
+  - id: release
+    ids:
+      - luban-code
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: >-
+      {{ .ProjectName }}_{{ title .Os }}_{{ if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - README.en.md
+      - CHANGELOG.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - id: archives
+    artifacts: archive
+    documents:
+      - "{{ .ArtifactName }}.spdx.json"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  github:
+    owner: agent-dance
+    name: luban
+  draft: false
+  prerelease: auto
+  header: |
+    ## LUBAN Code {{ .Tag }}
+
+    Install and verification instructions are in the repository README and
+    `docs/installation.md`. Every archive is covered by `checksums.txt` and a
+    GitHub build-provenance attestation.
+
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}_{{ .Version }}_source"
