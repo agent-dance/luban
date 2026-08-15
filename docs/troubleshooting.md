@@ -1,5 +1,31 @@
 # 故障排查
 
+## Homebrew 显示安装成功后又报告 Permission denied
+
+如果输出已经包含 `luban-code was successfully installed`，随后才在
+`brew cleanup` 阶段报告其他路径的 `Permission denied`，LUBAN Code 通常已经
+安装完成。先验证：
+
+```bash
+brew list --cask --versions luban-code
+luban-code --version
+```
+
+这是 Homebrew 安装结束后执行的全局清理失败，不是 LUBAN Code 下载、校验或
+安装失败。重新安装时可禁止这次附带清理：
+
+```bash
+HOMEBREW_NO_INSTALL_CLEANUP=1 brew install agent-dance/tap/luban-code
+```
+
+该变量不会关闭 checksum 或 tap trust。错误路径属于其他软件时，应单独检查其
+所有者和符号链接目标，不要为了安装 LUBAN Code 递归修改整个 `/usr/local` 的
+权限。
+
+Homebrew 6 还可能列出机器上其他未受信任的第三方 taps。只要输出明确显示
+`Trusted cask agent-dance/tap/luban-code`，这些警告就不表示 LUBAN Code Cask
+未受信任；不要全局设置 `HOMEBREW_NO_REQUIRE_TAP_TRUST=1`。
+
 ## 找不到 `luban-code`
 
 先重新打开终端并运行：

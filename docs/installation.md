@@ -7,9 +7,13 @@ LUBAN Code 提供预编译二进制，不要求用户安装 Go。发布资产以
 macOS 和 Linux 用户可以安装官方 tap：
 
 ```bash
-brew install agent-dance/tap/luban-code
+HOMEBREW_NO_INSTALL_CLEANUP=1 brew install agent-dance/tap/luban-code
 luban-code --version
 ```
+
+`HOMEBREW_NO_INSTALL_CLEANUP=1` 只阻止 Homebrew 在本次安装后执行全局清理，
+不会关闭下载校验或 tap trust。这样可以避免 LUBAN Code 已成功安装，却因为
+无关的 Homebrew 遗留路径无法删除而被报告为失败。
 
 升级或卸载：
 
