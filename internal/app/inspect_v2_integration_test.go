@@ -51,10 +51,7 @@ func TestAgenticV2InspectPinsSessionAndWorktreeAndFeedsApplyPatch(t *testing.T) 
 		t.Fatalf("Inspect did not follow worktree root: %#v", current)
 	}
 	read, readErr := deps.InspectTool.Execute(context.Background(), map[string]any{
-		"operation": map[string]any{
-			"mode":     toolinspect.ModeNew,
-			"requests": []any{map[string]any{"id": "target", "kind": toolinspect.KindRead, "path": "target.txt"}},
-		},
+		"requests": []any{map[string]any{"id": "target", "kind": toolinspect.KindRead, "path": "target.txt"}},
 	})
 	if readErr != nil || read.IsError {
 		t.Fatalf("Inspect target read failed: err=%v result=%+v", readErr, read)
@@ -78,13 +75,10 @@ func TestAgenticV2InspectPinsSessionAndWorktreeAndFeedsApplyPatch(t *testing.T) 
 func executeInspectV2Glob(t testing.TB, deps *RegistryDeps, maxFiles int) toolinspect.Result {
 	t.Helper()
 	result, err := deps.InspectTool.Execute(context.Background(), map[string]any{
-		"operation": map[string]any{
-			"mode": toolinspect.ModeNew,
-			"requests": []any{map[string]any{
-				"id": "files", "kind": toolinspect.KindGlob, "path": ".", "pattern": "**/*.txt", "max_results": 10,
-			}},
-			"page": map[string]any{"max_files": maxFiles},
-		},
+		"requests": []any{map[string]any{
+			"id": "files", "kind": toolinspect.KindGlob, "path": ".", "pattern": "**/*.txt", "max_results": 10,
+		}},
+		"max_files": maxFiles,
 	})
 	if err != nil || result.IsError {
 		t.Fatalf("Inspect glob failed: err=%v result=%+v", err, result)
@@ -97,7 +91,7 @@ func executeInspectV2Glob(t testing.TB, deps *RegistryDeps, maxFiles int) toolin
 }
 
 func inspectContinuation(cursor string) map[string]any {
-	return map[string]any{"operation": map[string]any{"mode": toolinspect.ModeContinue, "cursor": cursor}}
+	return map[string]any{"cursor": cursor}
 }
 
 func writeInspectV2Fixture(t testing.TB, path, content string) {

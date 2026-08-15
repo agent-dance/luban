@@ -54,10 +54,7 @@ func TestAgentRuntimeBindsInspectAndApplyPatchToChildEvidenceAndRoot(t *testing.
 	}
 
 	read, readErr := childInspect.Execute(context.Background(), map[string]any{
-		"operation": map[string]any{
-			"mode":     toolinspect.ModeNew,
-			"requests": []any{map[string]any{"id": "target", "kind": toolinspect.KindRead, "path": "target.txt"}},
-		},
+		"requests": []any{map[string]any{"id": "target", "kind": toolinspect.KindRead, "path": "target.txt"}},
 	})
 	if readErr != nil || read.IsError {
 		t.Fatalf("child Inspect read failed: err=%v result=%+v", readErr, read)
@@ -84,10 +81,7 @@ func TestAgentRuntimeBindsInspectAndApplyPatchToChildEvidenceAndRoot(t *testing.
 	}
 
 	escape, escapeErr := childInspect.Execute(context.Background(), map[string]any{
-		"operation": map[string]any{
-			"mode":     toolinspect.ModeNew,
-			"requests": []any{map[string]any{"id": "escape", "kind": toolinspect.KindRead, "path": parentPath}},
-		},
+		"requests": []any{map[string]any{"id": "escape", "kind": toolinspect.KindRead, "path": parentPath}},
 	})
 	if escapeErr != nil || escape.IsError {
 		t.Fatalf("scoped request should fail in place: err=%v result=%+v", escapeErr, escape)

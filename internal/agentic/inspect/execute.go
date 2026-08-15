@@ -121,6 +121,10 @@ func (t *Tool) cursorStore() *cursorStore {
 }
 
 func (t *Tool) validateInput(input map[string]any) (validatedInput, error) {
+	input, err := normalizeInspectCompatibilityInput(input)
+	if err != nil {
+		return validatedInput{}, err
+	}
 	if err := types.ValidateToolInput(t, input); err != nil {
 		return validatedInput{}, i18n.WrapError(i18n.KeyToolInspectInvalidInput, err)
 	}
@@ -128,26 +132,22 @@ func (t *Tool) validateInput(input map[string]any) (validatedInput, error) {
 	if err != nil {
 		return validatedInput{}, i18n.WrapInternalError(i18n.KeyToolInspectMalformedInput, err)
 	}
-	operation := decoded.Operation
-	switch operation.Mode {
-	case ModeContinue:
-		return validatedInput{cursor: strings.TrimSpace(operation.Cursor)}, nil
-	case ModeNew:
-		// Continue below. JSON Schema admission already guarantees that requests
-		// and page belong only to this branch.
-	default:
-		return validatedInput{}, localizedError(i18n.KeyToolInspectMalformedInput)
+	if cursor := strings.TrimSpace(decoded.Cursor); cursor != "" {
+		if len(decoded.Requests) > 0 || decoded.MaxChars != nil || decoded.MaxFiles != nil || decoded.MaxMatches != nil {
+			return validatedInput{}, localizedError(i18n.KeyToolInspectMalformedInput)
+		}
+		return validatedInput{cursor: cursor}, nil
 	}
-	if len(operation.Requests) == 0 {
+	if len(decoded.Requests) == 0 {
 		return validatedInput{}, localizedError(i18n.KeyToolInspectRequestsRequired)
 	}
-	if len(operation.Requests) > maximumRequests {
+	if len(decoded.Requests) > maximumRequests {
 		return validatedInput{}, localizedError(i18n.KeyToolInspectTooManyRequests, maximumRequests)
 	}
 
 	pageLimits := limits{maxChars: defaultMaxChars, maxFiles: defaultMaxFiles, maxMatches: defaultMaxMatches}
-	if operation.Page != nil && operation.Page.MaxChars != nil {
-		pageLimits.maxChars, err = validateIntegerLimit("max_chars", *operation.Page.MaxChars, minimumMaxChars, maximumMaxChars)
+	if decoded.MaxChars != nil {
+		pageLimits.maxChars, err = validateIntegerLimit("max_chars", *decoded.MaxChars, minimumMaxChars, maximumMaxChars)
 		if err != nil {
 			return validatedInput{}, err
 		}
@@ -155,22 +155,22 @@ func (t *Tool) validateInput(input map[string]any) (validatedInput, error) {
 	if pageLimits.maxChars > maximumModelVisibleChars {
 		pageLimits.maxChars = maximumModelVisibleChars
 	}
-	if operation.Page != nil && operation.Page.MaxFiles != nil {
-		pageLimits.maxFiles, err = validateIntegerLimit("max_files", *operation.Page.MaxFiles, 1, maximumMaxFiles)
+	if decoded.MaxFiles != nil {
+		pageLimits.maxFiles, err = validateIntegerLimit("max_files", *decoded.MaxFiles, 1, maximumMaxFiles)
 		if err != nil {
 			return validatedInput{}, err
 		}
 	}
-	if operation.Page != nil && operation.Page.MaxMatches != nil {
-		pageLimits.maxMatches, err = validateIntegerLimit("max_matches", *operation.Page.MaxMatches, 1, maximumMaxMatches)
+	if decoded.MaxMatches != nil {
+		pageLimits.maxMatches, err = validateIntegerLimit("max_matches", *decoded.MaxMatches, 1, maximumMaxMatches)
 		if err != nil {
 			return validatedInput{}, err
 		}
 	}
 
-	requests := make([]normalizedRequest, 0, len(operation.Requests))
-	seenIDs := make(map[string]struct{}, len(operation.Requests))
-	for _, request := range operation.Requests {
+	requests := make([]normalizedRequest, 0, len(decoded.Requests))
+	seenIDs := make(map[string]struct{}, len(decoded.Requests))
+	for _, request := range decoded.Requests {
 		normalized, normalizeErr := normalizeRequest(request)
 		if normalizeErr != nil {
 			return validatedInput{}, normalizeErr
@@ -182,6 +182,67 @@ func (t *Tool) validateInput(input map[string]any) (validatedInput, error) {
 		requests = append(requests, normalized)
 	}
 	return validatedInput{requests: requests, limits: pageLimits}, nil
+}
+
+// normalizeInspectCompatibilityInput accepts the briefly advertised nested
+// operation shape while keeping the provider-visible schema flat. This lets
+// persisted/retried calls survive the contract correction without presenting
+// two competing shapes to the model.
+func normalizeInspectCompatibilityInput(input map[string]any) (map[string]any, error) {
+	operationValue, nested := input["operation"]
+	if !nested {
+		return input, nil
+	}
+	if len(input) != 1 {
+		return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+	}
+	operation, ok := operationValue.(map[string]any)
+	if !ok {
+		return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+	}
+	mode, ok := operation["mode"].(string)
+	if !ok {
+		return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+	}
+	switch mode {
+	case ModeContinue:
+		if len(operation) != 2 {
+			return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+		}
+		cursor, ok := operation["cursor"]
+		if !ok {
+			return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+		}
+		return map[string]any{"cursor": cursor}, nil
+	case ModeNew:
+		if len(operation) < 2 || len(operation) > 3 {
+			return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+		}
+		requests, ok := operation["requests"]
+		if !ok {
+			return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+		}
+		flattened := map[string]any{"requests": requests}
+		pageValue, hasPage := operation["page"]
+		if !hasPage || pageValue == nil {
+			return flattened, nil
+		}
+		page, ok := pageValue.(map[string]any)
+		if !ok {
+			return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+		}
+		for key, value := range page {
+			switch key {
+			case "max_chars", "max_files", "max_matches":
+				flattened[key] = value
+			default:
+				return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+			}
+		}
+		return flattened, nil
+	default:
+		return nil, localizedError(i18n.KeyToolInspectMalformedInput)
+	}
 }
 
 func normalizeRequest(request Request) (normalizedRequest, error) {

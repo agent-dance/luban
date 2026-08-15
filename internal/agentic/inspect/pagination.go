@@ -261,10 +261,14 @@ func (s *paginationState) nextPage(generation string, views ...*evidenceView) (R
 
 func (s *paginationState) pageCapEnd(start int) int {
 	files := make(map[string]struct{})
+	requestItems := make(map[int]int)
 	matches := 0
 	end := start
 	for end < len(s.items) {
 		item := s.items[end]
+		if pageSize := s.batch.requests[item.requestIndex].pageSize; pageSize > 0 && requestItems[item.requestIndex] >= pageSize {
+			break
+		}
 		if item.kind == pageItemMatch && matches >= s.pageLimits.maxMatches {
 			break
 		}
@@ -277,6 +281,7 @@ func (s *paginationState) pageCapEnd(start int) int {
 		if item.kind == pageItemMatch {
 			matches++
 		}
+		requestItems[item.requestIndex]++
 		end++
 	}
 	return end

@@ -29,6 +29,7 @@ type completedRequest struct {
 	result   RequestResult
 	snippets []Snippet
 	sources  map[string]sourceSnapshot
+	pageSize int
 }
 
 // sourceSnapshot is captured from the private Read ledger used while Inspect
@@ -97,7 +98,7 @@ func (t *Tool) executeRequest(ctx context.Context, workspace workspaceSnapshot, 
 	absPath, err := resolveRepositoryPath(workspace.root, request.path)
 	if err != nil {
 		result.Errors = []RequestError{newRequestError("path_scope", err)}
-		return completedRequest{result: result}
+		return completedRequest{result: result, pageSize: request.maxResults}
 	}
 	displayPath := repositoryDisplayPath(workspace.root, absPath)
 	result.Path = displayPath
@@ -117,7 +118,7 @@ func (t *Tool) executeRequest(ctx context.Context, workspace workspaceSnapshot, 
 			result.SourcePartial = true
 			result.PartialReason = sourcePartialReason(globResult.PartialReason, globResult.HasMore)
 		}
-		return completedRequest{result: result}
+		return completedRequest{result: result, pageSize: request.maxResults}
 	case KindSearch:
 		return t.executeSearchRequest(ctx, workspace, request, result, absPath)
 	default:
@@ -127,12 +128,27 @@ func (t *Tool) executeRequest(ctx context.Context, workspace workspaceSnapshot, 
 
 func (t *Tool) executeReadRequest(ctx context.Context, workspace workspaceSnapshot, request normalizedRequest, result RequestResult, absPath string) completedRequest {
 	if info, err := os.Stat(absPath); err == nil && info.IsDir() {
-		result.Errors = []RequestError{newRequestErrorText(
-			"read_is_directory",
-			i18n.Format(i18n.DetectOrLoadLanguage(), i18n.KeyToolInspectReadDirectory, result.Path),
-		)}
-		result.SourcePartial = true
-		result.PartialReason = "read_failed"
+		entries, readErr := os.ReadDir(absPath)
+		if readErr != nil {
+			result.Errors = []RequestError{newRequestError("read_failed", readErr)}
+			result.SourcePartial = true
+			result.PartialReason = "read_failed"
+			return completedRequest{result: result}
+		}
+		limit := len(entries)
+		if limit > maximumMaxFiles {
+			limit = maximumMaxFiles
+			result.SourcePartial = true
+			result.PartialReason = "max_results"
+		}
+		result.Files = make([]string, 0, limit)
+		for _, entry := range entries[:limit] {
+			path := repositoryDisplayPath(workspace.root, filepath.Join(absPath, entry.Name()))
+			if entry.IsDir() {
+				path += "/"
+			}
+			result.Files = append(result.Files, path)
+		}
 		return completedRequest{result: result}
 	}
 	ranges := request.ranges
@@ -310,7 +326,7 @@ func (t *Tool) executeSearchRequest(ctx context.Context, workspace workspaceSnap
 			result.PartialReason = "evidence_failed"
 		}
 	}
-	return completedRequest{result: result, snippets: snippets, sources: sources}
+	return completedRequest{result: result, snippets: snippets, sources: sources, pageSize: request.maxResults}
 }
 
 func absLineDistance(snippet Snippet, line int) int {

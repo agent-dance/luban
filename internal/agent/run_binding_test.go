@@ -189,9 +189,7 @@ func TestAgentCWDV2CoreSharesOnlyChildReadEvidence(t *testing.T) {
 
 	wrapRegistryForAgentCWD(reg, childRoot)
 	inspectResult, err := executeApprovedRegistryToolForTest(t, reg, "Inspect", map[string]any{
-		"operation": map[string]any{
-			"mode": "new", "requests": []any{map[string]any{"id": "source", "kind": "read", "path": "target.txt"}},
-		},
+		"requests": []any{map[string]any{"id": "source", "kind": "read", "path": "target.txt"}},
 	})
 	if err != nil || inspectResult.IsError {
 		t.Fatalf("child Inspect result=%+v err=%v", inspectResult, err)

@@ -14,7 +14,7 @@ import (
 	"github.com/agent-dance/luban/types"
 )
 
-func TestSetupRegistryApplyPatchCustomToolRequiresExplicitGate(t *testing.T) {
+func TestSetupRegistryApplyPatchCustomToolUsesGateOrProviderCapability(t *testing.T) {
 	t.Setenv("LUBAN_CODE_EXPERIMENTAL_APPLY_PATCH_CUSTOM_TOOL", "")
 	baseline := SetupRegistry(provider.NewProviderRef(nil), t.TempDir(), nil, sandbox.NoopBackend{}, nil)
 	baselineSnapshot, err := baseline.Registry.SnapshotVisibleTools(nil)
@@ -55,6 +55,19 @@ func TestSetupRegistryApplyPatchCustomToolRequiresExplicitGate(t *testing.T) {
 	customPatch.Format.Definition = "corrupted"
 	if got := definitionByName(t, customSnapshot.Definitions(), "ApplyPatch").Format.Definition; got == "corrupted" {
 		t.Fatal("snapshot grammar was mutated through a returned definition")
+	}
+
+	t.Setenv("LUBAN_CODE_EXPERIMENTAL_APPLY_PATCH_CUSTOM_TOOL", "")
+	capableProvider := provider.NewResponses(provider.Config{
+		ProviderName: "deepseek", Model: "deepseek-v4-flash", ResponsesSemantics: provider.ResponsesSemanticsDeepSeek,
+	})
+	capable := SetupRegistry(provider.NewProviderRef(capableProvider), t.TempDir(), nil, sandbox.NoopBackend{}, nil)
+	capableSnapshot, err := capable.Registry.SnapshotVisibleTools(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if definition := definitionByName(t, capableSnapshot.Definitions(), "ApplyPatch"); !definition.IsCustom() {
+		t.Fatalf("custom-capable provider did not activate grammar ApplyPatch: %#v", definition)
 	}
 }
 

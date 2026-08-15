@@ -270,34 +270,18 @@ func (t *RunTool) Description() string {
 }
 
 func (t *RunTool) Schema() types.JSONSchema {
-	commandSchema := map[string]any{
-		"description": toolPromptText(i18n.KeyToolRunSchemaCommand),
-		"oneOf": []any{
-			map[string]any{
-				"type": "object", "properties": map[string]any{
-					"kind": map[string]any{"type": "string", "enum": []string{"argv"}},
-					"args": map[string]any{
-						"type": "array", "items": map[string]any{"type": "string"}, "minItems": 1,
-						"description": toolPromptText(i18n.KeyToolRunSchemaArgv),
-					},
-				}, "required": []string{"kind", "args"}, "additionalProperties": false,
-			},
-			map[string]any{
-				"type": "object", "properties": map[string]any{
-					"kind": map[string]any{"type": "string", "enum": []string{"shell"}},
-					"script": map[string]any{
-						"type": "string", "minLength": 1,
-						"description": toolPromptText(i18n.KeyToolRunSchemaShellScript),
-					},
-				}, "required": []string{"kind", "script"}, "additionalProperties": false,
-			},
-		},
-	}
 	stepProperties := map[string]any{
 		"id": map[string]any{
 			"type": "string", "description": toolPromptText(i18n.KeyToolRunSchemaStepID),
 		},
-		"command": commandSchema,
+		"argv": map[string]any{
+			"type": "array", "items": map[string]any{"type": "string"}, "minItems": 1,
+			"description": toolPromptText(i18n.KeyToolRunSchemaArgv),
+		},
+		"shell_script": map[string]any{
+			"type": "string", "minLength": 1,
+			"description": toolPromptText(i18n.KeyToolRunSchemaShellScript),
+		},
 		"cwd": map[string]any{
 			"type": "string", "description": toolPromptText(i18n.KeyToolRunSchemaCWD),
 		},
@@ -312,7 +296,11 @@ func (t *RunTool) Schema() types.JSONSchema {
 	}
 	stepSchema := map[string]any{
 		"type": "object", "properties": stepProperties,
-		"required": []string{"id", "command"}, "additionalProperties": false,
+		"required": []string{"id"}, "additionalProperties": false,
+		"oneOf": []any{
+			map[string]any{"required": []string{"argv"}, "not": map[string]any{"required": []string{"shell_script"}}},
+			map[string]any{"required": []string{"shell_script"}, "not": map[string]any{"required": []string{"argv"}}},
+		},
 	}
 	return types.StrictObjectSchema(map[string]any{
 		"steps": map[string]any{

@@ -93,12 +93,12 @@ func init() {
 		"변경 불가능한 명령 종속성 그래프를 한 번의 안전 사전 검사, 제한된 출력, 읽기 전용 단계의 병렬 실행으로 처리합니다.",
 		"Выполняет неизменяемый граф зависимостей команд с единой проверкой безопасности, ограниченным выводом и параллельными шагами только для чтения.")
 	add(KeyToolRunSchemaSteps,
-		"Commands and their dependencies. Each step uses a discriminated command branch.",
-		"命令及其依赖关系。每个步骤使用带判别字段的命令分支。",
-		"Befehle und ihre Abhängigkeiten. Jeder Schritt verwendet einen diskriminierten Befehlszweig.",
-		"コマンドとその依存関係。各ステップは判別付きコマンド分岐を使用します。",
-		"명령과 종속성입니다. 각 단계는 판별된 명령 분기를 사용합니다.",
-		"Команды и их зависимости. Каждый шаг использует дискриминируемую ветвь команды.")
+		"Commands and their dependencies. Each step uses exactly one of argv or shell_script.",
+		"命令及其依赖关系。每个步骤必须且只能使用 argv 或 shell_script 之一。",
+		"Befehle und ihre Abhängigkeiten. Jeder Schritt verwendet genau eines von argv oder shell_script.",
+		"コマンドとその依存関係。各ステップでは argv または shell_script のいずれか一方だけを使用します。",
+		"명령과 종속성입니다. 각 단계는 argv 또는 shell_script 중 정확히 하나만 사용합니다.",
+		"Команды и их зависимости. Каждый шаг использует ровно одно из полей argv или shell_script.")
 	add(KeyToolRunSchemaStepID,
 		"Stable step ID used by depends_on.", "depends_on 引用的稳定步骤 ID。",
 		"Stabile Schritt-ID für depends_on.", "depends_on から参照する安定したステップ ID。",

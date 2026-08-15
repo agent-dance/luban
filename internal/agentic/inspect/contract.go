@@ -49,24 +49,11 @@ const (
 )
 
 type Input struct {
-	Operation Operation `json:"operation"`
-}
-
-// Operation is an explicitly discriminated input branch. New inspections and
-// cursor continuations deliberately do not share a flat bag of optional
-// properties: providers can project either branch without inventing inert
-// placeholders for the other branch.
-type Operation struct {
-	Mode     string      `json:"mode"`
-	Requests []Request   `json:"requests,omitempty"`
-	Page     *PageLimits `json:"page,omitempty"`
-	Cursor   string      `json:"cursor,omitempty"`
-}
-
-type PageLimits struct {
-	MaxChars   *float64 `json:"max_chars,omitempty"`
-	MaxFiles   *float64 `json:"max_files,omitempty"`
-	MaxMatches *float64 `json:"max_matches,omitempty"`
+	Requests   []Request `json:"requests,omitempty"`
+	Cursor     string    `json:"cursor,omitempty"`
+	MaxChars   *float64  `json:"max_chars,omitempty"`
+	MaxFiles   *float64  `json:"max_files,omitempty"`
+	MaxMatches *float64  `json:"max_matches,omitempty"`
 }
 
 type Request struct {
@@ -349,45 +336,16 @@ func (t *Tool) Schema() types.JSONSchema {
 		"items":       map[string]any{"oneOf": []any{readRequestSchema, searchRequestSchema, globRequestSchema}},
 		"description": i18n.Text(lang, i18n.KeyToolInspectInputRequestsDescription),
 	}
-	pageSchema := map[string]any{
-		"type":        "object",
-		"description": i18n.Text(lang, i18n.KeyToolInspectInputPageDescription),
-		"properties": map[string]any{
-			"max_chars":   nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxCharsDescription), minimumMaxChars, true)),
-			"max_files":   nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxFilesDescription), 1, true)),
-			"max_matches": nullableInspectSchema(toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxMatchesDescription), 1, true)),
+	return types.StrictObjectSchema(map[string]any{
+		"requests": requestsSchema,
+		"cursor": map[string]any{
+			"type": "string", "minLength": 1,
+			"description": i18n.Text(lang, i18n.KeyToolInspectInputCursorDescription),
 		},
-		"additionalProperties": false,
-	}
-	modeDescription := i18n.Text(lang, i18n.KeyToolInspectInputModeDescription)
-	operationSchema := map[string]any{
-		"description": i18n.Text(lang, i18n.KeyToolInspectInputOperationDescription),
-		"oneOf": []any{
-			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"mode":     map[string]any{"type": "string", "enum": []string{ModeNew}, "description": modeDescription},
-					"requests": requestsSchema,
-					"page":     nullableInspectSchema(pageSchema),
-				},
-				"required":             []string{"mode", "requests"},
-				"additionalProperties": false,
-			},
-			map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"mode": map[string]any{"type": "string", "enum": []string{ModeContinue}, "description": modeDescription},
-					"cursor": map[string]any{
-						"type": "string", "minLength": 1,
-						"description": i18n.Text(lang, i18n.KeyToolInspectInputCursorDescription),
-					},
-				},
-				"required":             []string{"mode", "cursor"},
-				"additionalProperties": false,
-			},
-		},
-	}
-	return types.StrictObjectSchema(map[string]any{"operation": operationSchema}, "operation")
+		"max_chars":   toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxCharsDescription), minimumMaxChars, true),
+		"max_files":   toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxFilesDescription), 1, true),
+		"max_matches": toolbase.SemanticNumber(i18n.Text(lang, i18n.KeyToolInspectInputMaxMatchesDescription), 1, true),
+	})
 }
 
 func nullableInspectSchema(schema map[string]any) map[string]any {

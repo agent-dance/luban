@@ -185,6 +185,14 @@ func classifyRunVerificationArgv(argv []string) string {
 				return runVerificationBuild
 			}
 		}
+	case "node", "nodejs":
+		// Syntax checking is a verifier even though Node remains an opaque
+		// executable for effect classification. Revision-safe Run snapshots the
+		// workspace around verifier execution, so preload hooks or future runtime
+		// behavior cannot silently certify a changed workspace.
+		if len(args) == 2 && (args[0] == "--check" || args[0] == "-c") && strings.TrimSpace(args[1]) != "" {
+			return runVerificationStaticAnalysis
+		}
 	case "cargo":
 		switch firstNonFlag(args) {
 		case "test":

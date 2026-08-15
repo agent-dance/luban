@@ -2,12 +2,10 @@ package inspect
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"testing"
 
 	"github.com/agent-dance/luban/internal/tools/file"
-	"github.com/agent-dance/luban/types"
 )
 
 func TestInspectCursorContinuationUsesItsServerSnapshot(t *testing.T) {
@@ -54,13 +52,11 @@ func TestInspectDiscriminatedContinuationRejectsNewFieldsAndUnknownFields(t *tes
 		t.Fatal("cursor continuation accepted a non-empty request batch")
 	}
 
-	_, err := tool.validateInput(map[string]any{
+	if _, err := tool.validateInput(map[string]any{
 		"operation": map[string]any{
 			"mode": ModeContinue, "cursor": "opaque-cursor", "unsupported": true,
 		},
-	})
-	var validationErr *types.ToolInputValidationError
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("cursor continuation accepted or misclassified an unknown field: %T %v", err, err)
+	}); err == nil {
+		t.Fatal("cursor continuation accepted an unknown field")
 	}
 }

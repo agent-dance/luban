@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -39,23 +40,12 @@ func (p testRuntimeProvider) ToolRuntimeContext() types.ToolRuntimeContext {
 	return cloneRuntimeContext(p.runtime)
 }
 
-// inspectTestInput keeps behavioral tests focused on repository semantics
-// while constructing the current discriminated wire contract in one place.
 func inspectTestInput(fields map[string]any) map[string]any {
-	if cursor, ok := fields["cursor"]; ok {
-		return map[string]any{"operation": map[string]any{"mode": ModeContinue, "cursor": cursor}}
+	input := make(map[string]any, len(fields))
+	for key, value := range fields {
+		input[key] = value
 	}
-	operation := map[string]any{"mode": ModeNew, "requests": fields["requests"]}
-	page := map[string]any{}
-	for _, name := range []string{"max_chars", "max_files", "max_matches"} {
-		if value, ok := fields[name]; ok {
-			page[name] = value
-		}
-	}
-	if len(page) > 0 {
-		operation["page"] = page
-	}
-	return map[string]any{"operation": operation}
+	return input
 }
 
 func executeInspectTest(t *Tool, ctx context.Context, fields map[string]any) (types.ToolResult, error) {
@@ -157,57 +147,29 @@ func TestInspectMixedBatchIsStableAndRecordsSearchEvidence(t *testing.T) {
 	}
 }
 
-func TestInspectDirectoryReadSurfacesPrecisePartialFailure(t *testing.T) {
+func TestInspectDirectoryReadReturnsStableListing(t *testing.T) {
 	root := t.TempDir()
 	writeInspectFixture(t, filepath.Join(root, "first.txt"), "first\n")
 	writeInspectFixture(t, filepath.Join(root, "second.txt"), "second\n")
+	if err := os.Mkdir(filepath.Join(root, "subdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, nil)
 	result, err := executeInspectTest(tool, context.Background(), map[string]any{
-		"requests": []any{
-			map[string]any{"id": "root", "kind": KindRead, "path": "."},
-			map[string]any{"id": "first", "kind": KindRead, "path": "first.txt"},
-			map[string]any{"id": "second", "kind": KindRead, "path": "second.txt"},
-		},
+		"requests": []any{map[string]any{"id": "root", "kind": KindRead, "path": "."}},
 	})
-	if err != nil || result.IsError || result.Outcome != types.ToolOutcomePartial {
+	if err != nil || result.IsError || result.Outcome != types.ToolOutcomeSucceeded {
 		t.Fatalf("Inspect result=%+v err=%v", result, err)
 	}
 	output, ok := result.Data.(Result)
-	if !ok || len(output.Requests) != 3 {
+	if !ok || len(output.Requests) != 1 {
 		t.Fatalf("Inspect data=%T %+v", result.Data, result.Data)
 	}
-	failed := output.Requests[0]
-	if failed.ID != "root" || failed.Kind != KindRead || failed.Path != "." ||
-		len(failed.Errors) != 1 || failed.Errors[0].Code != "read_is_directory" ||
-		!strings.Contains(failed.Errors[0].Message, ".") {
-		t.Fatalf("directory diagnostic=%+v", failed)
-	}
-	if result.Metadata["inspect.partial_failure_count"] != "1" ||
-		result.Metadata["inspect.successful_request_count"] != "2" {
-		t.Fatalf("partial metadata=%+v", result.Metadata)
-	}
-	var failures []partialFailure
-	if err := json.Unmarshal([]byte(result.Metadata["inspect.partial_failures"]), &failures); err != nil || len(failures) != 1 {
-		t.Fatalf("partial failure envelope=%q err=%v", result.Metadata["inspect.partial_failures"], err)
-	}
-	if got := failures[0]; got.RequestID != "root" || got.Kind != KindRead || got.Path != "." ||
-		got.Code != "read_is_directory" || got.Message == "" {
-		t.Fatalf("partial failure=%+v", got)
-	}
-
-	var wire struct {
-		Requests []struct {
-			ID           string              `json:"id"`
-			Path         string              `json:"path"`
-			ErrorDetails []modelRequestError `json:"error_details"`
-		} `json:"requests"`
-	}
-	if err := json.Unmarshal([]byte(result.Content), &wire); err != nil || len(wire.Requests) != 3 {
-		t.Fatalf("model wire=%q err=%v", result.Content, err)
-	}
-	if wire.Requests[0].ID != "root" || wire.Requests[0].Path != "." || len(wire.Requests[0].ErrorDetails) != 1 ||
-		wire.Requests[0].ErrorDetails[0].Code != "read_is_directory" || wire.Requests[0].ErrorDetails[0].Message == "" {
-		t.Fatalf("model directory diagnostic=%+v", wire.Requests[0])
+	listing := output.Requests[0]
+	want := []string{"first.txt", "second.txt", "subdir/"}
+	if listing.ID != "root" || listing.Path != "." || !slices.Equal(listing.Files, want) ||
+		len(listing.Errors) != 0 || listing.SourcePartial {
+		t.Fatalf("directory listing=%+v, want files=%v", listing, want)
 	}
 }
 
@@ -251,14 +213,25 @@ func TestInspectRequestUnionRejectsFieldsFromAnotherKind(t *testing.T) {
 	}
 }
 
-func TestInspectLegacyFlatContractIsRejected(t *testing.T) {
+func TestInspectFlatContractIsAccepted(t *testing.T) {
 	tool := New(nil, nil)
-	_, err := tool.validateInput(map[string]any{"requests": []any{
+	validated, err := tool.validateInput(map[string]any{"requests": []any{
 		map[string]any{"id": "legacy", "kind": KindRead, "path": "main.go"},
 	}})
-	var validationErr *types.ToolInputValidationError
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("legacy flat input was accepted or misclassified: %T %v", err, err)
+	if err != nil || len(validated.requests) != 1 || validated.requests[0].id != "legacy" {
+		t.Fatalf("flat input failed: validated=%+v err=%v", validated, err)
+	}
+}
+
+func TestInspectNestedContractRemainsCompatible(t *testing.T) {
+	tool := New(nil, nil)
+	validated, err := tool.validateInput(map[string]any{"operation": map[string]any{
+		"mode":     ModeNew,
+		"requests": []any{map[string]any{"id": "nested", "kind": KindRead, "path": "main.go"}},
+		"page":     map[string]any{"max_files": 7},
+	}})
+	if err != nil || len(validated.requests) != 1 || validated.requests[0].id != "nested" || validated.limits.maxFiles != 7 {
+		t.Fatalf("nested compatibility failed: validated=%+v err=%v", validated, err)
 	}
 }
 
@@ -284,23 +257,10 @@ func TestInspectPartialDiagnosticsCountFailedRequestsNotErrorEntries(t *testing.
 
 func TestInspectSchemaProjectsRuntimeCollectionAndStringLimits(t *testing.T) {
 	schema := New(nil, nil).Schema()
-	operation, ok := schema.Properties["operation"].(map[string]any)
-	if !ok {
-		t.Fatalf("operation schema = %#v", schema.Properties["operation"])
+	if _, nested := schema.Properties["operation"]; nested {
+		t.Fatalf("provider-visible schema still advertises nested operation: %#v", schema.Properties)
 	}
-	branches, ok := operation["oneOf"].([]any)
-	if !ok || len(branches) != 2 {
-		t.Fatalf("operation branches = %#v", operation["oneOf"])
-	}
-	newBranch, ok := branches[0].(map[string]any)
-	if !ok {
-		t.Fatalf("new branch = %#v", branches[0])
-	}
-	newProperties, ok := newBranch["properties"].(map[string]any)
-	if !ok {
-		t.Fatalf("new properties = %#v", newBranch["properties"])
-	}
-	requests, ok := newProperties["requests"].(map[string]any)
+	requests, ok := schema.Properties["requests"].(map[string]any)
 	if !ok || requests["maxItems"] != maximumRequests {
 		t.Fatalf("requests schema = %#v", requests)
 	}
@@ -413,6 +373,7 @@ func TestInspectRejectsRepositoryEscapeAndFiltersReadDeniedSearchPaths(t *testin
 	result, err := executeInspectTest(tool, context.Background(), map[string]any{
 		"requests": []any{
 			map[string]any{"id": "escape", "kind": KindRead, "path": "escape.txt"},
+			map[string]any{"id": "root", "kind": KindRead, "path": "."},
 			map[string]any{"id": "search", "kind": KindSearch, "path": ".", "pattern": "needle"},
 		},
 	})
@@ -420,7 +381,7 @@ func TestInspectRejectsRepositoryEscapeAndFiltersReadDeniedSearchPaths(t *testin
 		t.Fatalf("composite security result failed wholesale: err=%v result=%+v", err, result)
 	}
 	output := result.Data.(Result)
-	if len(output.Requests) != 2 || len(output.Requests[0].Errors) == 0 {
+	if len(output.Requests) != 3 || len(output.Requests[0].Errors) == 0 {
 		t.Fatalf("escape request did not fail in place: %#v", output.Requests)
 	}
 	if strings.Contains(result.Content, "outside-secret-value") || strings.Contains(result.Content, "needle-hidden") || strings.Contains(result.Content, "secret/hidden") {
@@ -431,7 +392,7 @@ func TestInspectRejectsRepositoryEscapeAndFiltersReadDeniedSearchPaths(t *testin
 	}
 }
 
-func TestInspectRequestLimitIsSourcePartialNotToolError(t *testing.T) {
+func TestInspectRequestLimitCreatesRecoverableSourcePages(t *testing.T) {
 	root := t.TempDir()
 	writeInspectFixture(t, filepath.Join(root, "matches.txt"), "needle one\nneedle two\n")
 	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
@@ -445,11 +406,16 @@ func TestInspectRequestLimitIsSourcePartialNotToolError(t *testing.T) {
 	}
 	output := result.Data.(Result)
 	request := output.Requests[0]
-	if !output.SourceTruncated || !request.SourcePartial || request.PartialReason != "request_limit" || len(request.Matches) != 1 {
-		t.Fatalf("source partial contract = %#v", output)
+	if output.SourceTruncated || request.SourcePartial || len(request.Matches) != 1 || !output.HasMoreView || output.Cursor == "" {
+		t.Fatalf("first source page = %#v", output)
 	}
-	if result.Completeness.Source != types.ToolResultCompletenessSourceTruncated {
-		t.Fatalf("source completeness = %+v", result.Completeness)
+	continued, continueErr := executeInspectTest(tool, context.Background(), map[string]any{"cursor": output.Cursor})
+	if continueErr != nil || continued.IsError {
+		t.Fatalf("source continuation failed: err=%v result=%+v", continueErr, continued)
+	}
+	continuedOutput := continued.Data.(Result)
+	if continuedOutput.SourceTruncated || continuedOutput.HasMoreView || len(continuedOutput.Requests[0].Matches) != 1 {
+		t.Fatalf("second source page = %#v", continuedOutput)
 	}
 }
 
@@ -719,6 +685,36 @@ func TestInspectFirstPageHasEveryRequestEnvelopeAndPrioritizesExactRead(t *testi
 	}
 	if len(wire.Evidence) == 0 || wire.Evidence[0].Path != "z-priority.txt" {
 		t.Fatalf("exact read did not receive first payload priority: %#v", wire.Evidence)
+	}
+}
+
+func TestInspectBareStarAndDotStayWithinCurrentDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeInspectFixture(t, filepath.Join(root, "root.txt"), "root\n")
+	writeInspectFixture(t, filepath.Join(root, "nested", "child.txt"), "child\n")
+	for index := 0; index < defaultMaxResults+5; index++ {
+		writeInspectFixture(t, filepath.Join(root, "nested", "extra-"+integerString(index)+".txt"), "nested\n")
+	}
+
+	tool := New(testRuntimeProvider{runtime: testRuntime(root)}, toolfile.NewReadFileState())
+	result, err := executeInspectTest(tool, context.Background(), map[string]any{
+		"requests": []any{
+			map[string]any{"id": "dot", "kind": KindRead, "path": "."},
+			map[string]any{"id": "star", "kind": KindGlob, "path": ".", "pattern": "*"},
+		},
+	})
+	if err != nil || result.IsError {
+		t.Fatalf("Inspect failed: err=%v result=%+v", err, result)
+	}
+	output := result.Data.(Result)
+	if result.Outcome != types.ToolOutcomeSucceeded || output.SourceTruncated {
+		t.Fatalf("shallow discovery was partial: outcome=%q output=%+v", result.Outcome, output)
+	}
+	if got := output.Requests[0].Files; !slices.Equal(got, []string{"nested/", "root.txt"}) {
+		t.Fatalf("read dot files = %#v", got)
+	}
+	if got := output.Requests[1].Files; !slices.Equal(got, []string{"root.txt"}) {
+		t.Fatalf("glob star files = %#v", got)
 	}
 }
 

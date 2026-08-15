@@ -509,6 +509,13 @@ func isEnvTruthy(value string) bool {
 	}
 }
 
+func providerSupportsCustomTools(ref *provider.ProviderRef) bool {
+	if ref == nil {
+		return false
+	}
+	return ref.Get() != nil && ref.Capabilities().CustomTools == provider.CapabilitySupported
+}
+
 func isAgentSwarmsEnabled() bool {
 	if os.Getenv("USER_TYPE") == "ant" {
 		return true
@@ -915,7 +922,7 @@ func SetupRegistry(pRef *provider.ProviderRef, cwd string, allowedDirs []string,
 	// The production coding harness has exactly one model-facing kernel.
 	// Legacy file/search/shell implementations remain private dependencies of
 	// these compound tools and are never registered as an alternate surface.
-	applyPatchTool.CustomToolInput = isEnvTruthy(os.Getenv("LUBAN_CODE_EXPERIMENTAL_APPLY_PATCH_CUSTOM_TOOL"))
+	applyPatchTool.CustomToolInput = isEnvTruthy(os.Getenv("LUBAN_CODE_EXPERIMENTAL_APPLY_PATCH_CUSTOM_TOOL")) || providerSupportsCustomTools(pRef)
 	reg.SetModelToolProfile(registry.ModelToolProfileAgenticV2)
 	revisions := workspacerevision.NewLedger()
 	bashTool.WorkspaceRevisions = revisions

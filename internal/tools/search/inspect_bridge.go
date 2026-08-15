@@ -60,7 +60,7 @@ func (p inspectRuntimeProvider) ToolRuntimeContext() types.ToolRuntimeContext {
 // implementations, timeout policy, and display-path normalization while
 // returning a compact typed result. runtime must already be the immutable
 // repository-only snapshot selected by Inspect.
-func RunInspectGlob(ctx context.Context, runtime types.ToolRuntimeContext, rawPath, pattern string, maxResults int) (InspectGlobResult, error) {
+func RunInspectGlob(ctx context.Context, runtime types.ToolRuntimeContext, rawPath, pattern string, _ int) (InspectGlobResult, error) {
 	pattern = strings.TrimSpace(pattern)
 	if pattern == "" {
 		return InspectGlobResult{}, i18n.NewError(i18n.KeyToolSearchPatternRequired)
@@ -77,8 +77,19 @@ func RunInspectGlob(ctx context.Context, runtime types.ToolRuntimeContext, rawPa
 
 	timeoutCtx, cancel := context.WithTimeout(ctx, globSearchTimeout())
 	defer cancel()
-	acquisitionLimit := maxResults + 1
+	// Keep the complete bounded ripgrep result in Inspect's cursor state.
+	// max_results controls request-page size below; it must not discard source.
+	// The ripgrep runner's byte cap and timeout remain the hard safety boundary
+	// and report explicit, irrecoverable partial reasons when reached.
+	acquisitionLimit := int(^uint(0) >> 1)
 	var result globSearchResult
+	// Inspect defines a bare star as a shallow query relative to path. ripgrep's
+	// --glob '*' and the legacy native matcher both match basenames at every
+	// depth, which turns a natural directory-discovery request into an accidental
+	// recursive scan.
+	if pattern == "*" {
+		return runInspectShallowGlob(ctx, root, searchRuntime)
+	}
 	if globPatternNeedsNativeMatch(pattern) {
 		result, err = runGlobWithDoublestar(timeoutCtx, pattern, root, acquisitionLimit, searchRuntime)
 	} else {
@@ -90,22 +101,44 @@ func RunInspectGlob(ctx context.Context, runtime types.ToolRuntimeContext, rawPa
 
 	files := append([]string(nil), result.Files...)
 	sort.Strings(files)
-	hasMore := result.Truncated || len(files) > maxResults
-	if len(files) > maxResults {
-		files = files[:maxResults]
-	}
+	hasMore := result.Truncated
+	partialReason := result.PartialReason
 	return InspectGlobResult{
 		Files:         files,
 		HasMore:       hasMore,
-		PartialReason: result.PartialReason,
+		PartialReason: partialReason,
 	}, nil
+}
+
+func runInspectShallowGlob(ctx context.Context, root string, runtime searchRuntimeSnapshot) (InspectGlobResult, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return InspectGlobResult{}, err
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if err := ctx.Err(); err != nil {
+			return InspectGlobResult{}, err
+		}
+		if entry.IsDir() {
+			continue
+		}
+		paths = append(paths, filepath.Join(root, entry.Name()))
+	}
+	paths = runtime.ignores.filter(paths)
+	sortGlobAbsolutePathsByMtime(paths, true)
+	files := make([]string, 0, len(paths))
+	for _, path := range paths {
+		files = append(files, formatSearchDisplayPathFrom(path, runtime.cwd))
+	}
+	return InspectGlobResult{Files: files}, nil
 }
 
 // RunInspectSearch reuses Grep's scope, ignore policy, ripgrep/fallback
 // implementations, timeout handling, and path rendering. It intentionally
 // requests match lines without context; Inspect obtains context through Read
 // so the exact model-visible file version also becomes edit evidence.
-func RunInspectSearch(ctx context.Context, runtime types.ToolRuntimeContext, rawPath, pattern string, maxResults int) (InspectSearchResult, error) {
+func RunInspectSearch(ctx context.Context, runtime types.ToolRuntimeContext, rawPath, pattern string, _ int) (InspectSearchResult, error) {
 	if strings.TrimSpace(pattern) == "" {
 		return InspectSearchResult{}, i18n.NewError(i18n.KeyToolSearchPatternRequired)
 	}
@@ -166,11 +199,7 @@ func RunInspectSearch(ctx context.Context, runtime types.ToolRuntimeContext, raw
 		}
 		return matches[i].Text < matches[j].Text
 	})
-	hasMore := len(matches) > maxResults
-	if hasMore {
-		matches = matches[:maxResults]
-	}
-	return InspectSearchResult{Matches: matches, HasMore: hasMore, PartialReason: partialReason}, nil
+	return InspectSearchResult{Matches: matches, HasMore: partialReason != "", PartialReason: partialReason}, nil
 }
 
 func splitInspectContentLine(line, searchPath string, pathInfo os.FileInfo, displayRoot string) (string, int, string, bool) {
