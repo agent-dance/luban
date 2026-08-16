@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -31,9 +32,44 @@ const (
 )
 
 type runStepExecution struct {
-	output RunStepOutput
-	stdout runCaptureExcerpt
-	stderr runCaptureExcerpt
+	output        RunStepOutput
+	stdout        runCaptureExcerpt
+	stderr        runCaptureExcerpt
+	contentBlocks []types.ContentBlock
+}
+
+const maxRunImageDataURIBytes = 2 * 1024 * 1024
+
+type boundedRunImageCapture struct {
+	mu       sync.Mutex
+	data     []byte
+	overflow bool
+}
+
+func (c *boundedRunImageCapture) Write(data []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	written := len(data)
+	if c.overflow {
+		return written, nil
+	}
+	remaining := maxRunImageDataURIBytes - len(c.data)
+	if len(data) > remaining {
+		c.overflow = true
+		c.data = nil
+		return written, nil
+	}
+	c.data = append(c.data, data...)
+	return written, nil
+}
+
+func (c *boundedRunImageCapture) complete() ([]byte, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.overflow {
+		return nil, false
+	}
+	return append([]byte(nil), c.data...), true
 }
 
 type runCaptureExcerpt struct {
@@ -176,7 +212,13 @@ func executeRunStep(ctx context.Context, scope bashExecutionScope, step compiled
 	stderrBudget := charBudget / 2
 	stdout := newBoundedRunCapture(stdoutBudget, headLines, tailLines)
 	stderr := newBoundedRunCapture(stderrBudget, headLines, tailLines)
-	command.Stdout = stdout
+	var imageCapture *boundedRunImageCapture
+	if step.imageOutput {
+		imageCapture = &boundedRunImageCapture{}
+		command.Stdout = io.MultiWriter(stdout, imageCapture)
+	} else {
+		command.Stdout = stdout
+	}
 	command.Stderr = stderr
 
 	processStarted := time.Now()
@@ -226,6 +268,19 @@ func executeRunStep(ctx context.Context, scope bashExecutionScope, step compiled
 			}
 		}
 		result.output.Status = runStatusFailed
+	}
+	if result.output.Status == runStatusSucceeded && step.imageOutput {
+		raw, complete := imageCapture.complete()
+		imageResult, valid := buildImageToolResult(string(raw), "")
+		if !complete || !valid {
+			result.output.Status = runStatusFailed
+			result.stderr = literalRunExcerpt(toolRuntimeText(i18n.KeyToolRunImageOutputInvalid))
+		} else {
+			result.contentBlocks = append(result.contentBlocks, imageResult.ContentBlocks...)
+			result.stdout.leading = imageResult.Content
+			result.stdout.trailing = ""
+			result.stdout.omitted = 0
+		}
 	}
 	return finish()
 }
@@ -314,6 +369,7 @@ func buildRunResult(executions []runStepExecution) types.ToolResult {
 	metadata := map[string]string{"stepCount": strconv.Itoa(len(executions))}
 	for index, execution := range executions {
 		output.Steps[index] = execution.output
+		output.contentBlocks = append(output.contentBlocks, execution.contentBlocks...)
 		counts[execution.output.Status]++
 	}
 	metadata["succeeded"] = strconv.Itoa(counts[runStatusSucceeded])

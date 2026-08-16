@@ -60,29 +60,47 @@ func TestAgenticV2ReplacesLegacyGuidanceWithCoreWorkflow(t *testing.T) {
 
 	got := blocks.JoinedText()
 	for _, want := range []string{
-		"derive concrete acceptance criteria",
-		"root-cause and implementation hypothesis",
-		"Inspect is the only repository read, search, and file-discovery tool",
+		"# Outcome optimization",
+		"defer low-return scope",
+		"narrow but complete artifact",
+		"MVP minimizes breadth, not core craftsmanship",
+		"honor explicit no-test requests",
+		"derive a compact hierarchy of the qualities and relationships",
+		"few highest-damage failures into falsifiable invariants",
+		"related parts share anchors or state",
+		"correctness follows from structure rather than independently guessed values",
+		"do not replace judgment with an exhaustive checklist",
+		"treat perceived quality as correctness",
+		"composition, hierarchy, typography, spacing, color, interaction, motion, and responsiveness",
+		"Spend detail on the focal experience rather than low-return chrome",
+		"generic, crude, or unfinished presentation",
+		"Validate at the user-observable boundary",
+		"directly observe representative output and states when model and environment permit",
+		"seek local execution or preview capabilities",
+		"If semantic observation is unavailable, use the strongest independent proxy, disclose the limit",
+		"never substitute artifact existence, smoke checks, pixel counts, or stated intent for perceptual evidence",
+		"Critique to falsify success",
+		"seek the most salient user-visible mismatch",
+		"repeat while that materially improves the core outcome",
+		"map every required result and preserved invariant to credible evidence",
+		"Reduce scope before reducing correctness",
+		"acceptable deferred scope",
+		"credible stop evidence",
+		"for greenfield work without existing constraints",
 		"high-information inspections",
-		"never a fixed round count",
+		"not a fixed round count",
 		"Do not reread unchanged evidence",
-		"ApplyPatch is the only file writer",
-		"one cohesive multi-file, multi-hunk transaction",
-		"Run is the only terminal and verification tool",
+		"make the smallest complete change",
+		"invalidating evidence",
 		"cheapest focused test",
-		"Broaden only for risk signals",
-		"one Run graph",
-		"requires_patch_commit=true",
-		"adjacent omission is fused only within that response",
-		"ApplyPatch cannot issue a receipt for a no-op",
-		"missing adoption or sealing authority",
+		"Broaden only for risk, uncertainty",
+		"preserves clear failure evidence",
 		"criticize the complete patch or resulting diff",
 		"both sides of compatibility changes",
 		"A passing command does not by itself prove semantic correctness",
 		"Never repeat an unchanged deterministic failure fingerprint",
 		"Do not weaken meaningful tests merely to make them pass",
 		"Stop as soon as the criteria are satisfied",
-		"The complete visible catalog is Inspect, ApplyPatch, and Run",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("expected v2 prompt to contain %q", want)
@@ -96,6 +114,13 @@ func TestAgenticV2ReplacesLegacyGuidanceWithCoreWorkflow(t *testing.T) {
 		"Use Read, Grep, or Glob only",
 		"use Edit or Write only",
 		"use Bash only",
+		"is the only repository read",
+		"is the only file writer",
+		"is the only terminal and verification tool",
+		"The complete visible catalog is",
+		"requires_patch_commit=true",
+		"revision receipt",
+		"sealing authority",
 	} {
 		if strings.Contains(got, legacy) {
 			t.Fatalf("v2 should replace legacy guidance %q", legacy)
@@ -103,6 +128,9 @@ func TestAgenticV2ReplacesLegacyGuidanceWithCoreWorkflow(t *testing.T) {
 	}
 	if count := strings.Count(got, "# Coding contract"); count != 1 {
 		t.Fatalf("expected exactly one tool-guidance section, got %d", count)
+	}
+	if count := strings.Count(got, "# Outcome optimization"); count != 1 {
+		t.Fatalf("expected exactly one outcome-optimization section, got %d", count)
 	}
 	for _, schemaLeak := range []string{
 		"description-sentinel",

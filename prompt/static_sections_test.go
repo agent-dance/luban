@@ -18,6 +18,7 @@ func TestStaticPromptSectionOrder(t *testing.T) {
 	wantOrder := []string{
 		"You are " + brand.DisplayName,
 		"# Guardrails",
+		"# Outcome optimization",
 		"# Coding contract",
 		"# Communication",
 		"Primary working directory: /repo",
@@ -32,7 +33,7 @@ func TestUsingToolsSectionDependsOnEnabledTools(t *testing.T) {
 	complete := BuildSystemPrompt([]types.Tool{
 		&mockTool{name: "Inspect"}, &mockTool{name: "ApplyPatch"}, &mockTool{name: "Run"},
 	}, Config{})
-	if !strings.Contains(complete, "# Coding contract") || !strings.Contains(complete, "complete visible catalog") {
+	if !strings.Contains(complete, "# Coding contract") || !strings.Contains(complete, "make the smallest complete change") {
 		t.Fatalf("coding guidance missing: %s", complete)
 	}
 	incomplete := BuildSystemPrompt([]types.Tool{

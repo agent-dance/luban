@@ -62,11 +62,12 @@ type runInput struct {
 }
 
 type runStepInput struct {
-	ID        string          `json:"id"`
-	Command   runCommandInput `json:"command"`
-	CWD       string          `json:"cwd,omitempty"`
-	TimeoutMS *int            `json:"timeout_ms,omitempty"`
-	DependsOn []string        `json:"depends_on,omitempty"`
+	ID          string          `json:"id"`
+	Command     runCommandInput `json:"command"`
+	CWD         string          `json:"cwd,omitempty"`
+	TimeoutMS   *int            `json:"timeout_ms,omitempty"`
+	DependsOn   []string        `json:"depends_on,omitempty"`
+	ImageOutput bool            `json:"image_output,omitempty"`
 }
 
 // canonicalRunInput upgrades the legacy flat step command fields at the
@@ -146,6 +147,7 @@ type compiledRunStep struct {
 	verificationSafe bool
 	formatterWrites  []string
 	managedRoot      string
+	imageOutput      bool
 }
 
 // RunOutput is compact SDK data. Raw stdout/stderr is intentionally absent;
@@ -155,8 +157,9 @@ type RunOutput struct {
 	LogicalExecutionCommitted bool            `json:"logical_execution_committed"`
 	RevisionSealDisposition   string          `json:"revision_seal_disposition,omitempty"`
 
-	modelText string
-	receipt   workspacerevision.Receipt
+	modelText     string
+	receipt       workspacerevision.Receipt
+	contentBlocks []types.ContentBlock
 }
 
 // CompactionProof retains execution and revision facts while excluding model
@@ -292,6 +295,9 @@ func (t *RunTool) Schema() types.JSONSchema {
 		"depends_on": map[string]any{
 			"type": "array", "items": map[string]any{"type": "string"}, "uniqueItems": true,
 			"description": toolPromptText(i18n.KeyToolRunSchemaDependsOn),
+		},
+		"image_output": map[string]any{
+			"type": "boolean", "description": toolPromptText(i18n.KeyToolRunSchemaImageOutput),
 		},
 	}
 	stepSchema := map[string]any{
@@ -600,7 +606,14 @@ func (t *RunTool) MapToolResultToToolResultBlock(data any, toolUseID string) typ
 			Content: toolRuntimeText(i18n.KeyToolRunTypedResultInvalid), IsError: true,
 		}
 	}
-	return types.ToolResultBlock{Type: types.ContentTypeToolResult, ToolUseID: toolUseID, Content: out.modelText}
+	block := types.ToolResultBlock{Type: types.ContentTypeToolResult, ToolUseID: toolUseID, Content: out.modelText}
+	if len(out.contentBlocks) > 0 {
+		block.Content = ""
+		block.ContentBlocks = append([]types.ContentBlock{
+			types.TextBlock{Type: types.ContentTypeText, Text: out.modelText},
+		}, out.contentBlocks...)
+	}
+	return block
 }
 
 func runPlanError(key i18n.Key, args ...any) error {
@@ -669,6 +682,7 @@ func compileRunPlan(input map[string]any, scope bashExecutionScope, runtime type
 		requiresPatchCommit: in.RequiresPatchCommit,
 	}
 	ids := make(map[string]int, len(in.Steps))
+	imageOutputs := 0
 	for index, raw := range in.Steps {
 		id := strings.TrimSpace(raw.ID)
 		if id == "" {
@@ -682,7 +696,13 @@ func compileRunPlan(input map[string]any, scope bashExecutionScope, runtime type
 		}
 		ids[id] = index
 
-		step := compiledRunStep{index: index, id: id}
+		step := compiledRunStep{index: index, id: id, imageOutput: raw.ImageOutput}
+		if step.imageOutput {
+			imageOutputs++
+			if imageOutputs > 1 {
+				return nil, runPlanError(i18n.KeyToolRunImageOutputMultiple)
+			}
+		}
 		switch raw.Command.Kind {
 		case "argv":
 			step.argv = append([]string(nil), raw.Command.Args...)

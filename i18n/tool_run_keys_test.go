@@ -19,6 +19,15 @@ func TestToolRunKeysCoverEveryLanguage(t *testing.T) {
 	}
 }
 
+func TestToolRunDescriptionQualifiesVisualOutputByModelCapability(t *testing.T) {
+	description := Text(LangEN, KeyToolRunDescription)
+	for _, want := range []string{"image_output", "image data URI", "when the active model supports images"} {
+		if !strings.Contains(description, want) {
+			t.Fatalf("Run description omitted %q: %q", want, description)
+		}
+	}
+}
+
 func TestToolRunFormattedCopyKeepsProtocolValues(t *testing.T) {
 	for _, language := range AllLanguages() {
 		permission := Format(language, KeyToolRunPermissionStep, "lint", "policy-code")

@@ -57,6 +57,58 @@ func TestRunSchemaPublishesStrictDAGContract(t *testing.T) {
 	if _, ok := properties["shell_script"]; !ok {
 		t.Fatalf("shell_script schema missing: %#v", properties)
 	}
+	imageOutput, ok := properties["image_output"].(map[string]any)
+	if !ok || imageOutput["type"] != "boolean" || strings.TrimSpace(imageOutput["description"].(string)) == "" {
+		t.Fatalf("image_output schema = %#v", imageOutput)
+	}
+}
+
+func TestRunImageOutputReturnsVisualContent(t *testing.T) {
+	requireBashAvailable(t)
+	root := t.TempDir()
+	tool := NewRunTool(&BashTool{CWD: root, AllowedDirs: []string{root}})
+	const imageURI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+	result := executeApprovedRunForTest(t, tool, map[string]any{
+		"steps": []any{map[string]any{
+			"id": "preview", "shell_script": "printf '%s' '" + imageURI + "'", "image_output": true,
+		}},
+	})
+	if result.IsError {
+		t.Fatalf("image output failed: %#v", result)
+	}
+	block := tool.MapToolResultToToolResultBlock(result.Data, "toolu-preview")
+	if len(block.ContentBlocks) != 2 {
+		t.Fatalf("content blocks = %#v", block.ContentBlocks)
+	}
+	if _, ok := block.ContentBlocks[0].(types.TextBlock); !ok {
+		t.Fatalf("first block = %T, want text summary", block.ContentBlocks[0])
+	}
+	image, ok := block.ContentBlocks[1].(types.ImageBlock)
+	if !ok || image.Source == nil || image.Source.MediaType != "image/png" {
+		t.Fatalf("second block = %#v, want PNG image", block.ContentBlocks[1])
+	}
+}
+
+func TestRunImageOutputRejectsInvalidOrMultipleDeclarations(t *testing.T) {
+	requireBashAvailable(t)
+	root := t.TempDir()
+	tool := NewRunTool(&BashTool{CWD: root, AllowedDirs: []string{root}})
+	invalid := executeApprovedRunForTest(t, tool, map[string]any{
+		"steps": []any{map[string]any{
+			"id": "preview", "shell_script": "printf not-an-image", "image_output": true,
+		}},
+	})
+	if !invalid.IsError || requireRunOutput(t, invalid).Steps[0].Status != runStatusFailed {
+		t.Fatalf("invalid image output = %#v", invalid)
+	}
+	scope := tool.Bash.executionScopeSnapshot()
+	_, err := compileRunPlan(map[string]any{"steps": []any{
+		map[string]any{"id": "one", "argv": []any{"true"}, "image_output": true},
+		map[string]any{"id": "two", "argv": []any{"true"}, "image_output": true},
+	}}, scope, types.ToolRuntimeContext{}, true)
+	if err == nil {
+		t.Fatal("Run accepted multiple image_output steps")
+	}
 }
 
 func TestRunRequiresPatchCommitContract(t *testing.T) {

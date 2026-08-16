@@ -13,6 +13,7 @@ const (
 	KeyToolRunSchemaCWD                 Key = "tool.run.schema.cwd"
 	KeyToolRunSchemaTimeout             Key = "tool.run.schema.timeout"
 	KeyToolRunSchemaDependsOn           Key = "tool.run.schema.depends_on"
+	KeyToolRunSchemaImageOutput         Key = "tool.run.schema.image_output"
 	KeyToolRunSchemaFailFast            Key = "tool.run.schema.fail_fast"
 	KeyToolRunSchemaHead                Key = "tool.run.schema.head"
 	KeyToolRunSchemaTail                Key = "tool.run.schema.tail"
@@ -40,6 +41,8 @@ const (
 	KeyToolRunSandboxUnavailable  Key = "tool.run.error.sandbox_unavailable"
 	KeyToolRunCommandBuildFailed  Key = "tool.run.error.command_build_failed"
 	KeyToolRunTypedResultInvalid  Key = "tool.run.error.typed_result_invalid"
+	KeyToolRunImageOutputMultiple Key = "tool.run.error.image_output_multiple"
+	KeyToolRunImageOutputInvalid  Key = "tool.run.error.image_output_invalid"
 	KeyToolRunSkippedAfterPatch   Key = "tool.run.error.skipped_after_patch"
 	KeyToolRunRevisionChanged     Key = "tool.run.error.revision_changed"
 	KeyToolRunPatchCommitRequired Key = "tool.run.error.patch_commit_required"
@@ -59,7 +62,7 @@ const (
 var toolRunKeys = [...]Key{
 	KeyToolRunDescription, KeyToolRunSchemaSteps, KeyToolRunSchemaStepID, KeyToolRunSchemaCommand,
 	KeyToolRunSchemaArgv, KeyToolRunSchemaShellScript, KeyToolRunSchemaCWD,
-	KeyToolRunSchemaTimeout, KeyToolRunSchemaDependsOn, KeyToolRunSchemaFailFast,
+	KeyToolRunSchemaTimeout, KeyToolRunSchemaDependsOn, KeyToolRunSchemaImageOutput, KeyToolRunSchemaFailFast,
 	KeyToolRunSchemaHead, KeyToolRunSchemaTail, KeyToolRunSchemaMaxChars,
 	KeyToolRunSchemaRequiresPatchCommit,
 	KeyToolRunInvalidInput, KeyToolRunStepsRequired, KeyToolRunTooManySteps,
@@ -69,7 +72,8 @@ var toolRunKeys = [...]Key{
 	KeyToolRunDependencySelf, KeyToolRunDependencyDuplicate, KeyToolRunDependencyCycle,
 	KeyToolRunOutputBounds, KeyToolRunApprovalRequired, KeyToolRunPlanModeBlocked,
 	KeyToolRunSandboxUnavailable, KeyToolRunCommandBuildFailed,
-	KeyToolRunTypedResultInvalid, KeyToolRunPermissionStep, KeyToolRunSummary,
+	KeyToolRunTypedResultInvalid, KeyToolRunImageOutputMultiple, KeyToolRunImageOutputInvalid,
+	KeyToolRunPermissionStep, KeyToolRunSummary,
 	KeyToolRunSkippedAfterPatch, KeyToolRunRevisionChanged,
 	KeyToolRunPatchCommitRequired, KeyToolRunCommittedUnverified,
 	KeyToolRunSealReceiptMissing, KeyToolRunSealPlanUnsupported,
@@ -86,12 +90,12 @@ func init() {
 	}
 
 	add(KeyToolRunDescription,
-		"Execute an immutable dependency graph of commands with one safety preflight, bounded output, and parallel read-only steps.",
-		"执行不可变的命令依赖图：统一进行一次安全预检、严格限制输出，并并行运行只读步骤。",
-		"Führt einen unveränderlichen Befehls-Abhängigkeitsgraphen mit einer Sicherheitsvorprüfung, begrenzter Ausgabe und parallelen Nur-Lese-Schritten aus.",
-		"不変のコマンド依存グラフを、1 回の安全事前検査、制限付き出力、読み取り専用ステップの並列実行で処理します。",
-		"변경 불가능한 명령 종속성 그래프를 한 번의 안전 사전 검사, 제한된 출력, 읽기 전용 단계의 병렬 실행으로 처리합니다.",
-		"Выполняет неизменяемый граф зависимостей команд с единой проверкой безопасности, ограниченным выводом и параллельными шагами только для чтения.")
+		"Execute an immutable dependency graph of commands with one safety preflight, bounded output, and parallel read-only steps. One step may declare image_output and emit an image data URI on stdout for visual inspection when the active model supports images.",
+		"执行不可变的命令依赖图：统一进行一次安全预检、严格限制输出，并并行运行只读步骤。一个步骤可声明 image_output，并在 stdout 输出图片 data URI；当前模型支持图片时可用于视觉检查。",
+		"Führt einen unveränderlichen Befehls-Abhängigkeitsgraphen mit einer Sicherheitsvorprüfung, begrenzter Ausgabe und parallelen Nur-Lese-Schritten aus. Ein Schritt kann image_output deklarieren und einen Bild-Data-URI zur visuellen Prüfung auf stdout ausgeben, wenn das aktive Modell Bilder unterstützt.",
+		"不変のコマンド依存グラフを、1 回の安全事前検査、制限付き出力、読み取り専用ステップの並列実行で処理します。1 つのステップで image_output を指定し、現在のモデルが画像に対応している場合に視覚確認するための画像 Data URI を stdout に出力できます。",
+		"변경 불가능한 명령 종속성 그래프를 한 번의 안전 사전 검사, 제한된 출력, 읽기 전용 단계의 병렬 실행으로 처리합니다. 한 단계에서 image_output을 선언하고 현재 모델이 이미지를 지원할 때 시각 검사할 이미지 데이터 URI를 stdout으로 출력할 수 있습니다.",
+		"Выполняет неизменяемый граф зависимостей команд с единой проверкой безопасности, ограниченным выводом и параллельными шагами только для чтения. Один шаг может объявить image_output и вывести в stdout URI данных изображения для визуальной проверки, если активная модель поддерживает изображения.")
 	add(KeyToolRunSchemaSteps,
 		"Commands and their dependencies. Each step uses exactly one of argv or shell_script.",
 		"命令及其依赖关系。每个步骤必须且只能使用 argv 或 shell_script 之一。",
@@ -133,6 +137,13 @@ func init() {
 		"Step IDs that must finish successfully before this step starts.", "本步骤启动前必须成功完成的步骤 ID。",
 		"Schritt-IDs, die vor dem Start dieses Schritts erfolgreich beendet sein müssen.", "このステップの開始前に成功している必要があるステップ ID。",
 		"이 단계를 시작하기 전에 성공적으로 끝나야 하는 단계 ID입니다.", "Идентификаторы шагов, которые должны успешно завершиться до запуска этого шага.")
+	add(KeyToolRunSchemaImageOutput,
+		"Treat this step's stdout as one image data URI and return it as visual content. At most one step per Run may enable this.",
+		"将此步骤的 stdout 视为一个图片 data URI，并作为视觉内容返回。每次 Run 最多一个步骤可启用。",
+		"Behandelt stdout dieses Schritts als genau einen Bild-Data-URI und gibt ihn als visuellen Inhalt zurück. Pro Run darf dies höchstens ein Schritt aktivieren.",
+		"このステップの stdout を 1 つの画像 Data URI として扱い、視覚コンテンツで返します。1 回の Run で有効にできるステップは最大 1 つです。",
+		"이 단계의 stdout을 하나의 이미지 데이터 URI로 처리해 시각적 콘텐츠로 반환합니다. Run 하나에서 최대 한 단계만 활성화할 수 있습니다.",
+		"Считать stdout этого шага одним URI данных изображения и вернуть его как визуальное содержимое. В одном Run это можно включить не более чем для одного шага.")
 	add(KeyToolRunSchemaFailFast,
 		"Cancel running work and skip pending work after the first failed step.", "首个步骤失败后取消正在运行的工作并跳过待执行工作。",
 		"Bricht laufende Arbeit ab und überspringt ausstehende Arbeit nach dem ersten fehlgeschlagenen Schritt.", "最初のステップ失敗後、実行中の処理を中止し、未実行の処理をスキップします。",
@@ -178,6 +189,17 @@ func init() {
 	add(KeyToolRunSandboxUnavailable, "The approved sandbox authority is no longer available.", "已批准的沙箱执行权限已不可用。", "Die genehmigte Sandbox-Autorität ist nicht mehr verfügbar.", "承認済みのサンドボックス実行権限が利用できなくなりました。", "승인된 샌드박스 실행 권한을 더 이상 사용할 수 없습니다.", "Одобренная среда изоляции больше недоступна.")
 	add(KeyToolRunCommandBuildFailed, "Step %q could not be prepared for execution.", "无法为步骤 %q 准备执行命令。", "Schritt %q konnte nicht zur Ausführung vorbereitet werden.", "ステップ %q を実行用に準備できませんでした。", "%q 단계를 실행할 수 있도록 준비하지 못했습니다.", "Не удалось подготовить шаг %q к выполнению.")
 	add(KeyToolRunTypedResultInvalid, "Run returned an invalid structured result.", "Run 返回了无效的结构化结果。", "Run hat ein ungültiges strukturiertes Ergebnis zurückgegeben.", "Run が無効な構造化結果を返しました。", "Run이 올바르지 않은 구조화 결과를 반환했습니다.", "Run вернул недопустимый структурированный результат.")
+	add(KeyToolRunImageOutputMultiple,
+		"Run accepts at most one image_output step.", "每次 Run 最多接受一个 image_output 步骤。",
+		"Run akzeptiert höchstens einen image_output-Schritt.", "1 回の Run で指定できる image_output ステップは最大 1 つです。",
+		"Run 하나에는 image_output 단계를 최대 하나만 지정할 수 있습니다.", "Run принимает не более одного шага image_output.")
+	add(KeyToolRunImageOutputInvalid,
+		"The image_output step must emit exactly one valid image data URI on stdout within the size limit.",
+		"image_output 步骤必须在大小限制内向 stdout 准确输出一个有效的图片 data URI。",
+		"Der image_output-Schritt muss innerhalb der Größenbegrenzung genau einen gültigen Bild-Data-URI auf stdout ausgeben.",
+		"image_output ステップはサイズ上限内で、有効な画像 Data URI を stdout に 1 つだけ出力する必要があります。",
+		"image_output 단계는 크기 제한 안에서 유효한 이미지 데이터 URI 하나만 stdout에 출력해야 합니다.",
+		"Шаг image_output должен вывести в stdout ровно один допустимый URI данных изображения в пределах ограничения размера.")
 	add(KeyToolRunSkippedAfterPatch,
 		"Run was skipped because the preceding ApplyPatch did not commit a certifiable workspace revision.",
 		"已跳过 Run，因为前一个 ApplyPatch 未提交可认证的工作区版本。",

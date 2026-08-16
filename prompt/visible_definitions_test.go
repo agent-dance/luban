@@ -15,7 +15,7 @@ func TestSystemPromptFromVisibleDefinitionsUsesOnlyVisibleNames(t *testing.T) {
 	}
 	blocks := BuildSystemPromptBlocksForDefinitions(definitions, Config{CWD: "/repo"})
 	joined := blocks.JoinedText()
-	if !strings.Contains(joined, "The complete visible catalog is Inspect, ApplyPatch, and Run") {
+	if !strings.Contains(joined, "make the smallest complete change") {
 		t.Fatal("exact V2 definitions did not activate V2 guidance")
 	}
 	for _, absent := range []string{"When the user explicitly asks you to use subagents", "Break down and manage your work with the TaskCreate tool"} {

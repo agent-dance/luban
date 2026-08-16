@@ -115,8 +115,8 @@ func TestBuildSystemPromptWithTools(t *testing.T) {
 	if !strings.Contains(prompt, "# Coding contract") {
 		t.Error("expected global tool-use guidance")
 	}
-	if !strings.Contains(prompt, "The complete visible catalog is Inspect, ApplyPatch, and Run") {
-		t.Error("expected coding-kernel guidance")
+	if !strings.Contains(prompt, "make the smallest complete change") {
+		t.Error("expected compact engineering workflow guidance")
 	}
 }
 
